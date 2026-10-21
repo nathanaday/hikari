@@ -1,6 +1,6 @@
 # Spec: systems, system maps, and hub vocabularies
 
-Status: built. Section 5 was redesigned after the first build: the map became a public surface with no paths, and the layout and the test plan moved into private documents. Changes made during the build, with their reasons in `docs/design.md`:
+Status: built. The shared store spec (`docs/specs/shared-store.md`) later moved the map to `store/systems/<system>/map.yaml`, the vocabularies to `store/shared/vocabulary/<hub>.yaml`, and the container paths of the documents under `/hikari`; where this spec names older paths, that spec decides. Section 5 was redesigned after the first build: the map became a public surface with no paths, and the layout and the test plan moved into private documents. Changes made during the build, with their reasons in `docs/design.md`:
 
 - Owners add features in batches with `upsert_features` (see section 8).
 - hikari commits what each owner left when hikari stops, in addition to rule G13, so that rule G1 does not block the next start.

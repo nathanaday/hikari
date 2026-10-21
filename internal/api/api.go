@@ -60,6 +60,9 @@ type Self struct {
 	VisibleSystems []string `json:"visible_systems,omitempty"`
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
+	// MemberGrants maps each member of the hubs that an orchestrator
+	// orchestrates to the systems whose releases it is granted.
+	MemberGrants map[string][]string `json:"member_grants,omitempty"`
 }
 
 // SendRequest sets exactly one of Hub and To.

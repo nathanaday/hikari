@@ -122,6 +122,61 @@ must describe what the code does. It flags names that the vocabulary lacks,
 and consumed interfaces that no system provides, and the orchestrator decides
 whether to add the name or to ask the owner to rename.
 
+## One store for everything that is not code
+
+Maps, vocabularies, shared rules, and releases live in one directory, the
+store, so that you can open it and see your whole ecosystem. The private
+documents are the exception: they describe the code at a commit, so they
+stay in the repo and change in the same commits as the code. The store is
+a plain directory, not a git repo. Releases are versioned by their
+immutable version directories, and they can hold large binaries, which git
+handles badly.
+
+## /hikari: the same paths in every container
+
+Every container sees its hikari documents under `/hikari`, not in its
+working directory. Orchestrators have no scope, so a `.hikari` directory
+inside a scope could not work for them. Docker also creates an empty
+directory on the host for every mount point, so mount points inside the
+scope would leave directories in your repo. The scope's own `.hikari`
+directory is hidden, so the private documents appear at one path only.
+
+An owner can write only its staging area. Its map stays read-only, so it
+keeps the checks of the map tools, and its published releases stay
+read-only, so they never change.
+
+## Releases connect isolated systems
+
+A system that another system needs, such as a library, publishes it as a
+release: the deliverable and the docs that someone who cannot see the code
+needs to use it. Publishing checks that the map is current, so that a
+release matches what the map describes, and records the source commit and a
+copy of the public map. Feature health does not block a release; the copy
+of the map shows it.
+
+Publishing moves the staging area's contents into the release one entry at
+a time. It does not rename the staging directory, because the owner's
+container mounts that directory: after a rename, the mount would follow the
+directory into the release, and the owner could still write to it.
+
+A container cannot get a new bind mount while it runs, so release grants
+are part of the topology and take effect when the container starts. A grant
+covers every version of a system, and the consumer chooses a version.
+
+## Shared knowledge reaches agents as Claude Code expects it
+
+Shared skills and agent definitions are linked into `~/.claude` in each
+container, where Claude Code finds them. Policies are rules, so they go into
+every system prompt; a skill applies only when an agent loads it. The
+driver connects the shared area again before each turn, so a change applies
+from the next turn without a restart. hikari's own `hikari-system` skill
+always comes from the binary, so that it matches the binary's version.
+
+The `release-docs` skill runs in its own context (`context: fork`), so that
+writing docs does not fill the owner's context, and it waits for the result
+(`background: false`), because a headless turn ends when its prompt is
+answered.
+
 ## One server routes all messages
 
 Every message goes through the server. The server knows the topology, checks
@@ -219,9 +274,12 @@ stay out of your repo.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.
 - The first indexing turn of an owner reads its whole system.
-- No agent can run a test across two systems: each owner sees only its own
-  scope. Owners test their side of each interface separately. A home for
-  integration tests, such as the planned validation agent, is open work.
+- No agent sees another system's code. A system can test against another
+  system's published releases when the topology grants them, but an E2E
+  test agent that runs tests across systems is open work.
+- Release grants change only when a container starts, and there are no
+  schema grants yet: a system that owns a contract publishes it in its
+  releases.
 - Files that an owner creates in its scope belong to the container user. On
   Docker Desktop for macOS this is your user; on Linux, it is the user with
   ID 1000.

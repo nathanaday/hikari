@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -43,8 +44,9 @@ func orchestratorPrompt(self api.Self) string {
 		b.WriteString(`- mcp__hikari__list_systems, get_system, search_features, and get_feature read the maps: what each system does, its interfaces, and the health of its features.
 - When a map does not answer a question, ask the owner.
 - Ask owners for changes in terms of features and interfaces, not code. The owner decides how to make a change, and can push back with a reason.
-- Owners cannot see each other's code or run each other's tests, so no test in this network runs across two systems. Agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
+- Owners cannot see each other's code. A system can test against another system only through that system's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
 `)
+		b.WriteString(memberGrants(self))
 	}
 	if len(self.VisibleSystems) > 0 {
 		b.WriteString(`
@@ -153,5 +155,19 @@ func grantsPrompt(self api.Self) string {
 		b.WriteString(" When your tests use a release, name its system and version in your test plan, under the feature's covers or gaps.")
 	}
 	b.WriteString("\n")
+	return b.String()
+}
+
+// memberGrants lists the release grants of an orchestrator's members.
+func memberGrants(self api.Self) string {
+	if len(self.MemberGrants) == 0 {
+		return "- No member of your hubs is granted another system's releases. You cannot change grants; if a system needs another system's releases, ask the user to grant them.\n"
+	}
+	var b strings.Builder
+	b.WriteString("- Release grants of your members:")
+	for _, m := range slices.Sorted(maps.Keys(self.MemberGrants)) {
+		fmt.Fprintf(&b, " %s reads the releases of %s;", m, strings.Join(self.MemberGrants[m], ", "))
+	}
+	b.WriteString(" you cannot change grants; if a system needs others, ask the user.\n")
 	return b.String()
 }

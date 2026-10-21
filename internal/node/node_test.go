@@ -84,11 +84,12 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 		"The members of #eng own these systems: inventory, orders. You have no code and cannot read any.",
 		"mcp__hikari__list_systems",
 		"When a map does not answer a question, ask the owner.",
-		"no test in this network runs across two systems",
 		"You keep the vocabulary of #eng",
 		"get_system flags interface names",
 		"/hikari/public/readonly/systems/<system>/",
 		"When a system announces a release, check it",
+		"only through that system's published releases",
+		"No member of your hubs is granted another system's releases",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("D5: orchestrator prompt lacks %q", want)
@@ -252,5 +253,12 @@ func TestGrantsPrompt(t *testing.T) {
 	lead := api.Self{Name: "lead", Orchestrates: []string{"eng"}, VisibleSystems: []string{"orders"}, Releases: []string{"orders"}}
 	if strings.Contains(systemPrompt(lead), "## Releases you can use") {
 		t.Error("an orchestrator's own systems are not grants")
+	}
+}
+
+func TestMemberGrantsPrompt(t *testing.T) {
+	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, VisibleSystems: []string{"inventory", "orders"}, MemberGrants: map[string][]string{"orders": {"inventory"}}}
+	if p := systemPrompt(lead); !strings.Contains(p, "orders reads the releases of inventory") {
+		t.Errorf("the orchestrator must know its members' grants:\n%s", p)
 	}
 }
