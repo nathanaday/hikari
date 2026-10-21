@@ -52,6 +52,10 @@ type Self struct {
 	Instructions string    `json:"instructions,omitempty"`
 	Model        string    `json:"model,omitempty"`
 	Hubs         []HubInfo `json:"hubs"`
+	// System is set when the agent owns a system.
+	System *SelfSystem `json:"system,omitempty"`
+	// Orchestrates lists the hubs that the agent orchestrates.
+	Orchestrates []string `json:"orchestrates,omitempty"`
 }
 
 // SendRequest sets exactly one of Hub and To.
@@ -65,6 +69,7 @@ const (
 	StateStarting = "starting"
 	StateIdle     = "idle"
 	StateWorking  = "working"
+	StateIndexing = "indexing"
 	StateError    = "error"
 	StateExited   = "exited"
 )

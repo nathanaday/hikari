@@ -8,13 +8,19 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/vocab"
 )
 
 // company: ceo orchestrates lead. eng: lead orchestrates writer and critic.
@@ -35,8 +41,12 @@ func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var journal bytes.Buffer
-	return New(topo, &journal), &journal
+	return New(topo, &journal, sys), &journal
 }
 
 func post(hub, body string) api.SendRequest { return api.SendRequest{Hub: hub, Body: body} }
@@ -290,5 +300,90 @@ func TestUIRequiresToken(t *testing.T) {
 	resp, _ = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(`{"hub":"nope","body":"hello"}`))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("UI post to unknown hub = %s", resp.Status)
+	}
+}
+
+func TestSystemRoutes(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(k+"_NAME", "Test User")
+		t.Setenv(k+"_EMAIL", "user@example.com")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	os.MkdirAll(filepath.Join(repo, "orders"), 0o755)
+	os.WriteFile(filepath.Join(repo, "orders", "create.py"), []byte("x\n"), 0o644)
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "--all"}, {"commit", "--quiet", "-m", "initial"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	topo, err := topology.Parse([]byte(`
+repos: {shop: {path: shop, branch: hikari/work}}
+agents:
+  lead: {}
+  orders: {system: {repo: shop, scope: orders}}
+hubs:
+  h: {orchestrator: lead, members: [orders]}
+`), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(topo, nil, sys)
+	srv := httptest.NewServer(s.Handler("ui-secret"))
+	defer srv.Close()
+	ctx := context.Background()
+	orders := &api.Client{URL: srv.URL, Token: s.IssueToken("orders"), HTTP: srv.Client()}
+	lead := &api.Client{URL: srv.URL, Token: s.IssueToken("lead"), HTTP: srv.Client()}
+
+	events, cancel := s.Subscribe()
+	defer cancel()
+	if snap := (<-events).Snapshot; len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || len(snap.Vocabularies) != 1 {
+		t.Fatalf("snapshot systems = %+v, vocabularies = %+v", snap.Systems, snap.Vocabularies)
+	}
+
+	self, err := orders.Self(ctx)
+	if err != nil || self.System == nil || self.System.WorkDir != "/workspace/orders" {
+		t.Fatalf("owner self = %+v, %v", self.System, err)
+	}
+	if err := orders.UpsertFeature(ctx, sysmap.FeatureInput{ID: "create-order", Name: "Create", Code: []string{"create.py"}}); err != nil {
+		t.Fatal(err)
+	}
+	if e := <-events; e.Type != "system" || e.System.Owner != "orders" || len(e.System.Features) != 1 {
+		t.Fatalf("system event = %+v", e)
+	}
+	if err := orders.UpsertFeature(ctx, sysmap.FeatureInput{ID: "bad", Name: "Bad", Code: []string{"missing.py"}}); err == nil || !strings.Contains(err.Error(), "S4") {
+		t.Errorf("invalid feature error = %v", err)
+	}
+
+	systemsList, err := lead.ListSystems(ctx)
+	if err != nil || len(systemsList) != 1 || systemsList[0].Features[sysmap.Untested] != 1 {
+		t.Errorf("lead list = %+v, %v", systemsList, err)
+	}
+	if _, err := orders.ListSystems(ctx); err == nil || !strings.Contains(err.Error(), "only orchestrators") {
+		t.Errorf("owner list error = %v", err)
+	}
+	if _, err := lead.GetSystem(ctx, "ghost"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unknown system error = %v", err)
+	}
+	if err := lead.ChangeVocabulary(ctx, "h", api.VocabularyChange{Op: "define_term", Term: &vocab.Term{Term: "order", Definition: "A request."}}); err != nil {
+		t.Fatal(err)
+	}
+	if e := <-events; e.Type != "vocabulary" || len(e.Vocabulary.Terms) != 1 {
+		t.Fatalf("vocabulary event = %+v", e)
+	}
+	if err := orders.ChangeVocabulary(ctx, "h", api.VocabularyChange{Op: "remove", Name: "order"}); err == nil {
+		t.Error("an owner changed the vocabulary")
+	}
+	if commit, err := orders.Commit(ctx, "Add the map"); err != nil || commit == "" {
+		t.Errorf("commit = %q, %v", commit, err)
+	}
+	if tc, err := orders.TurnContext(ctx); err != nil || tc.MapState != sysmap.Unbuilt {
+		t.Errorf("turn context = %+v, %v", tc, err)
 	}
 }

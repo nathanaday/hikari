@@ -21,6 +21,7 @@ import (
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
 	"github.com/nathanaday/hikari/internal/server"
+	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -92,7 +93,15 @@ func up(ctx context.Context, args []string) error {
 	}
 	defer journal.Close()
 
-	srv := server.New(topo, journal)
+	sys, err := systems.New(topo)
+	if err != nil {
+		return err
+	}
+	for _, w := range sys.Warnings() {
+		log.Printf("warning: %s", w)
+	}
+	sys.Watch(ctx)
+	srv := server.New(topo, journal, sys)
 	uiToken := server.NewToken()
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -103,6 +112,9 @@ func up(ctx context.Context, args []string) error {
 	defer httpSrv.Close()
 
 	l := &launcher.Launcher{Image: *image, ServerURL: "http://host.docker.internal:" + port, RunID: runID}
+	// Containers stop before the final commits, so that no agent writes
+	// during them.
+	stopContainers := func() {}
 	if *noLaunch {
 		for _, n := range topo.AgentNames() {
 			fmt.Printf("%s: HIKARI_SERVER_URL=http://%s HIKARI_TOKEN=%s\n", n, *listen, srv.IssueToken(n))
@@ -112,6 +124,7 @@ func up(ctx context.Context, args []string) error {
 			return err
 		}
 		defer l.Cleanup()
+		stopContainers = l.Cleanup
 		for _, n := range topo.AgentNames() {
 			err := l.Start(context.Background(), n, srv.IssueToken(n), func(err error) {
 				s := api.Status{State: api.StateExited}
@@ -131,6 +144,13 @@ func up(ctx context.Context, args []string) error {
 	log.Printf("web UI:  http://%s/?token=%s", ln.Addr(), uiToken)
 	<-ctx.Done()
 	log.Print("shutting down")
+	stopContainers()
+	for _, err := range sys.CommitAll() {
+		log.Printf("final commit: %v", err)
+	}
+	for _, line := range sys.Summary() {
+		log.Print(line)
+	}
 	return nil
 }
 

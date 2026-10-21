@@ -4,11 +4,14 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/web"
 )
@@ -55,6 +58,8 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
+	s.systemRoutes(mux)
+
 	ui := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			c, err := r.Cookie(uiCookie)
@@ -99,6 +104,120 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	}
 
 	return mux
+}
+
+// systemRoutes serves the owner, orchestrator, and vocabulary endpoints. The
+// systems manager decides who may call each one.
+func (s *Server) systemRoutes(mux *http.ServeMux) {
+	sys := s.sys
+	handle := func(pattern string, fn func(r *http.Request, node string) (any, error)) {
+		mux.HandleFunc(pattern, s.node(func(w http.ResponseWriter, r *http.Request, node string) {
+			out, err := fn(r, node)
+			if err != nil {
+				writeSystemError(w, err)
+				return
+			}
+			if out == nil {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		}))
+	}
+
+	handle("GET /api/node/map", func(r *http.Request, node string) (any, error) {
+		return sys.OwnView(node)
+	})
+	handle("PATCH /api/node/map/system", func(r *http.Request, node string) (any, error) {
+		var p sysmap.SystemPatch
+		if err := decode(r, &p); err != nil {
+			return nil, err
+		}
+		return nil, sys.SetSystemInfo(node, p)
+	})
+	handle("PUT /api/node/map/features", func(r *http.Request, node string) (any, error) {
+		var f sysmap.FeatureInput
+		if err := decode(r, &f); err != nil {
+			return nil, err
+		}
+		return nil, sys.UpsertFeature(node, f)
+	})
+	handle("DELETE /api/node/map/features/{id}", func(r *http.Request, node string) (any, error) {
+		return nil, sys.RemoveFeature(node, r.PathValue("id"))
+	})
+	handle("POST /api/node/map/tests", func(r *http.Request, node string) (any, error) {
+		var results []sysmap.TestResult
+		if err := decode(r, &results); err != nil {
+			return nil, err
+		}
+		return nil, sys.RecordTests(node, results)
+	})
+	handle("POST /api/node/map/current", func(r *http.Request, node string) (any, error) {
+		commit, err := sys.MarkCurrent(node)
+		return api.CommitResponse{Commit: commit}, err
+	})
+	handle("POST /api/node/commit", func(r *http.Request, node string) (any, error) {
+		var req api.CommitRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		commit, err := sys.Commit(node, req.Message)
+		return api.CommitResponse{Commit: commit}, err
+	})
+	handle("GET /api/node/turn-context", func(r *http.Request, node string) (any, error) {
+		return sys.TurnContext(node), nil
+	})
+
+	handle("GET /api/node/systems", func(r *http.Request, node string) (any, error) {
+		return sys.ListSystems(node)
+	})
+	handle("GET /api/node/systems/{name}", func(r *http.Request, node string) (any, error) {
+		return sys.GetSystem(node, r.PathValue("name"))
+	})
+	handle("GET /api/node/systems/{name}/features/{id}", func(r *http.Request, node string) (any, error) {
+		return sys.GetFeature(node, r.PathValue("name"), r.PathValue("id"))
+	})
+	handle("GET /api/node/features", func(r *http.Request, node string) (any, error) {
+		return sys.SearchFeatures(node, r.URL.Query().Get("q"))
+	})
+
+	handle("GET /api/node/vocabulary/{hub}", func(r *http.Request, node string) (any, error) {
+		return sys.GetVocabulary(node, r.PathValue("hub"))
+	})
+	handle("POST /api/node/vocabulary/{hub}", func(r *http.Request, node string) (any, error) {
+		var ch api.VocabularyChange
+		if err := decode(r, &ch); err != nil {
+			return nil, err
+		}
+		hub := r.PathValue("hub")
+		switch {
+		case ch.Op == "define_term" && ch.Term != nil:
+			return nil, sys.DefineTerm(node, hub, *ch.Term)
+		case ch.Op == "define_interface" && ch.Interface != nil:
+			return nil, sys.DefineInterface(node, hub, *ch.Interface)
+		case ch.Op == "remove":
+			return nil, sys.RemoveEntry(node, hub, ch.Name)
+		}
+		return nil, errors.New(`op must be "define_term" with a term, "define_interface" with an interface, or "remove" with a name`)
+	})
+}
+
+func decode(r *http.Request, v any) error {
+	if err := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(v); err != nil {
+		return fmt.Errorf("invalid request body: %w", err)
+	}
+	return nil
+}
+
+func writeSystemError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, systems.ErrForbidden):
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, systems.ErrNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	default:
+		writeError(w, http.StatusBadRequest, err.Error())
+	}
 }
 
 func (s *Server) node(next func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {

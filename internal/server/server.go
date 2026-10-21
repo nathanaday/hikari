@@ -19,17 +19,21 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/vocab"
 )
 
 const maxBodyBytes = 64 << 10
 
 type Event struct {
-	Type     string       `json:"type"`
-	Message  *api.Message `json:"message,omitempty"`
-	Node     string       `json:"node,omitempty"`
-	Status   *api.Status  `json:"status,omitempty"`
-	Snapshot *Snapshot    `json:"snapshot,omitempty"`
+	Type       string            `json:"type"`
+	Message    *api.Message      `json:"message,omitempty"`
+	Node       string            `json:"node,omitempty"`
+	Status     *api.Status       `json:"status,omitempty"`
+	System     *api.SystemView   `json:"system,omitempty"`
+	Vocabulary *vocab.Vocabulary `json:"vocabulary,omitempty"`
+	Snapshot   *Snapshot         `json:"snapshot,omitempty"`
 }
 
 type NodeView struct {
@@ -40,10 +44,12 @@ type NodeView struct {
 }
 
 type Snapshot struct {
-	Me       string        `json:"me"`
-	Agents   []NodeView    `json:"agents"`
-	Hubs     []api.HubInfo `json:"hubs"`
-	Messages []api.Message `json:"messages"`
+	Me           string             `json:"me"`
+	Agents       []NodeView         `json:"agents"`
+	Hubs         []api.HubInfo      `json:"hubs"`
+	Messages     []api.Message      `json:"messages"`
+	Systems      []api.SystemView   `json:"systems"`
+	Vocabularies []vocab.Vocabulary `json:"vocabularies"`
 }
 
 type delivery struct {
@@ -59,6 +65,7 @@ type recipient struct {
 type Server struct {
 	topo    *topology.Topology
 	journal io.Writer
+	sys     *systems.Manager
 
 	mu     sync.Mutex
 	tokens map[string]string
@@ -70,12 +77,13 @@ type Server struct {
 	subs   map[chan Event]struct{}
 }
 
-// New returns a server for topo. Each message is also written to journal as
-// one line of JSON when journal is not nil.
-func New(topo *topology.Topology, journal io.Writer) *Server {
+// New returns a server for topo and its systems. Each message is also
+// written to journal as one line of JSON when journal is not nil.
+func New(topo *topology.Topology, journal io.Writer, sys *systems.Manager) *Server {
 	s := &Server{
 		topo:    topo,
 		journal: journal,
+		sys:     sys,
 		tokens:  map[string]string{},
 		inbox:   map[string][]delivery{},
 		signal:  map[string]chan struct{}{},
@@ -86,7 +94,24 @@ func New(topo *topology.Topology, journal io.Writer) *Server {
 		s.signal[n] = make(chan struct{})
 		s.status[n] = api.Status{State: api.StateStarting}
 	}
+	sys.OnChange(s.systemChanged)
 	return s
+}
+
+// Systems returns the systems manager.
+func (s *Server) Systems() *systems.Manager { return s.sys }
+
+func (s *Server) systemChanged(c systems.Change) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c.System != "" {
+		v := s.sys.SystemView(c.System)
+		s.publish(Event{Type: "system", System: &v})
+	}
+	if c.Hub != "" {
+		v := s.sys.Vocabulary(c.Hub)
+		s.publish(Event{Type: "vocabulary", Vocabulary: &v})
+	}
 }
 
 func NewToken() string {
@@ -281,6 +306,7 @@ func (s *Server) Self(node string) api.Self {
 	for _, h := range s.topo.HubsOf(node) {
 		self.Hubs = append(self.Hubs, s.hubInfo(h))
 	}
+	self.System, self.Orchestrates = s.sys.Self(node)
 	return self
 }
 
@@ -348,6 +374,8 @@ func (s *Server) snapshot() Snapshot {
 	for _, h := range s.topo.HubNames() {
 		snap.Hubs = append(snap.Hubs, s.hubInfo(h))
 	}
+	snap.Systems = s.sys.Systems()
+	snap.Vocabularies = s.sys.Vocabularies()
 	return snap
 }
 
