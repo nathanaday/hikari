@@ -1,0 +1,145 @@
+package mcpserver
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/server"
+	"github.com/nathanaday/hikari/internal/systems"
+	"github.com/nathanaday/hikari/internal/topology"
+)
+
+// connect starts the MCP server of agent against srv and returns a client
+// session.
+func connect(t *testing.T, srv *server.Server, base, agent string) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	c := &api.Client{URL: base, Token: srv.IssueToken(agent), HTTP: http.DefaultClient}
+	self, err := c.Self(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverT, clientT := mcp.NewInMemoryTransports()
+	if _, err := New(c, self).Connect(ctx, serverT, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(ctx, clientT, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Close() })
+	return session
+}
+
+func call(t *testing.T, s *mcp.ClientSession, tool string, args map[string]any) (string, bool) {
+	t.Helper()
+	res, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s: %v", tool, err)
+	}
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String(), res.IsError
+}
+
+func TestToolsAgainstTheServer(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(k+"_NAME", "Test User")
+		t.Setenv(k+"_EMAIL", "user@example.com")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	os.MkdirAll(filepath.Join(repo, "orders", "tests"), 0o755)
+	os.WriteFile(filepath.Join(repo, "orders", "create.py"), []byte("def create(): pass\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "orders", "tests", "test_create.py"), []byte("def test(): pass\n"), 0o644)
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "--all"}, {"commit", "--quiet", "-m", "initial"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	topo, err := topology.Parse([]byte(`
+repos: {shop: {path: shop, branch: hikari/work}}
+agents:
+  lead: {}
+  orders: {system: {repo: shop, scope: orders}}
+hubs:
+  h: {orchestrator: lead, members: [orders]}
+`), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := server.New(topo, nil, sys)
+	hs := httptest.NewServer(srv.Handler("ui"))
+	defer hs.Close()
+
+	orders := connect(t, srv, hs.URL, "orders")
+	lead := connect(t, srv, hs.URL, "lead")
+
+	if out, isErr := call(t, orders, "set_system_info", map[string]any{
+		"summary":  "Takes orders.",
+		"provides": []map[string]any{{"name": "POST /orders", "kind": "http", "description": "Creates an order."}},
+		"layout":   []map[string]any{{"path": "create.py", "description": "Order creation."}},
+	}); isErr {
+		t.Fatalf("set_system_info: %s", out)
+	}
+	if out, isErr := call(t, orders, "upsert_feature", map[string]any{
+		"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"},
+		"code": []string{"create.py"}, "test_refs": []string{"tests/test_create.py"},
+	}); isErr {
+		t.Fatalf("upsert_feature: %s", out)
+	}
+	if out, isErr := call(t, orders, "upsert_feature", map[string]any{"id": "bad", "name": "Bad", "code": []string{"nope.py"}}); !isErr || !strings.Contains(out, "does not exist") {
+		t.Errorf("an invalid feature: %q, error %v", out, isErr)
+	}
+	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); isErr {
+		t.Fatalf("record_test_results: %s", out)
+	}
+	if out, isErr := call(t, orders, "mark_map_current", nil); isErr || !strings.Contains(out, "The map now describes commit") {
+		t.Fatalf("mark_map_current: %s", out)
+	}
+	out, _ := call(t, orders, "get_my_system", nil)
+	for _, want := range []string{"state: current", "health: passing", "code:", "- create.py"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("get_my_system lacks %q:\n%s", want, out)
+		}
+	}
+	if out, _ := call(t, orders, "commit_changes", map[string]any{"message": "Describe the system"}); !strings.Contains(out, "Committed") {
+		t.Errorf("commit_changes: %s", out)
+	}
+
+	if out, isErr := call(t, lead, "define_interface", map[string]any{"hub": "#h", "name": "POST /orders", "kind": "http", "description": "Creates an order."}); isErr {
+		t.Fatalf("define_interface: %s", out)
+	}
+	out, _ = call(t, lead, "get_system", map[string]any{"name": "orders"})
+	if !strings.Contains(out, "health: passing") || strings.Contains(out, "create.py") || strings.Contains(out, "layout") {
+		t.Errorf("get_system must show health and no paths:\n%s", out)
+	}
+	if out, _ := call(t, lead, "search_features", map[string]any{"query": "create"}); !strings.Contains(out, "system: orders") {
+		t.Errorf("search_features:\n%s", out)
+	}
+	if _, err := orders.CallTool(context.Background(), &mcp.CallToolParams{Name: "define_term", Arguments: map[string]any{"hub": "h", "term": "x", "definition": "y"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
+		t.Errorf("an owner has no define_term tool, got %v", err)
+	}
+	if out, _ := call(t, orders, "get_vocabulary", map[string]any{"hub": "h"}); !strings.Contains(out, "POST /orders") {
+		t.Errorf("get_vocabulary:\n%s", out)
+	}
+}

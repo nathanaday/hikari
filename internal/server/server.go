@@ -307,6 +307,7 @@ func (s *Server) Self(node string) api.Self {
 		self.Hubs = append(self.Hubs, s.hubInfo(h))
 	}
 	self.System, self.Orchestrates = s.sys.Self(node)
+	self.VisibleSystems = s.topo.VisibleSystems(node)
 	return self
 }
 

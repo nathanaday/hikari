@@ -32,11 +32,20 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	sys := systemPrompt(self)
+	d := &driver{c: c, self: self, mcpConfig: mcpConfig, system: systemPrompt(self)}
 	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
+
+	if self.System != nil {
+		tc, err := c.TurnContext(ctx)
+		if err != nil {
+			log.Printf("turn context: %v", err)
+		} else if tc.MapState == mapUnbuilt || tc.MapState == mapStale {
+			log.Printf("indexing: the system map is %s", tc.MapState)
+			d.turn(ctx, api.StateIndexing, indexingPrompt(self, tc))
+		}
+	}
 	report(ctx, c, api.Status{State: api.StateIdle})
 
-	var session string
 	for ctx.Err() == nil {
 		msgs, err := c.Inbox(ctx, pollWait)
 		if err != nil {
@@ -50,21 +59,53 @@ func Run(ctx context.Context, c *api.Client) error {
 			continue
 		}
 		log.Printf("turn: %d message(s) from %s", len(msgs), senders(msgs))
-		report(ctx, c, api.Status{State: api.StateWorking})
-		t := turn{prompt: mcpserver.FormatMessages(msgs), session: session, model: self.Model, mcpConfig: mcpConfig, system: sys}
-		res, err := t.run(ctx)
-		if res.session != "" {
-			session = res.session
-		}
+		tc, err := c.TurnContext(ctx)
 		if err != nil {
-			log.Printf("turn failed: %v", err)
-			report(ctx, c, api.Status{State: api.StateError, Detail: err.Error()})
-			continue
+			log.Printf("turn context: %v", err)
 		}
-		log.Printf("turn done in %s, cost $%.4f", res.duration.Round(100*time.Millisecond), res.cost)
-		report(ctx, c, api.Status{State: api.StateIdle})
+		d.turn(ctx, api.StateWorking, turnNotices(self, tc)+mcpserver.FormatMessages(msgs))
 	}
 	return nil
+}
+
+// Map states, as the server reports them.
+const (
+	mapUnbuilt = "unbuilt"
+	mapStale   = "stale"
+)
+
+type driver struct {
+	c         *api.Client
+	self      api.Self
+	mcpConfig string
+	system    string
+	session   string
+}
+
+// turn runs one Claude Code turn while the agent shows state. After an
+// owner's turn, it asks the server to commit what the turn left, even when
+// the turn failed.
+func (d *driver) turn(ctx context.Context, state, prompt string) {
+	report(ctx, d.c, api.Status{State: state})
+	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, system: d.system}
+	res, err := t.run(ctx)
+	if res.session != "" {
+		d.session = res.session
+	}
+	if d.self.System != nil && ctx.Err() == nil {
+		if commit, cerr := d.c.Commit(ctx, ""); cerr != nil {
+			log.Printf("automatic commit: %v", cerr)
+		} else if commit != "" {
+			log.Printf("committed changes left by the turn: %s", commit)
+		}
+	}
+	if err != nil {
+		log.Printf("turn failed: %v", err)
+		report(ctx, d.c, api.Status{State: api.StateError, Detail: err.Error()})
+		return
+	}
+	log.Printf("turn done in %s, cost $%.4f", res.duration.Round(100*time.Millisecond), res.cost)
+	report(ctx, d.c, api.Status{State: api.StateIdle})
 }
 
 func connect(ctx context.Context, c *api.Client) (api.Self, error) {
@@ -143,6 +184,12 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 		} else {
 			fmt.Fprintf(&b, "- In #%s you are a member. %s coordinates the hub. Do the tasks that mention you and post the results in the hub. A post from you starts a turn for %s and for each participant you mention.\n", h.Name, orchestrator, orchestrator)
 		}
+	}
+	if self.System != nil {
+		b.WriteString(ownerPrompt(self))
+	}
+	if len(self.Orchestrates) > 0 {
+		b.WriteString(orchestratorPrompt(self))
 	}
 	if self.Instructions != "" {
 		fmt.Fprintf(&b, "\n# Instructions\n\n%s\n", self.Instructions)

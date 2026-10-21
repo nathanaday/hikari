@@ -23,8 +23,18 @@ type directArgs struct {
 
 type noArgs struct{}
 
-func New(c *api.Client) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.2.0"}, nil)
+// New returns the MCP server of the agent described by self. Every agent
+// gets the messaging tools and get_vocabulary. Owners also get the map
+// tools, and orchestrators the system and vocabulary tools.
+func New(c *api.Client, self api.Self) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.3.0"}, nil)
+	addVocabularyReader(s, c)
+	if self.System != nil {
+		addOwnerTools(s, c)
+	}
+	if len(self.Orchestrates) > 0 {
+		addOrchestratorTools(s, c)
+	}
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "post_to_hub",

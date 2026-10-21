@@ -200,5 +200,9 @@ func runMCP(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return mcpserver.New(c).Run(ctx, &mcp.StdioTransport{})
+	self, err := c.Self(ctx)
+	if err != nil {
+		return err
+	}
+	return mcpserver.New(c, self).Run(ctx, &mcp.StdioTransport{})
 }
