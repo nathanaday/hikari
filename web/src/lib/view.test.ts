@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { conversationKeys, parseHash, viewHash } from './view'
+import { conversationKeys, parseHash, viewHash, viewKey } from './view'
 
 describe('view', () => {
   it('round-trips through the URL hash', () => {
-    for (const v of [{ kind: 'all' }, { kind: 'hub', name: 'eng' }, { kind: 'dm', name: 'eng-lead' }] as const) {
+    for (const v of [
+      { kind: 'all' },
+      { kind: 'hub', name: 'eng' },
+      { kind: 'hub', name: 'eng', tab: 'vocabulary' },
+      { kind: 'dm', name: 'eng-lead' },
+      { kind: 'system', name: 'orders' },
+    ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)
     }
     expect(parseHash('#/nonsense')).toEqual({ kind: 'all' })
+    expect(viewKey({ kind: 'hub', name: 'eng', tab: 'vocabulary' })).toBe(viewKey({ kind: 'hub', name: 'eng' }))
   })
 
   it('files a message under its conversation', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type State } from './store'
-import type { Message, Snapshot } from './types'
+import type { Message, Snapshot, SystemView } from './types'
 import { allView } from './view'
 
 const snapshot: Snapshot = {
@@ -20,6 +20,8 @@ const snapshot: Snapshot = {
     },
   ],
   messages: [],
+  systems: [],
+  vocabularies: [],
 }
 
 let nextID = 1
@@ -74,5 +76,45 @@ describe('reducer', () => {
   it('updates the status of one agent', () => {
     const s = reducer(loaded(), { type: 'event', event: { type: 'status', node: 'dev', status: { state: 'working' } } })
     expect(s.agents.map((a) => a.status.state)).toEqual(['idle', 'working'])
+  })
+})
+
+const systemView = (owner: string, state: 'unbuilt' | 'current' = 'unbuilt'): SystemView => ({
+  version: 1,
+  system: { name: owner, interfaces: { provides: [], consumes: [] }, described_state: {} },
+  features: [],
+  state,
+  owner,
+  repo: 'shop',
+  scope: `services/${owner}`,
+  branch: 'hikari/work',
+  flags: null,
+  providers: null,
+})
+
+describe('systems and vocabularies', () => {
+  const withSystems = () =>
+    reducer(initialState({ kind: 'system', name: 'dev' }), {
+      type: 'event',
+      event: { type: 'snapshot', snapshot: { ...snapshot, systems: [systemView('dev')], vocabularies: [] } },
+    })
+
+  it('keeps a system view from the URL for a known system', () => {
+    expect(withSystems().view).toEqual({ kind: 'system', name: 'dev' })
+    const s = reducer(initialState({ kind: 'system', name: 'ghost' }), { type: 'event', event: { type: 'snapshot', snapshot } })
+    expect(s.view).toEqual(allView)
+  })
+
+  it('replaces a system map on a system event', () => {
+    const s = reducer(withSystems(), { type: 'event', event: { type: 'system', system: systemView('dev', 'current') } })
+    expect(s.systems).toHaveLength(1)
+    expect(s.systems[0].state).toBe('current')
+  })
+
+  it('adds or replaces a vocabulary on a vocabulary event', () => {
+    const v = { version: 1, hub: 'eng', terms: [{ term: 'order', definition: 'x' }], interfaces: [] }
+    let s = reducer(withSystems(), { type: 'event', event: { type: 'vocabulary', vocabulary: v } })
+    s = reducer(s, { type: 'event', event: { type: 'vocabulary', vocabulary: { ...v, terms: [] } } })
+    expect(s.vocabularies).toEqual([{ ...v, terms: [] }])
   })
 })

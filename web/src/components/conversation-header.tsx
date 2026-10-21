@@ -1,12 +1,18 @@
-import { Hash } from 'lucide-react'
+import { Boxes, Hash } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { MapStateDot } from '@/components/health'
 import { NodeAvatar } from '@/components/node-avatar'
 import { StatusDot } from '@/components/status-dot'
+import { mapStateLabel } from '@/lib/labels'
 import { orchestratorOf } from '@/lib/rules'
 import type { State } from '@/lib/store'
+import { cn } from '@/lib/utils'
+import type { HubTab, View } from '@/lib/view'
 
-export function ConversationHeader({ state, onMention }: { state: State; onMention: (name: string) => void }) {
+type Props = { state: State; show: (v: View) => void; onMention: (name: string) => void }
+
+export function ConversationHeader({ state, show, onMention }: Props) {
   const v = state.view
   const status = (name: string) => state.agents.find((a) => a.name === name)?.status.state ?? 'idle'
 
@@ -22,6 +28,22 @@ export function ConversationHeader({ state, onMention }: { state: State; onMenti
     )
   } else if (v.kind === 'hub') {
     const hub = state.hubs.find((h) => h.name === v.name)!
+    const vocab = state.vocabularies.find((x) => x.hub === hub.name)
+    const entries = (vocab?.terms.length ?? 0) + (vocab?.interfaces.length ?? 0)
+    const tab = v.tab ?? 'messages'
+    const tabButton = (t: HubTab, label: string) => (
+      <button
+        type="button"
+        onClick={() => show({ kind: 'hub', name: hub.name, tab: t === 'messages' ? undefined : t })}
+        aria-pressed={tab === t}
+        className={cn(
+          '-mb-px border-b-2 px-1 pb-2 text-sm transition-colors',
+          tab === t ? 'border-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {label}
+      </button>
+    )
     body = (
       <>
         <h1 className="flex items-center gap-1 text-base font-semibold">
@@ -50,6 +72,40 @@ export function ConversationHeader({ state, onMention }: { state: State; onMenti
             ),
           )}
         </div>
+        <div className="mt-3 -mb-3 flex gap-4">
+          {tabButton('messages', 'Messages')}
+          {tabButton('vocabulary', entries ? `Vocabulary (${entries})` : 'Vocabulary')}
+        </div>
+      </>
+    )
+  } else if (v.kind === 'system') {
+    const sys = state.systems.find((x) => x.owner === v.name)!
+    const owner = state.agents.find((a) => a.name === sys.owner)
+    const described = sys.system.described_state
+    body = (
+      <>
+        <h1 className="flex items-center gap-2 text-base font-semibold">
+          <Boxes className="size-4 text-muted-foreground" />
+          {sys.owner}
+          <Badge variant="secondary" className="gap-1.5 font-normal" data-testid="map-state">
+            <MapStateDot state={sys.state} busy={owner?.status.state === 'indexing'} error={!!sys.error} />
+            {owner?.status.state === 'indexing' ? 'indexing' : mapStateLabel[sys.state]}
+          </Badge>
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Owned by{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'dm', name: sys.owner })}>
+            {sys.owner}
+          </button>{' '}
+          · <code className="text-xs">{sys.scope ? `${sys.repo}/${sys.scope}` : sys.repo}</code> · branch{' '}
+          <code className="text-xs">{sys.branch}</code>
+          {described.commit && (
+            <>
+              {' '}
+              · describes <code className="text-xs">{described.commit.slice(0, 7)}</code>
+            </>
+          )}
+        </p>
       </>
     )
   } else {
@@ -58,6 +114,7 @@ export function ConversationHeader({ state, onMention }: { state: State; onMenti
       const hub = state.hubs.find((x) => x.name === h)!
       return `${orchestratorOf(hub) === agent.name ? 'orchestrator' : 'member'} of #${h}`
     })
+    const owns = state.systems.some((x) => x.owner === agent.name)
     body = (
       <div className="flex gap-3">
         <NodeAvatar name={agent.name} me={false} className="mt-0.5" />
@@ -71,6 +128,14 @@ export function ConversationHeader({ state, onMention }: { state: State; onMenti
           </h1>
           <p className="text-sm text-muted-foreground">
             {[agent.description, roles.join(', ')].filter(Boolean).join(' · ')}
+            {owns && (
+              <>
+                {' · '}
+                <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: agent.name })}>
+                  system map
+                </button>
+              </>
+            )}
           </p>
           {agent.status.detail && <p className="mt-1 text-sm break-words text-red-600">{agent.status.detail}</p>}
         </div>

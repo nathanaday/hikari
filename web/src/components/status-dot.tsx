@@ -6,6 +6,7 @@ const styles: Record<AgentState, string> = {
   starting: 'border border-neutral-300 bg-white',
   idle: 'bg-neutral-300',
   working: 'bg-emerald-500 animate-pulse',
+  indexing: 'bg-emerald-500 animate-pulse',
   error: 'bg-red-500',
   exited: 'border border-neutral-300 bg-white',
 }

@@ -4,6 +4,8 @@ import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
 import { MessageList } from '@/components/message-list'
 import { SignIn } from '@/components/sign-in'
+import { SystemDetail } from '@/components/system-detail'
+import { VocabularyPanel } from '@/components/vocabulary-panel'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useHikari } from '@/hooks/use-hikari'
@@ -22,6 +24,16 @@ export default function App() {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Connecting…</div>
   }
 
+  const v = state.view
+  let main: React.ReactNode
+  if (v.kind === 'system') {
+    main = <SystemDetail state={state} system={state.systems.find((x) => x.owner === v.name)!} />
+  } else if (v.kind === 'hub' && v.tab === 'vocabulary') {
+    main = <VocabularyPanel hub={state.hubs.find((h) => h.name === v.name)!} vocabulary={state.vocabularies.find((x) => x.hub === v.name)} />
+  } else {
+    main = <MessageList state={state} show={show} />
+  }
+
   const mention = (name: string) => {
     const sep = draft && !/\s$/.test(draft) ? ' ' : ''
     setDraft(`${draft}${sep}@${name} `)
@@ -33,8 +45,8 @@ export default function App() {
       <SidebarProvider>
         <AppSidebar state={state} show={show} />
         <SidebarInset className="h-svh min-w-0">
-          <ConversationHeader state={state} onMention={mention} />
-          <MessageList state={state} show={show} />
+          <ConversationHeader state={state} show={show} onMention={mention} />
+          {main}
           <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />
         </SidebarInset>
       </SidebarProvider>

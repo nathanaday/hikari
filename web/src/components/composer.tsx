@@ -18,7 +18,7 @@ export function Composer({ state, draft, setDraft, send, inputRef }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const v = state.view
-  if (v.kind === 'all') return null
+  if (v.kind === 'all' || v.kind === 'system' || (v.kind === 'hub' && v.tab === 'vocabulary')) return null
 
   const hub = v.kind === 'hub' ? state.hubs.find((h) => h.name === v.name) : undefined
   const woken = hub ? wakeTargets(hub, state.me, draft) : []

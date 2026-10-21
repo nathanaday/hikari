@@ -10,6 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { MapStateDot } from '@/components/health'
 import { StatusDot } from '@/components/status-dot'
 import type { Connection, State } from '@/lib/store'
 import { viewKey, type View } from '@/lib/view'
@@ -54,6 +55,24 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             {state.hubs.map((h) => item({ kind: 'hub', name: h.name }, h.name, <Hash />))}
           </SidebarMenu>
         </SidebarGroup>
+        {state.systems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Systems</SidebarGroupLabel>
+            <SidebarMenu>
+              {state.systems.map((sys) => {
+                const owner = state.agents.find((a) => a.name === sys.owner)
+                const busy = owner?.status.state === 'working' || owner?.status.state === 'indexing'
+                return item(
+                  { kind: 'system', name: sys.owner },
+                  sys.owner,
+                  <span className="flex size-4 items-center justify-center">
+                    <MapStateDot state={sys.state} busy={busy} error={!!sys.error} />
+                  </span>,
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         <SidebarGroup>
           <SidebarGroupLabel>Direct messages</SidebarGroupLabel>
           <SidebarMenu>
