@@ -1,0 +1,35 @@
+# A shop with two systems in one repo. lead plans from the system maps and
+# never sees code. orders and inventory each own one directory of the repo.
+#
+# Create the repo first, then start the network:
+#   make demo-repo
+#   make up TOPOLOGY=examples/systems.yaml
+
+repos:
+  shop:
+    path: ../.hikari/demo/shop
+    branch: hikari/demo
+
+agents:
+  lead:
+    description: Product lead for the shop. Plans changes from the system maps.
+  orders:
+    description: Owns order intake.
+    system:
+      repo: shop
+      scope: services/orders
+      test: python3 -m unittest discover -s tests
+    packages: [python3]
+  inventory:
+    description: Owns stock levels and reservations.
+    system:
+      repo: shop
+      scope: services/inventory
+      test: python3 -m unittest discover -s tests
+    packages: [python3]
+
+hubs:
+  shop:
+    description: Builds the shop.
+    orchestrator: lead
+    members: [orders, inventory]

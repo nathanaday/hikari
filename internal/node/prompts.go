@@ -20,7 +20,7 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Keep your system map true. It is how your orchestrator learns what your system does; the orchestrator never reads your code. The map tools are mcp__hikari__get_my_system, set_system_info, upsert_feature, remove_feature, record_test_results, and mark_map_current.
+	b.WriteString(`- Keep your system map true. It is how your orchestrator learns what your system does; the orchestrator never reads your code. The map tools are mcp__hikari__get_my_system, set_system_info, upsert_features, remove_feature, record_test_results, and mark_map_current.
 - Do not try to change the .hikari directory in your scope. It is read-only to you; the map tools change it.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
@@ -73,7 +73,7 @@ Update the system info and the features that these changes affect. Run the tests
 
 1. Read the code in your scope to learn what the system does. Read what you need, not every file.
 2. Call set_system_info with a summary, the responsibilities, the interfaces that the system provides and consumes, a layout of its main parts, and the test command.
-3. Define 5 to 30 features with upsert_feature. A feature is something that a user or another system relies on. List its code and test paths, relative to your scope.
+3. Define 5 to 30 features with upsert_features, in one or a few calls. A feature is something that a user or another system relies on. List its code and test paths, relative to your scope.
 4. Run the tests, and call record_test_results for each feature that has tests.
 5. Call mark_map_current.
 `)

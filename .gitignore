@@ -2,3 +2,5 @@
 .env
 /bin/
 /.hikari/
+# Vocabularies that demo runs write next to the example topologies.
+/examples/vocabulary/

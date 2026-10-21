@@ -5,7 +5,7 @@ TOPOLOGY ?= examples/studio.yaml
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
 
-.PHONY: build ui image up dev-ui test clean
+.PHONY: build ui image up dev-ui test clean demo-repo
 
 build: web/dist/index.html
 	go build -o bin/hikari ./cmd/hikari
@@ -32,6 +32,10 @@ dev-ui: web/node_modules
 test: web/node_modules
 	go test -race ./...
 	cd web && npm test
+
+# Create the repo of examples/systems.yaml in .hikari/demo/shop.
+demo-repo:
+	examples/demo/make-repo.sh .hikari/demo/shop
 
 # Remove containers and networks left by runs that did not shut down cleanly.
 clean:

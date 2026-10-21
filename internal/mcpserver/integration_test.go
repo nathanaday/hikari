@@ -101,13 +101,14 @@ hubs:
 	}); isErr {
 		t.Fatalf("set_system_info: %s", out)
 	}
-	if out, isErr := call(t, orders, "upsert_feature", map[string]any{
-		"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"},
-		"code": []string{"create.py"}, "test_refs": []string{"tests/test_create.py"},
-	}); isErr {
-		t.Fatalf("upsert_feature: %s", out)
+	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{
+		{"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"},
+			"code": []string{"create.py"}, "test_refs": []string{"tests/test_create.py"}, "related": []string{"validate-order"}},
+		{"id": "validate-order", "name": "Validate an order", "code": []string{"create.py"}},
+	}}); isErr {
+		t.Fatalf("upsert_features with a forward reference: %s", out)
 	}
-	if out, isErr := call(t, orders, "upsert_feature", map[string]any{"id": "bad", "name": "Bad", "code": []string{"nope.py"}}); !isErr || !strings.Contains(out, "does not exist") {
+	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{{"id": "bad", "name": "Bad", "code": []string{"nope.py"}}}}); !isErr || !strings.Contains(out, "does not exist") {
 		t.Errorf("an invalid feature: %q, error %v", out, isErr)
 	}
 	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); isErr {

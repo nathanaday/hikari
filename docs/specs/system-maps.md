@@ -215,7 +215,7 @@ Owners also get:
 |---|---|
 | `get_my_system()` | Read your full map, with health and state. |
 | `set_system_info(summary?, responsibilities?, provides?, consumes?, layout?, test_command?)` | Replace the given fields of `system`. Fields you leave out stay as they are. |
-| `upsert_feature(id, name, description, interfaces, code, test_refs, findings, plans, related)` | Add a feature, or replace the one with this ID. Test results stay. |
+| `upsert_features(features: [{id, name, description, interfaces, code, test_refs, findings, plans, related}])` | Add features, or replace the ones with these IDs, as one change. Test results stay. (Built as a batch, not one feature per call: see `docs/design.md`.) |
 | `remove_feature(id)` | Remove a feature and the references to it. |
 | `record_test_results(results: [{feature, passed, failed}])` | Store test results, with the time and the content hash. |
 | `mark_map_current()` | Commit the pending changes in the scope, then record the commit as the described state. |

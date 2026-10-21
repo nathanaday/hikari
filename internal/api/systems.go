@@ -95,8 +95,8 @@ func (c *Client) SetSystemInfo(ctx context.Context, p sysmap.SystemPatch) error 
 	return c.do(ctx, http.MethodPatch, "/api/node/map/system", p, nil)
 }
 
-func (c *Client) UpsertFeature(ctx context.Context, f sysmap.FeatureInput) error {
-	return c.do(ctx, http.MethodPut, "/api/node/map/features", f, nil)
+func (c *Client) UpsertFeatures(ctx context.Context, fs []sysmap.FeatureInput) error {
+	return c.do(ctx, http.MethodPut, "/api/node/map/features", fs, nil)
 }
 
 func (c *Client) RemoveFeature(ctx context.Context, id string) error {

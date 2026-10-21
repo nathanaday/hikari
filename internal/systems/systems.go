@@ -120,11 +120,46 @@ func (m *Manager) OnChange(fn func(Change)) {
 	m.onChange = fn
 }
 
+// changed reports c, and also every system whose view depends on it: a
+// system's flags and providers come from the vocabularies of its hubs and
+// from the maps of its peers in those hubs.
 func (m *Manager) changed(c Change) {
 	m.mu.Lock()
 	fn := m.onChange
 	m.mu.Unlock()
-	fn(c)
+	var systems []string
+	if c.System != "" {
+		systems = m.peers(c.System)
+	}
+	if c.Hub != "" {
+		fn(Change{Hub: c.Hub})
+		for _, member := range m.topo.Hubs[c.Hub].Members {
+			if _, ok := m.owners[member]; ok && !slices.Contains(systems, member) {
+				systems = append(systems, member)
+			}
+		}
+	}
+	for _, name := range systems {
+		fn(Change{System: name})
+	}
+}
+
+// peers returns system and the other owners that are members of a hub with
+// it.
+func (m *Manager) peers(system string) []string {
+	out := []string{system}
+	for _, hub := range m.topo.HubNames() {
+		members := m.topo.Hubs[hub].Members
+		if !slices.Contains(members, system) {
+			continue
+		}
+		for _, member := range members {
+			if _, ok := m.owners[member]; ok && !slices.Contains(out, member) {
+				out = append(out, member)
+			}
+		}
+	}
+	return out
 }
 
 // Watch reloads hand edits of the map files until ctx ends.
@@ -237,8 +272,18 @@ func (m *Manager) SetSystemInfo(agent string, p sysmap.SystemPatch) error {
 	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.ApplySystem(p); return nil })
 }
 
-func (m *Manager) UpsertFeature(agent string, in sysmap.FeatureInput) error {
-	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.Upsert(in); return nil })
+// UpsertFeatures adds or replaces features as one change, so that features
+// in the batch can refer to each other.
+func (m *Manager) UpsertFeatures(agent string, ins []sysmap.FeatureInput) error {
+	if len(ins) == 0 {
+		return errors.New("give at least one feature")
+	}
+	return m.update(agent, func(_ *owner, mp *sysmap.Map) error {
+		for _, in := range ins {
+			mp.Upsert(in)
+		}
+		return nil
+	})
 }
 
 func (m *Manager) RemoveFeature(agent, id string) error {

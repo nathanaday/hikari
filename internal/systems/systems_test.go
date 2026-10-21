@@ -98,11 +98,11 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
 		Layout:   ptr([]sysmap.LayoutEntry{{Path: "create.py", Description: "Order creation."}}),
 	}))
-	must(t, f.m.UpsertFeature("orders", sysmap.FeatureInput{
+	must(t, f.m.UpsertFeatures("orders", []sysmap.FeatureInput{{
 		ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
 		Interfaces: []string{"POST /orders", "inventory.reserve"},
 		Code:       []string{"create.py"}, TestRefs: []string{"tests/test_create.py"},
-	}))
+	}}))
 }
 
 func must(t *testing.T, err error) {
@@ -327,14 +327,29 @@ func TestTurnContextReportsVocabularyChangesOnce(t *testing.T) {
 	}
 }
 
-func TestChangesNotifyListeners(t *testing.T) {
+func TestChangesNotifyDependentSystems(t *testing.T) {
 	f := newFixture(t)
 	var got []Change
 	f.m.OnChange(func(c Change) { got = append(got, c) })
-	f.describeOrders(t)
+
+	// A map change reaches the system and its peer in #eng, whose providers
+	// may depend on it.
+	must(t, f.m.SetSystemInfo("orders", sysmap.SystemPatch{Summary: ptr("Takes orders.")}))
+	if want := []Change{{System: "orders"}, {System: "inventory"}}; !slices.Equal(got, want) {
+		t.Errorf("map change: %+v, want %+v", got, want)
+	}
+
+	// A vocabulary change reaches the vocabulary and the flags of the hub's
+	// systems.
+	got = nil
 	must(t, f.m.DefineTerm("eng-lead", "eng", vocab.Term{Term: "order", Definition: "x"}))
-	if len(got) != 3 || got[0].System != "orders" || got[2].Hub != "eng" {
-		t.Errorf("changes = %+v", got)
+	if want := []Change{{Hub: "eng"}, {System: "orders"}, {System: "inventory"}}; !slices.Equal(got, want) {
+		t.Errorf("vocabulary change: %+v, want %+v", got, want)
+	}
+	got = nil
+	must(t, f.m.DefineTerm("lead", "product", vocab.Term{Term: "plan", Definition: "x"}))
+	if want := []Change{{Hub: "product"}}; !slices.Equal(got, want) {
+		t.Errorf("#product has no systems: %+v", got)
 	}
 }
 

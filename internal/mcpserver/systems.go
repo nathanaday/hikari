@@ -62,6 +62,10 @@ type featureArgs struct {
 	Related     []string `json:"related,omitempty" jsonschema:"ids of related features in your system"`
 }
 
+type featuresArgs struct {
+	Features []featureArgs `json:"features" jsonschema:"one or more features; features in one call can refer to each other in related"`
+}
+
 type idArgs struct {
 	ID string `json:"id" jsonschema:"the feature id"`
 }
@@ -117,17 +121,22 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "upsert_feature",
-		Description: "Add a feature to your map, or replace the feature with this id. Its recorded test results stay.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featureArgs) (*mcp.CallToolResult, any, error) {
-		err := c.UpsertFeature(ctx, sysmap.FeatureInput{
-			ID: a.ID, Name: a.Name, Description: a.Description, Interfaces: a.Interfaces,
-			Code: a.Code, TestRefs: a.TestRefs, Findings: a.Findings, Plans: a.Plans, Related: a.Related,
-		})
-		if err != nil {
+		Name:        "upsert_features",
+		Description: "Add features to your map, or replace the features with these ids. Recorded test results stay. hikari checks the whole batch, so features in one call can refer to each other.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featuresArgs) (*mcp.CallToolResult, any, error) {
+		ins := make([]sysmap.FeatureInput, len(a.Features))
+		ids := make([]string, len(a.Features))
+		for i, f := range a.Features {
+			ins[i] = sysmap.FeatureInput{
+				ID: f.ID, Name: f.Name, Description: f.Description, Interfaces: f.Interfaces,
+				Code: f.Code, TestRefs: f.TestRefs, Findings: f.Findings, Plans: f.Plans, Related: f.Related,
+			}
+			ids[i] = f.ID
+		}
+		if err := c.UpsertFeatures(ctx, ins); err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Saved feature %q.", a.ID)), nil, nil
+		return text(fmt.Sprintf("Saved %d feature(s): %s.", len(ids), strings.Join(ids, ", "))), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
