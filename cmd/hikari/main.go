@@ -30,8 +30,10 @@ const usage = `hikari runs Claude Code agents in containers that talk to each ot
 
 Usage:
   hikari up [flags] <topology.yaml>   start the server, the web UI, and one container per agent
-  hikari node                         run the agent driver (inside a container)
-  hikari mcp                          run the MCP server on stdio (started by Claude Code)
+
+Internal commands (hikari starts these; you do not run them):
+  hikari node   the agent driver; each container runs it
+  hikari mcp    the agent's MCP tools; Claude Code starts it on each turn
 `
 
 func main() {
@@ -50,6 +52,8 @@ func main() {
 		err = runNode(ctx)
 	case "mcp":
 		err = runMCP(ctx)
+	case "help", "-h", "-help", "--help":
+		fmt.Print(usage)
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
