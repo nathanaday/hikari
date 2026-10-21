@@ -42,7 +42,8 @@ export function initialState(view: View): State {
 function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems'>): View {
   if (v.kind === 'hub' && s.hubs.some((h) => h.name === v.name)) return v
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
-  if (v.kind === 'system' && s.systems.some((x) => x.owner === v.name)) return v
+  if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
+  if (v.kind === 'shared') return v
   return allView
 }
 

@@ -1,4 +1,4 @@
-import { Boxes, Hash } from 'lucide-react'
+import { BookOpen, Boxes, Hash, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -23,6 +23,38 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         <h1 className="text-base font-semibold">All activity</h1>
         <p className="text-sm text-muted-foreground">
           Every message in the network, including private messages between agents.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'shared') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <BookOpen className="size-4 text-muted-foreground" />
+          Shared
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          What every agent can read in store/shared: your policies, skills, and agent definitions. The hub vocabularies are in each hub.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'release') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Package className="size-4 text-muted-foreground" />
+          {v.name} {v.version}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          A release of{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.name })}>
+            {v.name}
+          </button>
+          . It never changes. Agents with access read it at{' '}
+          <code className="text-xs">
+            /hikari/public/readonly/systems/{v.name}/releases/{v.version}
+          </code>
+          .
         </p>
       </>
     )

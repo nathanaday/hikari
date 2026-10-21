@@ -90,6 +90,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
+	s.storeRoutes(mux, ui)
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))

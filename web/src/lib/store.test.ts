@@ -85,6 +85,7 @@ const systemView = (owner: string, state: 'unbuilt' | 'current' = 'unbuilt'): Sy
   features: [],
   state,
   private: { layout: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, features: {} } },
+  releases: [],
   owner,
   repo: 'shop',
   scope: `services/${owner}`,
@@ -104,6 +105,13 @@ describe('systems and vocabularies', () => {
     expect(withSystems().view).toEqual({ kind: 'system', name: 'dev' })
     const s = reducer(initialState({ kind: 'system', name: 'ghost' }), { type: 'event', event: { type: 'snapshot', snapshot } })
     expect(s.view).toEqual(allView)
+  })
+
+  it('keeps release and shared views for known systems only', () => {
+    const release = { kind: 'release', name: 'dev', version: '1.0.0' } as const
+    expect(reducer(withSystems(), { type: 'view', view: release }).view).toEqual(release)
+    expect(reducer(withSystems(), { type: 'view', view: { ...release, name: 'ghost' } }).view).toEqual(allView)
+    expect(reducer(withSystems(), { type: 'view', view: { kind: 'shared' } }).view).toEqual({ kind: 'shared' })
   })
 
   it('replaces a system map on a system event', () => {

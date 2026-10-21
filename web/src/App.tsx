@@ -4,6 +4,8 @@ import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
 import { MessageList } from '@/components/message-list'
 import { SignIn } from '@/components/sign-in'
+import { ReleaseView } from '@/components/release-view'
+import { SharedView } from '@/components/shared-view'
 import { SystemDetail } from '@/components/system-detail'
 import { VocabularyPanel } from '@/components/vocabulary-panel'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -28,6 +30,10 @@ export default function App() {
   let main: React.ReactNode
   if (v.kind === 'system') {
     main = <SystemDetail state={state} system={state.systems.find((x) => x.owner === v.name)!} />
+  } else if (v.kind === 'release') {
+    main = <ReleaseView key={`${v.name}@${v.version}`} system={v.name} version={v.version} />
+  } else if (v.kind === 'shared') {
+    main = <SharedView />
   } else if (v.kind === 'hub' && v.tab === 'vocabulary') {
     main = <VocabularyPanel hub={state.hubs.find((h) => h.name === v.name)!} vocabulary={state.vocabularies.find((x) => x.hub === v.name)} />
   } else {

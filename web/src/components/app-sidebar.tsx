@@ -1,4 +1,4 @@
-import { Activity, Hash } from 'lucide-react'
+import { Activity, BookOpen, Hash } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -47,7 +47,10 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarMenu>{item({ kind: 'all' }, 'All activity', <Activity />)}</SidebarMenu>
+          <SidebarMenu>
+            {item({ kind: 'all' }, 'All activity', <Activity />)}
+            {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
+          </SidebarMenu>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Hubs</SidebarGroupLabel>

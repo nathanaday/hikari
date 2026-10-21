@@ -74,6 +74,27 @@ export type Private = {
   }
 }
 
+export type Manifest = {
+  version: string
+  system: string
+  released?: string
+  source_commit?: string
+  notes?: string
+  product: { kind: 'files' | 'remote'; path?: string; location?: { type: string; ref: string } }
+  runtime: { requires?: string[]; install?: string; run?: string }
+  docs: { index: string }
+  interfaces?: string[]
+  map?: string
+}
+
+export type ReleaseDetail = { manifest: Manifest; files: string[] }
+
+export type SharedListing = {
+  policies: { name: string; path: string }[]
+  skills: { name: string; path: string }[]
+  agents: { name: string; path: string }[]
+}
+
 // SystemView is everything about one system: the public map as the owner
 // sees it, its private documents, and its repo details.
 export type SystemView = {
@@ -91,6 +112,7 @@ export type SystemView = {
   error?: string
   private_errors?: string[]
   private: Private
+  releases: Manifest[] | null
   owner: string
   repo: string
   scope: string

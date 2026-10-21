@@ -242,6 +242,25 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
                 )}
               </Section>
             </div>
+            <Section title="Releases">
+              {v.releases?.length ? (
+                <ul className="divide-y border-y" data-testid="releases">
+                  {v.releases.map((r) => (
+                    <li key={r.version} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-sm">
+                      <a href={`#/system/${v.owner}/release/${r.version}`} className="font-medium underline underline-offset-2">
+                        {r.version}
+                      </a>
+                      <span className="min-w-0 flex-1">{r.notes}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {r.product.kind === 'remote' ? r.product.location?.type : 'files'} · {r.source_commit?.slice(0, 7)} · {ago(r.released)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No releases yet.</p>
+              )}
+            </Section>
             <Section title={`Features (${v.features.length})`}>
               {v.features.length ? (
                 <div className="border-t">

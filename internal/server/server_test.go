@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -446,5 +447,68 @@ hubs:
 	msgs := s.Take(ctx, "lead", time.Second)
 	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].Hub != "h" || msgs[0].Body != "Released orders 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
 		t.Errorf("R6 announcement = %+v", msgs)
+	}
+}
+
+func TestStoreRoutes(t *testing.T) {
+	topo, err := topology.Parse([]byte(testTopology), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(topo, nil, sys)
+	srv := httptest.NewServer(s.Handler("ui-secret"))
+	defer srv.Close()
+	root := sys.Store().Root
+	os.MkdirAll(filepath.Join(root, "shared", "skills", "style"), 0o755)
+	os.WriteFile(filepath.Join(root, "shared", "skills", "style", "SKILL.md"), []byte("# style\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "shared", "policies", "security.md"), []byte("Never log secrets.\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "shared", "policies", "logo.png"), []byte{0x89, 0x50, 0x00}, 0o644)
+	os.WriteFile(filepath.Join(root, "shared", "agents", "binary.md"), []byte{0x00, 0x01}, 0o644)
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	os.WriteFile(outside, []byte("secret"), 0o644)
+	os.Symlink(outside, filepath.Join(root, "shared", "policies", "escape.md"))
+
+	jar, _ := cookiejar.New(nil)
+	browser := &http.Client{Jar: jar}
+	browser.Post(srv.URL+"/api/ui/login", "application/json", strings.NewReader(`{"token":"ui-secret"}`))
+	get := func(path string) (int, string) {
+		resp, err := browser.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+
+	code, body := get("/api/ui/store/shared")
+	if code != 200 || !strings.Contains(body, `"name":"style"`) || !strings.Contains(body, `"path":"shared/policies/security.md"`) || strings.Contains(body, "logo") {
+		t.Errorf("shared listing = %d %s", code, body)
+	}
+	if code, body := get("/api/ui/store/file?path=shared/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
+		t.Errorf("text file = %d %q", code, body)
+	}
+	for path, want := range map[string]int{
+		"../../etc/passwd":           400,
+		"/etc/passwd":                400,
+		"shared/policies/escape.md":  400,
+		"shared/agents/binary.md":    415,
+		"shared/policies/missing.md": 404,
+		"shared/policies":            404,
+	} {
+		if code, _ := get("/api/ui/store/file?path=" + path); code != want {
+			t.Errorf("U10: %s = %d, want %d", path, code, want)
+		}
+	}
+	if code, _ := get("/api/ui/store/releases/nope/1.0.0"); code != 404 {
+		t.Errorf("unknown release = %d", code)
+	}
+	resp, _ := http.Get(srv.URL + "/api/ui/store/shared")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("the store needs the UI token: %s", resp.Status)
 	}
 }

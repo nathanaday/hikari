@@ -9,6 +9,8 @@ describe('view', () => {
       { kind: 'hub', name: 'eng', tab: 'vocabulary' },
       { kind: 'dm', name: 'eng-lead' },
       { kind: 'system', name: 'orders' },
+      { kind: 'release', name: 'orders', version: '1.2.0-rc.1' },
+      { kind: 'shared' },
     ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)
     }
