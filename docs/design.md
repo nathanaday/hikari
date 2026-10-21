@@ -29,6 +29,82 @@ by name, and nothing is lost: every post still reaches every participant. The
 server records in each message which participants it woke, and the UI shows
 this under each post.
 
+## Owners, maps, and orchestrators that never see code
+
+An agent can own a system: a scope inside a git repo. The owner is the only
+agent that reads or changes that code. Orchestrators own no code. They plan
+from system maps, which describe what each system does, which interfaces it
+provides and consumes, and how healthy its features are. A team works the
+same way: a lead knows which features exist and who owns them, and asks the
+owner whether a change is feasible. The owner decides how to make it.
+
+The full spec is `docs/specs/system-maps.md`. The rest of this section gives
+the reasons for its main decisions.
+
+## The repo stays on the host
+
+The scope is a bind mount of your repo, not a clone. You keep using the repo
+as usual, and the change in the scope is the work itself; there is no second
+copy to sync. The container sees only the scope, its read-only paths, and
+its map directory, at the same relative paths as in the repo. It never sees
+`.git`, because `git status` would show every file outside the scope as
+deleted, and because git access would let an agent rewrite history or
+switch branches.
+
+## Only the server writes to git
+
+Local commits need no credentials, so the server commits on the host:
+`git add -A -- <scope>`, then `git commit -- <scope>`. A commit holds only
+the owner's files, even when two owners share a repo and one has staged
+files. The agent is the author and you are the committer, so `git log`
+shows who wrote each change and who accepted it into the repo.
+
+One working tree has one branch, so agents that share a repo share its
+branch, and the topology declares the branch once for each repo. `hikari up`
+refuses a repo with uncommitted changes, so that your unfinished work never
+enters an agent commit. To keep the next start possible, hikari commits what
+each owner left when a turn ends and when hikari stops.
+
+## The owner writes the map, through the server
+
+Only the owner can describe its system accurately, so only the owner changes
+its map. It does so through tools, not by editing the file: the server
+applies each change to a copy, checks it, and writes the file with an atomic
+rename. A typo cannot corrupt the map, the server knows at once when the map
+changed, and the orchestrator view is computed from structured data, so it
+cannot leak file paths. The map lives in the scope, so it is versioned and
+reviewed with the code that it describes.
+
+Owners add features in batches. A feature can name related features, and
+the server checks that they exist; one feature at a time, a feature could not
+name one that the owner had not added yet.
+
+Health is computed, never set. Test results are reported on the honor
+system, but the server records a hash of the feature's code and test files
+with each result. When the files change, the feature is `stale` until its
+tests run again. A map records the commit that it describes; when files in
+the scope change after that commit, the map is `stale`, and the driver lists
+the changed paths in the owner's next prompt.
+
+## Orchestrators see what they orchestrate
+
+An orchestrator reads only the systems of the direct members of its hubs. In
+a tree of hubs, a parent orchestrator does not see the systems of a child
+hub; the child hub's orchestrator speaks for them, as a manager speaks for a
+team. Workers read no other system's map. When an owner is blocked by
+another system, it asks its orchestrator.
+
+## A vocabulary for each hub
+
+Owners cannot read each other's maps, so they cannot agree on names by
+themselves. The orchestrator of each hub keeps a vocabulary of terms and
+interface names. Matching interface names is how the orchestrator connects
+systems: "orders consumes `Stock.reserve`, which inventory provides". The
+server never rejects a map change because of the vocabulary, because a map
+must describe what the code does. It flags names that the vocabulary lacks,
+and consumed interfaces that no system provides, and the orchestrator decides
+whether to add the name or to ask the owner to rename.
+
 ## One server routes all messages
 
 Every message goes through the server. The server knows the topology, checks
@@ -105,6 +181,16 @@ works the same behind the Vite dev server, which owns the page in development.
 The composer shows who a draft will wake. To do this, `web/src/lib/rules.ts`
 repeats the wake rules of the server. The tests of both use the same cases.
 
+## Images for each agent
+
+An owner must run its tests, so its container needs the system's toolchain.
+An agent can list Debian packages, a setup script, and PATH entries. hikari
+builds an image from the base image for each such agent, tagged by a hash of
+the base image and those fields, so it builds again only when they change.
+Project dependencies are the agent's job at run time. Paths listed as
+`container_only` get a Docker volume, so that Linux builds of dependencies
+stay out of your repo.
+
 ## Known limitations
 
 - Agents can still send messages to each other without end, for example by
@@ -115,3 +201,7 @@ repeats the wake rules of the server. The tests of both use the same cases.
   The server does not read it back at start.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.
+- The first indexing turn of an owner reads its whole system.
+- Files that an owner creates in its scope belong to the container user. On
+  Docker Desktop for macOS this is your user; on Linux, it is the user with
+  ID 1000.

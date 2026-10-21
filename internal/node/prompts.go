@@ -24,7 +24,7 @@ func ownerPrompt(self api.Self) string {
 - Do not try to change the .hikari directory in your scope. It is read-only to you; the map tools change it.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
-	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
+	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
 	test := "the test command in your map"
 	if s.TestCommand != "" {
 		test = fmt.Sprintf("`%s`", s.TestCommand)

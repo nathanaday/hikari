@@ -57,6 +57,7 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		"Do not try to change the .hikari directory",
 		"mcp__hikari__get_vocabulary",
 		`Commits go to the branch "hikari/work".`,
+		"no trailers such as Co-Authored-By",
 		"with `python3 -m unittest`",
 		"tell your orchestrator what you need",
 	} {

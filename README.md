@@ -6,6 +6,8 @@ Status: in development.
 
 Hikari runs each Claude Code agent in its own Docker container and connects the agents through hubs that you define. A hub is a chat room with one orchestrator and its members. An agent can send messages only to the hubs it is in and to the agents it shares a hub with.
 
+An agent can own a system: a directory of a git repo on your machine, mounted into its container. The owner is the only agent that can read or change that code, and it keeps a map of what the system does. Orchestrators never see code. They plan from the maps and ask the owners for changes.
+
 You are a member of every hub, so you can post in any hub and send a direct message to any agent.
 
 ## Quickstart
@@ -47,6 +49,13 @@ To use a different network:
 make up TOPOLOGY=examples/team.yaml
 ```
 
+To try systems on a small demo repo:
+
+```sh
+make demo-repo
+make up TOPOLOGY=examples/systems.yaml
+```
+
 ## Usage
 
 A topology file names the agents and the hubs. The name `user` always means you.
@@ -82,7 +91,45 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 
 Other participants read the post at the start of their next turn. A direct message always starts a turn. These rules keep a room of agents from all answering at once.
 
-Inside a container, the agent has four tools: `post_to_hub`, `send_direct_message`, `list_hubs`, and `check_inbox`.
+Inside a container, every agent has the tools `post_to_hub`, `send_direct_message`, `list_hubs`, `check_inbox`, and `get_vocabulary`.
+
+### Systems
+
+Give an agent a system to make it the owner of a part of a repo:
+
+```yaml
+repos:
+  shop:
+    path: ~/code/shop          # relative paths start at the topology file
+    branch: hikari/checkout-v2 # agents commit here; you merge it
+
+agents:
+  lead:
+    description: Product lead. Plans changes from the system maps.
+  orders:
+    description: Owns order intake.
+    system:
+      repo: shop
+      scope: services/orders    # the only code orders can see or change
+      read: [proto]             # optional read-only paths outside every scope
+      test: python3 -m unittest discover -s tests
+      container_only: [.venv]   # optional; kept in a Docker volume, not in your repo
+    packages: [python3]         # Debian packages for the agent's image
+    setup: |                    # optional; runs as root when the image is built
+      pip install --break-system-packages tox
+    path: [/opt/tools/bin]      # optional; added to PATH
+
+hubs:
+  shop: {orchestrator: lead, members: [orders]}
+```
+
+When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates the branch if needed and checks it out. Each owner's container sees only its scope at `/workspace/<scope>`, with no `.git`. The agent cannot commit by itself: hikari commits the changes inside its scope, with the agent as author and you as committer, when the agent calls `commit_changes` and at the end of every turn. You review the branch and merge it.
+
+Each owner keeps a system map in `<scope>/.hikari/map.yaml`: a summary, the interfaces the system provides and consumes, and its features with their tests. Health is computed from the test results: `passing`, `failing`, `untested`, or `stale` when the code changed after the last test run. On its first start, an owner reads its code and builds the map. When the code changes, the owner updates the map and marks it current.
+
+An orchestrator reads the maps of the systems in the hubs it orchestrates, without file paths, and it keeps a vocabulary for each hub in `vocabulary/<hub>.yaml` next to the topology file: the names that every agent uses for domain terms and interfaces. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
+
+The UI shows each system with its map, health, and flags, and each hub's vocabulary.
 
 The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake. The server also writes each message as one JSON line to `.hikari/<run-id>.jsonl`.
 
@@ -101,6 +148,8 @@ Open http://localhost:5173/?token=... with the token that `make up` printed. The
 The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
 - The server is the only authority on the topology. It checks every message against the hubs. A container cannot change who it is or who it can reach.
+- Only the server writes to git. Agents never get `.git`, so they cannot commit outside their scope, rewrite history, or switch branches.
+- The owner is the only author of its map. The server applies the owner's changes and checks them, so the file never holds an invalid map.
 - Containers cannot reach each other directly. Each container has its own Docker network. The only path between agents goes through the server.
 - One binary does all jobs. `hikari up` runs on the host. `hikari node` and `hikari mcp` run inside the containers.
 
@@ -108,12 +157,16 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
 - `cmd/hikari`: the command-line entry point
 - `internal/server`: message routing, the log, the HTTP API, and the web UI
+- `internal/systems`: repos, system maps, vocabularies, and who may read and change them
+- `internal/sysmap`: the system map format, its rules, and health
+- `internal/vocab`: the hub vocabulary format
+- `internal/gitrepo`: branch preparation and scoped commits
 - `internal/node`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent
 - `internal/launcher`: starts and removes containers
 - `internal/topology`: reads and checks topology files
 - `web/`: the browser UI
-- `examples/`: `studio.yaml` (one hub) and `team.yaml` (two hubs in a tree)
+- `examples/`: `studio.yaml` (one hub), `team.yaml` (two hubs in a tree), and `systems.yaml` (two systems in the demo repo)
 
 External:
 

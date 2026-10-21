@@ -1,6 +1,11 @@
 # Spec: systems, system maps, and hub vocabularies
 
-Status: waiting for approval.
+Status: built. Changes made during the build, with their reasons in `docs/design.md`:
+
+- Owners add features in batches with `upsert_features` (see section 8).
+- hikari commits what each owner left when hikari stops, in addition to rule G13, so that rule G1 does not block the next start.
+- A change to a map or a vocabulary also updates the UI views of the systems whose flags and providers depend on it.
+- `hikari up` opens its port before it prepares any repo, so that a busy port leaves the repos untouched.
 
 Sources: `docs/brainstorm/system-maps.md` (round 1), `system-maps-answers.md`, `system-maps-round-2.md` and its answers, `system-maps-round-3.md` (approved as written), and the canvas "Containerized Agents".
 
