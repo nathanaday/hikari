@@ -171,10 +171,16 @@ func (s *Store) change(fn func(*Vocabulary) error) error {
 }
 
 func (s *Store) save(v Vocabulary) error {
-	data, err := yaml.Marshal(v)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
 		return err
 	}
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	data := buf.Bytes()
 	data = append([]byte(fmt.Sprintf(header, v.Hub)), data...)
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err

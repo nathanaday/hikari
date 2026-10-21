@@ -41,6 +41,7 @@ func orchestratorPrompt(self api.Self) string {
 		b.WriteString(`- mcp__hikari__list_systems, get_system, search_features, and get_feature read the maps: what each system does, its interfaces, and the health of its features.
 - When a map does not answer a question, ask the owner.
 - Ask owners for changes in terms of features and interfaces, not code. The owner decides how to make a change, and can push back with a reason.
+- Owners cannot see each other's code or run each other's tests, so no test in this network runs across two systems. Agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
 `)
 	}
 	fmt.Fprintf(&b, "\n## Your vocabularies\n\nYou keep the vocabulary of %s: the names that everyone in the hub uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.", strings.Join(hubs, ", "))

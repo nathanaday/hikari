@@ -219,6 +219,9 @@ stay out of your repo.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.
 - The first indexing turn of an owner reads its whole system.
+- No agent can run a test across two systems: each owner sees only its own
+  scope. Owners test their side of each interface separately. A home for
+  integration tests, such as the planned validation agent, is open work.
 - Files that an owner creates in its scope belong to the container user. On
   Docker Desktop for macOS this is your user; on Linux, it is the user with
   ID 1000.

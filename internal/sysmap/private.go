@@ -98,7 +98,7 @@ func writePrivateSkeletons(root, testCommand string) error {
 		if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		data, err := yaml.Marshal(doc)
+		data, err := marshalYAML(doc)
 		if err != nil {
 			return err
 		}

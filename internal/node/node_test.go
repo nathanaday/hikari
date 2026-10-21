@@ -81,6 +81,7 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 		"The members of #eng own these systems: inventory, orders. You have no code and cannot read any.",
 		"mcp__hikari__list_systems",
 		"When a map does not answer a question, ask the owner.",
+		"no test in this network runs across two systems",
 		"You keep the vocabulary of #eng",
 		"get_system flags interface names",
 	} {

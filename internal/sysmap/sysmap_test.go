@@ -252,8 +252,8 @@ func TestOpenWritesSkeletons(t *testing.T) {
 		t.Fatalf("Open = %v, created %v", err, created)
 	}
 	data, _ := os.ReadFile(s.Path())
-	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 2\n") {
-		t.Errorf("the map file must start with its version and have no comment:\n%s", data)
+	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 2\nsystem:\n  name: orders\n") {
+		t.Errorf("the map file must start with its version, have no comment, and indent by two spaces:\n%s", data)
 	}
 	p, err := s.Private()
 	if err != nil {

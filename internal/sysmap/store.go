@@ -236,7 +236,7 @@ func (s *Store) read() (*Map, error) {
 // save writes m with an atomic rename, so that readers never see a partial
 // file.
 func (s *Store) save(m *Map) error {
-	data, err := yaml.Marshal(m)
+	data, err := marshalYAML(m)
 	if err != nil {
 		return err
 	}
