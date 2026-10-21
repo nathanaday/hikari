@@ -1,7 +1,7 @@
 -include .env
 export
 
-TOPOLOGY ?= examples/pair.yaml
+TOPOLOGY ?= examples/studio.yaml
 
 .PHONY: build image up test clean
 

@@ -1,0 +1,275 @@
+package server
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/topology"
+)
+
+// company: ceo orchestrates lead. eng: lead orchestrates writer and critic.
+const testTopology = `
+agents:
+  ceo: {description: runs the company}
+  lead: {description: leads engineering}
+  writer: {description: writes}
+  critic: {description: reviews}
+hubs:
+  company: {orchestrator: ceo, members: [lead]}
+  eng: {orchestrator: lead, members: [writer, critic]}
+`
+
+func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
+	t.Helper()
+	topo, err := topology.Parse([]byte(testTopology))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var journal bytes.Buffer
+	return New(topo, &journal), &journal
+}
+
+func post(hub, body string) api.SendRequest { return api.SendRequest{Hub: hub, Body: body} }
+func dm(to, body string) api.SendRequest    { return api.SendRequest{To: to, Body: body} }
+
+func TestWakeRules(t *testing.T) {
+	cases := []struct {
+		name string
+		from string
+		body string
+		woke []string
+	}{
+		{"user post wakes only the orchestrator", "user", "hello team", []string{"lead"}},
+		{"a mention also wakes that member", "user", "@writer draft it", []string{"lead", "writer"}},
+		{"orchestrator post without mentions wakes all", "lead", "plan: write then review", []string{"critic", "writer"}},
+		{"orchestrator post with a mention wakes that member", "lead", "@critic review this", []string{"critic"}},
+		{"member post wakes the orchestrator", "writer", "draft done", []string{"lead"}},
+		{"member can wake another member", "writer", "@critic please look", []string{"critic", "lead"}},
+		{"mentions outside the hub do not count", "lead", "I report to @ceo", []string{"critic", "writer"}},
+		{"an email address is not a mention", "lead", "mail a@writer.dev", []string{"critic", "writer"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s, _ := newTestServer(t)
+			m, err := s.Send(c.from, post("eng", c.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			woke := slices.Sorted(slices.Values(m.Woke))
+			if want := slices.Sorted(slices.Values(c.woke)); !slices.Equal(woke, want) {
+				t.Errorf("woke %v, want %v", woke, want)
+			}
+		})
+	}
+}
+
+func TestEveryParticipantReceivesPosts(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.Send("user", post("eng", "hello"))
+	for _, n := range []string{"lead", "writer", "critic"} {
+		if msgs := s.Take(context.Background(), n, 0); len(msgs) != 1 {
+			t.Errorf("%s received %d messages, want 1", n, len(msgs))
+		}
+	}
+	if msgs := s.Take(context.Background(), "ceo", 0); len(msgs) != 0 {
+		t.Errorf("ceo is not in eng but received %+v", msgs)
+	}
+}
+
+func TestAccess(t *testing.T) {
+	allowed := []struct {
+		from string
+		req  api.SendRequest
+	}{
+		{"user", dm("writer", "x")},
+		{"user", post("company", "x")},
+		{"writer", dm("critic", "x")},
+		{"writer", dm("user", "x")},
+		{"lead", post("company", "x")},
+		{"lead", dm("ceo", "x")},
+	}
+	for _, c := range allowed {
+		if _, err := fresh(t).Send(c.from, c.req); err != nil {
+			t.Errorf("%s %+v: %v", c.from, c.req, err)
+		}
+	}
+	denied := []struct {
+		from string
+		req  api.SendRequest
+	}{
+		{"writer", dm("ceo", "x")},
+		{"writer", post("company", "x")},
+		{"ceo", post("eng", "x")},
+		{"writer", dm("writer", "x")},
+		{"writer", post("nope", "x")},
+		{"writer", api.SendRequest{Hub: "eng", To: "critic", Body: "x"}},
+		{"writer", api.SendRequest{Body: "x"}},
+		{"writer", post("eng", "  ")},
+	}
+	for _, c := range denied {
+		if _, err := fresh(t).Send(c.from, c.req); err == nil {
+			t.Errorf("%s %+v must fail", c.from, c.req)
+		}
+	}
+}
+
+func fresh(t *testing.T) *Server {
+	srv, _ := newTestServer(t)
+	return srv
+}
+
+func TestTakeWaitsForWakingMessage(t *testing.T) {
+	s, journal := newTestServer(t)
+	ctx := context.Background()
+	s.Send("writer", post("eng", "draft done")) // reaches critic without waking it
+	if msgs := s.Take(ctx, "critic", 20*time.Millisecond); msgs != nil {
+		t.Fatalf("Take returned %+v before a waking message", msgs)
+	}
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		s.Send("writer", dm("critic", "please review"))
+	}()
+	msgs := s.Take(ctx, "critic", time.Second)
+	if len(msgs) != 2 || msgs[0].Hub != "eng" || msgs[1].To != "critic" {
+		t.Fatalf("Take = %+v, want the hub post then the direct message", msgs)
+	}
+	if n := strings.Count(journal.String(), "\n"); n != 2 {
+		t.Fatalf("journal has %d lines, want 2", n)
+	}
+}
+
+func TestTakeWithoutWaitDrainsInbox(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.Send("writer", post("eng", "draft done"))
+	if msgs := s.Take(context.Background(), "critic", 0); len(msgs) != 1 {
+		t.Fatalf("Take(0) = %+v, want the passive message", msgs)
+	}
+}
+
+func TestRequeueKeepsOrder(t *testing.T) {
+	s, _ := newTestServer(t)
+	ctx := context.Background()
+	s.Send("lead", dm("writer", "one"))
+	taken := s.Take(ctx, "writer", 0)
+	s.Send("lead", dm("writer", "two"))
+	s.Requeue("writer", taken)
+	msgs := s.Take(ctx, "writer", time.Second)
+	if len(msgs) != 2 || msgs[0].Body != "one" || msgs[1].Body != "two" {
+		t.Fatalf("after requeue = %+v", msgs)
+	}
+}
+
+func TestNodeAPI(t *testing.T) {
+	s, _ := newTestServer(t)
+	srv := httptest.NewServer(s.Handler("ui-secret"))
+	defer srv.Close()
+	ctx := context.Background()
+
+	lead := &api.Client{URL: srv.URL, Token: s.IssueToken("lead"), HTTP: srv.Client()}
+	writer := &api.Client{URL: srv.URL, Token: s.IssueToken("writer"), HTTP: srv.Client()}
+
+	self, err := lead.Self(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(self.Hubs) != 2 || self.Hubs[1].Name != "eng" {
+		t.Fatalf("lead hubs = %+v", self.Hubs)
+	}
+	eng := self.Hubs[1].Participants
+	if eng[0].Name != "lead" || eng[0].Role != api.RoleOrchestrator || eng[len(eng)-1].Role != api.RoleOperator {
+		t.Fatalf("eng participants = %+v", eng)
+	}
+
+	if _, err := writer.Send(ctx, dm("ceo", "x")); err == nil || !strings.Contains(err.Error(), "can send direct messages to critic, lead, user") {
+		t.Fatalf("writer->ceo error = %v", err)
+	}
+	if _, err := lead.Send(ctx, post("eng", "@writer go")); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := writer.Inbox(ctx, time.Second)
+	if err != nil || len(msgs) != 1 || msgs[0].Hub != "eng" {
+		t.Fatalf("writer inbox = %+v, %v", msgs, err)
+	}
+
+	if err := writer.SetStatus(ctx, api.Status{State: api.StateWorking}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.status["writer"].State; got != api.StateWorking {
+		t.Fatalf("writer status = %q", got)
+	}
+
+	forged := &api.Client{URL: srv.URL, Token: "nope", HTTP: srv.Client()}
+	if _, err := forged.Self(ctx); err == nil {
+		t.Fatal("unknown token must be rejected")
+	}
+}
+
+func TestUIRequiresToken(t *testing.T) {
+	s, _ := newTestServer(t)
+	srv := httptest.NewServer(s.Handler("ui-secret"))
+	defer srv.Close()
+
+	// A node token must not open the UI API.
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/ui/send", strings.NewReader(`{"to":"lead","body":"x"}`))
+	req.Header.Set("Authorization", "Bearer "+s.IssueToken("lead"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("UI send without cookie = %s", resp.Status)
+	}
+
+	jar, _ := cookiejar.New(nil)
+	browser := &http.Client{Jar: jar}
+	resp, err = browser.Get(srv.URL + "/?token=ui-secret")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("UI login = %v, %v", resp.Status, err)
+	}
+
+	events, err := browser.Get(srv.URL + "/api/ui/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer events.Body.Close()
+	lines := bufio.NewScanner(events.Body)
+	next := func() Event {
+		for lines.Scan() {
+			if data, ok := strings.CutPrefix(lines.Text(), "data: "); ok {
+				var e Event
+				json.Unmarshal([]byte(data), &e)
+				return e
+			}
+		}
+		t.Fatal("event stream ended")
+		return Event{}
+	}
+	if e := next(); e.Type != "snapshot" || len(e.Snapshot.Agents) != 4 || len(e.Snapshot.Hubs) != 2 {
+		t.Fatalf("first event = %+v", e)
+	}
+
+	for _, body := range []string{`{"hub":"company","body":"hello"}`, `{"to":"critic","body":"hi"}`} {
+		resp, err = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(body))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("UI send %s = %v, %v", body, resp.Status, err)
+		}
+		if e := next(); e.Type != "message" || e.Message.From != "user" {
+			t.Fatalf("message event = %+v", e)
+		}
+	}
+
+	resp, _ = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(`{"hub":"nope","body":"hello"}`))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("UI post to unknown hub = %s", resp.Status)
+	}
+}

@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hikari</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --raised: #efeee9;
+    --line: #e3e1dc;
+    --text: #1d1c1a;
+    --muted: #77736b;
+    --accent: #2f5bd3;
+    --accent-soft: #e6ecfb;
+    --idle: #2e9b5f;
+    --working: #d99a1e;
+    --error: #d24b3e;
+    --off: #a9a59d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    --c0: #2f5bd3; --c1: #c2410c; --c2: #0f8a6a; --c3: #9333ea;
+    --c4: #be185d; --c5: #0e7490; --c6: #a16207; --c7: #4d7c0f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131312;
+      --panel: #1b1b1a;
+      --raised: #242422;
+      --line: #2c2b29;
+      --text: #ecebe7;
+      --muted: #8f8b83;
+      --accent: #7b9cff;
+      --accent-soft: #232a40;
+      --c0: #8aa8ff; --c1: #fb8f5a; --c2: #4fd1a5; --c3: #c49bff;
+      --c4: #f472b6; --c5: #5cc8e0; --c6: #e5b84b; --c7: #a3d65c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans);
+    display: grid; grid-template-columns: 260px 1fr; grid-template-rows: 100%;
+  }
+  button { font: inherit; color: inherit; }
+
+  /* Sidebar */
+  aside { border-right: 1px solid var(--line); background: var(--panel); padding: 18px 10px; overflow-y: auto; }
+  .brand { display: flex; align-items: baseline; gap: 10px; padding: 0 8px 16px; }
+  .brand h1 { font: 600 15px var(--mono); letter-spacing: .04em; margin: 0; }
+  #conn { font: 11px var(--mono); color: var(--muted); }
+  #conn.down { color: var(--error); }
+  aside h2 {
+    font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 18px 8px 6px;
+  }
+  .item {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: none; border: 0; border-radius: 6px; padding: 6px 8px; cursor: pointer;
+  }
+  .item:hover { background: var(--raised); }
+  .item.active { background: var(--accent-soft); }
+  .item .label { font: 13px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .sub { display: block; font: 11px var(--sans); color: var(--muted); }
+  .item .grow { flex: 1; min-width: 0; }
+  .hash { color: var(--muted); font: 600 14px var(--mono); width: 10px; text-align: center; }
+  .badge {
+    min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff;
+    font: 600 11px/18px var(--sans); text-align: center;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; }
+  .dot.idle { background: var(--idle); }
+  .dot.working { background: var(--working); animation: pulse 1s ease-in-out infinite; }
+  .dot.error { background: var(--error); }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* Main */
+  main { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+  header { padding: 16px 28px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header .title { display: flex; align-items: center; gap: 10px; }
+  header h2 { font: 600 17px var(--mono); margin: 0; }
+  header .desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  header .detail { color: var(--error); font-size: 12px; margin-top: 4px; word-break: break-word; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 12px;
+    background: var(--raised); border: 1px solid var(--line); font: 12px var(--mono); cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.static { cursor: default; }
+  .chip.static:hover { border-color: var(--line); }
+  .role { font: 600 10px var(--sans); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .role.orch { color: var(--accent); }
+  .rule { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+  #log { overflow-y: auto; padding: 8px 28px 20px; }
+  .empty { color: var(--muted); margin-top: 40px; text-align: center; }
+  .msg { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .msg .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font: 12px var(--mono); }
+  .who { font-weight: 600; }
+  .arrow, .msg time, .tag { color: var(--muted); }
+  .msg time { margin-left: auto; }
+  .tag.private { color: var(--c6); }
+  .msg .body { white-space: pre-wrap; word-break: break-word; margin-top: 3px; }
+  .mention { font-weight: 600; color: var(--accent); }
+  .body code { font: 12.5px var(--mono); background: var(--raised); border-radius: 4px; padding: 1px 4px; }
+  .body pre {
+    font: 12.5px/1.45 var(--mono); background: var(--raised); border-radius: 6px;
+    padding: 8px 10px; margin: 6px 0; overflow-x: auto; white-space: pre;
+  }
+  .woke { font: 11px var(--mono); color: var(--muted); margin-top: 4px; }
+
+  /* Network map */
+  .map { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding: 14px 0 6px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px 12px; cursor: pointer; }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { font: 600 13px var(--mono); margin: 0 0 6px; }
+  .card .row { display: flex; align-items: center; gap: 6px; font: 12px var(--mono); padding: 2px 0; }
+  .card .row.orch { padding-bottom: 4px; margin-bottom: 2px; border-bottom: 1px dashed var(--line); }
+  .card .bridge { margin-left: auto; font: 11px var(--sans); color: var(--muted); }
+
+  /* Composer */
+  form {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end;
+    padding: 12px 28px 18px; border-top: 1px solid var(--line); background: var(--panel);
+  }
+  form[hidden] { display: none; }
+  textarea, button[type=submit] {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  }
+  textarea { resize: none; min-height: 40px; max-height: 200px; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button[type=submit] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  #err { grid-column: 1 / -1; color: var(--error); font-size: 12px; }
+  #err:empty { display: none; }
+
+  @media (max-width: 720px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { border-right: none; border-bottom: 1px solid var(--line); max-height: 34vh; }
+    header, #log, form { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand"><h1>hikari</h1><span id="conn">connecting…</span></div>
+  <div id="nav"></div>
+</aside>
+<main>
+  <header id="head"></header>
+  <div id="log"></div>
+  <form id="compose" hidden>
+    <textarea id="body" rows="1"></textarea>
+    <button type="submit">Send</button>
+    <div id="err"></div>
+  </form>
+</main>
+<script>
+const state = {
+  me: "user",
+  agents: new Map(),   // name -> {name, description, hubs, status}
+  hubs: new Map(),     // name -> {name, description, participants}
+  messages: [],
+  view: { kind: "all" },
+  unread: new Map(),   // view key -> count
+};
+const $ = (id) => document.getElementById(id);
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function color(name) {
+  if (name === state.me) return "var(--muted)";
+  const i = [...state.agents.keys()].indexOf(name);
+  return `var(--c${Math.max(0, i) % 8})`;
+}
+
+function nameEl(name) {
+  const e = el("span", "who", name === state.me ? "you" : name);
+  e.style.color = color(name);
+  return e;
+}
+
+function statusOf(name) {
+  return name === state.me ? "idle" : state.agents.get(name)?.status.state || "starting";
+}
+
+function orchestratorOf(hub) {
+  return state.hubs.get(hub)?.participants[0].name;
+}
+
+// Views
+
+const viewKey = (v) => v.kind === "all" ? "all" : `${v.kind}:${v.name}`;
+
+function parseHash() {
+  const [, kind, name] = location.hash.match(/^#\/(hub|dm)\/([\w-]+)$/) || [];
+  if (kind === "hub" && state.hubs.has(name)) return { kind, name };
+  if (kind === "dm" && state.agents.has(name)) return { kind, name };
+  return { kind: "all" };
+}
+
+// keysOf returns the views that show m, other than the all-activity view.
+function keysOf(m) {
+  if (m.hub) return [`hub:${m.hub}`];
+  if (m.from === state.me) return [`dm:${m.to}`];
+  if (m.to === state.me) return [`dm:${m.from}`];
+  return [];
+}
+
+function inView(m, v = state.view) {
+  return v.kind === "all" || keysOf(m).includes(viewKey(v));
+}
+
+function show(v) {
+  state.view = v;
+  state.unread.delete(viewKey(v));
+  const hash = v.kind === "all" ? "#/" : `#/${v.kind}/${v.name}`;
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+  render();
+  if (v.kind !== "all") $("body").focus();
+}
+
+// Rendering
+
+function render() {
+  renderNav();
+  renderHead();
+  renderLog();
+  renderComposer();
+}
+
+function navItem(v, parts) {
+  const b = el("button", "item" + (viewKey(v) === viewKey(state.view) ? " active" : ""));
+  b.type = "button";
+  b.onclick = () => show(v);
+  b.append(...parts);
+  const n = state.unread.get(viewKey(v));
+  if (n) b.append(el("span", "badge", n));
+  return b;
+}
+
+function renderNav() {
+  const nav = $("nav");
+  nav.replaceChildren();
+  nav.append(navItem({ kind: "all" }, [el("span", "hash", "∗"), el("span", "label grow", "All activity")]));
+
+  nav.append(el("h2", null, "Hubs"));
+  for (const h of state.hubs.values()) {
+    const text = el("span", "grow");
+    text.append(el("span", "label", h.name));
+    const members = h.participants.filter((p) => p.name !== state.me).map((p) => p.name);
+    text.append(el("span", "sub", `${members[0]} ★ · ${members.length - 1} member${members.length === 2 ? "" : "s"}`));
+    nav.append(navItem({ kind: "hub", name: h.name }, [el("span", "hash", "#"), text]));
+  }
+
+  nav.append(el("h2", null, "Direct messages"));
+  for (const a of state.agents.values()) {
+    const text = el("span", "grow");
+    const label = el("span", "label", a.name);
+    label.style.color = color(a.name);
+    text.append(label, el("span", "sub", a.status.state));
+    nav.append(navItem({ kind: "dm", name: a.name }, [el("span", "dot " + a.status.state), text]));
+  }
+}
+
+function chip(p, onclick) {
+  const c = el(onclick ? "button" : "span", "chip" + (onclick ? "" : " static"));
+  if (onclick) { c.type = "button"; c.onclick = onclick; c.title = `Mention @${p.name}`; }
+  c.append(el("span", "dot " + statusOf(p.name)), nameEl(p.name));
+  if (p.role === "orchestrator") c.append(el("span", "role orch", "orchestrator"));
+  return c;
+}
+
+function renderHead() {
+  const head = $("head");
+  head.replaceChildren();
+  const title = el("div", "title");
+  const v = state.view;
+
+  if (v.kind === "all") {
+    title.append(el("h2", null, "All activity"));
+    head.append(title, el("div", "desc", "Every message in the network, including private messages between agents. Each hub is a chat room; an agent in two hubs connects them."));
+    head.append(networkMap());
+  } else if (v.kind === "hub") {
+    const h = state.hubs.get(v.name);
+    const orch = orchestratorOf(v.name);
+    title.append(el("h2", null, "#" + h.name));
+    head.append(title);
+    if (h.description) head.append(el("div", "desc", h.description));
+    const chips = el("div", "chips");
+    for (const p of h.participants) {
+      chips.append(chip(p, p.name === state.me ? null : () => mention(p.name)));
+    }
+    head.append(chips, el("div", "rule",
+      `Every participant receives each post. A post wakes ${orch} (orchestrator) and anyone you @mention; the others read it on their next turn.`));
+  } else {
+    const a = state.agents.get(v.name);
+    const dot = el("span", "dot " + a.status.state);
+    const h2 = el("h2");
+    h2.append(nameEl(a.name));
+    title.append(dot, h2, el("span", "role", a.status.state));
+    head.append(title);
+    if (a.description) head.append(el("div", "desc", a.description));
+    const roles = a.hubs.map((h) => `${orchestratorOf(h) === a.name ? "the orchestrator" : "a member"} of #${h}`);
+    head.append(el("div", "rule", `Direct messages between you and ${a.name}. ${a.name} is ${roles.join(" and ")}.`));
+    if (a.status.detail) head.append(el("div", "detail", a.status.detail));
+  }
+}
+
+function networkMap() {
+  const map = el("div", "map");
+  for (const h of state.hubs.values()) {
+    const card = el("div", "card");
+    card.onclick = () => show({ kind: "hub", name: h.name });
+    card.append(el("h3", null, "#" + h.name));
+    for (const p of h.participants) {
+      if (p.name === state.me) continue;
+      const row = el("div", "row" + (p.role === "orchestrator" ? " orch" : ""));
+      row.append(el("span", "dot " + statusOf(p.name)), nameEl(p.name));
+      if (p.role === "orchestrator") row.append(el("span", "role orch", "★"));
+      const others = state.agents.get(p.name).hubs.filter((x) => x !== h.name);
+      if (others.length) row.append(el("span", "bridge", "also in " + others.map((x) => "#" + x).join(", ")));
+      card.append(row);
+    }
+    map.append(card);
+  }
+  return map;
+}
+
+// inlineNodes renders inline code, bold text, and mentions of names.
+function inlineNodes(text, names) {
+  const out = [];
+  const re = /`([^`\n]+)`|\*\*([^*\n]+)\*\*|(^|[^\w@])@([a-z][a-z0-9-]*)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    let start = m.index, node;
+    if (m[1] != null) {
+      node = el("code", null, m[1]);
+    } else if (m[2] != null) {
+      node = el("strong");
+      node.append(...inlineNodes(m[2], names));
+    } else {
+      if (!names.has(m[4])) continue;
+      start += m[3].length;
+      node = el("span", "mention", "@" + m[4]);
+    }
+    out.push(text.slice(last, start), node);
+    last = m.index + m[0].length;
+  }
+  out.push(text.slice(last));
+  return out;
+}
+
+// bodyEl renders the Markdown that agents write most: code blocks, headings,
+// inline code, and bold text. It builds DOM nodes, so message text is never
+// parsed as HTML.
+function bodyEl(text, hub) {
+  const body = el("div", "body");
+  const names = new Set(hub ? state.hubs.get(hub).participants.map((p) => p.name) : []);
+  text.split(/```[^\n]*\n?([\s\S]*?)```/).forEach((part, i) => {
+    if (i % 2) {
+      body.append(el("pre", null, part.replace(/\n$/, "")));
+    } else {
+      body.append(...inlineNodes(part.replace(/^#{1,6} +(.*)$/gm, "**$1**"), names));
+    }
+  });
+  return body;
+}
+
+function messageEl(m) {
+  const row = el("div", "msg");
+  const meta = el("div", "meta");
+  meta.append(nameEl(m.from));
+  if (m.hub && orchestratorOf(m.hub) === m.from) meta.append(el("span", "role orch", "★"));
+  if (state.view.kind === "all") {
+    meta.append(el("span", "arrow", "→"));
+    if (m.hub) {
+      meta.append(el("span", "tag", "#" + m.hub));
+    } else {
+      meta.append(nameEl(m.to));
+      const priv = m.from !== state.me && m.to !== state.me;
+      meta.append(el("span", "tag" + (priv ? " private" : ""), priv ? "private" : "direct"));
+    }
+  }
+  const t = el("time", null, new Date(m.time).toLocaleTimeString());
+  t.dateTime = m.time;
+  meta.append(t);
+  row.append(meta, bodyEl(m.body, m.hub));
+  if (m.hub) {
+    row.append(el("div", "woke", m.woke?.length ? "woke " + m.woke.join(", ") : "woke no agents"));
+  }
+  return row;
+}
+
+function renderLog() {
+  const log = $("log");
+  const shown = state.messages.filter((m) => inView(m));
+  log.replaceChildren(...(shown.length ? shown.map(messageEl) : [el("div", "empty", "No messages yet.")]));
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderComposer() {
+  const v = state.view;
+  const form = $("compose");
+  form.hidden = v.kind === "all";
+  if (v.kind === "hub") {
+    $("body").placeholder = `Post to #${v.name}. Write @name to wake a member.`;
+  } else if (v.kind === "dm") {
+    $("body").placeholder = `Message ${v.name} directly`;
+  }
+}
+
+function mention(name) {
+  const ta = $("body");
+  const sep = ta.value && !/\s$/.test(ta.value) ? " " : "";
+  ta.value += `${sep}@${name} `;
+  ta.focus();
+}
+
+// Live updates
+
+function addMessage(m) {
+  state.messages.push(m);
+  if (m.from !== state.me) {
+    for (const k of keysOf(m)) {
+      if (k !== viewKey(state.view)) state.unread.set(k, (state.unread.get(k) || 0) + 1);
+    }
+  }
+  renderNav();
+  if (!inView(m)) return;
+  const log = $("log");
+  const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80 || m.from === state.me;
+  log.querySelector(".empty")?.remove();
+  log.append(messageEl(m));
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
+function connect() {
+  const es = new EventSource("/api/ui/events");
+  es.onopen = () => { $("conn").textContent = "live"; $("conn").className = ""; };
+  es.onerror = () => { $("conn").textContent = "reconnecting…"; $("conn").className = "down"; };
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === "snapshot") {
+      const s = e.snapshot;
+      state.me = s.me;
+      state.agents = new Map(s.agents.map((a) => [a.name, a]));
+      state.hubs = new Map(s.hubs.map((h) => [h.name, h]));
+      state.messages = s.messages;
+      state.unread.clear();
+      state.view = parseHash();
+      render();
+    } else if (e.type === "message") {
+      addMessage(e.message);
+    } else if (e.type === "status") {
+      const a = state.agents.get(e.node);
+      if (a) { a.status = e.status; renderNav(); renderHead(); }
+    }
+  };
+}
+
+$("body").addEventListener("input", (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = e.target.scrollHeight + "px";
+});
+$("body").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("compose").requestSubmit();
+  }
+});
+$("compose").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = state.view;
+  const body = $("body").value;
+  if (!body.trim() || v.kind === "all") return;
+  $("err").textContent = "";
+  const req = v.kind === "hub" ? { hub: v.name, body } : { to: v.name, body };
+  const res = await fetch("/api/ui/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    $("err").textContent = (await res.json().catch(() => ({}))).error || res.statusText;
+    return;
+  }
+  $("body").value = "";
+  $("body").style.height = "auto";
+});
+window.addEventListener("hashchange", () => show(parseHash()));
+
+connect();
+</script>
+</body>
+</html>

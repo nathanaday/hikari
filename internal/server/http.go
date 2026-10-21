@@ -1,4 +1,4 @@
-package hub
+package server
 
 import (
 	"crypto/subtle"
@@ -23,24 +23,24 @@ const (
 
 // Handler serves the node API and the web UI. Node requests authenticate with
 // a node token. The UI authenticates with uiToken, so that agents, which can
-// reach the hub, cannot read the full log or speak as the user.
-func (h *Hub) Handler(uiToken string) http.Handler {
+// reach the server, cannot read the full log or speak as the user.
+func (s *Server) Handler(uiToken string) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /api/node/self", h.node(func(w http.ResponseWriter, r *http.Request, node string) {
-		writeJSON(w, http.StatusOK, h.Self(node))
+	mux.HandleFunc("GET /api/node/self", s.node(func(w http.ResponseWriter, r *http.Request, node string) {
+		writeJSON(w, http.StatusOK, s.Self(node))
 	}))
-	mux.HandleFunc("POST /api/node/send", h.node(func(w http.ResponseWriter, r *http.Request, node string) {
-		h.send(w, r, node)
+	mux.HandleFunc("POST /api/node/send", s.node(func(w http.ResponseWriter, r *http.Request, node string) {
+		s.send(w, r, node)
 	}))
-	mux.HandleFunc("GET /api/node/inbox", h.node(func(w http.ResponseWriter, r *http.Request, node string) {
+	mux.HandleFunc("GET /api/node/inbox", s.node(func(w http.ResponseWriter, r *http.Request, node string) {
 		wait, err := time.ParseDuration(r.URL.Query().Get("wait"))
 		if err != nil || wait < 0 {
 			wait = 0
 		}
-		msgs := h.Take(r.Context(), node, min(wait, maxWait))
+		msgs := s.Take(r.Context(), node, min(wait, maxWait))
 		if r.Context().Err() != nil {
-			h.Requeue(node, msgs)
+			s.Requeue(node, msgs)
 			return
 		}
 		if msgs == nil {
@@ -48,13 +48,13 @@ func (h *Hub) Handler(uiToken string) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, msgs)
 	}))
-	mux.HandleFunc("PUT /api/node/status", h.node(func(w http.ResponseWriter, r *http.Request, node string) {
-		var s api.Status
-		if err := json.NewDecoder(r.Body).Decode(&s); err != nil || s.State == "" {
+	mux.HandleFunc("PUT /api/node/status", s.node(func(w http.ResponseWriter, r *http.Request, node string) {
+		var st api.Status
+		if err := json.NewDecoder(r.Body).Decode(&st); err != nil || st.State == "" {
 			writeError(w, http.StatusBadRequest, "body must be a status with a state")
 			return
 		}
-		h.SetStatus(node, s)
+		s.SetStatus(node, st)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
@@ -81,18 +81,18 @@ func (h *Hub) Handler(uiToken string) http.Handler {
 			http.ServeFileFS(w, r, web, "web/index.html")
 		})(w, r)
 	})
-	mux.HandleFunc("GET /api/ui/events", ui(h.events))
+	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
-		h.send(w, r, topology.User)
+		s.send(w, r, topology.User)
 	}))
 
 	return mux
 }
 
-func (h *Hub) node(next func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+func (s *Server) node(next func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		node, ok := h.nodeForToken(token)
+		node, ok := s.nodeForToken(token)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "unknown node token")
 			return
@@ -101,15 +101,15 @@ func (h *Hub) node(next func(http.ResponseWriter, *http.Request, string)) http.H
 	}
 }
 
-func (h *Hub) send(w http.ResponseWriter, r *http.Request, from string) {
+func (s *Server) send(w http.ResponseWriter, r *http.Request, from string) {
 	var req api.SendRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2*maxBodyBytes)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "body must be {\"to\": ..., \"body\": ...}")
+		writeError(w, http.StatusBadRequest, "body must be {\"hub\" or \"to\": ..., \"body\": ...}")
 		return
 	}
-	m, err := h.Send(from, req.To, req.Body)
+	m, err := s.Send(from, req)
 	switch {
-	case errors.Is(err, errNotNeighbor):
+	case errors.Is(err, errForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
 	case err != nil:
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -118,7 +118,7 @@ func (h *Hub) send(w http.ResponseWriter, r *http.Request, from string) {
 	}
 }
 
-func (h *Hub) events(w http.ResponseWriter, r *http.Request) {
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming is not supported")
@@ -127,7 +127,7 @@ func (h *Hub) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	events, cancel := h.Subscribe()
+	events, cancel := s.Subscribe()
 	defer cancel()
 	keepalive := time.NewTicker(20 * time.Second)
 	defer keepalive.Stop()

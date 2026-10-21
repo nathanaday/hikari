@@ -1,4 +1,4 @@
-// Package mcpserver exposes the hub's node API to Claude Code as MCP tools.
+// Package mcpserver exposes the server's node API to Claude Code as MCP tools.
 package mcpserver
 
 import (
@@ -11,46 +11,57 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 )
 
-type sendArgs struct {
-	To   string `json:"to" jsonschema:"name of the neighbor to send to"`
+type postArgs struct {
+	Hub  string `json:"hub" jsonschema:"name of the hub to post to, without the #"`
+	Body string `json:"body" jsonschema:"the message text; write @name to wake a specific participant"`
+}
+
+type directArgs struct {
+	To   string `json:"to" jsonschema:"name of a node that shares a hub with you"`
 	Body string `json:"body" jsonschema:"the message text"`
 }
 
 type noArgs struct{}
 
 func New(c *api.Client) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.1.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.2.0"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "send_message",
-		Description: "Send a message to one neighbor. This is the only way to give information to another node or to the user.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a sendArgs) (*mcp.CallToolResult, any, error) {
-		m, err := c.Send(ctx, a.To, a.Body)
+		Name:        "post_to_hub",
+		Description: "Post a message to a hub. Every participant of the hub receives it.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a postArgs) (*mcp.CallToolResult, any, error) {
+		m, err := c.Send(ctx, api.SendRequest{Hub: strings.TrimPrefix(a.Hub, "#"), Body: a.Body})
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Sent message %d to %s.", m.ID, m.To)), nil, nil
+		return text(fmt.Sprintf("Posted message %d to #%s.%s", m.ID, m.Hub, wokeNote(m))), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "list_neighbors",
-		Description: "List the nodes you can send messages to.",
+		Name:        "send_direct_message",
+		Description: "Send a private message to one node that shares a hub with you. Only that node receives it.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a directArgs) (*mcp.CallToolResult, any, error) {
+		m, err := c.Send(ctx, api.SendRequest{To: a.To, Body: a.Body})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Sent direct message %d to %s.", m.ID, m.To)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_hubs",
+		Description: "List your hubs, your role in each, and their participants.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		self, err := c.Self(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "You are %s. Your neighbors:\n", self.Name)
-		for _, p := range self.Neighbors {
-			fmt.Fprintf(&b, "- %s: %s\n", p.Name, p.Description)
-		}
-		return text(b.String()), nil, nil
+		return text(DescribeHubs(self)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "check_inbox",
-		Description: "Read messages that arrived during your current turn. It does not wait. Messages that arrive while you are idle start a new turn instead.",
+		Description: "Read messages that arrived during your current turn. It does not wait.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		msgs, err := c.Inbox(ctx, 0)
 		if err != nil {
@@ -65,6 +76,33 @@ func New(c *api.Client) *mcp.Server {
 	return s
 }
 
+// DescribeHubs lists the hubs of self with the role of each participant.
+func DescribeHubs(self api.Self) string {
+	var b strings.Builder
+	for i, h := range self.Hubs {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "#%s", h.Name)
+		if h.Description != "" {
+			fmt.Fprintf(&b, ": %s", h.Description)
+		}
+		b.WriteString("\n")
+		for _, p := range h.Participants {
+			name := p.Name
+			if name == self.Name {
+				name += " (you)"
+			}
+			fmt.Fprintf(&b, "- %s, %s", name, p.Role)
+			if p.Description != "" {
+				fmt.Fprintf(&b, ": %s", p.Description)
+			}
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
 // FormatMessages renders messages the same way for a new turn and for
 // check_inbox.
 func FormatMessages(msgs []api.Message) string {
@@ -73,10 +111,21 @@ func FormatMessages(msgs []api.Message) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "<message id=%q from=%q time=%q>\n%s\n</message>\n",
-			fmt.Sprint(m.ID), m.From, m.Time.Format("2006-01-02T15:04:05Z"), m.Body)
+		channel := "direct"
+		if m.Hub != "" {
+			channel = "#" + m.Hub
+		}
+		fmt.Fprintf(&b, "<message id=\"%d\" from=%q channel=%q time=%q>\n%s\n</message>\n",
+			m.ID, m.From, channel, m.Time.Format("2006-01-02T15:04:05Z"), m.Body)
 	}
 	return b.String()
+}
+
+func wokeNote(m api.Message) string {
+	if len(m.Woke) == 0 {
+		return " It started a turn for nobody; the others read it in their next turn."
+	}
+	return " It started a turn for " + strings.Join(m.Woke, ", ") + "."
 }
 
 func text(s string) *mcp.CallToolResult {

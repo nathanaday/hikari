@@ -1,5 +1,5 @@
 // Package node runs inside an agent container. It waits for messages from the
-// hub and gives each batch to Claude Code as one headless turn, resuming the
+// server and gives each batch to Claude Code as one headless turn, resuming the
 // same session every time.
 package node
 
@@ -33,7 +33,7 @@ func Run(ctx context.Context, c *api.Client) error {
 		return err
 	}
 	sys := systemPrompt(self)
-	log.Printf("connected as %s; neighbors: %s", self.Name, peerNames(self.Neighbors))
+	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
 	report(ctx, c, api.Status{State: api.StateIdle})
 
 	var session string
@@ -75,7 +75,7 @@ func connect(ctx context.Context, c *api.Client) (api.Self, error) {
 			return self, nil
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
-			return api.Self{}, fmt.Errorf("reach hub at %s: %w", c.URL, err)
+			return api.Self{}, fmt.Errorf("reach server at %s: %w", c.URL, err)
 		}
 		sleep(ctx, time.Second)
 	}
@@ -87,7 +87,7 @@ func report(ctx context.Context, c *api.Client, s api.Status) {
 	}
 }
 
-// writeMCPConfig points Claude Code at this same binary in MCP mode. The hub
+// writeMCPConfig points Claude Code at this same binary in MCP mode. The server
 // credentials go in the config because Claude Code does not pass its whole
 // environment to MCP servers.
 func writeMCPConfig(c *api.Client) (string, error) {
@@ -99,7 +99,7 @@ func writeMCPConfig(c *api.Client) (string, error) {
 		"hikari": map[string]any{
 			"command": exe,
 			"args":    []string{"mcp"},
-			"env":     map[string]string{"HIKARI_HUB_URL": c.URL, "HIKARI_TOKEN": c.Token},
+			"env":     map[string]string{"HIKARI_SERVER_URL": c.URL, "HIKARI_TOKEN": c.Token},
 		},
 	}}
 	data, err := json.Marshal(cfg)
@@ -116,19 +116,34 @@ func systemPrompt(self api.Self) string {
 	if self.Description != "" {
 		fmt.Fprintf(&b, " Your role: %s", self.Description)
 	}
-	b.WriteString("\n\nYou can reach only these neighbors:\n")
-	for _, p := range self.Neighbors {
-		fmt.Fprintf(&b, "- %s: %s\n", p.Name, p.Description)
-	}
+	fmt.Fprintf(&b, "\n\n## Your hubs\n\n%s", mcpserver.DescribeHubs(self))
 	b.WriteString(`
-Rules:
-- Messages from neighbors arrive as your prompt, inside <message> tags.
-- Nobody reads your text output. To give information to a neighbor, call the mcp__hikari__send_message tool.
-- You cannot reach nodes that are not your neighbors. If a task needs one, ask a neighbor to relay it.
-- After you send what is needed, end your turn. A reply arrives as a new turn.
+## How messages work
+
+- A hub is a chat room. mcp__hikari__post_to_hub sends a message to every participant of a hub.
+- mcp__hikari__send_direct_message sends a private message to one node that shares a hub with you. You cannot reach any other node.
+- Messages arrive as your prompt inside <message> tags. The channel attribute is the hub (#name) or "direct".
+- Nobody reads your text output. Only the hikari tools deliver information.
+- Answer in the channel the message came from: a direct message with a direct message, a hub post in that hub.
+- After you send what is needed, end your turn. Replies arrive as a new turn.
+- Send a message only when it contains information or a request. Do not send messages that only acknowledge or thank. If a message needs nothing from you, end your turn without sending anything.
 - During a long turn, call mcp__hikari__check_inbox to read messages that arrived meanwhile.
-- Send a message only when it contains information or a request. Do not send messages that only acknowledge or thank.
+
+## When a message starts a turn for you
+
+Every participant of a hub receives every post. A post starts a turn at once only for the orchestrator of the hub, for each participant that the post mentions as @name, and for all members when the orchestrator posts without mentions. You read other posts at the start of your next turn. A direct message always starts a turn.
+
+## Your role in each hub
+
 `)
+	for _, h := range self.Hubs {
+		orchestrator := h.Participants[0].Name
+		if orchestrator == self.Name {
+			fmt.Fprintf(&b, "- In #%s you are the orchestrator. You receive every post at once. Coordinate the members: give each member a clear task with @name, collect the results, and report to the participant who asked. A post from you without mentions starts a turn for every member, so mention only the members you need.\n", h.Name)
+		} else {
+			fmt.Fprintf(&b, "- In #%s you are a member. %s coordinates the hub. Do the tasks that mention you and post the results in the hub. A post from you starts a turn for %s and for each participant you mention.\n", h.Name, orchestrator, orchestrator)
+		}
+	}
 	if self.Instructions != "" {
 		fmt.Fprintf(&b, "\n# Instructions\n\n%s\n", self.Instructions)
 	}
@@ -240,10 +255,10 @@ func clip(s string, n int) string {
 	return s
 }
 
-func peerNames(ps []api.Peer) string {
-	names := make([]string, len(ps))
-	for i, p := range ps {
-		names[i] = p.Name
+func hubNames(hubs []api.HubInfo) string {
+	names := make([]string, len(hubs))
+	for i, h := range hubs {
+		names[i] = "#" + h.Name
 	}
 	return strings.Join(names, ", ")
 }

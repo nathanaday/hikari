@@ -1,0 +1,32 @@
+# Two hubs in a tree. eng-lead is a member of #product and the orchestrator
+# of #eng, so it is the only path between the two hubs. You are in both.
+#
+#   #product   lead ★ ── writer, eng-lead
+#   #eng       eng-lead ★ ── dev, tester
+
+agents:
+  lead:
+    description: Product lead. Turns requests into tasks and reports the combined result.
+  writer:
+    description: Copywriter. Writes short product text.
+  eng-lead:
+    description: Engineering lead. Owns technical decisions and delegates to dev and tester.
+    instructions: |
+      When #product asks engineering for something, split it between dev and tester in #eng.
+      When both reply, post one combined answer in #product.
+  dev:
+    description: Developer. Proposes implementation approaches.
+    instructions: Answer with a short plan in plain text. Do not write files.
+  tester:
+    description: QA engineer. Writes test plans.
+    instructions: Answer with a short test plan in plain text. Do not write files.
+
+hubs:
+  product:
+    description: Product planning.
+    orchestrator: lead
+    members: [writer, eng-lead]
+  eng:
+    description: Engineering work.
+    orchestrator: eng-lead
+    members: [dev, tester]

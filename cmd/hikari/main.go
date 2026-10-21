@@ -17,17 +17,17 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/hub"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
+	"github.com/nathanaday/hikari/internal/server"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-const usage = `hikari runs Claude Code agents in containers that can message only their neighbors.
+const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
 
 Usage:
-  hikari up [flags] <topology.yaml>   start the hub, the web UI, and one container per node
+  hikari up [flags] <topology.yaml>   start the server, the web UI, and one container per agent
   hikari node                         run the agent driver (inside a container)
   hikari mcp                          run the MCP server on stdio (started by Claude Code)
 `
@@ -59,9 +59,9 @@ func main() {
 
 func up(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("up", flag.ExitOnError)
-	listen := fs.String("listen", "127.0.0.1:7420", "hub address")
+	listen := fs.String("listen", "127.0.0.1:7420", "server address")
 	image := fs.String("image", "hikari-node", "agent container image")
-	noLaunch := fs.Bool("no-launch", false, "start only the hub and print node credentials, for running nodes by hand")
+	noLaunch := fs.Bool("no-launch", false, "start only the server and print agent credentials, for running agents by hand")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] <topology.yaml>")
 		fs.PrintDefaults()
@@ -92,33 +92,33 @@ func up(ctx context.Context, args []string) error {
 	}
 	defer journal.Close()
 
-	h := hub.New(topo, journal)
-	uiToken := hub.NewToken()
+	srv := server.New(topo, journal)
+	uiToken := server.NewToken()
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: h.Handler(uiToken)}
-	go srv.Serve(ln)
-	defer srv.Close()
+	httpSrv := &http.Server{Handler: srv.Handler(uiToken)}
+	go httpSrv.Serve(ln)
+	defer httpSrv.Close()
 
-	l := &launcher.Launcher{Image: *image, HubURL: "http://host.docker.internal:" + port, RunID: runID}
+	l := &launcher.Launcher{Image: *image, ServerURL: "http://host.docker.internal:" + port, RunID: runID}
 	if *noLaunch {
-		for _, n := range topo.Agents() {
-			fmt.Printf("%s: HIKARI_HUB_URL=http://%s HIKARI_TOKEN=%s\n", n, *listen, h.IssueToken(n))
+		for _, n := range topo.AgentNames() {
+			fmt.Printf("%s: HIKARI_SERVER_URL=http://%s HIKARI_TOKEN=%s\n", n, *listen, srv.IssueToken(n))
 		}
 	} else {
 		if err := l.CheckImage(ctx); err != nil {
 			return err
 		}
 		defer l.Cleanup()
-		for _, n := range topo.Agents() {
-			err := l.Start(context.Background(), n, h.IssueToken(n), func(err error) {
+		for _, n := range topo.AgentNames() {
+			err := l.Start(context.Background(), n, srv.IssueToken(n), func(err error) {
 				s := api.Status{State: api.StateExited}
 				if err != nil && ctx.Err() == nil {
 					s.Detail = err.Error()
 				}
-				h.SetStatus(n, s)
+				srv.SetStatus(n, s)
 				log.Printf("[%s] container exited", n)
 			})
 			if err != nil {

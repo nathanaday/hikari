@@ -1,4 +1,5 @@
-// Package api holds the wire types of the hub's node API and a client for it.
+// Package api holds the wire types of the server's node API and a client for
+// it.
 package api
 
 import (
@@ -14,29 +15,49 @@ import (
 	"time"
 )
 
+// Message is either a hub post (Hub is set) or a direct message (To is set).
 type Message struct {
 	ID   int64     `json:"id"`
 	From string    `json:"from"`
-	To   string    `json:"to"`
+	Hub  string    `json:"hub,omitempty"`
+	To   string    `json:"to,omitempty"`
 	Body string    `json:"body"`
 	Time time.Time `json:"time"`
+	// Woke lists the recipients that the message started a turn for.
+	Woke []string `json:"woke,omitempty"`
 }
+
+const (
+	RoleOrchestrator = "orchestrator"
+	RoleMember       = "member"
+	RoleOperator     = "operator"
+)
 
 type Peer struct {
 	Name        string `json:"name"`
+	Role        string `json:"role"`
 	Description string `json:"description,omitempty"`
 }
 
-type Self struct {
-	Name         string `json:"name"`
-	Description  string `json:"description,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
-	Model        string `json:"model,omitempty"`
-	Neighbors    []Peer `json:"neighbors"`
+type HubInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Participants lists the orchestrator first and the user last.
+	Participants []Peer `json:"participants"`
 }
 
+type Self struct {
+	Name         string    `json:"name"`
+	Description  string    `json:"description,omitempty"`
+	Instructions string    `json:"instructions,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	Hubs         []HubInfo `json:"hubs"`
+}
+
+// SendRequest sets exactly one of Hub and To.
 type SendRequest struct {
-	To   string `json:"to"`
+	Hub  string `json:"hub,omitempty"`
+	To   string `json:"to,omitempty"`
 	Body string `json:"body"`
 }
 
@@ -65,12 +86,12 @@ type Client struct {
 
 func ClientFromEnv() (*Client, error) {
 	c := &Client{
-		URL:   os.Getenv("HIKARI_HUB_URL"),
+		URL:   os.Getenv("HIKARI_SERVER_URL"),
 		Token: os.Getenv("HIKARI_TOKEN"),
 		HTTP:  &http.Client{Timeout: 90 * time.Second},
 	}
 	if c.URL == "" || c.Token == "" {
-		return nil, errors.New("HIKARI_HUB_URL and HIKARI_TOKEN must be set")
+		return nil, errors.New("HIKARI_SERVER_URL and HIKARI_TOKEN must be set")
 	}
 	return c, nil
 }
@@ -81,14 +102,14 @@ func (c *Client) Self(ctx context.Context) (Self, error) {
 	return s, err
 }
 
-func (c *Client) Send(ctx context.Context, to, body string) (Message, error) {
+func (c *Client) Send(ctx context.Context, req SendRequest) (Message, error) {
 	var m Message
-	err := c.do(ctx, http.MethodPost, "/api/node/send", SendRequest{To: to, Body: body}, &m)
+	err := c.do(ctx, http.MethodPost, "/api/node/send", req, &m)
 	return m, err
 }
 
-// Inbox removes and returns the node's pending messages. If none are pending,
-// it waits up to wait for one to arrive.
+// Inbox removes and returns the node's pending messages. With wait > 0, it
+// first waits up to wait for a message that wakes the node.
 func (c *Client) Inbox(ctx context.Context, wait time.Duration) ([]Message, error) {
 	var msgs []Message
 	path := "/api/node/inbox?wait=" + url.QueryEscape(wait.String())

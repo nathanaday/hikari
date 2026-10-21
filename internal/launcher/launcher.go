@@ -1,6 +1,6 @@
 // Package launcher starts one container per agent node with the docker CLI.
 // Each container gets its own bridge network, so containers cannot reach each
-// other directly; the only path between them is the hub.
+// other directly; the only path between them is the server.
 package launcher
 
 import (
@@ -18,9 +18,9 @@ import (
 var PassEnv = []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
 
 type Launcher struct {
-	Image  string
-	HubURL string // the hub address as seen from inside a container
-	RunID  string
+	Image     string
+	ServerURL string // the server address as seen from inside a container
+	RunID     string
 }
 
 func (l *Launcher) label() string { return "hikari.run=" + l.RunID }
@@ -47,12 +47,12 @@ func (l *Launcher) Start(ctx context.Context, node, token string, done func(erro
 		"--label", l.label(),
 		"--network", name,
 		"--add-host", "host.docker.internal:host-gateway",
-		"-e", "HIKARI_HUB_URL",
+		"-e", "HIKARI_SERVER_URL",
 		"-e", "HIKARI_TOKEN",
 		"-e", "DISABLE_AUTOUPDATER=1",
 	)
 	// Pass secrets by name so their values never appear in a process list.
-	cmd.Env = append(os.Environ(), "HIKARI_HUB_URL="+l.HubURL, "HIKARI_TOKEN="+token)
+	cmd.Env = append(os.Environ(), "HIKARI_SERVER_URL="+l.ServerURL, "HIKARI_TOKEN="+token)
 	for _, v := range PassEnv {
 		if os.Getenv(v) != "" {
 			cmd.Args = append(cmd.Args, "-e", v)
