@@ -18,11 +18,9 @@ import (
 	"time"
 )
 
-// Dir and File locate the map inside a scope: <scope>/.hikari/map.yaml.
-const (
-	Dir  = ".hikari"
-	File = "map.yaml"
-)
+// Dir is the directory of the private documents inside a scope:
+// <scope>/.hikari/private. The map lives in the store.
+const Dir = ".hikari"
 
 const version = 2
 

@@ -180,7 +180,7 @@ func TestUpsertKeepsResultsAndRemoveDropsReferences(t *testing.T) {
 
 func TestHealth(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, _, err := Open(root, "orders", "")
+	s, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestState(t *testing.T) {
 
 func TestOpenWritesSkeletons(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, created, err := Open(root, "orders", "python3 -m unittest")
+	s, created, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "python3 -m unittest")
 	if err != nil || !created {
 		t.Fatalf("Open = %v, created %v", err, created)
 	}
@@ -268,7 +268,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 
 	// Open keeps documents that exist.
 	writeFile(t, root, ".hikari/private/layout.yaml", "version: 1\nparts: [{path: orders/, description: kept}]\nfeatures: {}\n")
-	if _, _, err := Open(root, "orders", "other"); err != nil {
+	if _, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "other"); err != nil {
 		t.Fatal(err)
 	}
 	if p, _ := s.Private(); p.Layout.Parts[0].Description != "kept" || p.Tests.Suites["all"].Command != "python3 -m unittest" {
@@ -278,7 +278,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 
 func TestStoreRejectsInvalidChanges(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, _, _ := Open(root, "orders", "")
+	s, _, _ := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	before, _ := os.ReadFile(s.Path())
 	err := s.Update(func(m *Map) error {
 		m.Upsert(FeatureInput{ID: "Bad ID", Name: "X"})
@@ -299,7 +299,7 @@ func TestStoreRejectsInvalidChanges(t *testing.T) {
 
 func TestStoreReloadsHandEdits(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, _, _ := Open(root, "orders", "")
+	s, _, _ := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if s.Reload() {
 		t.Error("Reload without a change reported one")
 	}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -45,6 +47,7 @@ type owner struct {
 
 type Manager struct {
 	topo     *topology.Topology
+	store    store.Store
 	repos    map[string]*gitrepo.Repo
 	start    map[string]string
 	owners   map[string]*owner
@@ -62,6 +65,7 @@ type Manager struct {
 func New(topo *topology.Topology) (*Manager, error) {
 	m := &Manager{
 		topo:     topo,
+		store:    store.Store{Root: topo.Store},
 		repos:    map[string]*gitrepo.Repo{},
 		start:    map[string]string{},
 		owners:   map[string]*owner{},
@@ -78,26 +82,36 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 		m.repos[name], m.start[name] = repo, start
 	}
+	if err := m.store.Prepare(topo.Owners()); err != nil {
+		return nil, fmt.Errorf("store %s: %w", m.store.Root, err)
+	}
 	for _, name := range topo.Owners() {
 		s := topo.Agents[name].System
 		r := topo.Repos[s.Repo]
-		store, _, err := sysmap.Open(filepath.Join(r.Path, s.Scope), name, s.Test)
+		scopeRoot := filepath.Join(r.Path, s.Scope)
+		maps, _, err := sysmap.Open(scopeRoot, m.store.MapFile(name), name, s.Test)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q: %w", name, err)
 		}
 		repo := m.repos[s.Repo]
-		mapPath := path.Join(filepath.ToSlash(s.Scope), sysmap.Dir, sysmap.File)
-		if repo.IsIgnored(mapPath) {
-			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the map of %q is not versioned with its code", s.Repo, mapPath, name))
+		privatePath := path.Join(filepath.ToSlash(s.Scope), sysmap.Dir, sysmap.PrivateDir, sysmap.LayoutFile)
+		if repo.IsIgnored(privatePath) {
+			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", s.Repo, privatePath, name))
 		}
-		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: store}
+		if old := filepath.Join(scopeRoot, sysmap.Dir, "map.yaml"); exists(old) {
+			m.warnings = append(m.warnings, fmt.Sprintf("%s is no longer used; the map of %q now lives at %s", old, name, m.store.MapFile(name)))
+		}
+		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: maps}
 	}
 	for _, hub := range topo.HubNames() {
-		store, err := vocab.Open(filepath.Join(topo.Dir, "vocabulary", hub+".yaml"), hub)
+		vs, err := vocab.Open(m.store.VocabularyFile(hub), hub)
 		if err != nil {
 			return nil, err
 		}
-		m.vocabs[hub] = store
+		m.vocabs[hub] = vs
+		if old := filepath.Join(topo.Dir, "vocabulary", hub+".yaml"); exists(old) {
+			m.warnings = append(m.warnings, fmt.Sprintf("%s is no longer used; the vocabulary of #%s now lives at %s", old, hub, m.store.VocabularyFile(hub)))
+		}
 	}
 	for _, agent := range topo.AgentNames() {
 		m.seen[agent] = map[string]int{}
@@ -107,6 +121,14 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 	}
 	return m, nil
+}
+
+// Store returns the shared store.
+func (m *Manager) Store() store.Store { return m.store }
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // Warnings returns problems found by New that do not stop hikari.

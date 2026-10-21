@@ -129,10 +129,26 @@ func TestNewPreparesReposAndMaps(t *testing.T) {
 	if got := git(t, f.repo, "branch", "--show-current"); got != "hikari/work" {
 		t.Errorf("G2: checked out %q", got)
 	}
-	for _, scope := range []string{"services/orders", "services/inventory"} {
-		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "map.yaml")); err != nil {
-			t.Errorf("G4: no map in %s: %v", scope, err)
+	st := filepath.Join(f.dir, "store")
+	for _, p := range []string{
+		"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents",
+		"systems/orders/map.yaml", "systems/orders/staging", "systems/orders/releases",
+		"systems/inventory/map.yaml",
+	} {
+		if _, err := os.Stat(filepath.Join(st, p)); err != nil {
+			t.Errorf("L1/L3: store lacks %s: %v", p, err)
 		}
+	}
+	for _, scope := range []string{"services/orders", "services/inventory"} {
+		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "private", "test.yaml")); err != nil {
+			t.Errorf("L5: no private documents in %s: %v", scope, err)
+		}
+		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "map.yaml")); err == nil {
+			t.Errorf("L3: the map must not be written into the repo in %s", scope)
+		}
+	}
+	if len(f.m.Warnings()) != 0 {
+		t.Errorf("no warnings expected: %v", f.m.Warnings())
 	}
 	v, err := f.m.OwnView("orders")
 	if err != nil || v.State != sysmap.Unbuilt || len(v.PrivateErrors) != 0 {
@@ -161,7 +177,7 @@ func TestNewWarnsWhenTheMapIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := m.Warnings(); len(w) != 2 || !strings.Contains(w[0], "is not versioned with its code") {
+	if w := m.Warnings(); len(w) != 2 || !strings.Contains(w[0], "are not versioned with its code") {
 		t.Errorf("G5 warnings = %v", w)
 	}
 }
@@ -243,7 +259,7 @@ func TestOwnerWorkflow(t *testing.T) {
 		t.Errorf("G13 message: %q", got)
 	}
 	files := git(t, f.repo, "show", "--name-only", "--format=", "HEAD")
-	if !strings.Contains(files, "services/orders/create.py") || !strings.Contains(files, "services/orders/.hikari/map.yaml") || strings.Contains(files, "inventory") {
+	if !strings.Contains(files, "services/orders/create.py") || strings.Contains(files, "map.yaml") || strings.Contains(files, "inventory") {
 		t.Errorf("G7 automatic commit files:\n%s", files)
 	}
 	if commit, err := f.m.Commit("orders", "nothing to do"); err != nil || commit != "" {
@@ -368,7 +384,7 @@ func TestTurnContextReportsVocabularyChangesOnce(t *testing.T) {
 	if tc := f.m.TurnContext("writer"); len(tc.VocabularyChanged) != 0 {
 		t.Errorf("writer is not in #eng: %+v", tc)
 	}
-	if _, err := os.Stat(filepath.Join(f.dir, "vocabulary", "eng.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "vocabulary", "eng.yaml")); err != nil {
 		t.Errorf("V1 vocabulary file: %v", err)
 	}
 }
@@ -422,5 +438,37 @@ func TestCommitAllLeavesTheRepoClean(t *testing.T) {
 	topo, _ := topology.Parse([]byte(testTopology), f.dir)
 	if _, err := New(topo); err != nil {
 		t.Errorf("the next run cannot start: %v", err)
+	}
+}
+
+func TestNewWarnsAboutOldFiles(t *testing.T) {
+	f := newFixture(t)
+	write(t, f.repo, "services/orders/.hikari/map.yaml", "version: 2\n")
+	write(t, f.dir, "vocabulary/eng.yaml", "version: 1\n")
+	f.m.CommitAll()
+	topo, _ := topology.Parse([]byte(testTopology), f.dir)
+	m, err := New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := strings.Join(m.Warnings(), "\n")
+	for _, want := range []string{"services/orders/.hikari/map.yaml is no longer used", "vocabulary/eng.yaml is no longer used"} {
+		if !strings.Contains(w, want) {
+			t.Errorf("L6: warnings lack %q:\n%s", want, w)
+		}
+	}
+}
+
+func TestPrepareKeepsAnExistingReadme(t *testing.T) {
+	f := newFixture(t)
+	readme := filepath.Join(f.dir, "store", "README.md")
+	os.WriteFile(readme, []byte("mine\n"), 0o644)
+	f.m.CommitAll()
+	topo, _ := topology.Parse([]byte(testTopology), f.dir)
+	if _, err := New(topo); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(readme); string(data) != "mine\n" {
+		t.Errorf("the README was overwritten: %q", data)
 	}
 }

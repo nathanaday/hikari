@@ -33,12 +33,13 @@ type Store struct {
 	privateSeen string
 }
 
-// Open loads the map of the system name, whose scope is root on the host. It
-// writes an unbuilt map and empty private documents for those that do not
-// exist, and reports whether it created the map. testCommand, when set,
-// becomes the first suite of a new test plan.
-func Open(root, name, testCommand string) (*Store, bool, error) {
-	s := &Store{root: root, path: filepath.Join(root, Dir, File), name: name}
+// Open loads the map of the system name from mapPath. root is the system's
+// scope on the host, where its private documents live. Open writes an
+// unbuilt map and empty private documents for those that do not exist, and
+// reports whether it created the map. testCommand, when set, becomes the
+// first suite of a new test plan.
+func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
+	s := &Store{root: root, path: mapPath, name: name}
 	if err := writePrivateSkeletons(root, testCommand); err != nil {
 		return nil, false, err
 	}

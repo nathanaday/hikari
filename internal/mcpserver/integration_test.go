@@ -127,7 +127,8 @@ hubs:
 			t.Errorf("get_my_system lacks %q:\n%s", want, out)
 		}
 	}
-	if out, _ := call(t, orders, "commit_changes", map[string]any{"message": "Describe the system"}); !strings.Contains(out, "Committed") {
+	os.WriteFile(filepath.Join(repo, "orders", "cancel.py"), []byte("def cancel(): pass\n"), 0o644)
+	if out, _ := call(t, orders, "commit_changes", map[string]any{"message": "Add cancel"}); !strings.Contains(out, "Committed") {
 		t.Errorf("commit_changes: %s", out)
 	}
 
