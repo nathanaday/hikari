@@ -1,6 +1,6 @@
 # Spec: systems, system maps, and hub vocabularies
 
-Status: built. Changes made during the build, with their reasons in `docs/design.md`:
+Status: built. Section 5 was redesigned after the first build: the map became a public surface with no paths, and the layout and the test plan moved into private documents. Changes made during the build, with their reasons in `docs/design.md`:
 
 - Owners add features in batches with `upsert_features` (see section 8).
 - hikari commits what each owner left when hikari stops, in addition to rule G13, so that rule G1 does not block the next start.
@@ -49,7 +49,7 @@ agents:
       repo: shop
       scope: services/orders        # optional; empty means the whole repo
       read: [proto]                 # optional read-only paths, relative to the repo root
-      test: python3 -m unittest     # optional; the first value of the map's test_command
+      test: python3 -m unittest     # optional; the first suite of a new test plan
       container_only: [.venv]       # optional paths, relative to the scope, kept in a Docker volume
     packages: [python3]             # optional Debian packages
     setup: |                        # optional; runs as root when the image is built
@@ -79,7 +79,7 @@ At `hikari up`, before any container starts, the server does this for each repo:
 - **G1.** If `git status --porcelain` shows anything, `hikari up` stops with an error that names the repo.
 - **G2.** If the branch does not exist, the server creates it from `HEAD`. Then it checks the branch out.
 - **G3.** It records the commit at `HEAD`, for the summary in G10.
-- **G4.** For each system without `<scope>/.hikari/map.yaml`, it writes an unbuilt map: `version`, `system.name`, and `test_command` from `system.test`. The first commit in that scope includes this file.
+- **G4.** For each system without `<scope>/.hikari/map.yaml`, it writes an unbuilt map with `version` and `system.name`. It also writes the missing private documents (P6). The first commit in that scope includes this file.
 - **G5.** If git ignores `<scope>/.hikari/map.yaml`, the server prints a warning: then the map is not versioned with the code.
 
 Commits:
@@ -102,7 +102,7 @@ The container of an owner sees only:
 
 - **M1.** The scope, read-write, at `/workspace/<scope>`. This is also the working directory. For a whole-repo scope, the path is `/workspace`.
 - **M2.** Each `read` path, read-only, at `/workspace/<read>`.
-- **M3.** `<scope>/.hikari`, read-only, at the matching path. The directory is mounted, not the file: the server replaces the file with an atomic rename, and a file mount would keep showing the old file.
+- **M3.** `<scope>/.hikari`, read-only, at the matching path, and `<scope>/.hikari/private` inside it, read-write. The directory is mounted, not the map file: the server replaces the file with an atomic rename, and a file mount would keep showing the old file.
 - **M4.** For each `container_only` path, a named Docker volume at the matching path. The volume name comes from a hash of the repo path, the scope, and the path, so the volume persists between runs.
 - **M5.** For a whole-repo scope, an empty read-only directory over `/workspace/.git`. A container never sees `.git`.
 - **M6.** An agent without a system gets no mounts.
@@ -113,14 +113,22 @@ The container of an owner sees only:
 - **I2.** The image tag is `hikari-node-<hash>`. The hash covers the base image ID, the packages, the setup script, and the path entries. When the tag exists, the image is not built again.
 - **I3.** Build output appears in the `hikari up` log with the prefix `[build <agent>]`. If a build fails, `hikari up` stops.
 
-## 5. System maps
+## 5. System documents
 
-### Schema
+Three documents describe a system. The owner is the only author of all three.
 
-The approved D5 schema, with changes 1 and 2:
+| Document | Readers | How it changes |
+|---|---|---|
+| `<scope>/.hikari/map.yaml` | Everyone who may read the system (section 7). | Only through the owner's map tools. Read-only in the container. |
+| `<scope>/.hikari/private/layout.yaml` | The owner and the user. | The owner edits the file. |
+| `<scope>/.hikari/private/test.yaml` | The owner and the user. | The owner edits the file. |
+
+The map is the public surface of the system. It holds no path into the code, no command, and nothing else that matters only inside the container. The private documents hold where each feature lives in the code and how it is tested.
+
+### The map
 
 ```yaml
-version: 1
+version: 2
 system:
   name: orders
   summary: Takes orders from checkout and stores them.
@@ -130,44 +138,79 @@ system:
       - {name: POST /orders, kind: http, description: Creates an order.}
     consumes:
       - {name: inventory.reserve, kind: function, description: Reserves stock.}
-  layout:
-    - {path: orders/, description: Order validation and storage.}
-  test_command: python3 -m unittest
   described_state: {commit: 4e8ada5, updated: 2026-10-21T09:30:00Z}
 features:
   - id: create-order
     name: Create an order
     description: Validates an order, reserves stock, and stores it.
     interfaces: [POST /orders, inventory.reserve]
-    code: [orders/create.py]
-    tests:
-      refs: [tests/test_create.py]
-      passed: 6
-      failed: 0
-      ran: 2026-10-21T09:28:00Z
-      content_hash: 9f2c...
+    tests: {passed: 6, failed: 0, ran: 2026-10-21T09:28:00Z, content_hash: 9f2c...}
     health: passing
     findings: [A client retry can create a duplicate order.]
     plans: [Add idempotency keys.]
     related: [cancel-order]
 ```
 
-### Rules
+The file has no comment. A map with another `version` is rejected; `make demo-repo` rebuilds the demo maps.
 
-- **S1.** Feature IDs match `^[a-z][a-z0-9-]{0,47}$` and are unique in the map.
+### The private documents
+
+```yaml
+# .hikari/private/layout.yaml
+version: 1
+parts:
+  - {path: orders/, description: Order intake and cancellation.}
+features:
+  create-order:
+    code: [orders/create.py]
+    notes: create_order() checks items, then reserves each one.
+```
+
+```yaml
+# .hikari/private/test.yaml
+version: 1
+suites:
+  unit:
+    command: python3 -m unittest discover -s tests
+    description: Fast unit tests with fakes.
+features:
+  create-order:
+    covers: Valid orders reserve each item; bad orders fail.
+    tests:
+      - suite: unit
+        files: [tests/test_create.py]
+        command: python3 -m unittest tests.test_create
+    gaps: [Not tested against the real inventory.]
+```
+
+A test plan names suites, the commands that run tests, instead of one test command for the whole system. Each feature lists what its tests cover, which suites and files hold them, and what they leave out.
+
+### Rules of the map
+
+- **S1.** Feature IDs match `^[a-z][a-z0-9-]{0,47}$` and are unique in the map. Each feature has a name.
 - **S2.** Each name in a feature's `interfaces` is in the system's `provides` or `consumes`.
 - **S3.** Each `related` entry is the ID of another feature in the same map. Removing a feature also removes the references to it.
-- **S4.** Each `code`, `tests.refs`, and `layout` path exists in the scope. The server rejects a change that names a path that does not exist.
-- **S5.** The server rejects a change that breaks S1 to S4, and the error names the rule. The file on disk never holds an invalid map.
-- **S6.** The server writes the map with an atomic rename. It reloads the map when the file changes on disk, for example after you edit it by hand. If a hand edit makes the map invalid, the server keeps the last valid map, and the UI shows the error.
-- **S7.** `interfaces[].kind` is a free lowercase word. The prompt suggests `http`, `grpc`, `event`, `function`, `file`, and `cli`.
+- **S5.** The server rejects a change that breaks S1 to S3 or S7, and the error names the rule. The file on disk never holds an invalid map.
+- **S6.** The server writes the map with an atomic rename. It reloads the map when the file changes on disk. If a hand edit makes the map invalid, the server keeps the last valid map, and the owner and the UI see the error.
+- **S7.** `interfaces[].kind` is a free lowercase word.
+
+### Rules of the private documents
+
+The server reads the private documents whenever it needs them and checks them against the map.
+
+- **P1.** Each file is valid YAML with only the fields above, and `version: 1`. An empty or missing file reads as empty.
+- **P2.** Each key under `features` in either file is a feature ID of the map.
+- **P3.** Each path in `parts`, `code`, and `files` is relative to the scope, stays inside it, and exists.
+- **P4.** Each suite has a command, and each test entry names a defined suite.
+- **P5.** `record_test_results` and `mark_map_current` fail while P1 to P4 are broken, and the error lists the problems. `record_test_results` also fails for a feature that the test plan lists no tests for.
+- **P6.** At startup, the server writes each missing private document with no entries. When the topology gives `system.test`, the new test plan has one suite, `all`, with that command.
 
 ### Health
 
 The server computes `health`. Owners cannot set it.
 
-- **S8.** `untested`: the feature has no `tests.refs`, or its tests never ran.
-- **S9.** `stale`: the current contents of the feature's `code` and `tests.refs` paths have a different hash than `tests.content_hash`.
+- **S8.** `untested`: the test plan lists no tests for the feature, or its tests never ran.
+- **S9.** `stale`: the current contents of the feature's code files (from `layout.yaml`) and test files (from `test.yaml`) have a different hash than `tests.content_hash`.
 - **S10.** `failing`: `tests.failed` is more than 0.
 - **S11.** `passing`: none of the above.
 - **S12.** The checks run in the order S8, S9, S10, S11. The first match decides.
@@ -180,8 +223,9 @@ The server computes `health`. Owners cannot set it.
 
 ### Views
 
-- **S16.** The full view is the whole map plus the computed health and state.
-- **S17.** The orchestrator view leaves out `layout`, `code`, `tests.refs`, and `tests.content_hash`. It keeps the test counts and `ran`.
+- **S16.** The public view is the map with computed health and state. Orchestrators see it.
+- **S17.** The owner view adds the paths that changed since the described commit, the error of an invalid map file, and the problems of the private documents.
+- **S18.** The UI view adds the private documents.
 
 ## 6. Vocabularies
 
@@ -218,12 +262,12 @@ Owners also get:
 
 | Tool | Purpose |
 |---|---|
-| `get_my_system()` | Read your full map, with health and state. |
-| `set_system_info(summary?, responsibilities?, provides?, consumes?, layout?, test_command?)` | Replace the given fields of `system`. Fields you leave out stay as they are. |
-| `upsert_features(features: [{id, name, description, interfaces, code, test_refs, findings, plans, related}])` | Add features, or replace the ones with these IDs, as one change. Test results stay. (Built as a batch, not one feature per call: see `docs/design.md`.) |
+| `get_my_system()` | Read the owner view of your map (S17). |
+| `set_system_info(summary?, responsibilities?, provides?, consumes?)` | Replace the given fields of `system`. Fields you leave out stay as they are. |
+| `upsert_features(features: [{id, name, description, interfaces, findings, plans, related}])` | Add features, or replace the ones with these IDs, as one change. Test results stay. (Built as a batch, not one feature per call: see `docs/design.md`.) |
 | `remove_feature(id)` | Remove a feature and the references to it. |
-| `record_test_results(results: [{feature, passed, failed}])` | Store test results, with the time and the content hash. |
-| `mark_map_current()` | Commit the pending changes in the scope, then record the commit as the described state. |
+| `record_test_results(results: [{feature, passed, failed}])` | Store test results, with the time and the content hash (P5). |
+| `mark_map_current()` | Check the private documents (P5), commit the pending changes in the scope, then record the commit as the described state. |
 | `commit_changes(message)` | Commit the changes in your scope. |
 
 Orchestrators also get:
@@ -241,24 +285,28 @@ Orchestrators also get:
 ## 9. Driver
 
 - **D1.** At startup, if the owner's map is `unbuilt` or `stale`, the driver runs an indexing turn before it reads messages. During that turn, the agent's state is `indexing`. Messages to the agent wait in its inbox.
-- **D2.** The prompt of the indexing turn tells the owner to read its system, to define the system info and 5 to 30 features, to run the tests and record the results, then to call `mark_map_current`. For a stale map, it lists the changed paths and asks the owner to update only the affected entries.
-- **D3.** Before each later turn of an owner, the driver gets the map state from the server. If the map is stale, the turn prompt starts with the changed paths and a request to update the map. For every agent, the turn prompt names each hub whose vocabulary changed since the agent's last turn.
+- **D2.** The prompt of the indexing turn tells the owner to load the `hikari-system` skill, to read its system, to describe it in the map, to write its private documents, to run the tests as its plan says and record the results, then to call `mark_map_current`. For a stale map, it lists the changed paths and asks the owner to update only the affected entries.
+- **D3.** Before each later turn of an owner, the driver gets the map state from the server. If the map is stale, the turn prompt starts with the changed paths and a request to update the documents. If the private documents have problems, the turn prompt lists them. For every agent, the turn prompt names each hub whose vocabulary changed since the agent's last turn.
 - **D4.** The system prompt of an owner states:
   - its scope and its read-only paths,
-  - that it must not try to change `.hikari/`,
-  - that it uses the map tools and the hub vocabulary's names,
+  - its three documents: the map, which it changes only through the map tools, and the private documents, which it edits,
+  - that it loads the `hikari-system` skill before it builds or updates its documents,
+  - that it uses the hub vocabulary's names,
   - that it calls `commit_changes` after each unit of work,
   - that a blocker outside its system goes to its orchestrator.
 - **D5.** The system prompt of an orchestrator states that it has no code. It plans from the system tools, keeps each hub's vocabulary, and asks owners about anything that a map does not answer.
 - **D6.** After each turn of an owner, the driver requests the automatic commit of G13, including after a failed turn.
+- **D7.** At startup, the driver of an owner writes the `hikari-system` skill to `~/.claude/skills/hikari-system/SKILL.md` in the container. The skill explains the three documents, the formats of the private documents with examples, the rules P1 to P4, and how to build the documents and keep them true. It is never written into the repo.
 
 ## 10. UI
 
 - **U1.** The sidebar gets a Systems group, with one entry for each system. Each entry shows a dot for the map state.
 - **U2.** A system view (`#/system/<name>`) shows:
   - the owner, the repo, scope, and branch, and the map state, with the changed paths when the map is stale;
-  - the summary, responsibilities, interfaces with the flags of V6 and V7, and the layout;
-  - the features, each with its health and test counts. A feature opens to show its description, code and test paths, findings, plans, and related features.
+  - the problems of the private documents, when there are any;
+  - the summary, responsibilities, and interfaces with the flags of V6 and V7;
+  - the features, each with its health and test counts. A feature opens to show its description, findings, plans, and related features, and, marked private, its code, what its tests cover, its test entries, and its gaps;
+  - the layout parts and the test suites, marked private.
 - **U3.** Health colors: green for `passing`, red for `failing`, amber for `stale`, and a gray outline for `untested`. Everything else stays in the gray palette.
 - **U4.** A hub view gets a Vocabulary tab, next to the messages, that lists the hub's terms and interfaces.
 - **U5.** The `indexing` state appears like `working`, with its own label.

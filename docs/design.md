@@ -65,23 +65,40 @@ refuses a repo with uncommitted changes, so that your unfinished work never
 enters an agent commit. To keep the next start possible, hikari commits what
 each owner left when a turn ends and when hikari stops.
 
-## The owner writes the map, through the server
+## A public map and private documents
 
-Only the owner can describe its system accurately, so only the owner changes
-its map. It does so through tools, not by editing the file: the server
-applies each change to a copy, checks it, and writes the file with an atomic
-rename. A typo cannot corrupt the map, the server knows at once when the map
-changed, and the orchestrator view is computed from structured data, so it
-cannot leak file paths. The map lives in the scope, so it is versioned and
-reviewed with the code that it describes.
+The map is the boundary of a container. Other agents never see the code, so
+the map holds only what they need: what the system does, its interfaces, and
+whether each feature exists and is tested. A file path or a test command in
+the map would invite them to reason about code that they cannot see. The
+owner still needs that knowledge, so it lives in two private documents in
+the same directory: `layout.yaml`, which says where each feature lives in the
+code, and `test.yaml`, a test plan. One test command for a whole system
+limits the tests an owner can describe; the plan names suites, such as unit
+and integration tests, and says for each feature what its tests cover and
+what they leave out.
+
+Only the owner can describe its system accurately, so it writes all three
+documents. It changes the map through tools, not by editing the file: the
+server applies each change to a copy, checks it, and writes the file with an
+atomic rename. A typo cannot corrupt the public surface, and the server knows
+at once when it changed. The private documents are the owner's working
+notes, so the owner edits them with its normal file tools, and the container
+mounts them read-write while the map stays read-only. The server reads them
+when it computes health, and it refuses to record test results or to mark
+the map current while they are invalid, so that they stay true. A skill in
+the container, not a file in your repo, teaches the owner their formats.
+
+All three documents live in the scope, so they are versioned and reviewed
+with the code that they describe.
 
 Owners add features in batches. A feature can name related features, and
 the server checks that they exist; one feature at a time, a feature could not
 name one that the owner had not added yet.
 
 Health is computed, never set. Test results are reported on the honor
-system, but the server records a hash of the feature's code and test files
-with each result. When the files change, the feature is `stale` until its
+system, but the server records a hash of the feature's code and test files,
+as the private documents list them, with each result. When the files change, the feature is `stale` until its
 tests run again. A map records the commit that it describes; when files in
 the scope change after that commit, the map is `stale`, and the driver lists
 the changed paths in the owner's next prompt.

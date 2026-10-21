@@ -12,6 +12,7 @@ func TestSystemMounts(t *testing.T) {
 		{Source: "/code/shop/services/orders", Target: "/workspace/services/orders"},
 		{Source: "/code/shop/proto", Target: "/workspace/proto", ReadOnly: true},
 		{Source: "/code/shop/services/orders/.hikari", Target: "/workspace/services/orders/.hikari", ReadOnly: true},
+		{Source: "/code/shop/services/orders/.hikari/private", Target: "/workspace/services/orders/.hikari/private"},
 		{Source: VolumeName("/code/shop", "services/orders", "node_modules"), Target: "/workspace/services/orders/node_modules", Volume: true},
 	}
 	if !slices.Equal(got, want) {
@@ -29,6 +30,7 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 	want := []Mount{
 		{Source: "/code/shop", Target: "/workspace"},
 		{Source: "/code/shop/.hikari", Target: "/workspace/.hikari", ReadOnly: true},
+		{Source: "/code/shop/.hikari/private", Target: "/workspace/.hikari/private"},
 		{Source: "/tmp/empty", Target: "/workspace/.git", ReadOnly: true},
 	}
 	if !slices.Equal(got, want) {

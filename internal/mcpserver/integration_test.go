@@ -97,20 +97,24 @@ hubs:
 	if out, isErr := call(t, orders, "set_system_info", map[string]any{
 		"summary":  "Takes orders.",
 		"provides": []map[string]any{{"name": "POST /orders", "kind": "http", "description": "Creates an order."}},
-		"layout":   []map[string]any{{"path": "create.py", "description": "Order creation."}},
 	}); isErr {
 		t.Fatalf("set_system_info: %s", out)
 	}
 	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{
-		{"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"},
-			"code": []string{"create.py"}, "test_refs": []string{"tests/test_create.py"}, "related": []string{"validate-order"}},
-		{"id": "validate-order", "name": "Validate an order", "code": []string{"create.py"}},
+		{"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"}, "related": []string{"validate-order"}},
+		{"id": "validate-order", "name": "Validate an order"},
 	}}); isErr {
 		t.Fatalf("upsert_features with a forward reference: %s", out)
 	}
-	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{{"id": "bad", "name": "Bad", "code": []string{"nope.py"}}}}); !isErr || !strings.Contains(out, "does not exist") {
-		t.Errorf("an invalid feature: %q, error %v", out, isErr)
+	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{{"id": "x", "name": "X", "code": []string{"create.py"}}}}); !isErr || !strings.Contains(out, `"code"`) {
+		t.Errorf("the map must not take code paths: %q", out)
 	}
+	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); !isErr || !strings.Contains(out, "lists no tests") {
+		t.Errorf("results before the test plan: %q", out)
+	}
+	// The owner writes its private documents directly, as the skill says.
+	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "layout.yaml"), []byte("version: 1\nparts: [{path: create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [create.py]}\n  validate-order: {code: [create.py]}\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "test.yaml"), []byte("version: 1\nsuites:\n  unit: {command: python3 -m unittest}\nfeatures:\n  create-order:\n    covers: Orders are created.\n    tests: [{suite: unit, files: [tests/test_create.py]}]\n"), 0o644)
 	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); isErr {
 		t.Fatalf("record_test_results: %s", out)
 	}
@@ -118,7 +122,7 @@ hubs:
 		t.Fatalf("mark_map_current: %s", out)
 	}
 	out, _ := call(t, orders, "get_my_system", nil)
-	for _, want := range []string{"state: current", "health: passing", "code:", "- create.py"} {
+	for _, want := range []string{"state: current", "health: passing", "health: untested"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("get_my_system lacks %q:\n%s", want, out)
 		}
@@ -131,8 +135,8 @@ hubs:
 		t.Fatalf("define_interface: %s", out)
 	}
 	out, _ = call(t, lead, "get_system", map[string]any{"name": "orders"})
-	if !strings.Contains(out, "health: passing") || strings.Contains(out, "create.py") || strings.Contains(out, "layout") {
-		t.Errorf("get_system must show health and no paths:\n%s", out)
+	if !strings.Contains(out, "health: passing") || strings.Contains(out, "create.py") || strings.Contains(out, "python3") {
+		t.Errorf("get_system must show health and nothing private:\n%s", out)
 	}
 	if out, _ := call(t, lead, "search_features", map[string]any{"query": "create"}); !strings.Contains(out, "system: orders") {
 		t.Errorf("search_features:\n%s", out)

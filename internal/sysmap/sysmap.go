@@ -1,13 +1,18 @@
-// Package sysmap holds the system map of one system: its purpose, its
-// interfaces, and its features with their test health. The owner of the
-// system is the only author. The server applies the owner's changes, checks
-// them, and writes the file.
+// Package sysmap holds the documents of one system. The map (map.yaml) is
+// the public surface of the system: its purpose, its interfaces, and its
+// features with their test health. It holds no paths into the code. The
+// private documents (private/layout.yaml and private/test.yaml) hold where
+// each feature lives in the code and how it is tested; only the owner and
+// the user read them.
+//
+// The owner is the only author of all three. It changes the map through the
+// server, which checks each change and writes the file. It edits the private
+// documents directly; the server reads and checks them.
 package sysmap
 
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"time"
@@ -19,7 +24,7 @@ const (
 	File = "map.yaml"
 )
 
-const version = 1
+const version = 2
 
 type Map struct {
 	Version  int       `yaml:"version" json:"version"`
@@ -32,8 +37,6 @@ type System struct {
 	Summary          string         `yaml:"summary,omitempty" json:"summary,omitempty"`
 	Responsibilities []string       `yaml:"responsibilities,omitempty" json:"responsibilities,omitempty"`
 	Interfaces       Interfaces     `yaml:"interfaces,omitempty" json:"interfaces"`
-	Layout           []LayoutEntry  `yaml:"layout,omitempty" json:"layout,omitempty"`
-	TestCommand      string         `yaml:"test_command,omitempty" json:"test_command,omitempty"`
 	DescribedState   DescribedState `yaml:"described_state,omitempty" json:"described_state"`
 }
 
@@ -48,11 +51,6 @@ type Interface struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
-type LayoutEntry struct {
-	Path        string `yaml:"path" json:"path"`
-	Description string `yaml:"description" json:"description"`
-}
-
 // DescribedState is the commit whose code the map describes.
 type DescribedState struct {
 	Commit  string    `yaml:"commit,omitempty" json:"commit,omitempty"`
@@ -64,7 +62,6 @@ type Feature struct {
 	Name        string   `yaml:"name" json:"name"`
 	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
 	Interfaces  []string `yaml:"interfaces,omitempty" json:"interfaces,omitempty"`
-	Code        []string `yaml:"code,omitempty" json:"code,omitempty"`
 	Tests       Tests    `yaml:"tests,omitempty" json:"tests"`
 	// Health is computed by the server. The value in the file is the health
 	// at the last write.
@@ -74,19 +71,20 @@ type Feature struct {
 	Related  []string `yaml:"related,omitempty" json:"related,omitempty"`
 }
 
+// Tests holds the last recorded results of a feature's tests. The test plan
+// itself is private.
 type Tests struct {
-	Refs   []string  `yaml:"refs,omitempty" json:"refs,omitempty"`
 	Passed int       `yaml:"passed,omitempty" json:"passed"`
 	Failed int       `yaml:"failed,omitempty" json:"failed"`
 	Ran    time.Time `yaml:"ran,omitempty" json:"ran,omitzero"`
-	// ContentHash is the hash of the feature's code and test paths when the
+	// ContentHash is the hash of the feature's code and test files when the
 	// results were recorded.
 	ContentHash string `yaml:"content_hash,omitempty" json:"content_hash,omitempty"`
 }
 
 // New returns the map of a system that its owner has not described yet.
-func New(name, testCommand string) *Map {
-	return &Map{Version: version, System: System{Name: name, TestCommand: testCommand}}
+func New(name string) *Map {
+	return &Map{Version: version, System: System{Name: name}}
 }
 
 // Clone returns a deep copy of m.
@@ -95,12 +93,9 @@ func (m *Map) Clone() *Map {
 	c.System.Responsibilities = slices.Clone(m.System.Responsibilities)
 	c.System.Interfaces.Provides = slices.Clone(m.System.Interfaces.Provides)
 	c.System.Interfaces.Consumes = slices.Clone(m.System.Interfaces.Consumes)
-	c.System.Layout = slices.Clone(m.System.Layout)
 	c.Features = make([]Feature, len(m.Features))
 	for i, f := range m.Features {
 		f.Interfaces = slices.Clone(f.Interfaces)
-		f.Code = slices.Clone(f.Code)
-		f.Tests.Refs = slices.Clone(f.Tests.Refs)
 		f.Findings = slices.Clone(f.Findings)
 		f.Plans = slices.Clone(f.Plans)
 		f.Related = slices.Clone(f.Related)
@@ -109,14 +104,21 @@ func (m *Map) Clone() *Map {
 	return &c
 }
 
+// IDs returns the set of feature ids.
+func (m *Map) IDs() map[string]bool {
+	out := map[string]bool{}
+	for _, f := range m.Features {
+		out[f.ID] = true
+	}
+	return out
+}
+
 // SystemPatch changes the fields of System that are not nil.
 type SystemPatch struct {
-	Summary          *string        `json:"summary,omitempty"`
-	Responsibilities *[]string      `json:"responsibilities,omitempty"`
-	Provides         *[]Interface   `json:"provides,omitempty"`
-	Consumes         *[]Interface   `json:"consumes,omitempty"`
-	Layout           *[]LayoutEntry `json:"layout,omitempty"`
-	TestCommand      *string        `json:"test_command,omitempty"`
+	Summary          *string      `json:"summary,omitempty"`
+	Responsibilities *[]string    `json:"responsibilities,omitempty"`
+	Provides         *[]Interface `json:"provides,omitempty"`
+	Consumes         *[]Interface `json:"consumes,omitempty"`
 }
 
 func (m *Map) ApplySystem(p SystemPatch) {
@@ -133,12 +135,6 @@ func (m *Map) ApplySystem(p SystemPatch) {
 	if p.Consumes != nil {
 		s.Interfaces.Consumes = *p.Consumes
 	}
-	if p.Layout != nil {
-		s.Layout = *p.Layout
-	}
-	if p.TestCommand != nil {
-		s.TestCommand = *p.TestCommand
-	}
 }
 
 // FeatureInput is a feature as its owner describes it. Test results are
@@ -148,8 +144,6 @@ type FeatureInput struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Interfaces  []string `json:"interfaces,omitempty"`
-	Code        []string `json:"code,omitempty"`
-	TestRefs    []string `json:"test_refs,omitempty"`
 	Findings    []string `json:"findings,omitempty"`
 	Plans       []string `json:"plans,omitempty"`
 	Related     []string `json:"related,omitempty"`
@@ -159,17 +153,14 @@ type FeatureInput struct {
 // test results.
 func (m *Map) Upsert(in FeatureInput) {
 	f := Feature{
-		ID: in.ID, Name: in.Name, Description: in.Description,
-		Interfaces: in.Interfaces, Code: in.Code, Findings: in.Findings,
-		Plans: in.Plans, Related: in.Related,
+		ID: in.ID, Name: in.Name, Description: in.Description, Interfaces: in.Interfaces,
+		Findings: in.Findings, Plans: in.Plans, Related: in.Related,
 	}
 	if i := m.index(in.ID); i >= 0 {
 		f.Tests = m.Features[i].Tests
-		f.Tests.Refs = in.TestRefs
 		m.Features[i] = f
 		return
 	}
-	f.Tests.Refs = in.TestRefs
 	m.Features = append(m.Features, f)
 }
 
@@ -193,8 +184,8 @@ type TestResult struct {
 }
 
 // RecordTests stores results with the time and the content hash of each
-// feature's paths.
-func (m *Map) RecordTests(results []TestResult, now time.Time, hash func(paths []string) (string, error)) error {
+// feature's files. hash returns that hash for a feature id.
+func (m *Map) RecordTests(results []TestResult, now time.Time, hash func(id string) (string, error)) error {
 	for _, r := range results {
 		i := m.index(r.Feature)
 		if i < 0 {
@@ -203,12 +194,12 @@ func (m *Map) RecordTests(results []TestResult, now time.Time, hash func(paths [
 		if r.Passed < 0 || r.Failed < 0 {
 			return fmt.Errorf("feature %q: test counts cannot be negative", r.Feature)
 		}
-		f := &m.Features[i]
-		h, err := hash(f.Paths())
+		h, err := hash(r.Feature)
 		if err != nil {
 			return err
 		}
-		f.Tests.Passed, f.Tests.Failed, f.Tests.Ran, f.Tests.ContentHash = r.Passed, r.Failed, now.UTC(), h
+		f := &m.Features[i]
+		f.Tests = Tests{Passed: r.Passed, Failed: r.Failed, Ran: now.UTC(), ContentHash: h}
 	}
 	return nil
 }
@@ -216,11 +207,6 @@ func (m *Map) RecordTests(results []TestResult, now time.Time, hash func(paths [
 // MarkCurrent records commit as the code that the map describes.
 func (m *Map) MarkCurrent(commit string, now time.Time) {
 	m.System.DescribedState = DescribedState{Commit: commit, Updated: now.UTC()}
-}
-
-// Paths returns the code and test paths of the feature.
-func (f Feature) Paths() []string {
-	return append(slices.Clone(f.Code), f.Tests.Refs...)
 }
 
 func (m *Map) index(id string) int {
@@ -232,22 +218,14 @@ var (
 	validKind = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
-// Validate checks the rules S1 to S4 of the spec. exists reports whether a
-// path relative to the scope exists.
-func Validate(m *Map, exists func(rel string) bool) error {
+// Validate checks the rules S1 to S3 and S7 of the spec.
+func Validate(m *Map) error {
 	var errs []error
 	fail := func(rule, format string, args ...any) {
 		errs = append(errs, fmt.Errorf(rule+": "+format, args...))
 	}
 	if m.Version != version {
 		fail("version", "version must be %d", version)
-	}
-	checkPath := func(where, p string) {
-		if !filepath.IsLocal(filepath.Clean(p)) {
-			fail("S4", "%s: path %q must be relative to the scope and stay inside it", where, p)
-		} else if !exists(filepath.Clean(p)) {
-			fail("S4", "%s: path %q does not exist in the scope", where, p)
-		}
 	}
 
 	declared := map[string]bool{}
@@ -261,9 +239,6 @@ func Validate(m *Map, exists func(rel string) bool) error {
 			}
 			declared[in.Name] = true
 		}
-	}
-	for _, l := range m.System.Layout {
-		checkPath("layout", l.Path)
 	}
 
 	ids := map[string]bool{}
@@ -292,12 +267,6 @@ func Validate(m *Map, exists func(rel string) bool) error {
 				fail("S3", "feature %q is related to %q, which is not a feature of this system", f.ID, r)
 			}
 		}
-		for _, p := range f.Code {
-			checkPath(fmt.Sprintf("feature %q code", f.ID), p)
-		}
-		for _, p := range f.Tests.Refs {
-			checkPath(fmt.Sprintf("feature %q tests", f.ID), p)
-		}
 	}
 	return errors.Join(errs...)
 }
@@ -310,11 +279,12 @@ const (
 	Passing  = "passing"
 )
 
-// Health computes the health of f from its test results and the current hash
-// of its paths (rules S8 to S12).
-func Health(f Feature, currentHash string) string {
+// Health computes the health of f (rules S8 to S12). tested reports whether
+// the test plan lists tests for the feature, and currentHash is the current
+// hash of its code and test files.
+func Health(f Feature, tested bool, currentHash string) string {
 	switch {
-	case len(f.Tests.Refs) == 0 || f.Tests.Ran.IsZero():
+	case !tested || f.Tests.Ran.IsZero():
 		return Untested
 	case f.Tests.ContentHash != currentHash:
 		return Stale

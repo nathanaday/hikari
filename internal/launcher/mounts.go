@@ -40,20 +40,19 @@ func csvField(f string) string {
 }
 
 // SystemMounts returns the mounts of an owner's container (rules M1 to M5):
-// the scope read-write, each read path and the map directory read-only, a
-// volume for each container-only path, and an empty directory over .git when
-// the scope is the whole repo.
+// the scope read-write, each read path and the map directory read-only, the
+// private documents read-write, a volume for each container-only path, and
+// an empty directory over .git when the scope is the whole repo.
 func SystemMounts(repoPath, scope string, read, containerOnly []string, emptyDir string) []Mount {
 	scopeTarget := api.WorkDir(scope)
 	mounts := []Mount{{Source: filepath.Join(repoPath, scope), Target: scopeTarget}}
 	for _, p := range read {
 		mounts = append(mounts, Mount{Source: filepath.Join(repoPath, p), Target: path.Join(api.WorkspaceRoot, filepath.ToSlash(p)), ReadOnly: true})
 	}
-	mounts = append(mounts, Mount{
-		Source:   filepath.Join(repoPath, scope, ".hikari"),
-		Target:   path.Join(scopeTarget, ".hikari"),
-		ReadOnly: true,
-	})
+	mounts = append(mounts,
+		Mount{Source: filepath.Join(repoPath, scope, ".hikari"), Target: path.Join(scopeTarget, ".hikari"), ReadOnly: true},
+		Mount{Source: filepath.Join(repoPath, scope, ".hikari", "private"), Target: path.Join(scopeTarget, ".hikari", "private")},
+	)
 	for _, p := range containerOnly {
 		mounts = append(mounts, Mount{
 			Source: VolumeName(repoPath, scope, p),

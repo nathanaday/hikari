@@ -20,18 +20,18 @@ func WorkDir(scope string) string {
 
 // SelfSystem describes the system that an agent owns.
 type SelfSystem struct {
-	Repo        string   `json:"repo"`
-	Branch      string   `json:"branch"`
-	Scope       string   `json:"scope"`
-	Read        []string `json:"read,omitempty"`
-	WorkDir     string   `json:"work_dir"`
-	TestCommand string   `json:"test_command,omitempty"`
+	Repo    string   `json:"repo"`
+	Branch  string   `json:"branch"`
+	Scope   string   `json:"scope"`
+	Read    []string `json:"read,omitempty"`
+	WorkDir string   `json:"work_dir"`
 }
 
 // TurnContext tells the driver what changed before an agent's next turn.
 type TurnContext struct {
 	MapState          string   `json:"map_state,omitempty"`
 	Changed           []string `json:"changed,omitempty"`
+	PrivateErrors     []string `json:"private_errors,omitempty"`
 	VocabularyChanged []string `json:"vocabulary_changed,omitempty"`
 }
 
@@ -43,23 +43,26 @@ type SystemSummary struct {
 	Features map[string]int `yaml:"features" json:"features"`
 }
 
-// OrchestratorSystem is a system as an orchestrator sees it.
+// OrchestratorSystem is a system as an orchestrator sees it: the public map
+// with interface flags and providers.
 type OrchestratorSystem struct {
-	sysmap.Redacted `yaml:",inline"`
-	Flags           []vocab.Flag `yaml:"flags,omitempty" json:"flags"`
+	sysmap.View `yaml:",inline"`
+	Flags       []vocab.Flag `yaml:"flags,omitempty" json:"flags"`
 	// Providers maps each interface the system consumes to the visible
 	// systems that provide it.
 	Providers map[string][]string `yaml:"providers,omitempty" json:"providers"`
 }
 
 type FeatureHit struct {
-	System  string                 `yaml:"system" json:"system"`
-	Feature sysmap.RedactedFeature `yaml:"feature" json:"feature"`
+	System  string         `yaml:"system" json:"system"`
+	Feature sysmap.Feature `yaml:"feature" json:"feature"`
 }
 
-// SystemView is the full view of a system for the UI.
+// SystemView is everything about a system, for the UI: the owner's view and
+// the private documents.
 type SystemView struct {
-	sysmap.View
+	sysmap.OwnerView
+	Private   sysmap.Private      `json:"private"`
 	Owner     string              `json:"owner"`
 	Repo      string              `json:"repo"`
 	Scope     string              `json:"scope"`
@@ -85,8 +88,8 @@ type VocabularyChange struct {
 	Name      string           `json:"name,omitempty"`
 }
 
-func (c *Client) MyMap(ctx context.Context) (sysmap.View, error) {
-	var v sysmap.View
+func (c *Client) MyMap(ctx context.Context) (sysmap.OwnerView, error) {
+	var v sysmap.OwnerView
 	err := c.do(ctx, http.MethodGet, "/api/node/map", nil, &v)
 	return v, err
 }

@@ -20,16 +20,11 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Keep your system map true. It is how your orchestrator learns what your system does; the orchestrator never reads your code. The map tools are mcp__hikari__get_my_system, set_system_info, upsert_features, remove_feature, record_test_results, and mark_map_current.
-- Do not try to change the .hikari directory in your scope. It is read-only to you; the map tools change it.
+	b.WriteString(`- Three documents describe your system: the public map in .hikari/map.yaml, which you change only through the map tools, and your private .hikari/private/layout.yaml and .hikari/private/test.yaml, which you edit directly. Your orchestrator plans from the map and never reads your code. Before you build or update the documents, load the hikari-system skill: it explains each document and how to keep it true.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
-	test := "the test command in your map"
-	if s.TestCommand != "" {
-		test = fmt.Sprintf("`%s`", s.TestCommand)
-	}
-	fmt.Fprintf(&b, "- After a change, run the tests of the affected features with %s, record the results, and update the affected features. Then call mark_map_current.\n", test)
+	b.WriteString("- After a change, run the tests of the affected features as your test plan says, record the results, update the documents, and call mark_map_current.\n")
 	b.WriteString("- If a task needs a change outside your system, tell your orchestrator what you need and why. Do not work around it.\n")
 	return b.String()
 }
@@ -66,15 +61,15 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 			fmt.Fprintf(&b, "- %s\n", p)
 		}
 		b.WriteString(`
-Update the system info and the features that these changes affect. Run the tests of the affected features and record the results. Then call mark_map_current.
+Load the hikari-system skill. Update the map and the private documents where these changes affect them. Run the tests of the affected features and record the results. Then call mark_map_current.
 `)
 	} else {
-		b.WriteString(`Your system map is not built yet. Build it now:
+		b.WriteString(`Your system documents are not built yet. Load the hikari-system skill, then build them now:
 
 1. Read the code in your scope to learn what the system does. Read what you need, not every file.
-2. Call set_system_info with a summary, the responsibilities, the interfaces that the system provides and consumes, a layout of its main parts, and the test command.
-3. Define 5 to 30 features with upsert_features, in one or a few calls. A feature is something that a user or another system relies on. List its code and test paths, relative to your scope.
-4. Run the tests, and call record_test_results for each feature that has tests.
+2. Describe the system and its features in the public map with set_system_info and upsert_features.
+3. Write .hikari/private/layout.yaml and .hikari/private/test.yaml.
+4. Run the tests as your test plan says, and call record_test_results for each feature that has tests.
 5. Call mark_map_current.
 `)
 	}
@@ -91,7 +86,10 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		case mapStale:
 			notes = append(notes, fmt.Sprintf("Your system map is stale. These paths changed since it was last marked current: %s. Before you end this turn, update the affected entries and call mark_map_current.", strings.Join(tc.Changed, ", ")))
 		case mapUnbuilt:
-			notes = append(notes, "Your system map is not built yet. Before you end this turn, describe your system with the map tools and call mark_map_current.")
+			notes = append(notes, "Your system documents are not built yet. Before you end this turn, load the hikari-system skill, build them, and call mark_map_current.")
+		}
+		if len(tc.PrivateErrors) > 0 {
+			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
 		}
 	}
 	for _, hub := range tc.VocabularyChanged {

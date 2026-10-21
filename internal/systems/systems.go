@@ -207,12 +207,11 @@ func (m *Manager) Self(agent string) (*api.SelfSystem, []string) {
 	}
 	s := m.topo.Agents[agent].System
 	return &api.SelfSystem{
-		Repo:        o.repoName,
-		Branch:      o.branch,
-		Scope:       o.scope,
-		Read:        s.Read,
-		WorkDir:     api.WorkDir(o.scope),
-		TestCommand: o.store.Map().System.TestCommand,
+		Repo:    o.repoName,
+		Branch:  o.branch,
+		Scope:   o.scope,
+		Read:    s.Read,
+		WorkDir: api.WorkDir(o.scope),
 	}, orchestrates
 }
 
@@ -241,19 +240,44 @@ func (m *Manager) changedPaths(o *owner, mp *sysmap.Map) []string {
 	return changed
 }
 
+// view returns the public view of o's map.
 func (m *Manager) view(o *owner) sysmap.View {
-	mp := o.store.Map()
-	hash := func(p []string) string { h, _ := o.store.Hash(p); return h }
-	return sysmap.NewView(mp, m.changedPaths(o, mp), o.store.Error(), hash)
+	return m.ownerView(o).View
 }
 
-// OwnView returns the full view of agent's map.
-func (m *Manager) OwnView(agent string) (sysmap.View, error) {
+// ownerView returns what the owner sees of its map.
+func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
+	mp := o.store.Map()
+	priv, _ := o.store.Private()
+	hash := func(id string) string {
+		h, _ := sysmap.ContentHash(o.store.Root(), priv.Paths(id))
+		return h
+	}
+	changed := m.changedPaths(o, mp)
+	return sysmap.OwnerView{
+		View:          sysmap.NewView(mp, priv, changed, hash),
+		Changed:       changed,
+		Error:         o.store.Error(),
+		PrivateErrors: o.store.PrivateErrors(mp),
+	}
+}
+
+// OwnView returns what agent sees of its own map.
+func (m *Manager) OwnView(agent string) (sysmap.OwnerView, error) {
 	o, err := m.owner(agent)
 	if err != nil {
-		return sysmap.View{}, err
+		return sysmap.OwnerView{}, err
 	}
-	return m.view(o), nil
+	return m.ownerView(o), nil
+}
+
+// checkPrivate returns an error that lists the problems of o's private
+// documents, if there are any.
+func checkPrivate(o *owner, mp *sysmap.Map) error {
+	if errs := o.store.PrivateErrors(mp); len(errs) > 0 {
+		return fmt.Errorf("fix your private documents in %s/%s first:\n%s", sysmap.Dir, sysmap.PrivateDir, strings.Join(errs, "\n"))
+	}
+	return nil
 }
 
 func (m *Manager) update(agent string, fn func(o *owner, mp *sysmap.Map) error) error {
@@ -290,9 +314,23 @@ func (m *Manager) RemoveFeature(agent, id string) error {
 	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { return mp.Remove(id) })
 }
 
+// RecordTests stores test results. The private documents must be valid, and
+// the test plan must list tests for each feature.
 func (m *Manager) RecordTests(agent string, results []sysmap.TestResult) error {
 	return m.update(agent, func(o *owner, mp *sysmap.Map) error {
-		return mp.RecordTests(results, m.now(), o.store.Hash)
+		if err := checkPrivate(o, mp); err != nil {
+			return err
+		}
+		priv, err := o.store.Private()
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			if !priv.Tested(r.Feature) {
+				return fmt.Errorf("%s/%s/%s lists no tests for feature %q; add them before you record results", sysmap.Dir, sysmap.PrivateDir, sysmap.TestFile, r.Feature)
+			}
+		}
+		return mp.RecordTests(results, m.now(), o.store.FeatureHash)
 	})
 }
 
@@ -301,6 +339,9 @@ func (m *Manager) RecordTests(agent string, results []sysmap.TestResult) error {
 func (m *Manager) MarkCurrent(agent string) (string, error) {
 	o, err := m.owner(agent)
 	if err != nil {
+		return "", err
+	}
+	if err := checkPrivate(o, o.store.Map()); err != nil {
 		return "", err
 	}
 	if _, err := o.repo.Commit(o.branch, o.scope, agent, agent+": changes described by the system map"); err != nil {
@@ -336,8 +377,8 @@ func (m *Manager) Commit(agent, message string) (string, error) {
 func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
-		v := m.view(o)
-		tc.MapState, tc.Changed = v.State, v.Changed
+		v := m.ownerView(o)
+		tc.MapState, tc.Changed, tc.PrivateErrors = v.State, v.Changed, v.PrivateErrors
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -399,11 +440,11 @@ func (m *Manager) GetSystem(agent, name string) (api.OrchestratorSystem, error) 
 	names, _ := m.visible(agent)
 	known := m.vocabularyNames(m.topo.OrchestratedHubs(agent))
 	providers := m.providers(names)
-	r := sysmap.Redact(m.view(o))
+	v := m.view(o)
 	return api.OrchestratorSystem{
-		Redacted:  r,
-		Flags:     vocab.Check(interfaceNames(r.System.Interfaces.Provides), interfaceNames(r.System.Interfaces.Consumes), known, keys(providers)),
-		Providers: providersOf(r.System.Interfaces.Consumes, providers, name),
+		View:      v,
+		Flags:     vocab.Check(interfaceNames(v.System.Interfaces.Provides), interfaceNames(v.System.Interfaces.Consumes), known, keys(providers)),
+		Providers: providersOf(v.System.Interfaces.Consumes, providers, name),
 	}, nil
 }
 
@@ -416,7 +457,7 @@ func (m *Manager) SearchFeatures(agent, query string) ([]api.FeatureHit, error) 
 	q := strings.ToLower(strings.TrimSpace(query))
 	out := []api.FeatureHit{}
 	for _, name := range names {
-		for _, f := range sysmap.Redact(m.view(m.owners[name])).Features {
+		for _, f := range m.view(m.owners[name]).Features {
 			text := strings.ToLower(strings.Join(append([]string{f.ID, f.Name, f.Description}, f.Interfaces...), "\n"))
 			if strings.Contains(text, q) {
 				out = append(out, api.FeatureHit{System: name, Feature: f})
@@ -432,7 +473,7 @@ func (m *Manager) GetFeature(agent, system, id string) (api.FeatureHit, error) {
 	if err != nil {
 		return api.FeatureHit{}, err
 	}
-	for _, f := range sysmap.Redact(m.view(o)).Features {
+	for _, f := range m.view(o).Features {
 		if f.ID == id {
 			return api.FeatureHit{System: system, Feature: f}, nil
 		}
@@ -500,7 +541,8 @@ func (m *Manager) Systems() []api.SystemView {
 // the interface flags seen from the hubs its owner is a member of.
 func (m *Manager) SystemView(name string) api.SystemView {
 	o := m.owners[name]
-	v := m.view(o)
+	v := m.ownerView(o)
+	priv, _ := o.store.Private()
 	var hubs, peers []string
 	for _, hub := range m.topo.HubNames() {
 		if slices.Contains(m.topo.Hubs[hub].Members, name) {
@@ -514,7 +556,8 @@ func (m *Manager) SystemView(name string) api.SystemView {
 	}
 	providers := m.providers(peers)
 	return api.SystemView{
-		View:      v,
+		OwnerView: v,
+		Private:   priv,
 		Owner:     name,
 		Repo:      o.repoName,
 		Scope:     o.scope,

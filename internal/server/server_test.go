@@ -351,13 +351,13 @@ hubs:
 	if err != nil || self.System == nil || self.System.WorkDir != "/workspace/orders" {
 		t.Fatalf("owner self = %+v, %v", self.System, err)
 	}
-	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "create-order", Name: "Create", Code: []string{"create.py"}}}); err != nil {
+	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "create-order", Name: "Create"}}); err != nil {
 		t.Fatal(err)
 	}
 	if e := <-events; e.Type != "system" || e.System.Owner != "orders" || len(e.System.Features) != 1 {
 		t.Fatalf("system event = %+v", e)
 	}
-	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "bad", Name: "Bad", Code: []string{"missing.py"}}}); err == nil || !strings.Contains(err.Error(), "S4") {
+	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "Bad ID", Name: "Bad"}}); err == nil || !strings.Contains(err.Error(), "S1") {
 		t.Errorf("invalid feature error = %v", err)
 	}
 

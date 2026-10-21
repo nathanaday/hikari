@@ -1,8 +1,8 @@
-import { ChevronRight, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Lock, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
 import type { State } from '@/lib/store'
-import type { Feature, Interface, SystemView } from '@/lib/types'
+import type { Feature, Interface, Private, SystemView } from '@/lib/types'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -13,12 +13,26 @@ function ago(iso?: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, private: isPrivate }: { title: string; children: React.ReactNode; private?: boolean }) {
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
+      <h2 className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {title}
+        {isPrivate && <PrivateLabel />}
+      </h2>
       {children}
     </section>
+  )
+}
+
+// PrivateLabel marks what only the owner and the user see. Other agents see
+// the public map alone.
+function PrivateLabel() {
+  return (
+    <span className="inline-flex items-center gap-1 font-normal tracking-normal normal-case" title="Only the owner and you see this. Other agents see the public map.">
+      <Lock className="size-3" />
+      private
+    </span>
   )
 }
 
@@ -71,10 +85,14 @@ function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: strin
   )
 }
 
-function FeatureRow({ f }: { f: Feature }) {
-  const tests = f.tests.refs?.length
-    ? `${f.tests.passed} passed · ${f.tests.failed} failed${f.tests.ran ? ` · ${ago(f.tests.ran)}` : ''}`
-    : 'no tests'
+function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
+  const layout = priv.layout.features?.[f.id]
+  const plan = priv.tests.features?.[f.id]
+  const tests = f.tests.ran
+    ? `${f.tests.passed} passed · ${f.tests.failed} failed · ${ago(f.tests.ran)}`
+    : plan?.tests?.length
+      ? 'no results yet'
+      : 'no tests'
   return (
     <details id={`feature-${f.id}`} className="group border-b last:border-b-0" data-testid="feature">
       <summary className="flex cursor-pointer list-none items-center gap-3 py-2.5 hover:bg-neutral-50 [&::-webkit-details-marker]:hidden">
@@ -92,8 +110,6 @@ function FeatureRow({ f }: { f: Feature }) {
         {f.description && <p>{f.description}</p>}
         <p className="text-xs text-muted-foreground sm:hidden">{tests}</p>
         <Paths label="interfaces" paths={f.interfaces} />
-        <Paths label="code" paths={f.code} />
-        <Paths label="tests" paths={f.tests.refs} />
         <List label="Findings" items={f.findings} />
         <List label="Plans" items={f.plans} />
         {f.related?.length ? (
@@ -106,6 +122,28 @@ function FeatureRow({ f }: { f: Feature }) {
             ))}
           </div>
         ) : null}
+        {(layout || plan) && (
+          <div className="mt-1 space-y-1.5 border-l-2 pl-3" data-testid="feature-private">
+            <div className="text-xs text-muted-foreground">
+              <PrivateLabel />
+            </div>
+            <Paths label="code" paths={layout?.code ?? undefined} />
+            {layout?.notes && <p className="text-xs text-muted-foreground">{layout.notes}</p>}
+            {plan?.covers && <p className="text-sm">Tests cover: {plan.covers}</p>}
+            {plan?.tests?.map((t, i) => (
+              <div key={i} className="flex flex-wrap items-baseline gap-1.5">
+                <span className="text-xs text-muted-foreground">{t.suite}</span>
+                {t.files?.map((p) => (
+                  <code key={p} className="rounded bg-neutral-100 px-1 py-0.5 text-xs">
+                    {p}
+                  </code>
+                ))}
+                {t.command && <code className="text-xs text-muted-foreground">{t.command}</code>}
+              </div>
+            ))}
+            <List label="Not tested" items={plan?.gaps} />
+          </div>
+        )}
       </div>
     </details>
   )
@@ -127,6 +165,9 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
   const providers = v.providers ?? {}
   const flagsFor = (name: string) => flags.filter((f) => f.interface === name).map((f) => f.problem)
   const s = v.system
+  const priv = v.private
+  const parts = priv.layout.parts ?? []
+  const suites = Object.entries(priv.tests.suites ?? {})
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="system-detail">
@@ -136,6 +177,16 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
             The map file is invalid, so this view shows the last valid map: {v.error}
           </p>
         )}
+        {v.private_errors?.length ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="private-errors">
+            <p className="font-medium">The owner's private documents have problems:</p>
+            <ul className="ml-4 list-disc">
+              {v.private_errors.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {v.state === 'stale' && (
           <p className="rounded-md border px-3 py-2 text-sm" data-testid="changed">
             <span className="font-medium">Changed since the map was marked current:</span>{' '}
@@ -195,17 +246,17 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
               {v.features.length ? (
                 <div className="border-t">
                   {v.features.map((f) => (
-                    <FeatureRow key={f.id} f={f} />
+                    <FeatureRow key={f.id} f={f} priv={priv} />
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No features yet.</p>
               )}
             </Section>
-            {s.layout?.length ? (
-              <Section title="Layout">
+            {parts.length > 0 && (
+              <Section title="Layout" private>
                 <ul className="space-y-1 text-sm">
-                  {s.layout.map((l) => (
+                  {parts.map((l) => (
                     <li key={l.path} className="flex gap-3">
                       <code className="shrink-0 text-xs leading-5">{l.path}</code>
                       <span className="text-muted-foreground">{l.description}</span>
@@ -213,10 +264,18 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
                   ))}
                 </ul>
               </Section>
-            ) : null}
-            {s.test_command && (
-              <Section title="Tests">
-                <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">{s.test_command}</code>
+            )}
+            {suites.length > 0 && (
+              <Section title="Test suites" private>
+                <ul className="space-y-1.5 text-sm">
+                  {suites.map(([name, suite]) => (
+                    <li key={name}>
+                      <span className="font-medium">{name}</span>{' '}
+                      <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">{suite.command}</code>
+                      {suite.description && <p className="text-muted-foreground">{suite.description}</p>}
+                    </li>
+                  ))}
+                </ul>
               </Section>
             )}
           </>

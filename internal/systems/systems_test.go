@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -96,13 +97,24 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Summary:  ptr("Takes orders."),
 		Provides: ptr([]sysmap.Interface{{Name: "POST /orders", Kind: "http", Description: "Creates an order."}}),
 		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
-		Layout:   ptr([]sysmap.LayoutEntry{{Path: "create.py", Description: "Order creation."}}),
 	}))
 	must(t, f.m.UpsertFeatures("orders", []sysmap.FeatureInput{{
 		ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
 		Interfaces: []string{"POST /orders", "inventory.reserve"},
-		Code:       []string{"create.py"}, TestRefs: []string{"tests/test_create.py"},
 	}}))
+	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", `version: 1
+parts: [{path: create.py, description: Order creation.}]
+features:
+  create-order: {code: [create.py]}
+`)
+	write(t, f.repo, "services/orders/.hikari/private/test.yaml", `version: 1
+suites:
+  unit: {command: python3 -m unittest}
+features:
+  create-order:
+    covers: Orders are stored.
+    tests: [{suite: unit, files: [tests/test_create.py]}]
+`)
 }
 
 func must(t *testing.T, err error) {
@@ -123,8 +135,11 @@ func TestNewPreparesReposAndMaps(t *testing.T) {
 		}
 	}
 	v, err := f.m.OwnView("orders")
-	if err != nil || v.State != sysmap.Unbuilt || v.System.TestCommand != "python3 -m unittest" {
+	if err != nil || v.State != sysmap.Unbuilt || len(v.PrivateErrors) != 0 {
 		t.Errorf("new map: %+v, %v", v, err)
+	}
+	if p := f.m.SystemView("orders").Private; p.Tests.Suites["all"].Command != "python3 -m unittest" {
+		t.Errorf("the test plan must start with the topology's test command: %+v", p.Tests)
 	}
 }
 
@@ -158,6 +173,31 @@ func TestNewRefusesUncommittedChanges(t *testing.T) {
 	topo, _ := topology.Parse([]byte(testTopology), f.dir)
 	if _, err := New(topo); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
 		t.Errorf("G1: New = %v", err)
+	}
+}
+
+func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	must(t, f.m.UpsertFeatures("orders", []sysmap.FeatureInput{{ID: "untested-thing", Name: "Untested"}}))
+	if err := f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "untested-thing", Passed: 1}}); err == nil || !strings.Contains(err.Error(), "lists no tests for feature") {
+		t.Errorf("results for a feature outside the plan: %v", err)
+	}
+	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [create.py]}\n")
+	if _, err := f.m.MarkCurrent("orders"); err == nil || !strings.Contains(err.Error(), "P2") {
+		t.Errorf("mark current with invalid documents: %v", err)
+	}
+	if err := f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 1}}); err == nil || !strings.Contains(err.Error(), "P2") {
+		t.Errorf("record with invalid documents: %v", err)
+	}
+	if v, _ := f.m.OwnView("orders"); len(v.PrivateErrors) != 1 {
+		t.Errorf("the owner view must list the problem: %v", v.PrivateErrors)
+	}
+	if tc := f.m.TurnContext("orders"); len(tc.PrivateErrors) != 1 {
+		t.Errorf("the turn context must list the problem: %+v", tc)
+	}
+	if got := git(t, f.repo, "log", "-1", "--format=%s"); got != "initial" {
+		t.Errorf("a refused mark_map_current must not commit; HEAD is %q", got)
 	}
 }
 
@@ -279,6 +319,12 @@ func TestOrchestratorView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	data, _ := json.Marshal(s)
+	for _, leak := range []string{"create.py", "tests/", "python3", "private"} {
+		if strings.Contains(string(data), leak) {
+			t.Errorf("the orchestrator view contains %q:\n%s", leak, data)
+		}
+	}
 	if !slices.Equal(s.Providers["inventory.reserve"], []string{"inventory"}) {
 		t.Errorf("providers = %v", s.Providers)
 	}
@@ -356,7 +402,7 @@ func TestChangesNotifyDependentSystems(t *testing.T) {
 func TestSelf(t *testing.T) {
 	f := newFixture(t)
 	sys, orchestrates := f.m.Self("orders")
-	if sys == nil || sys.WorkDir != "/workspace/services/orders" || sys.TestCommand != "python3 -m unittest" || len(orchestrates) != 0 {
+	if sys == nil || sys.WorkDir != "/workspace/services/orders" || len(orchestrates) != 0 {
 		t.Errorf("Self(orders) = %+v, %v", sys, orchestrates)
 	}
 	if sys, orchestrates := f.m.Self("eng-lead"); sys != nil || !slices.Equal(orchestrates, []string{"eng"}) {

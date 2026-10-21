@@ -36,18 +36,11 @@ type interfaceArg struct {
 	Description string `json:"description,omitempty" jsonschema:"what the interface does"`
 }
 
-type layoutArg struct {
-	Path        string `json:"path" jsonschema:"a path relative to your scope"`
-	Description string `json:"description" jsonschema:"what this part of the system holds"`
-}
-
 type systemInfoArgs struct {
 	Summary          *string         `json:"summary,omitempty" jsonschema:"one or two sentences on what the system does"`
 	Responsibilities *[]string       `json:"responsibilities,omitempty" jsonschema:"what the system is responsible for"`
 	Provides         *[]interfaceArg `json:"provides,omitempty" jsonschema:"the interfaces that the system offers to others"`
 	Consumes         *[]interfaceArg `json:"consumes,omitempty" jsonschema:"the interfaces of other systems that this system uses"`
-	Layout           *[]layoutArg    `json:"layout,omitempty" jsonschema:"the main parts of the code"`
-	TestCommand      *string         `json:"test_command,omitempty" jsonschema:"the command that runs the tests, from your scope"`
 }
 
 type featureArgs struct {
@@ -55,8 +48,6 @@ type featureArgs struct {
 	Name        string   `json:"name" jsonschema:"a short name"`
 	Description string   `json:"description,omitempty" jsonschema:"what the feature does for a user or another system"`
 	Interfaces  []string `json:"interfaces,omitempty" jsonschema:"names of interfaces from your provides or consumes that the feature uses"`
-	Code        []string `json:"code,omitempty" jsonschema:"files or directories, relative to your scope, that implement the feature"`
-	TestRefs    []string `json:"test_refs,omitempty" jsonschema:"test files or directories, relative to your scope, that cover the feature"`
 	Findings    []string `json:"findings,omitempty" jsonschema:"known problems"`
 	Plans       []string `json:"plans,omitempty" jsonschema:"planned changes"`
 	Related     []string `json:"related,omitempty" jsonschema:"ids of related features in your system"`
@@ -87,7 +78,7 @@ type commitArgs struct {
 func addOwnerTools(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_my_system",
-		Description: "Read your full system map, with the health of each feature and the state of the map.",
+		Description: "Read your system map as others see it, with the health of each feature, plus what only you see: the state of the map, the paths that changed since it was marked current, and problems in your private documents.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		v, err := c.MyMap(ctx)
 		if err != nil {
@@ -98,21 +89,14 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "set_system_info",
-		Description: "Replace the given fields of your system's description. Fields you leave out stay as they are.",
+		Description: "Replace the given fields of your system's public description. Fields you leave out stay as they are.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a systemInfoArgs) (*mcp.CallToolResult, any, error) {
-		p := sysmap.SystemPatch{Summary: a.Summary, Responsibilities: a.Responsibilities, TestCommand: a.TestCommand}
+		p := sysmap.SystemPatch{Summary: a.Summary, Responsibilities: a.Responsibilities}
 		if a.Provides != nil {
 			p.Provides = ptr(interfaces(*a.Provides))
 		}
 		if a.Consumes != nil {
 			p.Consumes = ptr(interfaces(*a.Consumes))
-		}
-		if a.Layout != nil {
-			layout := make([]sysmap.LayoutEntry, len(*a.Layout))
-			for i, l := range *a.Layout {
-				layout[i] = sysmap.LayoutEntry{Path: l.Path, Description: l.Description}
-			}
-			p.Layout = &layout
 		}
 		if err := c.SetSystemInfo(ctx, p); err != nil {
 			return nil, nil, err
@@ -122,14 +106,14 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "upsert_features",
-		Description: "Add features to your map, or replace the features with these ids. Recorded test results stay. hikari checks the whole batch, so features in one call can refer to each other.",
+		Description: "Add features to your public map, or replace the features with these ids. Recorded test results stay. hikari checks the whole batch, so features in one call can refer to each other. Where a feature lives in the code and how it is tested go in your private documents.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featuresArgs) (*mcp.CallToolResult, any, error) {
 		ins := make([]sysmap.FeatureInput, len(a.Features))
 		ids := make([]string, len(a.Features))
 		for i, f := range a.Features {
 			ins[i] = sysmap.FeatureInput{
 				ID: f.ID, Name: f.Name, Description: f.Description, Interfaces: f.Interfaces,
-				Code: f.Code, TestRefs: f.TestRefs, Findings: f.Findings, Plans: f.Plans, Related: f.Related,
+				Findings: f.Findings, Plans: f.Plans, Related: f.Related,
 			}
 			ids[i] = f.ID
 		}
@@ -151,7 +135,7 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "record_test_results",
-		Description: "Record the results of the tests that you ran, for each feature. hikari stores the time and computes each feature's health.",
+		Description: "Record the results of the tests that you ran, for each feature. The feature's tests must be in your test plan. hikari stores the time and a hash of the feature's code and test files, and computes its health.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a testResultsArgs) (*mcp.CallToolResult, any, error) {
 		results := make([]sysmap.TestResult, len(a.Results))
 		for i, r := range a.Results {
@@ -165,7 +149,7 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "mark_map_current",
-		Description: "Declare that your map describes your code as it is now. hikari commits your pending changes first. Call it after the map is up to date.",
+		Description: "Declare that your map and private documents describe your code as it is now. hikari checks the private documents and commits your pending changes first.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		commit, err := c.MarkMapCurrent(ctx)
 		if err != nil {

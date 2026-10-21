@@ -12,15 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
-
-const header = `# The system map of %s. hikari writes this file for the agent that owns
-# the system; the agent changes it through the map tools.
-`
 
 // Store holds the map of one system and keeps its file up to date.
 type Store struct {
@@ -28,23 +25,26 @@ type Store struct {
 	path string // the map file on the host
 	name string
 
-	mu      sync.Mutex
-	m       *Map
-	modTime time.Time
-	size    int64
-	loadErr string
+	mu          sync.Mutex
+	m           *Map
+	modTime     time.Time
+	size        int64
+	loadErr     string
+	privateSeen string
 }
 
-// Open loads the map of the system name, whose scope is root on the host. If
-// the map file does not exist, Open writes an unbuilt map and reports that
-// it created the file.
+// Open loads the map of the system name, whose scope is root on the host. It
+// writes an unbuilt map and empty private documents for those that do not
+// exist, and reports whether it created the map. testCommand, when set,
+// becomes the first suite of a new test plan.
 func Open(root, name, testCommand string) (*Store, bool, error) {
 	s := &Store{root: root, path: filepath.Join(root, Dir, File), name: name}
+	if err := writePrivateSkeletons(root, testCommand); err != nil {
+		return nil, false, err
+	}
+	s.privateSeen = s.privateStamp()
 	if _, err := os.Stat(s.path); errors.Is(err, fs.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-			return nil, false, err
-		}
-		s.m = New(name, testCommand)
+		s.m = New(name)
 		return s, true, s.save(s.m)
 	}
 	m, err := s.read()
@@ -88,8 +88,10 @@ func (s *Store) Update(fn func(*Map) error) error {
 	if err := s.check(next); err != nil {
 		return err
 	}
+	priv, _ := s.Private()
 	for i := range next.Features {
-		next.Features[i].Health = Health(next.Features[i], s.hashOrEmpty(next.Features[i].Paths()))
+		f := &next.Features[i]
+		f.Health = Health(*f, priv.Tested(f.ID), s.hashOrEmpty(priv.Paths(f.ID)))
 	}
 	if err := s.save(next); err != nil {
 		return err
@@ -98,12 +100,17 @@ func (s *Store) Update(fn func(*Map) error) error {
 	return nil
 }
 
-// Reload reads the file again if it changed on disk since the last read or
-// write, and reports whether it did. If the file is invalid, the store keeps
-// the last valid map and records the error.
+// Reload reads the map again if it changed on disk since the last read or
+// write, and reports whether the map or a private document changed. If the
+// map file is invalid, the store keeps the last valid map and records the
+// error.
 func (s *Store) Reload() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	privateChanged := false
+	if stamp := s.privateStamp(); stamp != s.privateSeen {
+		s.privateSeen, privateChanged = stamp, true
+	}
 	info, err := os.Stat(s.path)
 	if err != nil {
 		msg := fmt.Sprintf("the map file is missing: %v", err)
@@ -112,7 +119,7 @@ func (s *Store) Reload() bool {
 		return changed
 	}
 	if info.ModTime().Equal(s.modTime) && info.Size() == s.size {
-		return false
+		return privateChanged
 	}
 	m, err := s.read()
 	if err != nil {
@@ -140,9 +147,48 @@ func (s *Store) Watch(ctx context.Context, interval time.Duration, changed func(
 	}
 }
 
-// Hash returns the content hash of paths relative to the scope.
-func (s *Store) Hash(paths []string) (string, error) {
-	return ContentHash(s.root, paths)
+// Private reads the private documents.
+func (s *Store) Private() (Private, error) {
+	return LoadPrivate(s.root)
+}
+
+// PrivateErrors returns the problems of the private documents, checked
+// against the features of m.
+func (s *Store) PrivateErrors(m *Map) []string {
+	p, err := s.Private()
+	if err == nil {
+		err = p.Validate(m.IDs(), s.exists)
+	}
+	if err == nil {
+		return nil
+	}
+	return strings.Split(err.Error(), "\n")
+}
+
+// FeatureHash returns the current content hash of a feature's files, as the
+// private documents list them.
+func (s *Store) FeatureHash(id string) (string, error) {
+	p, err := s.Private()
+	if err != nil {
+		return "", err
+	}
+	return ContentHash(s.root, p.Paths(id))
+}
+
+func (s *Store) exists(rel string) bool {
+	_, err := os.Stat(filepath.Join(s.root, rel))
+	return err == nil
+}
+
+// privateStamp identifies the current version of the private documents.
+func (s *Store) privateStamp() string {
+	var b strings.Builder
+	for _, file := range []string{LayoutFile, TestFile} {
+		if info, err := os.Stat(privatePath(s.root, file)); err == nil {
+			fmt.Fprintf(&b, "%s:%d:%d;", file, info.ModTime().UnixNano(), info.Size())
+		}
+	}
+	return b.String()
 }
 
 func (s *Store) hashOrEmpty(paths []string) string {
@@ -154,10 +200,7 @@ func (s *Store) check(m *Map) error {
 	if m.System.Name != s.name {
 		return fmt.Errorf("system.name is %q, but this system belongs to %q", m.System.Name, s.name)
 	}
-	return Validate(m, func(rel string) bool {
-		_, err := os.Stat(filepath.Join(s.root, rel))
-		return err == nil
-	})
+	return Validate(m)
 }
 
 // read parses and checks the file, and records its size and time.
@@ -175,6 +218,9 @@ func (s *Store) read() (*Map, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Record the file as seen even when it is invalid, so that the same
+	// invalid file is not reported again on every reload.
+	s.modTime, s.size = info.ModTime(), info.Size()
 	var m Map
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -184,7 +230,6 @@ func (s *Store) read() (*Map, error) {
 	if err := s.check(&m); err != nil {
 		return nil, err
 	}
-	s.modTime, s.size = info.ModTime(), info.Size()
 	return &m, nil
 }
 
@@ -195,7 +240,6 @@ func (s *Store) save(m *Map) error {
 	if err != nil {
 		return err
 	}
-	data = append([]byte(fmt.Sprintf(header, s.name)), data...)
 	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".map-*.yaml")
 	if err != nil {
 		return err

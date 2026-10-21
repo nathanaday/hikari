@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,11 @@ func Run(ctx context.Context, c *api.Client) error {
 	mcpConfig, err := writeMCPConfig(c)
 	if err != nil {
 		return err
+	}
+	if self.System != nil {
+		if err := writeSkill(); err != nil {
+			return err
+		}
 	}
 	d := &driver{c: c, self: self, mcpConfig: mcpConfig, system: systemPrompt(self)}
 	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
@@ -149,6 +155,24 @@ func writeMCPConfig(c *api.Client) (string, error) {
 	}
 	path := filepath.Join(os.TempDir(), "hikari-mcp.json")
 	return path, os.WriteFile(path, data, 0o600)
+}
+
+//go:embed skill.md
+var skill []byte
+
+// writeSkill installs the hikari-system skill for Claude Code in the
+// container's home, so that an owner can load it when it works on its
+// documents.
+func writeSkill() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, ".claude", "skills", "hikari-system")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "SKILL.md"), skill, 0o644)
 }
 
 func systemPrompt(self api.Self) string {

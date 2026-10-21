@@ -50,8 +50,7 @@ export type Feature = {
   name: string
   description?: string
   interfaces?: string[]
-  code?: string[]
-  tests: { refs?: string[]; passed: number; failed: number; ran?: string }
+  tests: { passed: number; failed: number; ran?: string; content_hash?: string }
   health: Health
   findings?: string[]
   plans?: string[]
@@ -60,7 +59,23 @@ export type Feature = {
 
 export type Flag = { interface: string; problem: string }
 
-// SystemView is the full view of one system map, with its repo details.
+// Private holds the owner's private documents: where each feature lives in
+// the code, and how it is tested.
+export type Private = {
+  layout: {
+    version: number
+    parts: { path: string; description: string }[] | null
+    features: Record<string, { code: string[] | null; notes?: string }>
+  }
+  tests: {
+    version: number
+    suites: Record<string, { command: string; description?: string }>
+    features: Record<string, { covers?: string; tests: { suite: string; files?: string[]; command?: string }[] | null; gaps?: string[] }>
+  }
+}
+
+// SystemView is everything about one system: the public map as the owner
+// sees it, its private documents, and its repo details.
 export type SystemView = {
   version: number
   system: {
@@ -68,14 +83,14 @@ export type SystemView = {
     summary?: string
     responsibilities?: string[]
     interfaces: { provides: Interface[]; consumes: Interface[] }
-    layout?: { path: string; description: string }[]
-    test_command?: string
     described_state: { commit?: string; updated?: string }
   }
   features: Feature[]
   state: MapState
   changed?: string[]
   error?: string
+  private_errors?: string[]
+  private: Private
   owner: string
   repo: string
   scope: string
