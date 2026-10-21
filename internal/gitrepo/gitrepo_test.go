@@ -1,0 +1,188 @@
+package gitrepo
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// newRepo makes a git repo with one commit that holds the given files, and
+// isolates git from the user's configuration.
+func newRepo(t *testing.T, files map[string]string) *Repo {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "user@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "user@example.com")
+	dir := t.TempDir()
+	for name, content := range files {
+		write(t, dir, name, content)
+	}
+	run(t, dir, "init", "--quiet", "--initial-branch=main")
+	run(t, dir, "add", "--all")
+	run(t, dir, "commit", "--quiet", "-m", "initial")
+	return Open(dir)
+}
+
+func write(t *testing.T, dir, name, content string) {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func run(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+var shop = map[string]string{
+	"services/orders/create.py":   "def create(): pass\n",
+	"services/inventory/stock.py": "def reserve(): pass\n",
+	"README.md":                   "shop\n",
+}
+
+func TestPrepareRefusesUncommittedChanges(t *testing.T) {
+	r := newRepo(t, shop)
+	write(t, r.Path, "services/orders/new.py", "x\n")
+	if _, err := r.Prepare("hikari/work"); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		t.Fatalf("Prepare with an untracked file = %v", err)
+	}
+}
+
+func TestPrepareCreatesAndChecksOutBranch(t *testing.T) {
+	r := newRepo(t, shop)
+	head := run(t, r.Path, "rev-parse", "HEAD")
+	start, err := r.Prepare("hikari/work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if start != head {
+		t.Errorf("start = %s, want %s", start, head)
+	}
+	if got := run(t, r.Path, "branch", "--show-current"); got != "hikari/work" {
+		t.Errorf("checked out %q", got)
+	}
+	// A second run reuses the branch with its commits.
+	write(t, r.Path, "services/orders/create.py", "def create(): return 1\n")
+	if _, err := r.Commit("hikari/work", "services/orders", "orders", "change"); err != nil {
+		t.Fatal(err)
+	}
+	run(t, r.Path, "checkout", "--quiet", "main")
+	if _, err := r.Prepare("hikari/work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, r.Path, "log", "-1", "--format=%s"); got != "change" {
+		t.Errorf("existing branch lost its commit; HEAD is %q", got)
+	}
+}
+
+func TestCommitStaysInScope(t *testing.T) {
+	r := newRepo(t, shop)
+	if _, err := r.Prepare("hikari/work"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, r.Path, "services/orders/create.py", "def create(): return 1\n")
+	write(t, r.Path, "services/orders/cancel.py", "def cancel(): pass\n")
+	write(t, r.Path, "services/inventory/stock.py", "def reserve(): return 1\n")
+	os.Remove(filepath.Join(r.Path, "README.md"))
+	// Another owner's staged change must not enter this commit.
+	run(t, r.Path, "add", "services/inventory/stock.py")
+
+	commit, err := r.Commit("hikari/work", "services/orders", "orders", "Add cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := strings.Fields(run(t, r.Path, "show", "--name-only", "--format=", commit))
+	if want := []string{"services/orders/cancel.py", "services/orders/create.py"}; !slices.Equal(files, want) {
+		t.Errorf("commit has %v, want %v", files, want)
+	}
+	if got := run(t, r.Path, "log", "-1", "--format=%an <%ae>|%cn <%ce>|%s"); got != "orders (hikari) <orders@hikari.invalid>|Test User <user@example.com>|Add cancel" {
+		t.Errorf("author|committer|subject = %q", got)
+	}
+
+	// The other owner commits its own change, including the deletion only
+	// when the scope is the whole repo.
+	if _, err := r.Commit("hikari/work", "services/inventory", "inventory", "Reserve"); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, r.Path, "status", "--porcelain"); got != "D README.md" {
+		t.Errorf("status after scoped commits = %q, want only the README deletion", got)
+	}
+	if _, err := r.Commit("hikari/work", "", "whole", "Remove README"); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, r.Path, "status", "--porcelain"); got != "" {
+		t.Errorf("status after whole-repo commit = %q", got)
+	}
+}
+
+func TestCommitWithoutChanges(t *testing.T) {
+	r := newRepo(t, shop)
+	r.Prepare("hikari/work")
+	commit, err := r.Commit("hikari/work", "services/orders", "orders", "nothing")
+	if err != nil || commit != "" {
+		t.Fatalf("Commit with no changes = %q, %v", commit, err)
+	}
+}
+
+func TestCommitRefusesOtherBranch(t *testing.T) {
+	r := newRepo(t, shop)
+	r.Prepare("hikari/work")
+	run(t, r.Path, "checkout", "--quiet", "main")
+	write(t, r.Path, "services/orders/create.py", "changed\n")
+	if _, err := r.Commit("hikari/work", "services/orders", "orders", "x"); err == nil || !strings.Contains(err.Error(), `branch "hikari/work" is not checked out`) {
+		t.Fatalf("Commit on main = %v", err)
+	}
+}
+
+func TestChangedSince(t *testing.T) {
+	r := newRepo(t, shop)
+	start, _ := r.Prepare("hikari/work")
+	write(t, r.Path, "services/orders/create.py", "v2\n")
+	r.Commit("hikari/work", "services/orders", "orders", "v2")
+	write(t, r.Path, "services/orders/cancel.py", "new\n")           // untracked
+	write(t, r.Path, "services/orders/.hikari/map.yaml", "x: 1\n")   // excluded
+	write(t, r.Path, "services/inventory/stock.py", "other scope\n") // other scope
+
+	got, err := r.ChangedSince(start, "services/orders", ".hikari")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	if want := []string{"cancel.py", "create.py"}; !slices.Equal(got, want) {
+		t.Errorf("ChangedSince = %v, want %v", got, want)
+	}
+	if !r.HasCommit(start) || r.HasCommit("0000000000000000000000000000000000000000") {
+		t.Error("HasCommit is wrong")
+	}
+	if n, _ := r.CountAuthored(start, "orders"); n != 1 {
+		t.Errorf("CountAuthored(orders) = %d, want 1", n)
+	}
+	if n, _ := r.CountAuthored(start, "inventory"); n != 0 {
+		t.Errorf("CountAuthored(inventory) = %d, want 0", n)
+	}
+}
+
+func TestIsIgnored(t *testing.T) {
+	r := newRepo(t, map[string]string{".gitignore": ".hikari/\n", "a/b.txt": "x"})
+	if !r.IsIgnored("a/.hikari/map.yaml") {
+		t.Error("a/.hikari/map.yaml should be ignored")
+	}
+	if r.IsIgnored("a/b.txt") {
+		t.Error("a/b.txt is not ignored")
+	}
+}
