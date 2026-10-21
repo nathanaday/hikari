@@ -472,3 +472,47 @@ func TestPrepareKeepsAnExistingReadme(t *testing.T) {
 		t.Errorf("the README was overwritten: %q", data)
 	}
 }
+
+func TestPublishRelease(t *testing.T) {
+	f := newFixture(t)
+	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging")
+	write(t, staging, "release.yaml", "product: {kind: files, path: product/}\ndocs: {index: docs/README.md}\ninterfaces: [POST /orders]\n")
+	write(t, staging, "product/orders/create.py", "def create(): pass\n")
+	write(t, staging, "docs/README.md", "# orders\n")
+
+	if _, _, err := f.m.PublishRelease("orders", "1.0.0", "First."); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
+		t.Errorf("R1: publishing an unbuilt map: %v", err)
+	}
+	if _, _, err := f.m.PublishRelease("eng-lead", "1.0.0", "x"); !errors.Is(err, ErrForbidden) {
+		t.Errorf("only owners publish: %v", err)
+	}
+
+	f.describeOrders(t)
+	must(t, f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 1}}))
+	if _, err := f.m.MarkCurrent("orders"); err != nil {
+		t.Fatal(err)
+	}
+	var changes []Change
+	f.m.OnChange(func(c Change) { changes = append(changes, c) })
+	rel, hubs, err := f.m.PublishRelease("orders", "1.0.0", "First.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := git(t, f.repo, "rev-parse", "HEAD")
+	if rel.SourceCommit != head || !slices.Equal(hubs, []string{"eng"}) {
+		t.Errorf("release %+v, hubs %v; HEAD is %s", rel, hubs, head)
+	}
+	copied, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "1.0.0", "map.yaml"))
+	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
+		t.Errorf("R4: the copied map must be the public view:\n%s", copied)
+	}
+	if len(changes) == 0 || changes[0].System != "orders" {
+		t.Errorf("a release must notify listeners: %+v", changes)
+	}
+	if v := f.m.SystemView("orders"); len(v.Releases) != 1 || v.Releases[0].Version != "1.0.0" {
+		t.Errorf("the UI view must list the release: %+v", v.Releases)
+	}
+	if s, _ := f.m.GetSystem("eng-lead", "orders"); len(s.Releases) != 1 {
+		t.Errorf("the orchestrator view must list the release: %+v", s.Releases)
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -394,6 +395,44 @@ func (m *Manager) Commit(agent, message string) (string, error) {
 	return commit, err
 }
 
+// PublishRelease publishes agent's staging area as a release (rules R1 to
+// R5). The map must be current and the private documents valid. It returns
+// the release and the hubs to announce it in.
+func (m *Manager) PublishRelease(agent, version, notes string) (store.Manifest, []string, error) {
+	o, err := m.owner(agent)
+	if err != nil {
+		return store.Manifest{}, nil, err
+	}
+	v := m.ownerView(o)
+	var problems []string
+	if v.State != sysmap.Current {
+		problems = append(problems, fmt.Sprintf("the map is %s; update it and call mark_map_current first", v.State))
+	}
+	if len(v.PrivateErrors) > 0 {
+		problems = append(problems, "the private documents have problems: "+strings.Join(v.PrivateErrors, "; "))
+	}
+	if len(problems) > 0 {
+		return store.Manifest{}, nil, errors.New(strings.Join(problems, "\n"))
+	}
+	provides := map[string]bool{}
+	for _, in := range v.System.Interfaces.Provides {
+		provides[in.Name] = true
+	}
+	public, err := yaml.Marshal(v.View)
+	if err != nil {
+		return store.Manifest{}, nil, err
+	}
+	rel, err := m.store.Publish(store.PublishInput{
+		System: agent, Version: version, Notes: notes,
+		SourceCommit: v.System.DescribedState.Commit, Provides: provides, Map: public, Now: m.now(),
+	})
+	if err != nil {
+		return store.Manifest{}, nil, err
+	}
+	m.changed(Change{System: agent})
+	return rel, m.topo.HubsOf(agent), nil
+}
+
 // TurnContext tells the driver what changed before agent's next turn. It
 // marks the vocabularies as seen.
 func (m *Manager) TurnContext(agent string) api.TurnContext {
@@ -463,8 +502,10 @@ func (m *Manager) GetSystem(agent, name string) (api.OrchestratorSystem, error) 
 	known := m.vocabularyNames(m.topo.OrchestratedHubs(agent))
 	providers := m.providers(names)
 	v := m.view(o)
+	releases, _ := m.store.Releases(name)
 	return api.OrchestratorSystem{
 		View:      v,
+		Releases:  releases,
 		Flags:     vocab.Check(interfaceNames(v.System.Interfaces.Provides), interfaceNames(v.System.Interfaces.Consumes), known, keys(providers)),
 		Providers: providersOf(v.System.Interfaces.Consumes, providers, name),
 	}, nil
@@ -577,9 +618,11 @@ func (m *Manager) SystemView(name string) api.SystemView {
 		}
 	}
 	providers := m.providers(peers)
+	releases, _ := m.store.Releases(name)
 	return api.SystemView{
 		OwnerView: v,
 		Private:   priv,
+		Releases:  releases,
 		Owner:     name,
 		Repo:      o.repoName,
 		Scope:     o.scope,

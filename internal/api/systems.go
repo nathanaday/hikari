@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
 )
@@ -48,6 +49,8 @@ type SystemSummary struct {
 type OrchestratorSystem struct {
 	sysmap.View `yaml:",inline"`
 	Flags       []vocab.Flag `yaml:"flags,omitempty" json:"flags"`
+	// Releases lists the system's releases, newest first.
+	Releases []store.Manifest `yaml:"releases,omitempty" json:"releases"`
 	// Providers maps each interface the system consumes to the visible
 	// systems that provide it.
 	Providers map[string][]string `yaml:"providers,omitempty" json:"providers"`
@@ -63,12 +66,18 @@ type FeatureHit struct {
 type SystemView struct {
 	sysmap.OwnerView
 	Private   sysmap.Private      `json:"private"`
+	Releases  []store.Manifest    `json:"releases"`
 	Owner     string              `json:"owner"`
 	Repo      string              `json:"repo"`
 	Scope     string              `json:"scope"`
 	Branch    string              `json:"branch"`
 	Flags     []vocab.Flag        `json:"flags"`
 	Providers map[string][]string `json:"providers"`
+}
+
+type PublishRequest struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
 }
 
 type CommitRequest struct {
@@ -122,6 +131,12 @@ func (c *Client) Commit(ctx context.Context, message string) (string, error) {
 	var r CommitResponse
 	err := c.do(ctx, http.MethodPost, "/api/node/commit", CommitRequest{Message: message}, &r)
 	return r.Commit, err
+}
+
+func (c *Client) PublishRelease(ctx context.Context, version, notes string) (store.Manifest, error) {
+	var m store.Manifest
+	err := c.do(ctx, http.MethodPost, "/api/node/releases", PublishRequest{Version: version, Notes: notes}, &m)
+	return m, err
 }
 
 func (c *Client) TurnContext(ctx context.Context) (TurnContext, error) {

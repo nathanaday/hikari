@@ -38,10 +38,12 @@ func (s Store) MapFile(system string) string { return filepath.Join(s.SystemDir(
 
 func (s Store) Staging(system string) string { return filepath.Join(s.SystemDir(system), "staging") }
 
-func (s Store) Releases(system string) string { return filepath.Join(s.SystemDir(system), "releases") }
+func (s Store) ReleasesDir(system string) string {
+	return filepath.Join(s.SystemDir(system), "releases")
+}
 
-func (s Store) Release(system, version string) string {
-	return filepath.Join(s.Releases(system), version)
+func (s Store) ReleaseDir(system, version string) string {
+	return filepath.Join(s.ReleasesDir(system), version)
 }
 
 // Prepare creates the directories of the store that do not exist (rule L1)
@@ -49,7 +51,7 @@ func (s Store) Release(system, version string) string {
 func (s Store) Prepare(systems []string) error {
 	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents)}
 	for _, sys := range systems {
-		dirs = append(dirs, s.Staging(sys), s.Releases(sys))
+		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys))
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {

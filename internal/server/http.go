@@ -164,6 +164,26 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		commit, err := sys.Commit(node, req.Message)
 		return api.CommitResponse{Commit: commit}, err
 	})
+	handle("POST /api/node/releases", func(r *http.Request, node string) (any, error) {
+		var req api.PublishRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.Notes) == "" {
+			return nil, errors.New("give release notes: what changed in this version")
+		}
+		rel, hubs, err := sys.PublishRelease(node, req.Version, req.Notes)
+		if err != nil {
+			return nil, err
+		}
+		for _, hub := range hubs {
+			body := fmt.Sprintf("Released %s %s: %s", node, rel.Version, req.Notes)
+			if _, err := s.Send(node, api.SendRequest{Hub: hub, Body: body}); err != nil {
+				return nil, err
+			}
+		}
+		return rel, nil
+	})
 	handle("GET /api/node/turn-context", func(r *http.Request, node string) (any, error) {
 		return sys.TurnContext(node), nil
 	})

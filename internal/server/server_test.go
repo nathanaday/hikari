@@ -387,3 +387,64 @@ hubs:
 		t.Errorf("turn context = %+v, %v", tc, err)
 	}
 }
+
+func TestPublishAnnouncesTheRelease(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(k+"_NAME", "Test User")
+		t.Setenv(k+"_EMAIL", "user@example.com")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	os.MkdirAll(filepath.Join(repo, "orders"), 0o755)
+	os.WriteFile(filepath.Join(repo, "orders", "create.py"), []byte("x\n"), 0o644)
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "--all"}, {"commit", "--quiet", "-m", "initial"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	topo, err := topology.Parse([]byte(`
+repos: {shop: {path: shop, branch: hikari/work}}
+agents:
+  lead: {}
+  orders: {system: {repo: shop, scope: orders}}
+hubs:
+  h: {orchestrator: lead, members: [orders]}
+`), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(topo, nil, sys)
+	srv := httptest.NewServer(s.Handler("ui"))
+	defer srv.Close()
+	ctx := context.Background()
+	orders := &api.Client{URL: srv.URL, Token: s.IssueToken("orders"), HTTP: srv.Client()}
+
+	if _, err := orders.MarkMapCurrent(ctx); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(dir, "store", "systems", "orders", "staging")
+	os.MkdirAll(filepath.Join(staging, "docs"), 0o755)
+	os.WriteFile(filepath.Join(staging, "release.yaml"), []byte("product: {kind: remote, location: {type: url, ref: https://example.com/orders.tgz}}\ndocs: {index: docs/README.md}\n"), 0o644)
+	os.WriteFile(filepath.Join(staging, "docs", "README.md"), []byte("# orders\n"), 0o644)
+
+	if _, err := orders.PublishRelease(ctx, "1.0.0", ""); err == nil {
+		t.Error("a release without notes must be refused")
+	}
+	rel, err := orders.PublishRelease(ctx, "1.0.0", "First release.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Version != "1.0.0" {
+		t.Errorf("release = %+v", rel)
+	}
+	msgs := s.Take(ctx, "lead", time.Second)
+	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].Hub != "h" || msgs[0].Body != "Released orders 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
+		t.Errorf("R6 announcement = %+v", msgs)
+	}
+}
