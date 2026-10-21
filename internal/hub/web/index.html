@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hikari</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --line: #e3e1dc;
+    --text: #1d1c1a;
+    --muted: #77736b;
+    --accent: #2f5bd3;
+    --idle: #2e9b5f;
+    --working: #d99a1e;
+    --error: #d24b3e;
+    --off: #a9a59d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    --c0: #2f5bd3; --c1: #c2410c; --c2: #0f8a6a; --c3: #9333ea;
+    --c4: #be185d; --c5: #0e7490; --c6: #a16207; --c7: #4d7c0f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131312;
+      --panel: #1b1b1a;
+      --line: #2c2b29;
+      --text: #ecebe7;
+      --muted: #8f8b83;
+      --accent: #7b9cff;
+      --c0: #8aa8ff; --c1: #fb8f5a; --c2: #4fd1a5; --c3: #c49bff;
+      --c4: #f472b6; --c5: #5cc8e0; --c6: #e5b84b; --c7: #a3d65c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans);
+    display: grid; grid-template-columns: 280px 1fr; grid-template-rows: 100%;
+  }
+  aside {
+    border-right: 1px solid var(--line); background: var(--panel);
+    padding: 20px 16px; overflow-y: auto;
+  }
+  h1 { font: 600 15px var(--mono); letter-spacing: .04em; margin: 0 0 4px; }
+  #conn { font: 12px var(--mono); color: var(--muted); margin-bottom: 20px; }
+  #conn.down { color: var(--error); }
+  h2 { font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .node {
+    display: block; width: 100%; text-align: left; font: inherit; color: inherit;
+    background: none; border: 1px solid transparent; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 4px; cursor: pointer;
+  }
+  .node:hover { border-color: var(--line); }
+  .node.selected { border-color: var(--accent); }
+  .node .head { display: flex; align-items: center; gap: 8px; }
+  .node .name { font: 600 13px var(--mono); }
+  .node .state { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
+  .node .desc, .node .nbrs, .node .detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .node .detail { color: var(--error); word-break: break-word; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; }
+  .dot.idle { background: var(--idle); }
+  .dot.working { background: var(--working); animation: pulse 1s ease-in-out infinite; }
+  .dot.error { background: var(--error); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+  main { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+  #log { overflow-y: auto; padding: 20px 28px; }
+  #empty { color: var(--muted); margin-top: 40px; text-align: center; }
+  .msg { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .msg .meta { display: flex; gap: 8px; align-items: baseline; font: 12px var(--mono); }
+  .msg .who { font-weight: 600; }
+  .msg .arrow { color: var(--muted); }
+  .msg time { margin-left: auto; color: var(--muted); }
+  .msg .body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+
+  form {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: end;
+    padding: 12px 28px 20px; border-top: 1px solid var(--line); background: var(--panel);
+  }
+  select, textarea, button[type=submit] {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  }
+  select { font-family: var(--mono); font-size: 13px; }
+  textarea { resize: none; min-height: 40px; max-height: 200px; }
+  textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button[type=submit] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button[type=submit]:disabled { opacity: .5; cursor: default; }
+  #err { grid-column: 1 / -1; color: var(--error); font-size: 12px; min-height: 0; }
+  #err:empty { display: none; }
+
+  @media (max-width: 720px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { border-right: none; border-bottom: 1px solid var(--line); max-height: 40vh; }
+    #log { padding: 16px; }
+    form { padding: 12px 16px 16px; grid-template-columns: 1fr auto; }
+    form select { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1>hikari</h1>
+  <div id="conn">connecting…</div>
+  <h2>Network</h2>
+  <div id="nodes"></div>
+  <div class="hint">Select nodes to filter the log.</div>
+</aside>
+<main>
+  <div id="log"><div id="empty">No messages yet.</div></div>
+  <form id="compose">
+    <select id="to" aria-label="Recipient"></select>
+    <textarea id="body" rows="1" placeholder="Message (Enter to send, Shift+Enter for a new line)"></textarea>
+    <button type="submit">Send</button>
+    <div id="err"></div>
+  </form>
+</main>
+<script>
+const state = { me: "user", nodes: new Map(), messages: [], selected: new Set() };
+const $ = (id) => document.getElementById(id);
+
+function color(name) {
+  if (name === state.me) return "var(--muted)";
+  const names = [...state.nodes.keys()].filter((n) => n !== state.me);
+  return `var(--c${Math.max(0, names.indexOf(name)) % 8})`;
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderNodes() {
+  const box = $("nodes");
+  box.replaceChildren();
+  for (const n of state.nodes.values()) {
+    const b = el("button", "node" + (state.selected.has(n.name) ? " selected" : ""));
+    b.type = "button";
+    b.onclick = () => {
+      state.selected.has(n.name) ? state.selected.delete(n.name) : state.selected.add(n.name);
+      renderNodes();
+      renderLog();
+    };
+    const head = el("div", "head");
+    head.append(el("span", "dot " + (n.human ? "idle" : n.status.state)));
+    const name = el("span", "name", n.name);
+    name.style.color = color(n.name);
+    head.append(name, el("span", "state", n.human ? "you" : n.status.state));
+    b.append(head);
+    if (n.description) b.append(el("div", "desc", n.description));
+    b.append(el("div", "nbrs", "↔ " + (n.neighbors.length ? n.neighbors.join(", ") : "none")));
+    if (n.status.detail) b.append(el("div", "detail", n.status.detail));
+    box.append(b);
+  }
+}
+
+function visible(m) {
+  return state.selected.size === 0 || state.selected.has(m.from) || state.selected.has(m.to);
+}
+
+function messageEl(m) {
+  const row = el("div", "msg");
+  const meta = el("div", "meta");
+  const from = el("span", "who", m.from);
+  from.style.color = color(m.from);
+  const to = el("span", "who", m.to);
+  to.style.color = color(m.to);
+  const t = el("time", null, new Date(m.time).toLocaleTimeString());
+  t.dateTime = m.time;
+  meta.append(from, el("span", "arrow", "→"), to, t);
+  row.append(meta, el("div", "body", m.body));
+  return row;
+}
+
+function nearBottom() {
+  const log = $("log");
+  return log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+}
+
+function renderLog() {
+  const log = $("log");
+  const shown = state.messages.filter(visible);
+  log.replaceChildren(...(shown.length ? shown.map(messageEl) : [el("div", null, "No messages yet.")]));
+  if (!shown.length) log.firstChild.id = "empty";
+  log.scrollTop = log.scrollHeight;
+}
+
+function appendMessage(m) {
+  state.messages.push(m);
+  if (!visible(m)) return;
+  const stick = nearBottom();
+  $("empty")?.remove();
+  $("log").append(messageEl(m));
+  if (stick || m.from === state.me) $("log").scrollTop = $("log").scrollHeight;
+}
+
+function renderRecipients() {
+  const me = state.nodes.get(state.me);
+  const sel = $("to");
+  const prev = sel.value;
+  sel.replaceChildren(...me.neighbors.map((n) => el("option", null, n)));
+  if (me.neighbors.includes(prev)) sel.value = prev;
+  const none = me.neighbors.length === 0;
+  sel.disabled = $("body").disabled = $("compose").querySelector("button").disabled = none;
+  if (none) $("body").placeholder = "The user node has no neighbors in this topology.";
+}
+
+function connect() {
+  const es = new EventSource("/api/ui/events");
+  es.onopen = () => { $("conn").textContent = "live"; $("conn").className = ""; };
+  es.onerror = () => { $("conn").textContent = "disconnected, retrying…"; $("conn").className = "down"; };
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === "snapshot") {
+      state.me = e.snapshot.me;
+      state.nodes = new Map(e.snapshot.nodes.map((n) => [n.name, n]));
+      state.messages = e.snapshot.messages;
+      renderNodes();
+      renderRecipients();
+      renderLog();
+    } else if (e.type === "message") {
+      appendMessage(e.message);
+    } else if (e.type === "status") {
+      const n = state.nodes.get(e.node);
+      if (n) { n.status = e.status; renderNodes(); }
+    }
+  };
+}
+
+$("body").addEventListener("input", (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = e.target.scrollHeight + "px";
+});
+$("body").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("compose").requestSubmit();
+  }
+});
+$("compose").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = $("body").value;
+  if (!body.trim()) return;
+  $("err").textContent = "";
+  const res = await fetch("/api/ui/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to: $("to").value, body }),
+  });
+  if (!res.ok) {
+    $("err").textContent = (await res.json().catch(() => ({}))).error || res.statusText;
+    return;
+  }
+  $("body").value = "";
+  $("body").style.height = "auto";
+});
+
+connect();
+</script>
+</body>
+</html>
