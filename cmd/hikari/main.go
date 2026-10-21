@@ -123,10 +123,21 @@ func up(ctx context.Context, args []string) error {
 		if err := l.CheckImage(ctx); err != nil {
 			return err
 		}
+		emptyDir, err := os.MkdirTemp("", "hikari-empty-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(emptyDir)
+		l.EmptyDir = emptyDir
 		defer l.Cleanup()
 		stopContainers = l.Cleanup
 		for _, n := range topo.AgentNames() {
-			err := l.Start(context.Background(), n, srv.IssueToken(n), func(err error) {
+			spec, err := agentSpec(ctx, l, topo, n)
+			if err != nil {
+				return err
+			}
+			spec.Token = srv.IssueToken(n)
+			err = l.Start(context.Background(), spec, func(err error) {
 				s := api.Status{State: api.StateExited}
 				if err != nil && ctx.Err() == nil {
 					s.Detail = err.Error()
@@ -152,6 +163,23 @@ func up(ctx context.Context, args []string) error {
 		log.Print(line)
 	}
 	return nil
+}
+
+// agentSpec describes the container of agent: its image, and for an owner
+// its mounts and working directory.
+func agentSpec(ctx context.Context, l *launcher.Launcher, topo *topology.Topology, agent string) (launcher.Spec, error) {
+	a := topo.Agents[agent]
+	image, err := l.EnsureImage(ctx, agent, launcher.ImageSpec{Packages: a.Packages, Setup: a.Setup, Path: a.Path})
+	if err != nil {
+		return launcher.Spec{}, err
+	}
+	spec := launcher.Spec{Name: agent, Image: image}
+	if s := a.System; s != nil {
+		repo := topo.Repos[s.Repo]
+		spec.Mounts = launcher.SystemMounts(repo.Path, s.Scope, s.Read, s.ContainerOnly, l.EmptyDir)
+		spec.WorkDir = api.WorkDir(s.Scope)
+	}
+	return spec, nil
 }
 
 func runNode(ctx context.Context) error {
