@@ -2,11 +2,22 @@
 export
 
 TOPOLOGY ?= examples/studio.yaml
+UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
+unexport UI_SRC
 
-.PHONY: build image up test clean
+.PHONY: build ui image up dev-ui test clean
 
-build:
+build: web/dist/index.html
 	go build -o bin/hikari ./cmd/hikari
+
+ui: web/dist/index.html
+
+web/node_modules: web/package.json web/package-lock.json
+	cd web && npm ci
+	touch web/node_modules
+
+web/dist/index.html: web/node_modules $(UI_SRC)
+	cd web && npm run build
 
 image:
 	docker build -t hikari-node .
@@ -14,8 +25,13 @@ image:
 up: build image
 	bin/hikari up $(TOPOLOGY)
 
-test:
+# Serve the UI with hot reload on http://localhost:5173 against a running `make up`.
+dev-ui: web/node_modules
+	cd web && npm run dev
+
+test: web/node_modules
 	go test -race ./...
+	cd web && npm test
 
 # Remove containers and networks left by runs that did not shut down cleanly.
 clean:

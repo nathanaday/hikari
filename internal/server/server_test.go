@@ -242,9 +242,18 @@ func TestUIRequiresToken(t *testing.T) {
 
 	jar, _ := cookiejar.New(nil)
 	browser := &http.Client{Jar: jar}
-	resp, err = browser.Get(srv.URL + "/?token=ui-secret")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if resp, _ := browser.Get(srv.URL + "/api/ui/session"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("session before login = %s", resp.Status)
+	}
+	if resp, _ := browser.Post(srv.URL+"/api/ui/login", "application/json", strings.NewReader(`{"token":"wrong"}`)); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("login with a wrong token = %s", resp.Status)
+	}
+	resp, err = browser.Post(srv.URL+"/api/ui/login", "application/json", strings.NewReader(`{"token":"ui-secret"}`))
+	if err != nil || resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("UI login = %v, %v", resp.Status, err)
+	}
+	if resp, _ := browser.Get(srv.URL + "/api/ui/session"); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("session after login = %s", resp.Status)
 	}
 
 	events, err := browser.Get(srv.URL + "/api/ui/events")

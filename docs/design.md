@@ -90,6 +90,21 @@ On Docker Desktop, containers reach a host service on 127.0.0.1 through
 bridge address. There, start the server with `-listen 0.0.0.0:7420`, or listen
 on the bridge address, so that containers can reach it.
 
+## The binary embeds the UI
+
+The UI is a Vite and React app in `web/`. The `hikari` binary embeds its build
+output, so a run needs no Node.js and no second process. The `web/dist/.keep`
+file lets the Go code compile before the first UI build; the server then
+serves a page that asks for `make ui`. The agent image gets only that empty
+directory, because containers never serve the UI.
+
+The UI signs in by posting the token from the printed URL to the server, which
+answers with a cookie. A sign-in through an API call, not a page redirect,
+works the same behind the Vite dev server, which owns the page in development.
+
+The composer shows who a draft will wake. To do this, `web/src/lib/rules.ts`
+repeats the wake rules of the server. The tests of both use the same cases.
+
 ## Known limitations
 
 - Agents can still send messages to each other without end, for example by

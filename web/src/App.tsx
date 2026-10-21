@@ -1,0 +1,43 @@
+import { useCallback, useRef, useState } from 'react'
+import { AppSidebar } from '@/components/app-sidebar'
+import { Composer } from '@/components/composer'
+import { ConversationHeader } from '@/components/conversation-header'
+import { MessageList } from '@/components/message-list'
+import { SignIn } from '@/components/sign-in'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { useHikari } from '@/hooks/use-hikari'
+import { viewKey } from '@/lib/view'
+
+export default function App() {
+  const { state, show, send } = useHikari()
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const key = viewKey(state.view)
+  const draft = drafts[key] ?? ''
+  const setDraft = useCallback((text: string) => setDrafts((d) => ({ ...d, [key]: text })), [key])
+
+  if (state.connection === 'signed-out') return <SignIn />
+  if (!state.loaded) {
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Connecting…</div>
+  }
+
+  const mention = (name: string) => {
+    const sep = draft && !/\s$/.test(draft) ? ' ' : ''
+    setDraft(`${draft}${sep}@${name} `)
+    inputRef.current?.focus()
+  }
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider>
+        <AppSidebar state={state} show={show} />
+        <SidebarInset className="h-svh min-w-0">
+          <ConversationHeader state={state} onMention={mention} />
+          <MessageList state={state} show={show} />
+          <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
+  )
+}

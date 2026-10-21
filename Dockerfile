@@ -4,6 +4,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd cmd
 COPY internal internal
+# Containers do not serve the UI, so they get only the empty embed directory.
+COPY web/embed.go web/embed.go
+COPY web/dist/.keep web/dist/.keep
 RUN CGO_ENABLED=0 go build -o /out/hikari ./cmd/hikari
 
 FROM debian:bookworm-slim

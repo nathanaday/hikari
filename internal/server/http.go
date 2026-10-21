@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/subtle"
-	"embed"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,10 +10,8 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/web"
 )
-
-//go:embed web
-var web embed.FS
 
 const (
 	uiCookie = "hikari_ui"
@@ -68,23 +65,38 @@ func (s *Server) Handler(uiToken string) http.Handler {
 			next(w, r)
 		}
 	}
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if t := r.URL.Query().Get("token"); t != "" && equal(t, uiToken) {
-			http.SetCookie(w, &http.Cookie{
-				Name: uiCookie, Value: uiToken, Path: "/",
-				HttpOnly: true, SameSite: http.SameSiteStrictMode,
-			})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+	// The UI posts the token from the URL that hikari printed, and gets a
+	// cookie for the later requests.
+	mux.HandleFunc("POST /api/ui/login", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Token string `json:"token"`
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil || !equal(req.Token, uiToken) {
+			writeError(w, http.StatusUnauthorized, "the token is not valid for this run of hikari")
 			return
 		}
-		ui(func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFileFS(w, r, web, "web/index.html")
-		})(w, r)
+		http.SetCookie(w, &http.Cookie{
+			Name: uiCookie, Value: uiToken, Path: "/",
+			HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		})
+		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("GET /api/ui/session", ui(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))
+
+	// The UI files hold no data, so they need no token.
+	if web.Built() {
+		mux.Handle("GET /", http.FileServerFS(web.Assets()))
+	} else {
+		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "The web UI is not built. Run `make ui`, then rebuild hikari.", http.StatusNotFound)
+		})
+	}
 
 	return mux
 }

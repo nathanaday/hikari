@@ -13,6 +13,7 @@ You are a member of every hub, so you can post in any hub and send a direct mess
 ### Prerequisites
 
 - Go 1.25 or later
+- Node.js 22.12 or later, to build the web UI
 - Docker (Docker Desktop on macOS)
 - A Claude subscription or an Anthropic API key
 
@@ -38,7 +39,7 @@ You are a member of every hub, so you can post in any hub and send a direct mess
 make up
 ```
 
-This command builds the `hikari` binary and the `hikari-node` image. Then it starts the server and one container for each agent. Open the web UI URL that the command prints. The URL contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
+This command builds the web UI, the `hikari` binary, and the `hikari-node` image. Then it starts the server and one container for each agent. Open the web UI URL that the command prints. The URL contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
 
 To use a different network:
 
@@ -83,7 +84,17 @@ Other participants read the post at the start of their next turn. A direct messa
 
 Inside a container, the agent has four tools: `post_to_hub`, `send_direct_message`, `list_hubs`, and `check_inbox`.
 
-The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. The server also writes each message as one JSON line to `.hikari/<run-id>.jsonl`.
+The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake. The server also writes each message as one JSON line to `.hikari/<run-id>.jsonl`.
+
+### Work on the UI
+
+The UI is a Vite, React, and shadcn/ui app in `web/`. The `hikari` binary embeds the built UI. To change the UI with hot reload, start a network with `make up`, then run:
+
+```sh
+make dev-ui
+```
+
+Open http://localhost:5173/?token=... with the token that `make up` printed. The dev server sends API requests to the running hikari server. `make test` runs the Go tests and the UI tests.
 
 ## Patterns and conventions
 
@@ -101,6 +112,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/mcpserver`: the MCP tools for the agent
 - `internal/launcher`: starts and removes containers
 - `internal/topology`: reads and checks topology files
+- `web/`: the browser UI
 - `examples/`: `studio.yaml` (one hub) and `team.yaml` (two hubs in a tree)
 
 External:
