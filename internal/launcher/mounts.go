@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/store"
 )
 
 // Mount is a bind mount of a host path, or a named volume when Volume is
@@ -39,10 +41,11 @@ func csvField(f string) string {
 	return `"` + strings.ReplaceAll(f, `"`, `""`) + `"`
 }
 
-// SystemMounts returns the mounts of an owner's container (rules M1 to M5):
-// the scope read-write, each read path and the map directory read-only, the
-// private documents read-write, a volume for each container-only path, and
-// an empty directory over .git when the scope is the whole repo.
+// SystemMounts returns the mounts of an owner's code (rules M1 to M5 and
+// M7): the scope read-write, each read path read-only, a volume for each
+// container-only path, the private documents at /hikari/private, an empty
+// directory over the scope's .hikari, and an empty directory over .git when
+// the scope is the whole repo.
 func SystemMounts(repoPath, scope string, read, containerOnly []string, emptyDir string) []Mount {
 	scopeTarget := api.WorkDir(scope)
 	mounts := []Mount{{Source: filepath.Join(repoPath, scope), Target: scopeTarget}}
@@ -50,8 +53,8 @@ func SystemMounts(repoPath, scope string, read, containerOnly []string, emptyDir
 		mounts = append(mounts, Mount{Source: filepath.Join(repoPath, p), Target: path.Join(api.WorkspaceRoot, filepath.ToSlash(p)), ReadOnly: true})
 	}
 	mounts = append(mounts,
-		Mount{Source: filepath.Join(repoPath, scope, ".hikari"), Target: path.Join(scopeTarget, ".hikari"), ReadOnly: true},
-		Mount{Source: filepath.Join(repoPath, scope, ".hikari", "private"), Target: path.Join(scopeTarget, ".hikari", "private")},
+		Mount{Source: emptyDir, Target: path.Join(scopeTarget, ".hikari"), ReadOnly: true},
+		Mount{Source: filepath.Join(repoPath, scope, ".hikari", "private"), Target: api.PrivateDir},
 	)
 	for _, p := range containerOnly {
 		mounts = append(mounts, Mount{
@@ -62,6 +65,33 @@ func SystemMounts(repoPath, scope string, read, containerOnly []string, emptyDir
 	}
 	if scope == "" {
 		mounts = append(mounts, Mount{Source: emptyDir, Target: path.Join(api.WorkspaceRoot, ".git"), ReadOnly: true})
+	}
+	return mounts
+}
+
+// StoreMounts returns the store mounts of an agent (section 3 of the shared
+// store spec). Every agent reads the shared area. An owner gets its own
+// system directory read-only with its staging area read-write. Each
+// visible system is mounted read-only with its staging area hidden, and
+// each other granted system gets its releases read-only.
+func StoreMounts(st store.Store, agent string, owner bool, visible, readable []string, emptyDir string) []Mount {
+	mounts := []Mount{{Source: st.SharedDir(), Target: api.SharedDir, ReadOnly: true}}
+	if owner {
+		mounts = append(mounts,
+			Mount{Source: st.SystemDir(agent), Target: api.ExportDir, ReadOnly: true},
+			Mount{Source: st.Staging(agent), Target: path.Join(api.ExportDir, "staging")},
+		)
+	}
+	for _, sys := range readable {
+		if slices.Contains(visible, sys) {
+			target := path.Join(api.ReadonlyDir, "systems", sys)
+			mounts = append(mounts,
+				Mount{Source: st.SystemDir(sys), Target: target, ReadOnly: true},
+				Mount{Source: emptyDir, Target: path.Join(target, "staging"), ReadOnly: true},
+			)
+		} else {
+			mounts = append(mounts, Mount{Source: st.ReleasesDir(sys), Target: api.ReleasesPath(sys), ReadOnly: true})
+		}
 	}
 	return mounts
 }

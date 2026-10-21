@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nathanaday/hikari/internal/store"
 )
 
 func TestSystemMounts(t *testing.T) {
@@ -11,8 +13,8 @@ func TestSystemMounts(t *testing.T) {
 	want := []Mount{
 		{Source: "/code/shop/services/orders", Target: "/workspace/services/orders"},
 		{Source: "/code/shop/proto", Target: "/workspace/proto", ReadOnly: true},
-		{Source: "/code/shop/services/orders/.hikari", Target: "/workspace/services/orders/.hikari", ReadOnly: true},
-		{Source: "/code/shop/services/orders/.hikari/private", Target: "/workspace/services/orders/.hikari/private"},
+		{Source: "/tmp/empty", Target: "/workspace/services/orders/.hikari", ReadOnly: true},
+		{Source: "/code/shop/services/orders/.hikari/private", Target: "/hikari/private"},
 		{Source: VolumeName("/code/shop", "services/orders", "node_modules"), Target: "/workspace/services/orders/node_modules", Volume: true},
 	}
 	if !slices.Equal(got, want) {
@@ -29,8 +31,8 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 	got := SystemMounts("/code/shop", "", nil, nil, "/tmp/empty")
 	want := []Mount{
 		{Source: "/code/shop", Target: "/workspace"},
-		{Source: "/code/shop/.hikari", Target: "/workspace/.hikari", ReadOnly: true},
-		{Source: "/code/shop/.hikari/private", Target: "/workspace/.hikari/private"},
+		{Source: "/tmp/empty", Target: "/workspace/.hikari", ReadOnly: true},
+		{Source: "/code/shop/.hikari/private", Target: "/hikari/private"},
 		{Source: "/tmp/empty", Target: "/workspace/.git", ReadOnly: true},
 	}
 	if !slices.Equal(got, want) {
@@ -88,8 +90,8 @@ func TestRunArgs(t *testing.T) {
 
 func TestOrchestratorGetsNoMounts(t *testing.T) {
 	args := strings.Join((&Launcher{RunID: "r1"}).runArgs(Spec{Name: "lead", Image: "hikari-node"}), " ")
-	if strings.Contains(args, "--mount") || strings.Contains(args, "--workdir") {
-		t.Errorf("M6: an agent without a system got mounts:\n%s", args)
+	if strings.Contains(args, "--workdir") {
+		t.Errorf("M6: an agent without a system got a working directory:\n%s", args)
 	}
 }
 
@@ -131,5 +133,35 @@ USER agent
 	}
 	if (ImageSpec{}).empty() != true || (ImageSpec{Setup: "  "}).empty() != true {
 		t.Error("an image spec that adds nothing must count as empty")
+	}
+}
+
+func TestStoreMounts(t *testing.T) {
+	st := store.Store{Root: "/s"}
+	owner := StoreMounts(st, "orders", true, nil, []string{"inventory"}, "/tmp/empty")
+	wantOwner := []Mount{
+		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
+		{Source: "/s/systems/orders", Target: "/hikari/public/export", ReadOnly: true},
+		{Source: "/s/systems/orders/staging", Target: "/hikari/public/export/staging"},
+		{Source: "/s/systems/inventory/releases", Target: "/hikari/public/readonly/systems/inventory/releases", ReadOnly: true},
+	}
+	if !slices.Equal(owner, wantOwner) {
+		t.Errorf("owner mounts:\n got %+v\nwant %+v", owner, wantOwner)
+	}
+
+	lead := StoreMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, "/tmp/empty")
+	wantLead := []Mount{
+		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
+		{Source: "/s/systems/orders", Target: "/hikari/public/readonly/systems/orders", ReadOnly: true},
+		{Source: "/tmp/empty", Target: "/hikari/public/readonly/systems/orders/staging", ReadOnly: true},
+		{Source: "/s/systems/billing/releases", Target: "/hikari/public/readonly/systems/billing/releases", ReadOnly: true},
+	}
+	if !slices.Equal(lead, wantLead) {
+		t.Errorf("orchestrator mounts:\n got %+v\nwant %+v", lead, wantLead)
+	}
+
+	member := StoreMounts(st, "writer", false, nil, nil, "/tmp/empty")
+	if len(member) != 1 || member[0].Target != "/hikari/public/readonly/shared" {
+		t.Errorf("a member without grants sees only shared: %+v", member)
 	}
 }

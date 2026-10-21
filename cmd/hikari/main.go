@@ -21,6 +21,7 @@ import (
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
 	"github.com/nathanaday/hikari/internal/server"
+	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 )
@@ -181,6 +182,8 @@ func agentSpec(ctx context.Context, l *launcher.Launcher, topo *topology.Topolog
 		spec.Mounts = launcher.SystemMounts(repo.Path, s.Scope, s.Read, s.ContainerOnly, l.EmptyDir)
 		spec.WorkDir = api.WorkDir(s.Scope)
 	}
+	st := store.Store{Root: topo.Store}
+	spec.Mounts = append(spec.Mounts, launcher.StoreMounts(st, agent, a.System != nil, topo.VisibleSystems(agent), topo.ReadableReleases(agent), l.EmptyDir)...)
 	return spec, nil
 }
 

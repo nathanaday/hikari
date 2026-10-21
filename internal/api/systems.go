@@ -14,6 +14,22 @@ import (
 // WorkspaceRoot is where an owner's container sees its repo.
 const WorkspaceRoot = "/workspace"
 
+// Where every container sees its hikari documents.
+const (
+	PrivateDir  = "/hikari/private"
+	ExportDir   = "/hikari/public/export"
+	ReadonlyDir = "/hikari/public/readonly"
+)
+
+// SharedDir is the shared area of the store in a container.
+var SharedDir = path.Join(ReadonlyDir, "shared")
+
+// ReleasesPath returns where a container sees the releases of a system that
+// it can read.
+func ReleasesPath(system string) string {
+	return path.Join(ReadonlyDir, "systems", system, "releases")
+}
+
 // WorkDir returns the container path of a scope.
 func WorkDir(scope string) string {
 	return path.Join(WorkspaceRoot, scope)
