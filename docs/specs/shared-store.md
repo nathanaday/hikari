@@ -1,6 +1,10 @@
 # Spec: the shared store and releases
 
-Status: waiting for approval.
+Status: built. Changes made during the build:
+
+- Orchestrators also learn which release grants their members have, so that they can plan tests against releases. They cannot change grants; they ask the user.
+- In the release view, a relative link between docs opens the linked file in the viewer.
+- The `hikari-system` skill tells owners to keep tests, build caches, and private documents out of the product. A live run showed `__pycache__` files in a release.
 
 Sources: `docs/brainstorm/shared-store.md` and `shared-store-answers.md`.
 

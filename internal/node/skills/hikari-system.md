@@ -97,7 +97,7 @@ hikari checks the private documents when you record test results and when you ma
 A release is a version of your deliverable that other systems can use, with docs for people who cannot see your code. After you publish it, it never changes.
 
 1. Make sure the map is current and every feature that the release provides is tested.
-2. Build the deliverable into `/hikari/public/export/staging/product/`. It is whatever another system needs to use your work: a package, a binary, a directory of files. If it is hosted elsewhere, such as an image on Docker Hub, skip this step and use a remote product.
+2. Build the deliverable into `/hikari/public/export/staging/product/`. It is whatever another system needs to use your work: a package, a binary, a directory of files. Copy only what a user needs: no tests, no build caches such as `__pycache__` or `node_modules`, and no private documents. If it is hosted elsewhere, such as an image on Docker Hub, skip this step and use a remote product.
 3. Run the `release-docs` skill. It writes the docs into `/hikari/public/export/staging/docs/`.
 4. Write `/hikari/public/export/staging/release.yaml`:
 
