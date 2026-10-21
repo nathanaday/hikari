@@ -4,7 +4,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 export function SignIn() {
   return (
     <div className="flex h-full items-center justify-center p-4">
-      <Card className="max-w-sm shadow-none">
+      <Card className="w-full max-w-sm shadow-none">
         <CardHeader>
           <KeyRound className="mb-2 size-5 text-muted-foreground" />
           <CardTitle>Open the link that hikari printed</CardTitle>
