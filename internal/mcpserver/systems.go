@@ -71,6 +71,11 @@ type testResultsArgs struct {
 	Results []testResultArg `json:"results" jsonschema:"one entry for each feature whose tests ran"`
 }
 
+type publishArgs struct {
+	Version string `json:"version" jsonschema:"a semver version, such as 1.2.0, greater than your last release"`
+	Notes   string `json:"notes" jsonschema:"what changed in this version, in one or two sentences"`
+}
+
 type commitArgs struct {
 	Message string `json:"message" jsonschema:"the commit message: one line that says what changed and why"`
 }
@@ -156,6 +161,17 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 			return nil, nil, err
 		}
 		return text(fmt.Sprintf("The map now describes commit %s.", short(commit))), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "publish_release",
+		Description: "Publish your staging area (/hikari/public/export/staging/) as a release that never changes. It needs a current map, valid private documents, staging/release.yaml, the product or a remote location, and the docs index. hikari announces the release in your hubs.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
+		rel, err := c.PublishRelease(ctx, a.Version, a.Notes)
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Published %s %s from commit %s. It is in /hikari/public/export/releases/%s/.", rel.System, rel.Version, short(rel.SourceCommit), rel.Version)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

@@ -33,12 +33,11 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	if self.System != nil {
-		if err := writeSkill(); err != nil {
-			return err
-		}
+	shared, err := newSharedArea(self.System != nil)
+	if err != nil {
+		return err
 	}
-	d := &driver{c: c, self: self, mcpConfig: mcpConfig, system: systemPrompt(self)}
+	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared}
 	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
 
 	if self.System != nil {
@@ -84,7 +83,7 @@ type driver struct {
 	c         *api.Client
 	self      api.Self
 	mcpConfig string
-	system    string
+	shared    *sharedArea
 	session   string
 }
 
@@ -93,7 +92,10 @@ type driver struct {
 // the turn failed.
 func (d *driver) turn(ctx context.Context, state, prompt string) {
 	report(ctx, d.c, api.Status{State: state})
-	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, system: d.system}
+	// The shared area can change between turns, so the skills, agents, and
+	// policies are connected again before each one.
+	system := systemPrompt(d.self) + d.shared.sync()
+	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, system: system}
 	res, err := t.run(ctx)
 	if res.session != "" {
 		d.session = res.session
@@ -157,24 +159,6 @@ func writeMCPConfig(c *api.Client) (string, error) {
 	return path, os.WriteFile(path, data, 0o600)
 }
 
-//go:embed skill.md
-var skill []byte
-
-// writeSkill installs the hikari-system skill for Claude Code in the
-// container's home, so that an owner can load it when it works on its
-// documents.
-func writeSkill() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(home, ".claude", "skills", "hikari-system")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, "SKILL.md"), skill, 0o644)
-}
-
 func systemPrompt(self api.Self) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# hikari network\n\nYou are the agent %q in a hikari network of agents.", self.Name)
@@ -209,12 +193,14 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 			fmt.Fprintf(&b, "- In #%s you are a member. %s coordinates the hub. Do the tasks that mention you and post the results in the hub. A post from you starts a turn for %s and for each participant you mention.\n", h.Name, orchestrator, orchestrator)
 		}
 	}
+	b.WriteString(sharedPrompt())
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
 	}
 	if len(self.Orchestrates) > 0 {
 		b.WriteString(orchestratorPrompt(self))
 	}
+	b.WriteString(grantsPrompt(self))
 	if self.Instructions != "" {
 		fmt.Fprintf(&b, "\n# Instructions\n\n%s\n", self.Instructions)
 	}

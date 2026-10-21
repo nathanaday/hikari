@@ -1,6 +1,6 @@
 ---
 name: hikari-system
-description: How to keep your hikari system documents true - the public map, which you change through the map tools, and your private layout.yaml and test.yaml. Load it before you build or update your map, after you change code, and before you run or record tests.
+description: How to keep your hikari system documents true - the public map, which you change through the map tools, and your private layout.yaml and test.yaml - and how to publish a release. Load it before you build or update your map, after you change code, before you run or record tests, and before you publish a release.
 ---
 
 # Your system documents
@@ -9,9 +9,9 @@ You own a system. Three documents describe it, and you are the only author of al
 
 | Document | Who reads it | How you change it |
 |---|---|---|
-| `.hikari/map.yaml` | Everyone in your hubs. Your orchestrator plans from it. | Only through the map tools. The file is read-only to you. |
-| `.hikari/private/layout.yaml` | You and the human operator. | Edit the file. |
-| `.hikari/private/test.yaml` | You and the human operator. | Edit the file. |
+| `/hikari/public/export/map.yaml` | Your orchestrator, which plans from it, and every release you publish. | Only through the map tools. The file is read-only to you. |
+| `/hikari/private/layout.yaml` | You and the human operator. | Edit the file. |
+| `/hikari/private/test.yaml` | You and the human operator. | Edit the file. |
 
 The map is the public surface of your system: what it does, its interfaces, and how healthy each feature is. Other agents never see your code, so the map must make sense without it. Do not put file paths, commands, or internal names into the map. Interface names are the exception: they are the contract between systems, so use the names in your hub's vocabulary.
 
@@ -91,3 +91,30 @@ hikari checks the private documents when you record test results and when you ma
 - P2: every feature key is a feature id in the map. After you remove or rename a feature, update both files.
 - P3: every path exists in your scope.
 - P4: every suite has a command, and every test entry names a defined suite.
+
+## Publish a release
+
+A release is a version of your deliverable that other systems can use, with docs for people who cannot see your code. After you publish it, it never changes.
+
+1. Make sure the map is current and every feature that the release provides is tested.
+2. Build the deliverable into `/hikari/public/export/staging/product/`. It is whatever another system needs to use your work: a package, a binary, a directory of files. If it is hosted elsewhere, such as an image on Docker Hub, skip this step and use a remote product.
+3. Run the `release-docs` skill. It writes the docs into `/hikari/public/export/staging/docs/`.
+4. Write `/hikari/public/export/staging/release.yaml`:
+
+```yaml
+product:
+  kind: files                 # files, or remote
+  path: product/              # for files: inside the staging area
+  # location: {type: docker, ref: docker.io/acme/orders:1.2.0}   # for remote: docker, github-release, huggingface, or url
+runtime:
+  requires: [python >= 3.11]  # what the user needs
+  install: add product/ to PYTHONPATH
+  run: python -m orders       # optional
+docs:
+  index: docs/README.md
+interfaces: [create_order, cancel_order]   # interfaces from your map that this release provides
+```
+
+5. Call `publish_release` with a semver version greater than your last release, and notes that say what changed. hikari adds the version, the time, the source commit, and a copy of your public map, moves the staging area into `/hikari/public/export/releases/<version>/`, and announces the release in your hubs.
+
+Your published releases are in `/hikari/public/export/releases/`, and `releases/latest` is the newest one.

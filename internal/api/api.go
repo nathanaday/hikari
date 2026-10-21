@@ -58,6 +58,8 @@ type Self struct {
 	Orchestrates []string `json:"orchestrates,omitempty"`
 	// VisibleSystems lists the systems whose maps an orchestrator reads.
 	VisibleSystems []string `json:"visible_systems,omitempty"`
+	// Releases lists the systems whose releases the agent can read.
+	Releases []string `json:"releases,omitempty"`
 }
 
 // SendRequest sets exactly one of Hub and To.

@@ -56,8 +56,11 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		`You own the system "orders": the directory services/orders of the repo "shop".`,
 		"Your working directory, /workspace/services/orders, is your scope.",
 		"You can also read, but not change, /workspace/proto.",
-		".hikari/map.yaml, which you change only through the map tools",
-		".hikari/private/layout.yaml and .hikari/private/test.yaml, which you edit directly",
+		"/hikari/public/export/map.yaml, which you change only through the map tools",
+		"/hikari/private/layout.yaml and /hikari/private/test.yaml, which you edit directly",
+		"run the release-docs skill",
+		"mcp__hikari__publish_release",
+		"/hikari/public/readonly/shared holds what every agent",
 		"load the hikari-system skill",
 		"mcp__hikari__get_vocabulary",
 		`Commits go to the branch "hikari/work".`,
@@ -84,6 +87,8 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 		"no test in this network runs across two systems",
 		"You keep the vocabulary of #eng",
 		"get_system flags interface names",
+		"/hikari/public/readonly/systems/<system>/",
+		"When a system announces a release, check it",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("D5: orchestrator prompt lacks %q", want)
@@ -127,24 +132,104 @@ func TestTurnNotices(t *testing.T) {
 	}
 }
 
-func TestSkill(t *testing.T) {
-	text := string(skill)
-	if !strings.HasPrefix(text, "---\nname: hikari-system\ndescription: ") {
-		t.Errorf("the skill must start with its front matter:\n%.120s", text)
-	}
-	for _, want := range []string{"## layout.yaml", "## test.yaml", "P1:", "P4:", "mark_map_current"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the skill lacks %q", want)
+func TestBuiltinSkills(t *testing.T) {
+	for name, wants := range map[string][]string{
+		"hikari-system": {"## layout.yaml", "## test.yaml", "P1:", "P4:", "## Publish a release", "/hikari/private/layout.yaml", "publish_release"},
+		"release-docs":  {"context: fork\nbackground: false\n", "/hikari/public/export/staging/docs/", "Change no file outside that directory"},
+	} {
+		data, err := builtinSkills.ReadFile("skills/" + name + ".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		if !strings.HasPrefix(text, "---\nname: "+name+"\ndescription: ") {
+			t.Errorf("%s must start with its front matter:\n%.120s", name, text)
+		}
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s lacks %q", name, want)
+			}
 		}
 	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := writeSkill(); err != nil {
+}
+
+func newTestShared(t *testing.T, owner bool) (*sharedArea, string) {
+	t.Helper()
+	root := t.TempDir()
+	shared := filepath.Join(root, "shared")
+	for _, d := range []string{"skills", "agents", "policies", "vocabulary"} {
+		os.MkdirAll(filepath.Join(shared, d), 0o755)
+	}
+	return &sharedArea{home: filepath.Join(root, "home"), dir: shared, owner: owner, warned: map[string]bool{}}, shared
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".claude", "skills", "hikari-system", "SKILL.md"))
-	if err != nil || string(data) != text {
-		t.Errorf("writeSkill: %v", err)
+}
+
+func TestSharedAreaSync(t *testing.T) {
+	s, shared := newTestShared(t, true)
+	writeFile(t, filepath.Join(shared, "skills", "style", "SKILL.md"), "---\nname: style\n---\n")
+	writeFile(t, filepath.Join(shared, "skills", "hikari-system", "SKILL.md"), "fake")
+	writeFile(t, filepath.Join(shared, "skills", "empty-dir", "notes.txt"), "no skill here")
+	writeFile(t, filepath.Join(shared, "agents", "reviewer.md"), "---\nname: reviewer\n---\n")
+	writeFile(t, filepath.Join(shared, "policies", "b-security.md"), "Never log secrets.")
+	writeFile(t, filepath.Join(shared, "policies", "a-style.md"), "Write short sentences.")
+
+	policies := s.sync()
+	if target, _ := os.Readlink(filepath.Join(s.skillsDir(), "style")); target != filepath.Join(shared, "skills", "style") {
+		t.Errorf("H1: style skill link = %q", target)
+	}
+	if _, err := os.Lstat(filepath.Join(s.skillsDir(), "empty-dir")); err == nil {
+		t.Error("H1: a directory without SKILL.md must not be linked")
+	}
+	if target, _ := os.Readlink(filepath.Join(s.agentsDir(), "reviewer.md")); target != filepath.Join(shared, "agents", "reviewer.md") {
+		t.Errorf("H2: agent link = %q", target)
+	}
+	if !strings.Contains(policies, "# Policies") || strings.Index(policies, "## a-style") > strings.Index(policies, "## b-security") || !strings.Contains(policies, "Never log secrets.") {
+		t.Errorf("H3: policies:\n%s", policies)
+	}
+	data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-system", "SKILL.md"))
+	if !strings.HasPrefix(string(data), "---\nname: hikari-system") {
+		t.Errorf("H4: the built-in hikari-system skill was replaced: %.40q", data)
+	}
+	if data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "release-docs", "SKILL.md")); !strings.Contains(string(data), "context: fork") {
+		t.Error("H5: owners get the built-in release-docs skill")
+	}
+
+	// A shared release-docs replaces the built-in one, and the built-in one
+	// returns when the shared one is removed.
+	writeFile(t, filepath.Join(shared, "skills", "release-docs", "SKILL.md"), "---\nname: release-docs\n---\nmine")
+	s.sync()
+	if target, _ := os.Readlink(filepath.Join(s.skillsDir(), "release-docs")); target != filepath.Join(shared, "skills", "release-docs") {
+		t.Errorf("H5: shared release-docs link = %q", target)
+	}
+	os.RemoveAll(filepath.Join(shared, "skills", "release-docs"))
+	os.RemoveAll(filepath.Join(shared, "skills", "style"))
+	os.Remove(filepath.Join(shared, "agents", "reviewer.md"))
+	s.sync()
+	if _, err := os.Lstat(filepath.Join(s.skillsDir(), "style")); err == nil {
+		t.Error("H6: the link of a removed skill must go")
+	}
+	if _, err := os.Lstat(filepath.Join(s.agentsDir(), "reviewer.md")); err == nil {
+		t.Error("H6: the link of a removed agent must go")
+	}
+	if data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "release-docs", "SKILL.md")); !strings.Contains(string(data), "context: fork") {
+		t.Error("H5: the built-in release-docs must return")
+	}
+}
+
+func TestSharedAreaForNonOwners(t *testing.T) {
+	s, _ := newTestShared(t, false)
+	if got := s.sync(); got != "" {
+		t.Errorf("no policies, no section: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-system")); err == nil {
+		t.Error("only owners get the built-in skills")
 	}
 }
 
@@ -152,5 +237,20 @@ func TestTurnNoticesReportPrivateErrors(t *testing.T) {
 	got := turnNotices(owner, api.TurnContext{MapState: "current", PrivateErrors: []string{`P3: layout.yaml: path "x.py" does not exist in the scope`}})
 	if !strings.Contains(got, "Your private documents have problems: P3:") {
 		t.Errorf("notices: %q", got)
+	}
+}
+
+func TestGrantsPrompt(t *testing.T) {
+	consumer := owner
+	consumer.Releases = []string{"inventory"}
+	p := systemPrompt(consumer)
+	for _, want := range []string{"## Releases you can use", "- inventory: /hikari/public/readonly/systems/inventory/releases", "name its system and version in your test plan"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("P10: prompt lacks %q", want)
+		}
+	}
+	lead := api.Self{Name: "lead", Orchestrates: []string{"eng"}, VisibleSystems: []string{"orders"}, Releases: []string{"orders"}}
+	if strings.Contains(systemPrompt(lead), "## Releases you can use") {
+		t.Error("an orchestrator's own systems are not grants")
 	}
 }

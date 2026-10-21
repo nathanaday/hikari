@@ -308,6 +308,7 @@ func (s *Server) Self(node string) api.Self {
 	}
 	self.System, self.Orchestrates = s.sys.Self(node)
 	self.VisibleSystems = s.topo.VisibleSystems(node)
+	self.Releases = s.topo.ReadableReleases(node)
 	return self
 }
 
