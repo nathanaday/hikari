@@ -93,6 +93,12 @@ func up(ctx context.Context, args []string) error {
 	}
 	defer journal.Close()
 
+	// Listen first, so that a busy port stops hikari before it touches any
+	// repo.
+	ln, err := net.Listen("tcp", *listen)
+	if err != nil {
+		return err
+	}
 	sys, err := systems.New(topo)
 	if err != nil {
 		return err
@@ -103,10 +109,6 @@ func up(ctx context.Context, args []string) error {
 	sys.Watch(ctx)
 	srv := server.New(topo, journal, sys)
 	uiToken := server.NewToken()
-	ln, err := net.Listen("tcp", *listen)
-	if err != nil {
-		return err
-	}
 	httpSrv := &http.Server{Handler: srv.Handler(uiToken)}
 	go httpSrv.Serve(ln)
 	defer httpSrv.Close()
