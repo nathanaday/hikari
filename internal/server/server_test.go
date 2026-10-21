@@ -31,7 +31,7 @@ hubs:
 
 func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
 	t.Helper()
-	topo, err := topology.Parse([]byte(testTopology))
+	topo, err := topology.Parse([]byte(testTopology), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
