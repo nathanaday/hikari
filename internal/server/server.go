@@ -333,7 +333,10 @@ func (s *Server) publish(e Event) {
 }
 
 func (s *Server) snapshot() Snapshot {
-	snap := Snapshot{Me: topology.User, Messages: append([]api.Message(nil), s.log...)}
+	snap := Snapshot{Me: topology.User, Messages: slices.Clone(s.log)}
+	if snap.Messages == nil {
+		snap.Messages = []api.Message{}
+	}
 	for _, n := range s.topo.AgentNames() {
 		snap.Agents = append(snap.Agents, NodeView{
 			Name:        n,

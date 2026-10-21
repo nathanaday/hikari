@@ -169,6 +169,16 @@ func TestRequeueKeepsOrder(t *testing.T) {
 	}
 }
 
+func TestSnapshotOfNewServerHasEmptyMessageList(t *testing.T) {
+	s, _ := newTestServer(t)
+	events, cancel := s.Subscribe()
+	defer cancel()
+	data, _ := json.Marshal((<-events).Snapshot)
+	if !strings.Contains(string(data), `"messages":[]`) {
+		t.Fatalf("snapshot = %s, want an empty messages list, not null", data)
+	}
+}
+
 func TestNodeAPI(t *testing.T) {
 	s, _ := newTestServer(t)
 	srv := httptest.NewServer(s.Handler("ui-secret"))

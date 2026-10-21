@@ -453,7 +453,7 @@ function connect() {
       state.me = s.me;
       state.agents = new Map(s.agents.map((a) => [a.name, a]));
       state.hubs = new Map(s.hubs.map((h) => [h.name, h]));
-      state.messages = s.messages;
+      state.messages = s.messages || [];
       state.unread.clear();
       state.view = parseHash();
       render();
