@@ -33,9 +33,13 @@ test: web/node_modules
 	go test -race ./...
 	cd web && npm test
 
-# Create the repo of examples/systems.yaml in .hikari/demo/shop.
+# Create the repo of examples/systems.yaml in .hikari/demo/shop, and reset
+# its store in examples/store with a sample shared policy.
 demo-repo:
 	examples/demo/make-repo.sh .hikari/demo/shop
+	rm -rf examples/store
+	mkdir -p examples/store
+	cp -R examples/demo/store/. examples/store/
 
 # Remove containers and networks left by runs that did not shut down cleanly.
 clean:

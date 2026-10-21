@@ -7,12 +7,23 @@ import { cn } from '@/lib/utils'
 
 const noNames = new Set<string>()
 
-function FileContent({ path }: { path: string }) {
+// resolve returns the store path that href, a link in the file at path,
+// points to.
+function resolve(path: string, href: string): string {
+  const parts = path.split('/').slice(0, -1)
+  for (const part of href.split('#')[0].split('/')) {
+    if (part === '..') parts.pop()
+    else if (part !== '.' && part !== '') parts.push(part)
+  }
+  return parts.join('/')
+}
+
+function FileContent({ path, open }: { path: string; open: (path: string) => void }) {
   const { data, error, loading } = useFetch(storeFileURL(path), asText)
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>
   if (error) return <p className="text-sm text-muted-foreground">{error}</p>
   return path.endsWith('.md') ? (
-    <Markdown text={data ?? ''} names={noNames} />
+    <Markdown text={data ?? ''} names={noNames} onLocalLink={(href) => open(resolve(path, href))} />
   ) : (
     <pre className="overflow-x-auto rounded-md border bg-neutral-50 p-3 text-xs">{data}</pre>
   )
@@ -92,7 +103,7 @@ export function ReleaseView({ system, version }: { system: string; version: stri
           </div>
         </aside>
         <article className="min-w-0" data-testid="release-doc">
-          <FileContent key={shown} path={shown} />
+          <FileContent key={shown} path={shown} open={setOpen} />
         </article>
       </div>
     </div>

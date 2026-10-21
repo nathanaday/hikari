@@ -1,5 +1,7 @@
 # A shop with two systems in one repo. lead plans from the system maps and
 # never sees code. orders and inventory each own one directory of the repo.
+# orders can read inventory's releases, so it can test against the real
+# stock library once inventory publishes it. The store is examples/store.
 #
 # Create the repo first, then start the network:
 #   make demo-repo
@@ -19,6 +21,8 @@ agents:
       repo: shop
       scope: services/orders
       test: python3 -m unittest discover -s tests
+    grants:
+      releases: [inventory]
     packages: [python3]
   inventory:
     description: Owns stock levels and reservations.
