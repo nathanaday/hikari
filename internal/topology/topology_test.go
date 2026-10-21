@@ -234,3 +234,57 @@ func TestEveryViolationIsReported(t *testing.T) {
 		}
 	}
 }
+
+func TestStoreAndGrants(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	dir := t.TempDir()
+	src := systemsTopology(repo, `
+  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [inventory]}}
+  inventory: {system: {repo: shop, scope: services/inventory}}
+`)
+	topo, err := Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topo.Store != filepath.Join(dir, "store") {
+		t.Errorf("T10 default store = %q", topo.Store)
+	}
+	if got := topo.ReadableReleases("orders"); !slices.Equal(got, []string{"inventory"}) {
+		t.Errorf("orders reads %v", got)
+	}
+	if got := topo.ReadableReleases("lead"); !slices.Equal(got, []string{"inventory", "orders"}) {
+		t.Errorf("lead reads %v", got)
+	}
+	if got := topo.ReadableReleases("inventory"); len(got) != 0 {
+		t.Errorf("inventory reads %v", got)
+	}
+
+	custom, err := Parse([]byte("store: ../shared-store\n"+src), dir)
+	if err != nil || custom.Store != filepath.Join(filepath.Dir(dir), "shared-store") {
+		t.Errorf("T10 relative store = %q, %v", custom.Store, err)
+	}
+
+	for name, c := range map[string]struct{ agents, want string }{
+		"T11 own releases":  {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [orders]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", "cannot be granted its own releases"},
+		"T11 not a system":  {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [lead]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", `release grant "lead" is not a system`},
+		"T11 unknown agent": {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [ghost]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", `release grant "ghost" is not a system`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(systemsTopology(repo, c.agents)), dir)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
+func TestMemberAndOrchestratorGrants(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	src := strings.Replace(systemsTopology(repo, `
+  orders: {system: {repo: shop, scope: services/orders}}
+  inventory: {system: {repo: shop, scope: services/inventory}}
+`), "lead: {}", "lead: {grants: {releases: [orders]}}", 1)
+	if _, err := Parse([]byte(src), t.TempDir()); err != nil {
+		t.Errorf("T12: an orchestrator can have grants: %v", err)
+	}
+}

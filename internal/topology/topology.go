@@ -24,9 +24,16 @@ type Agent struct {
 	Instructions string   `yaml:"instructions"`
 	Model        string   `yaml:"model"`
 	System       *System  `yaml:"system"`
+	Grants       Grants   `yaml:"grants"`
 	Packages     []string `yaml:"packages"`
 	Setup        string   `yaml:"setup"`
 	Path         []string `yaml:"path"`
+}
+
+// Grants give an agent read-only access to parts of the store.
+type Grants struct {
+	// Releases lists the systems whose releases the agent can read.
+	Releases []string `yaml:"releases"`
 }
 
 // System is the code that one agent owns: a scope inside a repo.
@@ -55,6 +62,9 @@ type Hub struct {
 }
 
 type Topology struct {
+	// Store is the directory of the shared store. It is absolute after
+	// Load; the default is store/ next to the topology file.
+	Store  string           `yaml:"store"`
 	Repos  map[string]Repo  `yaml:"repos"`
 	Agents map[string]Agent `yaml:"agents"`
 	Hubs   map[string]Hub   `yaml:"hubs"`
@@ -100,6 +110,10 @@ func Parse(data []byte, dir string) (*Topology, error) {
 }
 
 func (t *Topology) normalize() {
+	if t.Store == "" {
+		t.Store = "store"
+	}
+	t.Store = resolvePath(t.Store, t.Dir)
 	for name, r := range t.Repos {
 		r.Path = resolvePath(r.Path, t.Dir)
 		t.Repos[name] = r
@@ -252,6 +266,13 @@ func (t *Topology) validateSystems() []error {
 				fail(name, "path entry %q is not an absolute path", p)
 			}
 		}
+		for _, g := range a.Grants.Releases {
+			if g == name {
+				fail(name, "cannot be granted its own releases")
+			} else if t.Agents[g].System == nil {
+				fail(name, "release grant %q is not a system in the topology", g)
+			}
+		}
 		s := a.System
 		if s == nil {
 			continue
@@ -369,6 +390,21 @@ func (t *Topology) VisibleSystems(orchestrator string) []string {
 			}
 		}
 	}
+	return sortedKeys(set)
+}
+
+// ReadableReleases returns the systems whose releases agent can read: its
+// visible systems as an orchestrator and its release grants, in sorted
+// order, without its own system.
+func (t *Topology) ReadableReleases(agent string) []string {
+	set := map[string]bool{}
+	for _, s := range t.VisibleSystems(agent) {
+		set[s] = true
+	}
+	for _, s := range t.Agents[agent].Grants.Releases {
+		set[s] = true
+	}
+	delete(set, agent)
 	return sortedKeys(set)
 }
 
