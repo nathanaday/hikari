@@ -280,6 +280,31 @@ func TestStoreAndGrants(t *testing.T) {
 	}
 }
 
+func TestDeliverableGrants(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	dir := t.TempDir()
+	src := systemsTopology(repo, strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {deliverables: [python-library, docs]}", 1))
+	topo, err := Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := topo.Agents["orders"].Grants.Deliverables; !slices.Equal(got, []string{"python-library", "docs"}) {
+		t.Errorf("T13 deliverables = %v", got)
+	}
+	for name, c := range map[string]struct{ services, want string }{
+		"T13 bad name":  {strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {deliverables: [Python_Lib]}", 1), `deliverable "Python_Lib" is not a valid name`},
+		"T13 twice":     {strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {deliverables: [lib, lib]}", 1), `deliverable "lib" is granted twice`},
+		"T14 not owner": {validOwners + "  writer: {x-hikari: {grants: {deliverables: [lib]}}}\n", `only an agent with a system can hold deliverables`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(systemsTopology(repo, c.services)), dir)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
 func TestMemberAndOrchestratorGrants(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory")
 	src := strings.Replace(systemsTopology(repo, validOwners), "lead: {x-hikari: {}}", "lead: {x-hikari: {grants: {releases: [orders]}}}", 1)

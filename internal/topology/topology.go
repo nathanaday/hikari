@@ -33,10 +33,14 @@ type Agent struct {
 	Grants       Grants  `yaml:"grants"`
 }
 
-// Grants give an agent read-only access to parts of the store.
+// Grants bind an agent to parts of the store: the releases it can read,
+// and the deliverables it publishes.
 type Grants struct {
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `yaml:"releases"`
+	// Deliverables lists the deliverables that the agent publishes. Only an
+	// owner can hold deliverables (rule T14).
+	Deliverables []string `yaml:"deliverables"`
 }
 
 // System is the code that one agent owns: a scope inside a repo.
@@ -139,7 +143,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0
+	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0
 }
 
 // Load reads a compose file through `docker compose config`, so that hikari
@@ -455,6 +459,18 @@ func (t *Topology) validateSystems() []error {
 			} else if t.Agents[g].System == nil {
 				fail(name, "release grant %q is not a system in the topology", g)
 			}
+		}
+		seen := map[string]bool{}
+		for _, d := range a.Grants.Deliverables {
+			switch {
+			case !validName.MatchString(d):
+				fail(name, "deliverable %q is not a valid name (a-z, 0-9, -, up to 32 characters)", d)
+			case seen[d]:
+				fail(name, "deliverable %q is granted twice", d)
+			case a.System == nil:
+				fail(name, "cannot hold the deliverable %q: only an agent with a system can hold deliverables", d)
+			}
+			seen[d] = true
 		}
 		s := a.System
 		if s == nil {
