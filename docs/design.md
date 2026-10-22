@@ -286,13 +286,24 @@ runs once as root, gives the volumes to the agent's user, and exits; the agent
 starts after it. Each token reaches compose as a variable that the override
 file names, so no token is written to disk.
 
+## The terminal is for people; the log is for the record
+
+`hikari up` sends everything that compose and the containers print, such as
+each tool call of each agent, to the run's log file. The terminal shows the
+start-up steps, one line for each message, and a footer pinned to the bottom
+with the web UI address, each agent's state, and the cost so far. The footer
+is redrawn in place with plain ANSI codes, so hikari needs no full-screen
+TUI: the terminal keeps its scrollback, and output to a pipe stays plain
+text. Each run keeps its records in one folder, `.hikari/runs/<run-id>/`, and
+writes `messages.jsonl` only when the run has a message.
+
 ## Known limitations
 
 - Agents can still send messages to each other without end, for example by
   mentioning each other. The wake rules and the system prompt make this less
   likely, but no hard limit exists.
 - If a turn fails, the messages of that turn are not given again.
-- The log and the inboxes are in memory. The journal file is a record only.
+- The log and the inboxes are in memory. The run's `messages.jsonl` is a record only.
   The server does not read it back at start.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.

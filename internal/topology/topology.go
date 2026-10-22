@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -99,6 +100,8 @@ type Topology struct {
 
 	// File is the compose file, when the topology came from Load.
 	File string
+	// Warnings are compose's warnings about the file, from Load.
+	Warnings []string
 	// Dir is the directory of the compose file. Relative paths in x-hikari
 	// start there.
 	Dir string
@@ -140,7 +143,7 @@ func (a Agent) empty() bool {
 }
 
 // Load reads a compose file through `docker compose config`, so that hikari
-// sees the file as compose will run it. Compose's warnings go to stderr.
+// sees the file as compose will run it.
 func Load(ctx context.Context, file string) (*Topology, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
@@ -153,22 +156,45 @@ func Load(ctx context.Context, file string) (*Topology, error) {
 	var top map[string]yaml.Node
 	if yaml.Unmarshal(data, &top) == nil {
 		if _, ok := top["agents"]; ok {
-			return nil, fmt.Errorf("%s uses the old topology format; hikari now reads a compose file (see the README)", file)
+			return nil, errors.New("this file uses the old topology format; hikari now reads a compose file (see the README)")
 		}
 	}
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", abs, "config")
-	cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if msg := composeMessages(stderr.String()); len(msg) > 0 {
+			return nil, fmt.Errorf("docker compose config: %s", strings.Join(msg, "; "))
+		}
 		return nil, fmt.Errorf("docker compose config: %v", err)
 	}
 	t, err := Parse(out, filepath.Dir(abs))
 	if err != nil {
 		return nil, err
 	}
-	t.File = abs
+	t.File, t.Warnings = abs, composeMessages(stderr.String())
 	return t, nil
+}
+
+var composeMsg = regexp.MustCompile(`msg="((?:[^"\\]|\\.)*)"`)
+
+// composeMessages returns the messages in compose's stderr, without the time
+// and level that compose puts around each one.
+func composeMessages(stderr string) []string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		if m := composeMsg.FindStringSubmatch(line); m != nil {
+			if msg, err := strconv.Unquote(`"` + m[1] + `"`); err == nil {
+				line = msg
+			}
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // Parse reads compose's resolved form of a compose file, the output of

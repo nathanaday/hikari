@@ -113,7 +113,7 @@ func (d *driver) turn(ctx context.Context, state, prompt string) {
 		return
 	}
 	log.Printf("turn done in %s, cost $%.4f", res.duration.Round(100*time.Millisecond), res.cost)
-	report(ctx, d.c, api.Status{State: api.StateIdle})
+	report(ctx, d.c, api.Status{State: api.StateIdle, Cost: res.cost})
 }
 
 func connect(ctx context.Context, c *api.Client) (api.Self, error) {

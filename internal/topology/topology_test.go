@@ -377,3 +377,14 @@ func TestServiceErrors(t *testing.T) {
 		t.Errorf("a sidecar may set command: %v", err)
 	}
 }
+
+func TestComposeMessages(t *testing.T) {
+	stderr := `time="2026-10-21T16:43:29-07:00" level=warning msg="The \"TOKEN\" variable is not set. Defaulting to a blank string."
+WARN[0000] plain warning
+`
+	got := composeMessages(stderr)
+	want := []string{`The "TOKEN" variable is not set. Defaulting to a blank string.`, "WARN[0000] plain warning"}
+	if !slices.Equal(got, want) {
+		t.Errorf("composeMessages = %q", got)
+	}
+}

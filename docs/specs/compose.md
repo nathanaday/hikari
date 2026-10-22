@@ -131,7 +131,7 @@ The override file gives each agent service:
 - **O6.** A prepare service, `<name>-prepare`, when the agent has named volumes. It runs the agent's image as root with no network, gives each named volume of the agent to the image's user, and exits. The agent `depends_on` it with `service_completed_successfully`.
 - **O7.** The label `hikari.run=<run id>` on every container and network, so that `make clean` finds what a crashed run left.
 
-The override file goes to `.hikari/<run id>/compose.override.yaml`, next to the run's journal. It holds no secret.
+The override file goes to `.hikari/runs/<run id>/compose.override.yaml`, next to the run's log and messages. It holds no secret.
 
 ## 5. Running
 

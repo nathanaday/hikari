@@ -84,6 +84,8 @@ const (
 type Status struct {
 	State  string `json:"state"`
 	Detail string `json:"detail,omitempty"`
+	// Cost is the cost in US dollars of the turn that just ended.
+	Cost float64 `json:"cost,omitempty"`
 }
 
 type errorBody struct {
