@@ -3,6 +3,7 @@ package node
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,8 +14,11 @@ import (
 	"github.com/nathanaday/hikari/internal/store"
 )
 
-//go:embed skills/*.md
-var builtinSkills embed.FS
+// builtin holds hikari's own skill package and agents, which always come
+// from the binary (rule H11).
+//
+//go:embed skills agents
+var builtin embed.FS
 
 // systemSkill is hikari's own skill, which always comes from the binary.
 const systemSkill = api.SystemSkill
@@ -53,7 +57,7 @@ func (s *sharedArea) sync() string {
 		}
 	}
 	if s.owner {
-		s.writeBuiltin(systemSkill)
+		s.writeBuiltin()
 	}
 	for _, name := range s.sharedSkills() {
 		switch {
@@ -70,6 +74,10 @@ func (s *sharedArea) sync() string {
 		s.link(filepath.Join(s.dir, store.Deliverables, name), filepath.Join(s.skillsDir(), name))
 	}
 	for _, name := range s.files("agents", ".md") {
+		if strings.HasPrefix(name, api.AgentPrefix) {
+			s.warnOnce("agent:"+name, "ignoring agents/%s; the prefix %s is reserved for hikari's own agents", name, api.AgentPrefix)
+			continue
+		}
 		s.link(filepath.Join(s.dir, "agents", name), filepath.Join(s.agentsDir(), name))
 	}
 	s.removeDangling(s.skillsDir())
@@ -109,22 +117,41 @@ func (s *sharedArea) files(kind, ext string) []string {
 	return out
 }
 
-// writeBuiltin installs a built-in skill, replacing a link that a shared
-// skill of the same name left behind.
-func (s *sharedArea) writeBuiltin(name string) {
-	dir := filepath.Join(s.skillsDir(), name)
-	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		os.Remove(dir)
-	}
-	data, err := builtinSkills.ReadFile("skills/" + name + ".md")
-	if err == nil {
-		err = os.MkdirAll(dir, 0o755)
-	}
-	if err == nil {
-		err = os.WriteFile(filepath.Join(dir, "SKILL.md"), data, 0o644)
-	}
+// writeBuiltin installs hikari's own skill package and agents, replacing
+// whatever is at their paths, such as a link that a shared skill of the
+// same name left behind.
+func (s *sharedArea) writeBuiltin() {
+	dir := filepath.Join(s.skillsDir(), systemSkill)
+	os.RemoveAll(dir)
+	err := fs.WalkDir(builtin, "skills/"+systemSkill, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel("skills/"+systemSkill, path)
+		data, err := builtin.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
 	if err != nil {
-		log.Printf("shared area: install the %s skill: %v", name, err)
+		log.Printf("shared area: install the %s skill: %v", systemSkill, err)
+	}
+	agents, _ := fs.ReadDir(builtin, "agents")
+	for _, a := range agents {
+		data, err := builtin.ReadFile("agents/" + a.Name())
+		if err == nil {
+			at := filepath.Join(s.agentsDir(), a.Name())
+			os.RemoveAll(at)
+			err = os.WriteFile(at, data, 0o644)
+		}
+		if err != nil {
+			log.Printf("shared area: install the agent %s: %v", a.Name(), err)
+		}
 	}
 }
 

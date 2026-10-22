@@ -22,7 +22,7 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Three documents describe your system: the public map at /hikari/public/export/map.yaml, which you change only through the map tools, and your private /hikari/private/layout.yaml and /hikari/private/test.yaml, which you edit directly. Your orchestrator plans from the map and never reads your code. Before you build or update the documents, load the hikari-system skill: it explains each document and how to keep it true.
+	b.WriteString(`- Your features are documents in /hikari/public/export/features/, one markdown file per feature with links between the features that work together. You read them as files and change them only with mcp__hikari__change_features. hikari writes the public map, /hikari/public/export/map.yaml, from them and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/test.yaml, which you edit directly, are yours alone. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, how to link, and how to keep them true.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
@@ -41,7 +41,7 @@ func orchestratorPrompt(self api.Self) string {
 	if len(self.VisibleSystems) > 0 {
 		fmt.Fprintf(&b, "\n## Your systems\n\nThe members of %s own these systems: %s. You have no code and cannot read any. You plan from their system maps.\n\n",
 			strings.Join(hubs, ", "), strings.Join(self.VisibleSystems, ", "))
-		b.WriteString(`- mcp__hikari__list_systems, get_system, search_features, and get_feature read the maps: what each system does, its interfaces, and the health of its features.
+		b.WriteString(`- mcp__hikari__list_systems, get_system, search_features, and get_feature read the maps: what each system does, its interfaces, and the health and state of its features. Each system's features are documents in /hikari/public/readonly/systems/<system>/features/, one per feature; get_feature returns the document, whose Purpose says why the feature exists and what it promises, and the documents link the features that work together.
 - When a map does not answer a question, ask the owner.
 - Ask owners for changes in terms of features and interfaces, not code. The owner decides how to make a change, and can push back with a reason.
 - Owners cannot see each other's code. A system can test against another system only through that system's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
@@ -64,24 +64,20 @@ The map and the releases of each of your systems are in /hikari/public/readonly/
 	return b.String()
 }
 
-// indexingPrompt asks an owner to build or update its map before it takes
-// messages.
+// indexingPrompt asks an owner to build or update its documents before it
+// takes messages (rule D8).
 func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	var b strings.Builder
 	if tc.MapState == mapStale {
-		b.WriteString("Your system map is stale. These paths in your scope changed since the map was last marked current:\n\n")
-		for _, p := range tc.Changed {
-			fmt.Fprintf(&b, "- %s\n", p)
-		}
-		b.WriteString(`
-Load the hikari-system skill. Update the map and the private documents where these changes affect them. Run the tests of the affected features and record the results. Then call mark_map_current.
-`)
+		b.WriteString("Your system documents are stale: the code changed since they were last marked current.\n\n")
+		b.WriteString(staleLists(tc))
+		b.WriteString("\nLoad the hikari-system skill and follow its Keep true procedure: update the stale features, place the unmapped paths, run the tests of the affected features and record the results, then call mark_map_current.\n")
 	} else {
-		b.WriteString(`Your system documents are not built yet. Load the hikari-system skill, then build them now:
+		b.WriteString(`Your system documents are not built yet. Load the hikari-system skill and follow its Build procedure:
 
-1. Read the code in your scope to learn what the system does. Read what you need, not every file.
-2. Describe the system and its features in the public map with set_system_info and upsert_features.
-3. Write .hikari/private/layout.yaml and .hikari/private/test.yaml.
+1. Read the code in your scope to learn what the system does, and write the parts of layout.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
+2. Describe the system with set_system_info, then write one feature document for each feature with change_features, linked to the features it works with.
+3. Write the code map of each feature in /hikari/private/layout.yaml and the test plan in /hikari/private/test.yaml.
 4. Run the tests as your test plan says, and call record_test_results for each feature that has tests.
 5. Call mark_map_current.
 `)
@@ -90,16 +86,57 @@ Load the hikari-system skill. Update the map and the private documents where the
 	return b.String()
 }
 
+// staleLists renders the stale features with their changed paths, the
+// undescribed features, and the unmapped paths, as lists.
+func staleLists(tc api.TurnContext) string {
+	var b strings.Builder
+	if len(tc.StaleFeatures) > 0 {
+		b.WriteString("Stale features, with the paths that changed:\n")
+		for _, f := range tc.StaleFeatures {
+			fmt.Fprintf(&b, "- %s: %s\n", f.ID, strings.Join(f.Paths, ", "))
+		}
+	}
+	if len(tc.UndescribedFeatures) > 0 {
+		fmt.Fprintf(&b, "Features created since the last mark_map_current: %s.\n", strings.Join(tc.UndescribedFeatures, ", "))
+	}
+	if len(tc.UnmappedPaths) > 0 {
+		b.WriteString("Changed paths that belong to no feature:\n")
+		for _, p := range tc.UnmappedPaths {
+			fmt.Fprintf(&b, "- %s\n", p)
+		}
+	}
+	return b.String()
+}
+
+// staleSummary renders the same lists in one sentence, for a notice.
+func staleSummary(tc api.TurnContext) string {
+	var parts []string
+	if len(tc.StaleFeatures) > 0 {
+		items := make([]string, len(tc.StaleFeatures))
+		for i, f := range tc.StaleFeatures {
+			items[i] = fmt.Sprintf("%s (%s)", f.ID, strings.Join(f.Paths, ", "))
+		}
+		parts = append(parts, "Stale features: "+strings.Join(items, "; ")+".")
+	}
+	if len(tc.UndescribedFeatures) > 0 {
+		parts = append(parts, "Features created since the last mark_map_current: "+strings.Join(tc.UndescribedFeatures, ", ")+".")
+	}
+	if len(tc.UnmappedPaths) > 0 {
+		parts = append(parts, "Changed paths that belong to no feature: "+strings.Join(tc.UnmappedPaths, ", ")+".")
+	}
+	return strings.Join(parts, " ")
+}
+
 // turnNotices tells an agent, before its messages, what changed since its
-// last turn.
+// last turn (rule D9).
 func turnNotices(self api.Self, tc api.TurnContext) string {
 	var notes []string
 	if self.System != nil {
 		switch tc.MapState {
 		case mapStale:
-			notes = append(notes, fmt.Sprintf("Your system map is stale. These paths changed since it was last marked current: %s. Before you end this turn, update the affected entries and call mark_map_current.", strings.Join(tc.Changed, ", ")))
+			notes = append(notes, "Your system documents are stale. "+staleSummary(tc)+" Before you end this turn, follow the Keep true procedure of the hikari-system skill and call mark_map_current.")
 		case mapUnbuilt:
-			notes = append(notes, "Your system documents are not built yet. Before you end this turn, load the hikari-system skill, build them, and call mark_map_current.")
+			notes = append(notes, "Your system documents are not built yet. Before you end this turn, load the hikari-system skill, follow its Build procedure, and call mark_map_current.")
 		}
 		if len(tc.PrivateErrors) > 0 {
 			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
@@ -108,7 +145,7 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 	for _, hub := range tc.VocabularyChanged {
 		note := fmt.Sprintf("The vocabulary of #%s changed. Call get_vocabulary to read it.", hub)
 		if self.System != nil {
-			note += " Rename entries in your map that use other names for its terms or interfaces."
+			note += " Rename entries in your map and feature documents that use other names for its terms or interfaces."
 		}
 		notes = append(notes, note)
 	}
