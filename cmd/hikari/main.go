@@ -28,12 +28,14 @@ import (
 	"github.com/nathanaday/hikari/internal/server"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/version"
 )
 
 const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
 
 Usage:
   hikari up [flags] <compose.yaml>    start the server, the web UI, and the compose project
+  hikari version                      print the version
 
 Internal commands (hikari starts these; you do not run them):
   hikari node   the agent driver; each container runs it
@@ -56,6 +58,8 @@ func main() {
 		err = runNode(ctx)
 	case "mcp":
 		err = runMCP(ctx)
+	case "version", "-v", "-version", "--version":
+		fmt.Println("hikari " + version.Version)
 	case "help", "-h", "-help", "--help":
 		fmt.Print(usage)
 	default:

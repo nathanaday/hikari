@@ -6,6 +6,8 @@ export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
 export type State = {
   connection: Connection
   loaded: boolean
+  // version is the version of the running hikari.
+  version: string
   me: string
   agents: Agent[]
   hubs: Hub[]
@@ -29,6 +31,7 @@ export function initialState(view: View): State {
   return {
     connection: 'connecting',
     loaded: false,
+    version: '',
     me: 'user',
     agents: [],
     hubs: [],
@@ -73,6 +76,7 @@ function applyEvent(s: State, e: ServerEvent): State {
       return {
         ...s,
         loaded: true,
+        version: e.snapshot.version ?? '',
         me,
         agents,
         hubs,

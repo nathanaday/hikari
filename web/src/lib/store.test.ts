@@ -34,6 +34,10 @@ function loaded(view = allView): State {
 const receive = (s: State, m: Message) => reducer(s, { type: 'event', event: { type: 'message', message: m } })
 
 describe('reducer', () => {
+  it('keeps the version of the running hikari', () => {
+    expect(reducer(initialState(allView), { type: 'event', event: { type: 'snapshot', snapshot: { ...snapshot, version: '0.0.1' } } }).version).toBe('0.0.1')
+  })
+
   it('keeps a view from the URL that names a known hub', () => {
     expect(loaded({ kind: 'hub', name: 'eng' }).view).toEqual({ kind: 'hub', name: 'eng' })
   })

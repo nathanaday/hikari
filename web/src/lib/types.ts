@@ -150,6 +150,7 @@ export type Vocabulary = {
 }
 
 export type Snapshot = {
+  version?: string
   me: string
   agents: Agent[]
   hubs: Hub[]

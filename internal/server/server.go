@@ -21,6 +21,7 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
 )
 
@@ -45,6 +46,8 @@ type NodeView struct {
 }
 
 type Snapshot struct {
+	// Version is the version of the running hikari.
+	Version      string             `json:"version"`
 	Me           string             `json:"me"`
 	Agents       []NodeView         `json:"agents"`
 	Hubs         []api.HubInfo      `json:"hubs"`
@@ -428,7 +431,7 @@ func (s *Server) publish(e Event) {
 }
 
 func (s *Server) snapshot() Snapshot {
-	snap := Snapshot{Me: topology.User, Messages: slices.Clone(s.log)}
+	snap := Snapshot{Version: version.Version, Me: topology.User, Messages: slices.Clone(s.log)}
 	if snap.Messages == nil {
 		snap.Messages = []api.Message{}
 	}

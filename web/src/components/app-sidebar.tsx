@@ -38,7 +38,14 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
     <Sidebar>
       <SidebarHeader className="px-4 pt-4 pb-2">
         <div className="flex items-baseline justify-between">
-          <span className="text-[15px] font-semibold tracking-tight">hikari</span>
+          <span className="text-[15px] font-semibold tracking-tight">
+            hikari
+            {state.version && (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground" data-testid="version">
+                v{state.version}
+              </span>
+            )}
+          </span>
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className={state.connection === 'live' ? 'size-1.5 rounded-full bg-emerald-500' : 'size-1.5 rounded-full bg-neutral-300'} />
             {connectionLabel[state.connection]}

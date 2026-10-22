@@ -231,6 +231,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/mcpserver`: the MCP tools for the agent
 - `internal/launcher`: writes the override file and runs the compose project
 - `internal/topology`: reads and checks compose files
+- `internal/version`: the version of hikari, which `hikari version`, the terminal banner, and the web UI show; change it there for each release
 - `web/`: the browser UI
 - `examples/`: `studio` (one hub), `team` (two hubs in a tree), and `shop` (two systems in the demo repo, with a sidecar)
 

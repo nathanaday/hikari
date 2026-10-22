@@ -13,6 +13,7 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/server"
+	"github.com/nathanaday/hikari/internal/version"
 )
 
 // banner holds the letters of "hikari", two rows each.
@@ -37,7 +38,7 @@ func printBanner(con *console.Console) {
 		}
 		con.Println("  " + strings.Join(letters, " "))
 	}
-	con.Println("  " + con.Dim("Claude Code agents in containers, talking through hubs"))
+	con.Println("  " + con.Dim("v"+version.Version))
 	con.Println("")
 }
 
