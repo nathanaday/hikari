@@ -13,10 +13,11 @@ import (
 
 // The kinds of documents in the shared area.
 const (
-	Vocabulary = "vocabulary"
-	Policies   = "policies"
-	Skills     = "skills"
-	Agents     = "agents"
+	Vocabulary   = "vocabulary"
+	Policies     = "policies"
+	Skills       = "skills"
+	Agents       = "agents"
+	Deliverables = "deliverables"
 )
 
 // Store is a store on the host.
@@ -42,14 +43,23 @@ func (s Store) ReleasesDir(system string) string {
 	return filepath.Join(s.SystemDir(system), "releases")
 }
 
-func (s Store) ReleaseDir(system, version string) string {
-	return filepath.Join(s.ReleasesDir(system), version)
+// StagingOf is where an owner builds the product of one deliverable.
+func (s Store) StagingOf(system, deliverable string) string {
+	return filepath.Join(s.Staging(system), deliverable)
+}
+
+func (s Store) DeliverableReleasesDir(system, deliverable string) string {
+	return filepath.Join(s.ReleasesDir(system), deliverable)
+}
+
+func (s Store) ReleaseDir(system, deliverable, version string) string {
+	return filepath.Join(s.DeliverableReleasesDir(system, deliverable), version)
 }
 
 // Prepare creates the directories of the store that do not exist (rule L1)
 // and writes its README once.
 func (s Store) Prepare(systems []string) error {
-	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents)}
+	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents), s.Shared(Deliverables)}
 	for _, sys := range systems {
 		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys))
 	}
@@ -75,17 +85,21 @@ this file once; you can change it.
       policies/<name>.md        rules for every agent; you write them
       skills/<name>/SKILL.md    Claude Code skills for every agent; you write them
       agents/<name>.md          Claude Code subagent definitions; you write them
+      deliverables/<name>/      what a release must contain and how to make it; you write them
+        deliverable.yaml        the description, the layout rules, and the cloud targets
+        SKILL.md                the skill that tells the owner how to make the product
     systems/<system>/
       map.yaml                  the public map of the system; its owner writes it through hikari
-      staging/                  where the owner prepares its next release
-      releases/<x.y.z>/         published releases, which never change
-        release.yaml            what the release is and how to use it
-        product/                the deliverable, unless it is hosted elsewhere
-        docs/                   user-facing docs
+      staging/<deliverable>/    where the owner builds the product of its next release
+      releases/<deliverable>/<x.y.z>/   published releases, which never change
+        release.yaml            the manifest; hikari writes it
+        SHA256SUMS              the digest of every file of the product
+        product/                the files the owner staged
         map.yaml                the public map at release time
-      releases/latest           the newest release
+      releases/<deliverable>/latest     the newest release of that deliverable
 
-Every container can read shared/. An owner writes only its own staging/. An
-orchestrator reads the maps and releases of the systems in its hubs, and the
-topology can grant any agent read-only access to other systems' releases.
+Every container can read shared/. An owner writes only its own staging/, and
+publishes only the deliverables that the topology grants it. An orchestrator
+reads the maps and releases of the systems in its hubs, and the topology can
+grant any agent read-only access to other systems' releases.
 `

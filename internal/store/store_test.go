@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,10 +37,11 @@ func newStore(t *testing.T) Store {
 	return s
 }
 
-func stage(t *testing.T, s Store, files map[string]string) {
+// writeFiles writes files under dir, creating directories as needed.
+func writeFiles(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 	for name, content := range files {
-		p := filepath.Join(s.Staging("inventory"), name)
+		p := filepath.Join(dir, name)
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
@@ -46,126 +49,350 @@ func stage(t *testing.T, s Store, files map[string]string) {
 	}
 }
 
-const manifest = `product: {kind: files, path: product/}
-runtime: {requires: [python >= 3.11], install: add product/ to PYTHONPATH}
-docs: {index: docs/README.md}
-interfaces: [Stock.reserve]
+const pythonLibrary = `version: 1
+description: A Python library that other systems install from the release.
+layout:
+  require: [README.md, "src/**/*.py"]
+  allow: [README.md, "src/**/*.py", "docs/**/*.md"]
+  forbid: ["**/__pycache__/**", "**/*.pyc"]
 `
 
-var goodRelease = map[string]string{
-	"release.yaml":                  manifest,
-	"product/inventory/stock.py":    "class Stock: pass\n",
-	"product/inventory/__init__.py": "",
-	"docs/README.md":                "# inventory\n",
+func defineDeliverable(t *testing.T, s Store, name, yaml string) {
+	t.Helper()
+	writeFiles(t, s.DeliverableDir(name), map[string]string{DeliverableFile: yaml, SkillFile: "# Make the library\n"})
+}
+
+var goodProduct = map[string]string{
+	"README.md":                 "# inventory\n",
+	"src/inventory/stock.py":    "class Stock: pass\n",
+	"src/inventory/__init__.py": "",
+	"docs/limits.md":            "none\n",
+}
+
+func stage(t *testing.T, s Store, deliverable string, files map[string]string) {
+	t.Helper()
+	writeFiles(t, s.StagingOf("inventory", deliverable), files)
 }
 
 func input(version string) PublishInput {
 	return PublishInput{
-		System: "inventory", Version: version, Notes: "First release.", SourceCommit: "abc123",
-		Provides: map[string]bool{"Stock.reserve": true}, Map: []byte("version: 2\n"),
+		System: "inventory", Deliverable: "python-library", Version: version, Notes: "First release.",
+		SourceCommit: "abc123", Map: []byte("version: 2\n"), Hubs: []string{"shop"}, Hikari: "0.0.1",
 		Now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC),
 	}
 }
 
-func TestPublish(t *testing.T) {
+func TestLoadDeliverable(t *testing.T) {
 	s := newStore(t)
-	stage(t, s, goodRelease)
-	m, err := s.Publish(input("1.0.0"))
+	defineDeliverable(t, s, "python-library", pythonLibrary+"targets:\n  - {type: github-release, repo: acme/inventory}\n")
+	d, err := s.LoadDeliverable("python-library")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Version != "1.0.0" || m.System != "inventory" || m.SourceCommit != "abc123" || m.Notes != "First release." || m.Map != "map.yaml" {
-		t.Errorf("R4 manifest: %+v", m)
+	if d.Description == "" || len(d.Layout.Require) != 2 || len(d.Targets) != 1 || d.Targets[0].Repo != "acme/inventory" {
+		t.Errorf("D1: %+v", d)
 	}
-	dir := s.ReleaseDir("inventory", "1.0.0")
-	for _, p := range []string{"product/inventory/stock.py", "docs/README.md", "release.yaml", "map.yaml"} {
-		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
-			t.Errorf("R3: release lacks %s", p)
-		}
-	}
-	if entries, _ := os.ReadDir(s.Staging("inventory")); len(entries) != 0 {
-		t.Errorf("R3: staging must be empty, has %v", entries)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, ManifestFile))
-	if !strings.Contains(string(data), "source_commit: abc123") || !strings.Contains(string(data), "released: 2026-10-22T10:00:00Z") {
-		t.Errorf("R4 written manifest:\n%s", data)
-	}
-	if link, _ := os.Readlink(filepath.Join(s.ReleasesDir("inventory"), "latest")); link != "1.0.0" {
-		t.Errorf("R5 latest -> %q", link)
+	names, _ := s.DeliverableNames()
+	if !slices.Equal(names, []string{"python-library"}) {
+		t.Errorf("names = %v", names)
 	}
 
-	stage(t, s, goodRelease)
-	if _, err := s.Publish(input("1.0.0")); err == nil || !strings.Contains(err.Error(), "not greater") {
-		t.Errorf("R7: republishing 1.0.0: %v", err)
-	}
-	if _, err := s.Publish(input("1.1.0-rc.1")); err != nil {
-		t.Fatal(err)
-	}
-	if link, _ := os.Readlink(filepath.Join(s.ReleasesDir("inventory"), "latest")); link != "1.1.0-rc.1" {
-		t.Errorf("R5 latest -> %q", link)
-	}
-	list, _ := s.Releases("inventory")
-	if len(list) != 2 || list[0].Version != "1.1.0-rc.1" || list[1].Version != "1.0.0" {
-		t.Errorf("Releases newest first: %+v", list)
-	}
-}
-
-func TestPublishChecks(t *testing.T) {
-	cases := map[string]struct {
-		version string
-		files   map[string]string
-		want    string
-	}{
-		"bad version":        {"1.0", goodRelease, "is not semver"},
-		"no manifest":        {"1.0.0", map[string]string{"docs/README.md": "x"}, "has no release.yaml"},
-		"unknown field":      {"1.0.0", with(goodRelease, "release.yaml", manifest+"extra: 1\n"), "field extra not found"},
-		"missing product":    {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "path: product/", "path: build/", 1)), `product.path "build/" does not exist`},
-		"bad kind":           {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "kind: files", "kind: zip", 1)), "product.kind must be"},
-		"remote without ref": {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "{kind: files, path: product/}", "{kind: remote, location: {type: docker}}", 1)), "location.ref is empty"},
-		"remote bad type":    {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "{kind: files, path: product/}", "{kind: remote, location: {type: ftp, ref: x}}", 1)), "location.type must be one of"},
-		"empty docs":         {"1.0.0", with(goodRelease, "docs/README.md", ""), "is empty"},
-		"missing docs":       {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "docs/README.md", "docs/INDEX.md", 1)), "is not a file"},
-		"unknown interface":  {"1.0.0", with(goodRelease, "release.yaml", strings.Replace(manifest, "Stock.reserve", "Stock.steal", 1)), `"Stock.steal" is not one that the map provides`},
-	}
-	for name, c := range cases {
+	for name, c := range map[string]struct{ yaml, skill, want string }{
+		"D1 unknown field": {pythonLibrary + "extra: 1\n", "x", "field extra not found"},
+		"D1 version":       {strings.Replace(pythonLibrary, "version: 1", "version: 2", 1), "x", "must have version: 1"},
+		"D1 empty":         {"", "x", "must have version: 1"},
+		"D2 description":   {strings.Replace(pythonLibrary, "description: A Python", "description: ''\n#", 1), "x", "description is required"},
+		"D3 bad glob":      {strings.Replace(pythonLibrary, `"src/**/*.py"`, `"src/[py"`, 1), "x", `layout.require pattern "src/[py" is not a valid glob`},
+		"D4 bad type":      {pythonLibrary + "targets: [{type: ftp}]\n", "x", "type must be one of"},
+		"D4 twice":         {pythonLibrary + "targets: [{type: dockerhub}, {type: dockerhub}]\n", "x", "two entries of type dockerhub"},
+		"D4 wrong pin":     {pythonLibrary + "targets: [{type: dockerhub, repo: a/b}]\n", "x", "cannot pin repo"},
+		"D4 bad kind":      {pythonLibrary + "targets: [{type: huggingface, kind: weights}]\n", "x", "kind must be one of"},
+		"D5 no skill":      {pythonLibrary, "", "SKILL.md is empty"},
+	} {
 		t.Run(name, func(t *testing.T) {
 			s := newStore(t)
-			stage(t, s, c.files)
-			_, err := s.Publish(input(c.version))
+			writeFiles(t, s.DeliverableDir("lib"), map[string]string{DeliverableFile: c.yaml, SkillFile: c.skill})
+			_, err := s.LoadDeliverable("lib")
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("error = %v, want %q", err, c.want)
 			}
-			if versions, _ := s.Versions("inventory"); len(versions) != 0 {
-				t.Errorf("a rejected release was published: %v", versions)
+		})
+	}
+	if _, err := s.LoadDeliverable("ghost"); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("missing deliverable: %v", err)
+	}
+	if _, err := s.LoadDeliverable("Bad Name"); err == nil || !strings.Contains(err.Error(), "not a valid name") {
+		t.Errorf("bad name: %v", err)
+	}
+	os.Remove(filepath.Join(s.DeliverableDir("python-library"), DeliverableFile))
+	if _, err := s.LoadDeliverable("python-library"); err == nil || !strings.Contains(err.Error(), "has no deliverable.yaml") {
+		t.Errorf("missing yaml: %v", err)
+	}
+}
+
+func TestLayoutCheck(t *testing.T) {
+	paths := []string{"README.md", "src/a.py", "src/pkg/b.py", "src/pkg/__pycache__/b.pyc", "notes/README.md"}
+	cases := map[string]struct {
+		layout Layout
+		want   []string
+	}{
+		"G1 require met":     {Layout{Require: []string{"README.md", "**/*.py"}}, nil},
+		"G1 require missed":  {Layout{Require: []string{"LICENSE"}}, []string{`no file matches "LICENSE"`}},
+		"G2 allow":           {Layout{Allow: []string{"README.md", "src/**"}}, []string{"match no allowed pattern: notes/README.md"}},
+		"G3 forbid":          {Layout{Forbid: []string{"**/__pycache__/**"}}, []string{`"**/__pycache__/**" matches src/pkg/__pycache__/b.pyc`}},
+		"G4 top level only":  {Layout{Require: []string{"a.py"}}, []string{`no file matches "a.py"`}},
+		"G4 star in segment": {Layout{Forbid: []string{"src/*.pyc"}}, nil},
+		"exact map":          {Layout{Require: []string{"README.md"}, Allow: []string{"README.md"}}, []string{"match no allowed pattern: src/a.py, src/pkg/b.py, src/pkg/__pycache__/b.pyc, notes/README.md"}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			errs := c.layout.Check(paths)
+			if len(errs) != len(c.want) {
+				t.Fatalf("errors = %v, want %v", errs, c.want)
+			}
+			for i, w := range c.want {
+				if !strings.Contains(errs[i].Error(), w) {
+					t.Errorf("error %d = %v, want %q", i, errs[i], w)
+				}
 			}
 		})
 	}
 }
 
-func TestPublishRemote(t *testing.T) {
-	s := newStore(t)
-	stage(t, s, map[string]string{
-		"release.yaml":   "product: {kind: remote, location: {type: docker, ref: docker.io/acme/inventory:1.0.0}}\ndocs: {index: docs/README.md}\n",
-		"docs/README.md": "# inventory\n",
-	})
-	m, err := s.Publish(input("1.0.0"))
-	if err != nil || m.Product.Location.Ref != "docker.io/acme/inventory:1.0.0" {
-		t.Errorf("remote release: %+v, %v", m, err)
+const (
+	hex40s = "0123456789abcdef0123456789abcdef01234567"
+	hex64s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+)
+
+func TestCheckCertificates(t *testing.T) {
+	targets := []Target{{Type: TargetGitHubRelease, Repo: "acme/inventory"}, {Type: TargetDockerHub}, {Type: TargetHuggingFace, Kind: "model"}}
+	good := []Certificate{
+		{Type: TargetGitHubRelease, Repo: "acme/inventory", Tag: "v1.0.0", URL: "https://github.com/acme/inventory/releases/tag/v1.0.0", Assets: []Asset{{Name: "x.tar.gz", SHA256: hex64s}}},
+		{Type: TargetDockerHub, Repository: "acme/inventory", Tag: "1.0.0", Digest: "sha256:" + hex64s},
+		{Type: TargetHuggingFace, Repo: "acme/inventory-model", Kind: "model", Revision: hex40s, URL: "https://huggingface.co/acme/inventory-model"},
+	}
+	if errs := CheckCertificates(targets, good); len(errs) != 0 {
+		t.Errorf("good certificates: %v", errs)
+	}
+	replace := func(i int, f func(c *Certificate)) []Certificate {
+		out := slices.Clone(good)
+		f(&out[i])
+		return out
+	}
+	cases := map[string]struct {
+		certs []Certificate
+		want  string
+	}{
+		"C2 missing":      {good[:2], "promises a huggingface target, and no certificate"},
+		"C2 no target":    {append(slices.Clone(good), Certificate{Type: TargetDockerHub}), "two entries of type dockerhub"},
+		"C1 bad type":     {append(slices.Clone(good), Certificate{Type: "ftp"}), "type must be one of"},
+		"C3 pin":          {replace(0, func(c *Certificate) { c.Repo = "acme/other" }), `repo is "acme/other", and the deliverable pins it to "acme/inventory"`},
+		"C3 kind pin":     {replace(2, func(c *Certificate) { c.Kind = "dataset" }), `kind is "dataset", and the deliverable pins it to "model"`},
+		"C4 required":     {replace(1, func(c *Certificate) { c.Digest = "" }), "digest is required"},
+		"C4 wrong field":  {replace(1, func(c *Certificate) { c.URL = "https://x" }), "url is not a field of this type"},
+		"C4 assets":       {replace(1, func(c *Certificate) { c.Assets = []Asset{{Name: "a", SHA256: hex64s}} }), "assets is not a field of this type"},
+		"C4 url":          {replace(0, func(c *Certificate) { c.URL = "http://github.com/x" }), "not an absolute https URL"},
+		"C4 digest":       {replace(1, func(c *Certificate) { c.Digest = "sha256:abc" }), "is not sha256:<64 hex>"},
+		"C4 revision":     {replace(2, func(c *Certificate) { c.Revision = "abc" }), "is not 40 hex characters"},
+		"C4 owner/name":   {replace(1, func(c *Certificate) { c.Repository = "inventory" }), `repository "inventory" is not owner/name`},
+		"C4 asset digest": {replace(0, func(c *Certificate) { c.Assets = []Asset{{Name: "a", SHA256: "xyz"}} }), "assets[0] needs a name and a 64-hex sha256"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			errs := CheckCertificates(targets, c.certs)
+			if !slices.ContainsFunc(errs, func(e error) bool { return strings.Contains(e.Error(), c.want) }) {
+				t.Errorf("errors = %v, want %q", errs, c.want)
+			}
+		})
+	}
+	if errs := CheckCertificates(nil, []Certificate{good[1]}); len(errs) != 1 || !strings.Contains(errs[0].Error(), "has no dockerhub target") {
+		t.Errorf("C2 certificate without target: %v", errs)
 	}
 }
 
-func TestPrepare(t *testing.T) {
+func TestPublish(t *testing.T) {
 	s := newStore(t)
-	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "systems/inventory/staging", "systems/inventory/releases"} {
-		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
-			t.Errorf("L1: missing %s", p)
+	defineDeliverable(t, s, "python-library", pythonLibrary)
+	stage(t, s, "python-library", goodProduct)
+	os.MkdirAll(filepath.Join(s.StagingOf("inventory", "python-library"), "src", "empty"), 0o755)
+
+	check, err := s.Check("inventory", "python-library")
+	if err != nil || check.Files != 4 {
+		t.Fatalf("R15 check = %+v, %v", check, err)
+	}
+
+	m, err := s.Publish(input("1.0.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Deliverable != "python-library" || m.Version != "1.0.0" || m.System != "inventory" || m.SourceCommit != "abc123" ||
+		m.Notes != "First release." || m.Map != "map.yaml" || m.Hikari != "0.0.1" || !slices.Equal(m.Hubs, []string{"shop"}) ||
+		m.Product.Files != 4 || m.Product.Path != "product/" || !strings.HasPrefix(m.Product.Digest, "sha256:") || m.Certificates == nil {
+		t.Errorf("R14 manifest: %+v", m)
+	}
+	dir := s.ReleaseDir("inventory", "python-library", "1.0.0")
+	for _, p := range []string{"product/README.md", "product/src/inventory/stock.py", "product/src/empty", "release.yaml", "SHA256SUMS", "map.yaml"} {
+		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
+			t.Errorf("R17: release lacks %s", p)
 		}
 	}
-	if versions, err := s.Versions("ghost"); err != nil || versions != nil {
+	if entries, _ := os.ReadDir(s.StagingOf("inventory", "python-library")); len(entries) != 0 {
+		t.Errorf("R17: staging must be empty, has %v", entries)
+	}
+
+	sums, _ := os.ReadFile(filepath.Join(dir, SumsFile))
+	lines := strings.Split(strings.TrimSpace(string(sums)), "\n")
+	if len(lines) != 4 || !strings.HasSuffix(lines[0], "  product/README.md") {
+		t.Errorf("R12 SHA256SUMS:\n%s", sums)
+	}
+	for _, line := range lines {
+		sum, path, _ := strings.Cut(line, "  ")
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sha256.Sum256(data); hex.EncodeToString(got[:]) != sum {
+			t.Errorf("R12: digest of %s is wrong", path)
+		}
+	}
+	if d := sha256.Sum256(sums); m.Product.Digest != "sha256:"+hex.EncodeToString(d[:]) {
+		t.Errorf("R13 product digest %s", m.Product.Digest)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, ManifestFile))
+	if !strings.Contains(string(data), "released: 2026-10-22T10:00:00Z") || !strings.Contains(string(data), "certificates: []") {
+		t.Errorf("written manifest:\n%s", data)
+	}
+	if link, _ := os.Readlink(filepath.Join(s.DeliverableReleasesDir("inventory", "python-library"), "latest")); link != "1.0.0" {
+		t.Errorf("R17 latest -> %q", link)
+	}
+
+	stage(t, s, "python-library", goodProduct)
+	if _, err := s.Publish(input("1.0.0")); err == nil || !strings.Contains(err.Error(), "not greater") {
+		t.Errorf("R19: republishing 1.0.0: %v", err)
+	}
+	if _, err := s.Publish(input("1.1.0-rc.1")); err != nil {
+		t.Fatal(err)
+	}
+	if link, _ := os.Readlink(filepath.Join(s.DeliverableReleasesDir("inventory", "python-library"), "latest")); link != "1.1.0-rc.1" {
+		t.Errorf("latest -> %q", link)
+	}
+
+	defineDeliverable(t, s, "docs", "version: 1\ndescription: The docs.\n")
+	stage(t, s, "docs", map[string]string{"index.md": "hi\n"})
+	in := input("0.1.0")
+	in.Deliverable = "docs"
+	if _, err := s.Publish(in); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.Releases("inventory")
+	if len(list) != 3 || list[0].Deliverable != "docs" || list[1].Version != "1.1.0-rc.1" || list[2].Version != "1.0.0" {
+		t.Errorf("Releases by deliverable, newest first: %+v", list)
+	}
+}
+
+func TestPublishChecks(t *testing.T) {
+	type tc struct {
+		version string
+		notes   string
+		files   map[string]string
+		certs   []Certificate
+		yaml    string
+		want    string
+	}
+	base := tc{version: "1.0.0", notes: "ok", files: goodProduct, yaml: pythonLibrary}
+	mod := func(f func(c *tc)) tc { c := base; f(&c); return c }
+	cases := map[string]tc{
+		"R16 version": mod(func(c *tc) { c.version = "1.0"; c.want = "is not semver" }),
+		"R16 notes":   mod(func(c *tc) { c.notes = " "; c.want = "notes are required" }),
+		"no product":  mod(func(c *tc) { c.files = nil; c.want = "there is no staged product" }),
+		"G1 require": mod(func(c *tc) {
+			c.files = with(goodProduct, "README.md", "")
+			delete(c.files, "README.md")
+			c.want = `no file matches "README.md"`
+		}),
+		"G2 allow": mod(func(c *tc) {
+			c.files = with(goodProduct, "tests/test_stock.py", "x")
+			c.want = "match no allowed pattern: tests/test_stock.py"
+		}),
+		"G3 forbid": mod(func(c *tc) {
+			c.files = with(goodProduct, "src/inventory/__pycache__/stock.pyc", "x")
+			c.want = `"**/__pycache__/**" matches`
+		}),
+		"G6 empty": mod(func(c *tc) {
+			c.yaml = "version: 1\ndescription: Anything.\n"
+			c.files = map[string]string{}
+			c.want = "the product has no files"
+		}),
+		"C2 certificate": mod(func(c *tc) {
+			c.yaml = pythonLibrary + "targets: [{type: dockerhub}]\n"
+			c.want = "promises a dockerhub target"
+		}),
+		"invalid def": mod(func(c *tc) { c.yaml = "version: 3\n"; c.want = "must have version: 1" }),
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := newStore(t)
+			defineDeliverable(t, s, "python-library", c.yaml)
+			if c.files != nil {
+				os.MkdirAll(s.StagingOf("inventory", "python-library"), 0o755)
+				stage(t, s, "python-library", c.files)
+			}
+			in := input(c.version)
+			in.Notes, in.Certificates = c.notes, c.certs
+			_, err := s.Publish(in)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+			if versions, _ := s.Versions("inventory", "python-library"); len(versions) != 0 {
+				t.Errorf("a rejected release was published: %v", versions)
+			}
+		})
+	}
+
+	t.Run("G5 link", func(t *testing.T) {
+		s := newStore(t)
+		defineDeliverable(t, s, "python-library", pythonLibrary)
+		stage(t, s, "python-library", goodProduct)
+		os.Symlink("README.md", filepath.Join(s.StagingOf("inventory", "python-library"), "LINK.md"))
+		if _, err := s.Publish(input("1.0.0")); err == nil || !strings.Contains(err.Error(), "must not contain links: LINK.md") {
+			t.Errorf("error = %v", err)
+		}
+	})
+
+	t.Run("G6 targets only", func(t *testing.T) {
+		s := newStore(t)
+		defineDeliverable(t, s, "python-library", "version: 1\ndescription: An image.\ntargets: [{type: dockerhub, repository: acme/inventory}]\n")
+		os.MkdirAll(s.StagingOf("inventory", "python-library"), 0o755)
+		in := input("1.0.0")
+		in.Certificates = []Certificate{{Type: TargetDockerHub, Repository: "acme/inventory", Tag: "1.0.0", Digest: "sha256:" + hex64s}}
+		m, err := s.Publish(in)
+		if err != nil || m.Product.Files != 0 || len(m.Certificates) != 1 || m.Certificates[0].Digest != in.Certificates[0].Digest {
+			t.Errorf("C5: %+v, %v", m, err)
+		}
+		list, _ := s.Releases("inventory")
+		if len(list) != 1 || list[0].Certificates[0].Repository != "acme/inventory" {
+			t.Errorf("read back: %+v", list)
+		}
+	})
+}
+
+func TestPrepareAndOldLayout(t *testing.T) {
+	s := newStore(t)
+	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases"} {
+		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
+			t.Errorf("L7: missing %s", p)
+		}
+	}
+	if versions, err := s.Versions("ghost", "x"); err != nil || versions != nil {
 		t.Errorf("Versions of an unknown system: %v, %v", versions, err)
 	}
-	if !slices.Equal([]string{s.VocabularyFile("eng")}, []string{filepath.Join(s.Root, "shared", "vocabulary", "eng.yaml")}) {
-		t.Error("vocabulary path")
+	old := filepath.Join(s.ReleasesDir("inventory"), "0.2.0")
+	writeFiles(t, old, map[string]string{"release.yaml": "version: 0.2.0\n"})
+	if got := s.OldReleases("inventory"); !slices.Equal(got, []string{old}) {
+		t.Errorf("O1 old releases = %v", got)
+	}
+	if list, _ := s.Releases("inventory"); len(list) != 0 {
+		t.Errorf("O1: old releases must be ignored: %+v", list)
 	}
 }
 
