@@ -34,7 +34,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           Shared
         </h1>
         <p className="text-sm text-muted-foreground">
-          What every agent can read in store/shared: your policies, skills, and agent definitions. The hub vocabularies are in each hub.
+          What every agent can read in store/shared: your policies, skills, agent definitions, and deliverables. The hub vocabularies are in each hub.
         </p>
       </>
     )
@@ -43,16 +43,16 @@ export function ConversationHeader({ state, show, onMention }: Props) {
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <Package className="size-4 text-muted-foreground" />
-          {v.name} {v.version}
+          {v.name} {v.deliverable} {v.version}
         </h1>
         <p className="text-sm text-muted-foreground">
-          A release of{' '}
+          A release of the deliverable {v.deliverable} by{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.name })}>
             {v.name}
           </button>
           . It never changes. Agents with access read it at{' '}
           <code className="text-xs">
-            /hikari/public/readonly/systems/{v.name}/releases/{v.version}
+            /hikari/public/readonly/systems/{v.name}/releases/{v.deliverable}/{v.version}
           </code>
           .
         </p>

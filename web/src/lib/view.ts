@@ -8,7 +8,7 @@ export type View =
   | { kind: 'hub'; name: string; tab?: HubTab }
   | { kind: 'dm'; name: string }
   | { kind: 'system'; name: string }
-  | { kind: 'release'; name: string; version: string }
+  | { kind: 'release'; name: string; deliverable: string; version: string }
 
 export const allView: View = { kind: 'all' }
 
@@ -16,7 +16,7 @@ export const allView: View = { kind: 'all' }
 // one key.
 export function viewKey(v: View): string {
   if (v.kind === 'all' || v.kind === 'shared') return v.kind
-  if (v.kind === 'release') return `release:${v.name}:${v.version}`
+  if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
 }
 
@@ -24,14 +24,14 @@ export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
   if (v.kind === 'shared') return '#/shared'
   if (v.kind === 'hub' && v.tab === 'vocabulary') return `#/hub/${v.name}/vocabulary`
-  if (v.kind === 'release') return `#/system/${v.name}/release/${v.version}`
+  if (v.kind === 'release') return `#/system/${v.name}/release/${v.deliverable}/${v.version}`
   return `#/${v.kind}/${v.name}`
 }
 
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
-  const release = hash.match(/^#\/system\/([\w-]+)\/release\/([0-9A-Za-z.-]+)$/)
-  if (release) return { kind: 'release', name: release[1], version: release[2] }
+  const release = hash.match(/^#\/system\/([\w-]+)\/release\/([\w-]+)\/([0-9A-Za-z.-]+)$/)
+  if (release) return { kind: 'release', name: release[1], deliverable: release[2], version: release[3] }
   const hub = hash.match(/^#\/hub\/([\w-]+)\/vocabulary$/)
   if (hub) return { kind: 'hub', name: hub[1], tab: 'vocabulary' }
   const m = hash.match(/^#\/(hub|dm|system)\/([\w-]+)$/)

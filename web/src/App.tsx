@@ -31,7 +31,7 @@ export default function App() {
   if (v.kind === 'system') {
     main = <SystemDetail state={state} system={state.systems.find((x) => x.owner === v.name)!} />
   } else if (v.kind === 'release') {
-    main = <ReleaseView key={`${v.name}@${v.version}`} system={v.name} version={v.version} />
+    main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} system={v.name} deliverable={v.deliverable} version={v.version} />
   } else if (v.kind === 'shared') {
     main = <SharedView />
   } else if (v.kind === 'hub' && v.tab === 'vocabulary') {

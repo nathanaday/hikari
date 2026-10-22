@@ -95,25 +95,57 @@ export type Private = {
   }
 }
 
-export type Manifest = {
-  version: string
-  system: string
-  released?: string
-  source_commit?: string
-  notes?: string
-  product: { kind: 'files' | 'remote'; path?: string; location?: { type: string; ref: string } }
-  runtime: { requires?: string[]; install?: string; run?: string }
-  docs: { index: string }
-  interfaces?: string[]
-  map?: string
+export type Certificate = {
+  type: string
+  repo?: string
+  repository?: string
+  tag?: string
+  url?: string
+  digest?: string
+  kind?: string
+  revision?: string
+  assets?: { name: string; sha256: string }[]
 }
 
-export type ReleaseDetail = { manifest: Manifest; files: string[] }
+// Manifest is release.yaml: hikari writes every field when it publishes.
+export type Manifest = {
+  deliverable: string
+  version: string
+  system: string
+  released: string
+  notes: string
+  hikari: string
+  source_commit?: string
+  hubs: string[]
+  product: { path: string; files: number; bytes: number; digest: string }
+  map: string
+  certificates: Certificate[]
+}
+
+// ReleaseDetail is a release for the viewer: its files, relative to the
+// store, and the digest of each product file, relative to the release.
+export type ReleaseDetail = { manifest: Manifest; files: string[]; digests: Record<string, string> }
+
+export type Layout = { require?: string[]; allow?: string[]; forbid?: string[] }
+
+export type Target = { type: string; repo?: string; repository?: string; kind?: string }
+
+export type Deliverable = {
+  name: string
+  path: string
+  skill: string
+  description: string
+  layout: Layout
+  targets: Target[]
+  holders: string[]
+  error?: string
+}
 
 export type SharedListing = {
   policies: { name: string; path: string }[]
   skills: { name: string; path: string }[]
   agents: { name: string; path: string }[]
+  deliverables: Deliverable[]
 }
 
 // SystemView is everything about one system: the public map as the owner

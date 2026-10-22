@@ -112,7 +112,7 @@ describe('systems and vocabularies', () => {
   })
 
   it('keeps release and shared views for known systems only', () => {
-    const release = { kind: 'release', name: 'dev', version: '1.0.0' } as const
+    const release = { kind: 'release', name: 'dev', deliverable: 'lib', version: '1.0.0' } as const
     expect(reducer(withSystems(), { type: 'view', view: release }).view).toEqual(release)
     expect(reducer(withSystems(), { type: 'view', view: { ...release, name: 'ghost' } }).view).toEqual(allView)
     expect(reducer(withSystems(), { type: 'view', view: { kind: 'shared' } }).view).toEqual({ kind: 'shared' })

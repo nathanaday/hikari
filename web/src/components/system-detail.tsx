@@ -2,7 +2,7 @@ import { ChevronRight, Lock, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
 import type { State } from '@/lib/store'
-import type { Feature, Interface, Private, SystemView } from '@/lib/types'
+import type { Feature, Interface, Manifest, Private, SystemView } from '@/lib/types'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -11,6 +11,17 @@ function ago(iso?: string): string {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`
   return new Date(iso).toLocaleDateString()
+}
+
+// groupByDeliverable keeps the server's order: by deliverable, newest first.
+function groupByDeliverable(releases: Manifest[]): [string, Manifest[]][] {
+  const groups: [string, Manifest[]][] = []
+  for (const r of releases) {
+    const last = groups[groups.length - 1]
+    if (last && last[0] === r.deliverable) last[1].push(r)
+    else groups.push([r.deliverable, [r]])
+  }
+  return groups
 }
 
 function Section({ title, children, private: isPrivate }: { title: string; children: React.ReactNode; private?: boolean }) {
@@ -244,19 +255,28 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
             </div>
             <Section title="Releases">
               {v.releases?.length ? (
-                <ul className="divide-y border-y" data-testid="releases">
-                  {v.releases.map((r) => (
-                    <li key={r.version} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-sm">
-                      <a href={`#/system/${v.owner}/release/${r.version}`} className="font-medium underline underline-offset-2">
-                        {r.version}
-                      </a>
-                      <span className="min-w-0 flex-1">{r.notes}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {r.product.kind === 'remote' ? r.product.location?.type : 'files'} · {r.source_commit?.slice(0, 7)} · {ago(r.released)}
-                      </span>
-                    </li>
+                <div className="space-y-3" data-testid="releases">
+                  {groupByDeliverable(v.releases).map(([deliverable, releases]) => (
+                    <div key={deliverable}>
+                      <h3 className="mb-1 text-sm font-medium">{deliverable}</h3>
+                      <ul className="divide-y border-y">
+                        {releases.map((r) => (
+                          <li key={r.version} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-sm">
+                            <a href={`#/system/${v.owner}/release/${r.deliverable}/${r.version}`} className="font-medium underline underline-offset-2">
+                              {r.version}
+                            </a>
+                            <span className="min-w-0 flex-1">{r.notes}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {r.product.files} file{r.product.files === 1 ? '' : 's'}
+                              {r.certificates?.length ? ` · ${r.certificates.map((c) => c.type).join(', ')}` : ''} · {r.source_commit?.slice(0, 7)} ·{' '}
+                              {ago(r.released)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No releases yet.</p>
               )}
