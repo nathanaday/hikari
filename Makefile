@@ -1,14 +1,19 @@
 -include .env
 export
 
-TOPOLOGY ?= examples/studio.yaml
+COMPOSE ?= examples/studio/compose.yaml
+LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
 
 .PHONY: build ui image up dev-ui test clean demo-repo
 
+# The Linux binaries are what hikari mounts into each agent's container.
 build: web/dist/index.html
 	go build -o bin/hikari ./cmd/hikari
+	for arch in $(LINUX_ARCHS); do \
+		GOOS=linux GOARCH=$$arch CGO_ENABLED=0 go build -o bin/hikari-linux-$$arch ./cmd/hikari || exit 1; \
+	done
 
 ui: web/dist/index.html
 
@@ -20,10 +25,10 @@ web/dist/index.html: web/node_modules $(UI_SRC)
 	cd web && npm run build
 
 image:
-	docker build -t hikari-node .
+	docker build -t hikari-agent .
 
 up: build image
-	bin/hikari up $(TOPOLOGY)
+	bin/hikari up $(COMPOSE)
 
 # Serve the UI with hot reload on http://localhost:5173 against a running `make up`.
 dev-ui: web/node_modules
@@ -33,13 +38,13 @@ test: web/node_modules
 	go test -race ./...
 	cd web && npm test
 
-# Create the repo of examples/systems.yaml in .hikari/demo/shop, and reset
-# its store in examples/store with a sample shared policy.
+# Create the repo of examples/shop in .hikari/demo/shop, and reset its store
+# in examples/shop/store with a sample shared policy.
 demo-repo:
-	examples/demo/make-repo.sh .hikari/demo/shop
-	rm -rf examples/store
-	mkdir -p examples/store
-	cp -R examples/demo/store/. examples/store/
+	examples/shop/make-repo.sh .hikari/demo/shop
+	rm -rf examples/shop/store
+	mkdir -p examples/shop/store
+	cp -R examples/shop/seed/. examples/shop/store/
 
 # Remove containers and networks left by runs that did not shut down cleanly.
 clean:

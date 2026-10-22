@@ -1,71 +1,220 @@
-// Package launcher starts one container per agent with the docker CLI. Each
-// container gets its own bridge network, so containers cannot reach each
-// other directly; the only path between them is the server. An owner's
-// container also gets its scope and nothing else of its repo.
+// Package launcher runs a topology's compose project. It writes an override
+// file that adds hikari to each agent: its mounts, its token, its own
+// network, and the hikari binary. Each agent gets its own network, so
+// containers cannot reach each other directly; the only path between agents
+// is the server.
 package launcher
 
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// PassEnv lists host variables that are passed to every container when set.
-var PassEnv = []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
-
-type Launcher struct {
-	Image     string // the base agent image
-	ServerURL string // the server address as seen from inside a container
-	RunID     string
-	// EmptyDir is an empty host directory that hides .git in a whole-repo
-	// scope.
-	EmptyDir string
+// Project is the compose project of a topology.
+type Project struct {
+	Topo *topology.Topology
+	// Override is the path of the override file, once it is written.
+	Override string
+	// Env holds the agents' tokens (TokenVar), which every compose command
+	// needs once the override file refers to them.
+	Env []string
 }
 
-// Spec describes the container of one agent.
-type Spec struct {
-	Name    string
-	Token   string
-	Image   string
-	WorkDir string
-	Mounts  []Mount
+func (p *Project) compose(ctx context.Context, args ...string) *exec.Cmd {
+	base := []string{"compose", "-p", p.Topo.Name, "-f", p.Topo.File}
+	if p.Override != "" {
+		base = append(base, "-f", p.Override)
+	}
+	cmd := docker(ctx, append(base, args...)...)
+	cmd.Env = append(os.Environ(), p.Env...)
+	return cmd
 }
 
-func (l *Launcher) label() string { return "hikari.run=" + l.RunID }
+// Running reports whether containers of the project are running.
+func (p *Project) Running(ctx context.Context) (bool, error) {
+	out, err := p.compose(ctx, "ps", "--quiet").Output()
+	if err != nil {
+		return false, fmt.Errorf("docker compose ps: %v", err)
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
 
-func (l *Launcher) name(node string) string { return "hikari-" + l.RunID + "-" + node }
-
-func (l *Launcher) CheckImage(ctx context.Context) error {
-	if err := docker(ctx, "image", "inspect", l.Image).Run(); err != nil {
-		return fmt.Errorf("docker image %q not found; build it with `make image`", l.Image)
+// Build builds the images that the project builds.
+func (p *Project) Build(ctx context.Context) error {
+	if !slices.ContainsFunc(slices.Collect(maps.Values(p.Topo.Services)), func(s topology.Service) bool { return s.Build }) {
+		return nil
+	}
+	if err := run(p.compose(ctx, "build"), "build"); err != nil {
+		return fmt.Errorf("docker compose build: %w", err)
 	}
 	return nil
 }
 
-// Start creates the network and container of spec and returns at once. The
-// container output is logged with the agent name as prefix. done receives
-// the exit error when the container stops.
-func (l *Launcher) Start(ctx context.Context, spec Spec, done func(error)) error {
-	for _, m := range spec.Mounts {
-		if m.Volume {
-			if err := ensureVolume(ctx, m.Source, spec.Image); err != nil {
-				return err
-			}
+// Image is what hikari needs to know of an agent's image.
+type Image struct {
+	Arch string
+	// User is the user that the container runs as: the service's user
+	// key, or else the image's user.
+	User string
+}
+
+// InspectAgent reads the image of an agent, pulling it when it is not on
+// this machine, and checks the image contract (rules C11 and C12).
+func (p *Project) InspectAgent(ctx context.Context, agent string) (Image, error) {
+	svc := p.Topo.Services[agent]
+	if svc.Image == "" {
+		return Image{}, fmt.Errorf("agent %q has neither an image nor a build", agent)
+	}
+	inspect := func() ([]byte, error) {
+		return docker(ctx, "image", "inspect", "--format", "{{.Architecture}}\t{{.Config.User}}", svc.Image).Output()
+	}
+	out, err := inspect()
+	if err != nil {
+		if err := run(docker(ctx, "pull", "--quiet", svc.Image), "pull"); err != nil {
+			return Image{}, fmt.Errorf("agent %q: image %s is not on this machine and cannot be pulled", agent, svc.Image)
+		}
+		if out, err = inspect(); err != nil {
+			return Image{}, fmt.Errorf("agent %q: inspect image %s: %v", agent, svc.Image, err)
 		}
 	}
-	name := l.name(spec.Name)
-	if out, err := docker(ctx, "network", "create", "--label", l.label(), name).CombinedOutput(); err != nil {
-		return fmt.Errorf("create network %s: %v: %s", name, err, out)
+	arch, user, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	img := Image{Arch: arch, User: user}
+	if svc.User != "" {
+		img.User = svc.User
 	}
-	cmd := docker(ctx, l.runArgs(spec)...)
-	// Pass secrets by name so their values never appear in a process list.
-	cmd.Env = append(os.Environ(), "HIKARI_SERVER_URL="+l.ServerURL, "HIKARI_TOKEN="+spec.Token)
+	if isRoot(img.User) {
+		return Image{}, fmt.Errorf("agent %q: image %s runs as root; set USER in its Dockerfile or user in the compose file", agent, svc.Image)
+	}
+	probe := docker(ctx, "run", "--rm", "--network", "none", "--user", img.User, "--entrypoint", "claude", svc.Image, "--version")
+	if out, err := probe.CombinedOutput(); err != nil {
+		return Image{}, fmt.Errorf("agent %q: image %s has no claude on its PATH: %s", agent, svc.Image, strings.TrimSpace(string(out)))
+	}
+	return img, nil
+}
 
+func isRoot(user string) bool {
+	name, _, _ := strings.Cut(user, ":")
+	return name == "" || name == "root" || name == "0"
+}
+
+// LinuxBinary returns the hikari binary for Linux on arch: this binary when
+// it is one, or else hikari-linux-<arch> next to it, which `make build`
+// writes (decision 5).
+func LinuxBinary(arch string) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
+		return self, nil
+	}
+	p := filepath.Join(filepath.Dir(self), "hikari-linux-"+arch)
+	if _, err := os.Stat(p); err != nil {
+		return "", fmt.Errorf("no hikari binary for linux/%s at %s; build it with `make build`", arch, p)
+	}
+	return p, nil
+}
+
+// WriteOverride writes the override file to path.
+func (p *Project) WriteOverride(path string, in OverrideInput) error {
+	data, err := Override(p.Topo, in)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	p.Override = path
+	return nil
+}
+
+// Up starts the project.
+func (p *Project) Up(ctx context.Context) error {
+	if err := run(p.compose(ctx, "up", "--detach", "--no-color", "--remove-orphans"), "compose"); err != nil {
+		return fmt.Errorf("docker compose up: %w", err)
+	}
+	return nil
+}
+
+// Watch reports each stop of an agent's or a sidecar's container to exited,
+// with its exit code. Start it before Up, so that no stop is missed.
+func (p *Project) Watch(ctx context.Context, exited func(service string, code int)) error {
+	cmd := p.compose(ctx, "events", "--json")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		sc := bufio.NewScanner(out)
+		for sc.Scan() {
+			var e struct {
+				Action     string            `json:"action"`
+				Service    string            `json:"service"`
+				Attributes map[string]string `json:"attributes"`
+			}
+			if json.Unmarshal(sc.Bytes(), &e) != nil || e.Action != "die" {
+				continue
+			}
+			if _, ok := p.Topo.Services[e.Service]; ok {
+				code, _ := strconv.Atoi(e.Attributes["exitCode"])
+				exited(e.Service, code)
+			}
+		}
+		cmd.Wait()
+	}()
+	return nil
+}
+
+// Logs shows each line of each service's output in hikari's log, with the
+// service name as prefix. Each follower ends when its container is removed,
+// so the log keeps what a container prints while it stops.
+func (p *Project) Logs() {
+	for _, name := range slices.Sorted(maps.Keys(p.Topo.Services)) {
+		cmd := p.compose(context.Background(), "logs", "--follow", "--no-color", "--no-log-prefix", name)
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			continue
+		}
+		cmd.Stderr = cmd.Stdout
+		if cmd.Start() != nil {
+			continue
+		}
+		go func() {
+			prefix(name, out)
+			cmd.Wait()
+		}()
+	}
+}
+
+// Down stops and removes the project's containers and networks. Named
+// volumes stay.
+func (p *Project) Down() {
+	run(p.compose(context.Background(), "down", "--remove-orphans"), "compose")
+}
+
+// run runs cmd and logs its output with prefix.
+func run(cmd *exec.Cmd, name string) error {
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -74,81 +223,24 @@ func (l *Launcher) Start(ctx context.Context, spec Spec, done func(error)) error
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	go prefix(spec.Name, out)
-	go func() { done(cmd.Wait()) }()
-	return nil
-}
-
-func (l *Launcher) runArgs(spec Spec) []string {
-	name := l.name(spec.Name)
-	args := []string{"run", "--rm", "--init",
-		"--name", name,
-		"--label", l.label(),
-		"--network", name,
-		"--add-host", "host.docker.internal:host-gateway",
-		"-e", "HIKARI_SERVER_URL",
-		"-e", "HIKARI_TOKEN",
-		"-e", "DISABLE_AUTOUPDATER=1",
-	}
-	for _, v := range PassEnv {
-		if os.Getenv(v) != "" {
-			args = append(args, "-e", v)
-		}
-	}
-	if spec.WorkDir != "" {
-		args = append(args, "--workdir", spec.WorkDir)
-	}
-	for _, m := range spec.Mounts {
-		args = append(args, "--mount", m.flag())
-	}
-	return append(args, spec.Image)
-}
-
-// Cleanup removes every container and network of this run.
-func (l *Launcher) Cleanup() {
-	ctx := context.Background()
-	filter := "label=" + l.label()
-	if ids := lines(docker(ctx, "ps", "-aq", "--filter", filter)); len(ids) > 0 {
-		docker(ctx, append([]string{"rm", "-f"}, ids...)...).Run()
-	}
-	if ids := lines(docker(ctx, "network", "ls", "-q", "--filter", filter)); len(ids) > 0 {
-		docker(ctx, append([]string{"network", "rm"}, ids...)...).Run()
-	}
-}
-
-// ensureVolume creates a named volume that the agent user can write, if it
-// does not exist.
-func ensureVolume(ctx context.Context, name, image string) error {
-	if docker(ctx, "volume", "inspect", name).Run() == nil {
-		return nil
-	}
-	if out, err := docker(ctx, "volume", "create", "--label", "hikari.cache=1", name).CombinedOutput(); err != nil {
-		return fmt.Errorf("create volume %s: %v: %s", name, err, out)
-	}
-	out, err := docker(ctx, "run", "--rm", "--user", "root", "--entrypoint", "chown",
-		"--mount", "type=volume,source="+name+",target=/volume", image, "agent:agent", "/volume").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("prepare volume %s: %v: %s", name, err, out)
-	}
-	return nil
+	prefix(name, out)
+	return cmd.Wait()
 }
 
 func docker(ctx context.Context, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "docker", args...)
 }
 
-func lines(cmd *exec.Cmd) []string {
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	return strings.Fields(string(out))
-}
+// ansi matches terminal control sequences, which compose prints even with
+// --no-color.
+var ansi = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 func prefix(name string, r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
-		log.Printf("[%s] %s", name, sc.Text())
+		if line := ansi.ReplaceAllString(sc.Text(), ""); strings.TrimSpace(line) != "" {
+			log.Printf("[%s] %s", name, line)
+		}
 	}
 }

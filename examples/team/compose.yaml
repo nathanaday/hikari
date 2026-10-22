@@ -1,0 +1,51 @@
+# Two hubs in a tree. eng-lead is a member of #product and the orchestrator
+# of #eng, so it is the only path between the two hubs. You are in both.
+#
+#   #product   lead ★ ── writer, eng-lead
+#   #eng       eng-lead ★ ── dev, tester
+#
+#   make up COMPOSE=examples/team/compose.yaml
+
+name: team
+
+x-hikari:
+  hubs:
+    product:
+      description: Product planning.
+      orchestrator: lead
+      members: [writer, eng-lead]
+    eng:
+      description: Engineering work.
+      orchestrator: eng-lead
+      members: [dev, tester]
+
+x-agent: &agent
+  image: hikari-agent
+  environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
+
+services:
+  lead:
+    <<: *agent
+    x-hikari:
+      description: Product lead. Turns requests into tasks and reports the combined result.
+  writer:
+    <<: *agent
+    x-hikari:
+      description: Copywriter. Writes short product text.
+  eng-lead:
+    <<: *agent
+    x-hikari:
+      description: Engineering lead. Owns technical decisions and delegates to dev and tester.
+      instructions: |
+        When #product asks engineering for something, split it between dev and tester in #eng.
+        When both reply, post one combined answer in #product.
+  dev:
+    <<: *agent
+    x-hikari:
+      description: Developer. Proposes implementation approaches.
+      instructions: Answer with a short plan in plain text. Do not write files.
+  tester:
+    <<: *agent
+    x-hikari:
+      description: QA engineer. Writes test plans.
+      instructions: Answer with a short test plan in plain text. Do not write files.

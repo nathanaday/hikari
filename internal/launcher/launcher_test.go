@@ -1,24 +1,30 @@
 package launcher
 
 import (
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/nathanaday/hikari/internal/store"
+	"github.com/nathanaday/hikari/internal/topology"
 )
 
 func TestSystemMounts(t *testing.T) {
-	got := SystemMounts("/code/shop", "services/orders", []string{"proto"}, []string{"node_modules"}, "/tmp/empty")
+	got := SystemMounts("/code/shop", "services/orders", []string{"proto"}, "/tmp/empty")
 	want := []Mount{
 		{Source: "/code/shop/services/orders", Target: "/workspace/services/orders"},
 		{Source: "/code/shop/proto", Target: "/workspace/proto", ReadOnly: true},
 		{Source: "/tmp/empty", Target: "/workspace/services/orders/.hikari", ReadOnly: true},
 		{Source: "/code/shop/services/orders/.hikari/private", Target: "/hikari/private"},
-		{Source: VolumeName("/code/shop", "services/orders", "node_modules"), Target: "/workspace/services/orders/node_modules", Volume: true},
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("M1 to M4:\n got %+v\nwant %+v", got, want)
+		t.Errorf("M1 to M3:\n got %+v\nwant %+v", got, want)
 	}
 	for _, m := range got {
 		if strings.HasSuffix(m.Target, "/.git") {
@@ -28,7 +34,7 @@ func TestSystemMounts(t *testing.T) {
 }
 
 func TestWholeRepoScopeHidesGit(t *testing.T) {
-	got := SystemMounts("/code/shop", "", nil, nil, "/tmp/empty")
+	got := SystemMounts("/code/shop", "", nil, "/tmp/empty")
 	want := []Mount{
 		{Source: "/code/shop", Target: "/workspace"},
 		{Source: "/tmp/empty", Target: "/workspace/.hikari", ReadOnly: true},
@@ -37,102 +43,6 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("M5:\n got %+v\nwant %+v", got, want)
-	}
-}
-
-func TestVolumeNames(t *testing.T) {
-	a := VolumeName("/code/shop", "web", "node_modules")
-	if a != VolumeName("/code/shop", "web", "node_modules") {
-		t.Error("M4: volume names must be stable between runs")
-	}
-	if a == VolumeName("/code/shop", "api", "node_modules") || a == VolumeName("/other", "web", "node_modules") {
-		t.Error("M4: different systems must get different volumes")
-	}
-	if !strings.HasPrefix(a, "hikari-cache-") {
-		t.Errorf("volume name %q", a)
-	}
-}
-
-func TestRunArgs(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "secret")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	l := &Launcher{RunID: "r1"}
-	args := strings.Join(l.runArgs(Spec{
-		Name:    "orders",
-		Image:   "hikari-node-abc",
-		WorkDir: "/workspace/services/orders",
-		Mounts: []Mount{
-			{Source: "/code/my,shop/orders", Target: "/workspace/orders"},
-			{Source: "/code/shop/proto", Target: "/workspace/proto", ReadOnly: true},
-			{Source: "hikari-cache-1", Target: "/workspace/orders/node_modules", Volume: true},
-		},
-	}), " ")
-	for _, want := range []string{
-		"--name hikari-r1-orders",
-		"--network hikari-r1-orders",
-		"-e CLAUDE_CODE_OAUTH_TOKEN",
-		"--workdir /workspace/services/orders",
-		`--mount type=bind,"source=/code/my,shop/orders",target=/workspace/orders`,
-		"--mount type=bind,source=/code/shop/proto,target=/workspace/proto,readonly",
-		"--mount type=volume,source=hikari-cache-1,target=/workspace/orders/node_modules",
-	} {
-		if !strings.Contains(args, want) {
-			t.Errorf("run args lack %q:\n%s", want, args)
-		}
-	}
-	if strings.Contains(args, "secret") || strings.Contains(args, "ANTHROPIC_API_KEY") {
-		t.Errorf("secrets or unset variables in args:\n%s", args)
-	}
-	if !strings.HasSuffix(args, " hikari-node-abc") {
-		t.Errorf("the image must be the last argument:\n%s", args)
-	}
-}
-
-func TestOrchestratorGetsNoMounts(t *testing.T) {
-	args := strings.Join((&Launcher{RunID: "r1"}).runArgs(Spec{Name: "lead", Image: "hikari-node"}), " ")
-	if strings.Contains(args, "--workdir") {
-		t.Errorf("M6: an agent without a system got a working directory:\n%s", args)
-	}
-}
-
-func TestImageTag(t *testing.T) {
-	spec := ImageSpec{Packages: []string{"python3"}, Setup: "echo hi", Path: []string{"/opt/bin"}}
-	tag := imageTag("hikari-node", "sha256:base1", spec)
-	if !strings.HasPrefix(tag, "hikari-node-") || tag != imageTag("hikari-node", "sha256:base1", spec) {
-		t.Errorf("I2 tag %q is not stable", tag)
-	}
-	changes := []ImageSpec{
-		{Packages: []string{"python3", "git"}, Setup: "echo hi", Path: []string{"/opt/bin"}},
-		{Packages: []string{"python3"}, Setup: "echo bye", Path: []string{"/opt/bin"}},
-		{Packages: []string{"python3"}, Setup: "echo hi", Path: []string{"/usr/bin"}},
-	}
-	for _, c := range changes {
-		if imageTag("hikari-node", "sha256:base1", c) == tag {
-			t.Errorf("I2: %+v did not change the tag", c)
-		}
-	}
-	if imageTag("hikari-node", "sha256:base2", spec) == tag {
-		t.Error("I2: a new base image did not change the tag")
-	}
-}
-
-func TestDockerfile(t *testing.T) {
-	got := dockerfile("hikari-node", ImageSpec{Packages: []string{"python3", "make"}, Setup: "echo hi", Path: []string{"/usr/local/go/bin", "/opt/bin"}})
-	want := `FROM hikari-node
-USER root
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make \
- && rm -rf /var/lib/apt/lists/*
-COPY setup.sh /tmp/hikari-setup.sh
-RUN bash -euo pipefail /tmp/hikari-setup.sh && rm /tmp/hikari-setup.sh
-ENV PATH=/usr/local/go/bin:/opt/bin:$PATH
-USER agent
-`
-	if got != want {
-		t.Errorf("I1 Dockerfile:\n%s\nwant:\n%s", got, want)
-	}
-	if (ImageSpec{}).empty() != true || (ImageSpec{Setup: "  "}).empty() != true {
-		t.Error("an image spec that adds nothing must count as empty")
 	}
 }
 
@@ -163,5 +73,199 @@ func TestStoreMounts(t *testing.T) {
 	member := StoreMounts(st, "writer", false, nil, nil, "/tmp/empty")
 	if len(member) != 1 || member[0].Target != "/hikari/public/readonly/shared" {
 		t.Errorf("a member without grants sees only shared: %+v", member)
+	}
+}
+
+// userCompose is a compose file before compose resolves it. The test fills
+// in the repo path.
+const userCompose = `name: shop
+x-hikari:
+  store: store
+  repos: {shop: {path: REPO, branch: hikari/work}}
+  hubs: {h: {orchestrator: lead, members: [orders]}}
+services:
+  lead:
+    image: hikari-agent
+    x-hikari: {}
+  orders:
+    build: {context: ., dockerfile: python.Dockerfile}
+    volumes: [venv:/workspace/services/orders/.venv]
+    depends_on: [orders-db]
+    x-hikari: {system: {repo: shop, scope: services/orders}}
+  orders-db:
+    image: postgres:17
+    x-hikari: {serves: orders}
+volumes: {venv: {}}
+`
+
+// resolved is userCompose as compose resolves it.
+const resolved = `name: shop
+x-hikari:
+  store: store
+  repos: {shop: {path: REPO, branch: hikari/work}}
+  hubs: {h: {orchestrator: lead, members: [orders]}}
+services:
+  lead: {image: hikari-agent, networks: {default: null}, x-hikari: {}}
+  orders:
+    build: {context: ., dockerfile: python.Dockerfile}
+    networks: {default: null}
+    volumes: [{type: volume, source: venv, target: /workspace/services/orders/.venv}]
+    x-hikari: {system: {repo: shop, scope: services/orders}}
+  orders-db: {image: postgres:17, networks: {default: null}, x-hikari: {serves: orders}}
+`
+
+func shopTopology(t *testing.T) (*topology.Topology, string) {
+	t.Helper()
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	for _, d := range []string{".git", "services/orders"} {
+		os.MkdirAll(filepath.Join(repo, d), 0o755)
+	}
+	topo, err := topology.Parse([]byte(strings.ReplaceAll(resolved, "REPO", repo)), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topo.File = filepath.Join(dir, "compose.yaml")
+	os.WriteFile(topo.File, []byte(strings.ReplaceAll(userCompose, "REPO", repo)), 0o644)
+	return topo, repo
+}
+
+var input = OverrideInput{
+	RunID:     "r1",
+	ServerURL: "http://host.docker.internal:7420",
+	EmptyDir:  "/tmp/empty",
+	Binaries:  map[string]string{"lead": "/bin/hikari-linux-arm64", "orders": "/bin/hikari-linux-amd64"},
+	Users:     map[string]string{"orders": "agent"},
+}
+
+func TestOverride(t *testing.T) {
+	topo, repo := shopTopology(t)
+	data, err := Override(topo, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f overrideFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	orders := f.Services["orders"]
+	if !slices.Equal(orders.Entrypoint, []string{"/hikari/bin/hikari", "node"}) || !orders.Init || orders.WorkingDir != "/workspace/services/orders" {
+		t.Errorf("O3: %+v", orders)
+	}
+	if !slices.Equal(orders.Networks, replaced{"agent-orders"}) || !strings.Contains(string(data), "networks: !override") {
+		t.Errorf("O4: the agent's networks must replace the user's:\n%s", data)
+	}
+	if f.Networks["agent-orders"].Name != "shop-agent-orders" || f.Networks["agent-orders"].Labels[RunLabel] != "r1" {
+		t.Errorf("O4, O7: %+v", f.Networks)
+	}
+	if orders.Environment["HIKARI_TOKEN"] != "${HIKARI_TOKEN_ORDERS}" || orders.Environment["HIKARI_SERVER_URL"] != input.ServerURL {
+		t.Errorf("O5: %v", orders.Environment)
+	}
+	targets := map[string]composeMount{}
+	for _, m := range orders.Volumes {
+		targets[m.Target] = m
+	}
+	if m := targets["/hikari/bin/hikari"]; m.Source != "/bin/hikari-linux-amd64" || !m.ReadOnly {
+		t.Errorf("O2: %+v", m)
+	}
+	if m := targets["/workspace/services/orders"]; m.Source != filepath.Join(repo, "services/orders") || m.ReadOnly {
+		t.Errorf("O1 scope: %+v", m)
+	}
+	if _, ok := targets["/hikari/public/export/staging"]; !ok {
+		t.Errorf("O1 store mounts missing: %v", targets)
+	}
+	prepare := f.Services["orders-prepare"]
+	if prepare.Image != "shop-orders" || prepare.User != "root" || prepare.NetworkMode != "none" ||
+		!slices.Equal(prepare.Entrypoint, []string{"chown", "agent", "/workspace/services/orders/.venv"}) {
+		t.Errorf("O6 prepare: %+v", prepare)
+	}
+	if orders.DependsOn["orders-prepare"].Condition != "service_completed_successfully" {
+		t.Errorf("O6 depends_on: %+v", orders.DependsOn)
+	}
+	if _, ok := f.Services["lead-prepare"]; ok {
+		t.Error("O6: lead has no named volumes")
+	}
+	if db := f.Services["orders-db"]; !slices.Equal(db.Networks, replaced{"agent-orders"}) || db.Entrypoint != nil {
+		t.Errorf("C14: the sidecar joins only its agent's network: %+v", db)
+	}
+	if strings.Contains(string(data), "secret") {
+		t.Error("the override file holds no secret")
+	}
+}
+
+// TestOverrideWithCompose checks that compose accepts the override file and
+// merges it as intended.
+func TestOverrideWithCompose(t *testing.T) {
+	if exec.Command("docker", "compose", "version").Run() != nil {
+		t.Skip("docker compose is not available")
+	}
+	topo, _ := shopTopology(t)
+	p := &Project{Topo: topo}
+	if err := p.WriteOverride(filepath.Join(t.TempDir(), "override.yaml"), input); err != nil {
+		t.Fatal(err)
+	}
+	cmd := p.compose(t.Context(), "config")
+	cmd.Env = append(os.Environ(), "HIKARI_TOKEN_LEAD=t1", "HIKARI_TOKEN_ORDERS=t2")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("compose rejects the override: %v", err)
+	}
+	var merged struct {
+		Services map[string]struct {
+			Networks    map[string]any    `yaml:"networks"`
+			Environment map[string]string `yaml:"environment"`
+			Volumes     []composeMount    `yaml:"volumes"`
+			DependsOn   map[string]any    `yaml:"depends_on"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(out, &merged); err != nil {
+		t.Fatal(err)
+	}
+	orders := merged.Services["orders"]
+	if _, ok := orders.Networks["agent-orders"]; !ok || len(orders.Networks) != 1 {
+		t.Errorf("orders must have only its own network: %v", orders.Networks)
+	}
+	if orders.Environment["HIKARI_TOKEN"] != "t2" {
+		t.Errorf("token = %q", orders.Environment["HIKARI_TOKEN"])
+	}
+	if _, ok := orders.DependsOn["orders-db"]; !ok {
+		t.Errorf("the user's depends_on must stay: %v", orders.DependsOn)
+	}
+	if !slices.ContainsFunc(orders.Volumes, func(m composeMount) bool { return m.Target == "/workspace/services/orders/.venv" }) {
+		t.Errorf("the user's volume must stay: %+v", orders.Volumes)
+	}
+	if db := merged.Services["orders-db"]; len(db.Networks) != 1 {
+		t.Errorf("orders-db networks = %v", db.Networks)
+	}
+}
+
+func TestTokenVar(t *testing.T) {
+	if got := TokenVar("yami-library"); got != "HIKARI_TOKEN_YAMI_LIBRARY" {
+		t.Errorf("TokenVar = %q", got)
+	}
+}
+
+func TestIsRoot(t *testing.T) {
+	for user, want := range map[string]bool{"": true, "root": true, "0": true, "0:0": true, "root:staff": true, "agent": false, "1000:1000": false} {
+		if isRoot(user) != want {
+			t.Errorf("isRoot(%q) = %v", user, !want)
+		}
+	}
+}
+
+func TestLinuxBinaryMissing(t *testing.T) {
+	if _, err := LinuxBinary("riscv64"); err == nil || !strings.Contains(err.Error(), "make build") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestPrefixStripsControlSequences(t *testing.T) {
+	var b strings.Builder
+	log.SetOutput(&b)
+	log.SetFlags(0)
+	defer log.SetOutput(os.Stderr)
+	prefix("lead", strings.NewReader("\x1b[Klead-1 exited with code 0\n\n  \n"))
+	if got := b.String(); got != "[lead] lead-1 exited with code 0\n" {
+		t.Errorf("log = %q", got)
 	}
 }

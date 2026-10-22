@@ -8,21 +8,29 @@ import (
 	"testing"
 )
 
+// compose returns a resolved compose file with the given top-level x-hikari
+// body and services, both indented by two spaces.
+func compose(hikari, services string) string {
+	return "name: test\nx-hikari:\n" + hikari + "\nservices:\n" + services
+}
+
 // company: ceo orchestrates eng-lead. eng: eng-lead orchestrates dev.
-const tree = `
-agents:
-  ceo: {description: runs the company}
-  eng-lead: {}
-  dev: {}
-hubs:
-  company: {orchestrator: ceo, members: [eng-lead]}
-  eng: {orchestrator: eng-lead, members: [dev]}
-`
+var tree = compose(`
+  hubs:
+    company: {orchestrator: ceo, members: [eng-lead]}
+    eng: {orchestrator: eng-lead, members: [dev]}`, `
+  ceo: {image: hikari-agent, x-hikari: {description: runs the company}}
+  eng-lead: {image: hikari-agent, x-hikari: {}}
+  dev: {image: hikari-agent, x-hikari: {}}
+`)
 
 func TestParse(t *testing.T) {
 	topo, err := Parse([]byte(tree), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if topo.Name != "test" || topo.Agents["ceo"].Description != "runs the company" {
+		t.Errorf("name %q, ceo %+v", topo.Name, topo.Agents["ceo"])
 	}
 	if got := topo.Participants("eng"); !slices.Equal(got, []string{"eng-lead", "dev", "user"}) {
 		t.Errorf("Participants(eng) = %v", got)
@@ -48,22 +56,31 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseErrors(t *testing.T) {
-	cases := map[string]string{
-		"empty":            ``,
-		"old format":       "nodes: {a: {}}\nedges: []",
-		"no hubs":          "agents: {a: {}}",
-		"reserved name":    "agents: {user: {}}\nhubs: {h: {orchestrator: user}}",
-		"bad name":         "agents: {Alice: {}}\nhubs: {h: {orchestrator: Alice}}",
-		"no orchestrator":  "agents: {a: {}}\nhubs: {h: {members: [a]}}",
-		"unknown member":   "agents: {a: {}}\nhubs: {h: {orchestrator: a, members: [b]}}",
-		"duplicate member": "agents: {a: {}}\nhubs: {h: {orchestrator: a, members: [a]}}",
-		"name clash":       "agents: {a: {}}\nhubs: {a: {orchestrator: a}}",
-		"unreachable":      "agents: {a: {}, b: {}}\nhubs: {h: {orchestrator: a}}",
+	hub := "  hubs: {h: {orchestrator: a}}"
+	cases := map[string]struct{ src, want string }{
+		"empty":            {``, "is empty"},
+		"C1 no name":       {strings.Replace(compose(hub, "  a: {x-hikari: {}}"), "name: test\n", "", 1), "no top-level name"},
+		"no x-hikari":      {"name: t\nservices: {a: {x-hikari: {}}}", "no top-level x-hikari"},
+		"unknown key":      {compose(hub+"\n  agents: {}", "  a: {x-hikari: {}}"), "field agents not found"},
+		"C2 plain service": {compose(hub, "  a: {x-hikari: {}}\n  db: {image: postgres}"), `service "db" has no x-hikari key`},
+		"C2 both":          {compose(hub, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a, description: x}}"), "its x-hikari holds only serves"},
+		"unknown field":    {compose(hub, "  a: {x-hikari: {packages: [python3]}}"), "field packages not found"},
+		"C6 serves":        {compose(hub, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: ghost}}"), `serves "ghost", which is not an agent`},
+		"no hubs":          {compose("  store: s", "  a: {x-hikari: {}}"), "no hubs"},
+		"reserved name":    {compose("  hubs: {h: {orchestrator: user}}", "  user: {x-hikari: {}}"), "reserved"},
+		"C3 bad name":      {compose("  hubs: {h: {orchestrator: a_b}}", "  a_b: {x-hikari: {}}"), `invalid agent name "a_b"`},
+		"no orchestrator":  {compose("  hubs: {h: {members: [a]}}", "  a: {x-hikari: {}}"), "no orchestrator"},
+		"unknown member":   {compose("  hubs: {h: {orchestrator: a, members: [b]}}", "  a: {x-hikari: {}}"), `unknown agent "b"`},
+		"sidecar member":   {compose("  hubs: {h: {orchestrator: a, members: [db]}}", "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a}}"), `unknown agent "db"`},
+		"duplicate member": {compose("  hubs: {h: {orchestrator: a, members: [a]}}", "  a: {x-hikari: {}}"), "more than once"},
+		"name clash":       {compose("  hubs: {a: {orchestrator: a}}", "  a: {x-hikari: {}}"), "same name as an agent"},
+		"unreachable":      {compose(hub, "  a: {x-hikari: {}}\n  b: {x-hikari: {}}"), `"b" is in no hub`},
 	}
-	for name, src := range cases {
+	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := Parse([]byte(src), t.TempDir()); err == nil {
-				t.Errorf("expected an error for %q", src)
+			_, err := Parse([]byte(c.src), t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
 			}
 		})
 	}
@@ -82,25 +99,23 @@ func fakeRepo(t *testing.T, dirs ...string) string {
 	return root
 }
 
-func systemsTopology(repo, agents string) string {
-	return `
-repos:
-  shop: {path: ` + repo + `, branch: hikari/work}
-agents:
-  lead: {}
-` + agents + `
-hubs:
-  h: {orchestrator: lead, members: [orders, inventory]}
-`
+func systemsTopology(repo, services string) string {
+	return compose(`
+  repos:
+    shop: {path: `+repo+`, branch: hikari/work}
+  hubs:
+    h: {orchestrator: lead, members: [orders, inventory]}`, `
+  lead: {x-hikari: {}}
+`+services)
 }
 
 const twoOwners = `
   orders:
-    system: {repo: shop, scope: services/orders, read: [proto], test: make test, container_only: [node_modules]}
-    packages: [python3, g++]
-    path: [/usr/local/go/bin]
+    x-hikari:
+      system: {repo: shop, scope: services/orders, read: [proto], test: make test}
   inventory:
-    system: {repo: shop, scope: ./services/inventory/}
+    x-hikari:
+      system: {repo: shop, scope: ./services/inventory/}
 `
 
 func TestSystems(t *testing.T) {
@@ -133,23 +148,25 @@ func TestRelativeRepoPath(t *testing.T) {
 		os.MkdirAll(filepath.Join(repo, d), 0o755)
 	}
 	topo, err := Parse([]byte(systemsTopology("code/shop", `
-  orders: {system: {repo: shop, scope: services/orders}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
+  orders: {x-hikari: {system: {repo: shop, scope: services/orders}}}
+  inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
 `)), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := topo.Repos["shop"].Path; got != repo {
-		t.Errorf("repo path = %q, want %q", got, repo)
+		t.Errorf("C5 repo path = %q, want %q", got, repo)
 	}
 }
 
+const validOwners = `
+  orders: {x-hikari: {system: {repo: shop, scope: services/orders}}}
+  inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
+`
+
 func TestSystemErrors(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory", "proto")
-	valid := `
-  orders: {system: {repo: shop, scope: services/orders}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
-`
+	valid := validOwners
 	cases := map[string]struct{ src, want string }{
 		"T1 not a repo": {
 			strings.Replace(systemsTopology(repo, valid), repo, t.TempDir(), 1),
@@ -171,10 +188,6 @@ func TestSystemErrors(t *testing.T) {
 			systemsTopology(repo, strings.Replace(valid, "scope: services/orders", "scope: services/missing", 1)),
 			`scope "services/missing" is not a directory`,
 		},
-		"T4 absolute container_only": {
-			systemsTopology(repo, strings.Replace(valid, "scope: services/orders}", "scope: services/orders, container_only: [/abs]}", 1)),
-			"container_only path",
-		},
 		"T5 nested scopes": {
 			systemsTopology(repo, strings.Replace(valid, "scope: services/inventory", "scope: services", 1)),
 			"overlapping scopes",
@@ -188,16 +201,8 @@ func TestSystemErrors(t *testing.T) {
 			`read path "services/inventory" overlaps the scope of "inventory"`,
 		},
 		"T7 orchestrator owns a system": {
-			strings.Replace(systemsTopology(repo, valid), "lead: {}", "lead: {system: {repo: shop, scope: proto}}", 1),
+			strings.Replace(systemsTopology(repo, valid), "lead: {x-hikari: {}}", "lead: {x-hikari: {system: {repo: shop, scope: proto}}}", 1),
 			"an orchestrator cannot own a system",
-		},
-		"T8 bad package": {
-			systemsTopology(repo, strings.Replace(valid, "inventory: {system", "inventory: {packages: [Bad_Pkg], system", 1)),
-			`invalid package name "Bad_Pkg"`,
-		},
-		"T8 relative path entry": {
-			systemsTopology(repo, strings.Replace(valid, "inventory: {system", "inventory: {path: [bin], system", 1)),
-			`path entry "bin" is not an absolute path`,
 		},
 	}
 	for name, c := range cases {
@@ -212,23 +217,20 @@ func TestSystemErrors(t *testing.T) {
 
 func TestUnusedRepo(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory")
-	src := systemsTopology(repo, `
-  orders: {system: {repo: shop, scope: services/orders}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
-`)
-	src = strings.Replace(src, "repos:\n", "repos:\n  spare: {path: "+repo+", branch: main}\n", 1)
+	src := systemsTopology(repo, validOwners)
+	src = strings.Replace(src, "  repos:\n", "  repos:\n    spare: {path: "+repo+", branch: main}\n", 1)
 	if _, err := Parse([]byte(src), t.TempDir()); err == nil || !strings.Contains(err.Error(), `repo "spare" is not used by any system`) {
 		t.Errorf("error = %v", err)
 	}
 }
 
 func TestEveryViolationIsReported(t *testing.T) {
-	src := "agents: {Bad: {}, ok: {packages: [X]}}\nhubs: {h: {orchestrator: ok}}"
+	src := compose("  hubs: {h: {orchestrator: ok}}", "  Bad: {x-hikari: {}}\n  ok: {x-hikari: {}, privileged: true}")
 	_, err := Parse([]byte(src), t.TempDir())
 	if err == nil {
 		t.Fatal("expected errors")
 	}
-	for _, want := range []string{`invalid agent name "Bad"`, `agent "Bad" is in no hub`, `invalid package name "X"`} {
+	for _, want := range []string{`invalid agent name "Bad"`, `agent "Bad" is in no hub`, `service "ok": sets privileged`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error lacks %q:\n%v", want, err)
 		}
@@ -239,8 +241,8 @@ func TestStoreAndGrants(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory")
 	dir := t.TempDir()
 	src := systemsTopology(repo, `
-  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [inventory]}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
+  orders: {x-hikari: {system: {repo: shop, scope: services/orders}, grants: {releases: [inventory]}}}
+  inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
 `)
 	topo, err := Parse([]byte(src), dir)
 	if err != nil {
@@ -259,18 +261,18 @@ func TestStoreAndGrants(t *testing.T) {
 		t.Errorf("inventory reads %v", got)
 	}
 
-	custom, err := Parse([]byte("store: ../shared-store\n"+src), dir)
+	custom, err := Parse([]byte(strings.Replace(src, "x-hikari:\n", "x-hikari:\n  store: ../shared-store\n", 1)), dir)
 	if err != nil || custom.Store != filepath.Join(filepath.Dir(dir), "shared-store") {
 		t.Errorf("T10 relative store = %q, %v", custom.Store, err)
 	}
 
-	for name, c := range map[string]struct{ agents, want string }{
-		"T11 own releases":  {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [orders]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", "cannot be granted its own releases"},
-		"T11 not a system":  {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [lead]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", `release grant "lead" is not a system`},
-		"T11 unknown agent": {"  orders: {system: {repo: shop, scope: services/orders}, grants: {releases: [ghost]}}\n  inventory: {system: {repo: shop, scope: services/inventory}}\n", `release grant "ghost" is not a system`},
+	for name, c := range map[string]struct{ services, want string }{
+		"T11 own releases":  {strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {releases: [orders]}", 1), "cannot be granted its own releases"},
+		"T11 not a system":  {strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {releases: [lead]}", 1), `release grant "lead" is not a system`},
+		"T11 unknown agent": {strings.Replace(validOwners, "services/orders}", "services/orders}, grants: {releases: [ghost]}", 1), `release grant "ghost" is not a system`},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := Parse([]byte(systemsTopology(repo, c.agents)), dir)
+			_, err := Parse([]byte(systemsTopology(repo, c.services)), dir)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("error = %v, want %q", err, c.want)
 			}
@@ -280,11 +282,98 @@ func TestStoreAndGrants(t *testing.T) {
 
 func TestMemberAndOrchestratorGrants(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory")
-	src := strings.Replace(systemsTopology(repo, `
-  orders: {system: {repo: shop, scope: services/orders}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
-`), "lead: {}", "lead: {grants: {releases: [orders]}}", 1)
+	src := strings.Replace(systemsTopology(repo, validOwners), "lead: {x-hikari: {}}", "lead: {x-hikari: {grants: {releases: [orders]}}}", 1)
 	if _, err := Parse([]byte(src), t.TempDir()); err != nil {
 		t.Errorf("T12: an orchestrator can have grants: %v", err)
+	}
+}
+
+func TestServices(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	src := systemsTopology(repo, `
+  orders:
+    build: {context: ., dockerfile: python.Dockerfile}
+    user: agent
+    environment: {CLAUDE_CODE_OAUTH_TOKEN: secret, UNSET: null}
+    networks: {default: null}
+    volumes:
+      - {type: volume, source: venv, target: /workspace/services/orders/.venv}
+      - {type: tmpfs, target: /workspace/services/orders/tmp}
+      - {type: bind, source: /data/sets, target: /data, read_only: true}
+    x-hikari: {system: {repo: shop, scope: services/orders}}
+  orders-db: {image: postgres:17, x-hikari: {serves: orders}}
+  inventory: {image: hikari-agent, x-hikari: {system: {repo: shop, scope: services/inventory}}}
+`)
+	topo, err := Parse([]byte(src), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	orders := topo.Services["orders"]
+	if orders.Image != "test-orders" || !orders.Build || orders.User != "agent" {
+		t.Errorf("orders = %+v; a built image is named <project>-<service>", orders)
+	}
+	if !orders.Credentials() || topo.Services["inventory"].Credentials() {
+		t.Error("R1: orders has a credential and inventory has none")
+	}
+	if got := topo.Sidecars("orders"); !slices.Equal(got, []string{"orders-db"}) {
+		t.Errorf("Sidecars(orders) = %v", got)
+	}
+	if _, ok := topo.Agents["orders-db"]; ok {
+		t.Error("a sidecar is not an agent")
+	}
+	if got := topo.NamedVolumes("orders"); len(got) != 1 || got[0].Source != "venv" {
+		t.Errorf("NamedVolumes(orders) = %v", got)
+	}
+}
+
+func TestServiceErrors(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	store := t.TempDir()
+	withOrders := func(keys string) string {
+		src := systemsTopology(repo, strings.Replace(validOwners, "  orders: {x-hikari:", "  orders: {"+keys+", x-hikari:", 1))
+		return strings.Replace(src, "x-hikari:\n", "x-hikari:\n  store: "+store+"\n", 1)
+	}
+	cases := map[string]struct{ src, want string }{
+		"C7 entrypoint":     {withOrders("entrypoint: [sh]"), "sets entrypoint, which hikari controls"},
+		"C7 command":        {withOrders("command: [run]"), "sets command"},
+		"C7 working_dir":    {withOrders("working_dir: /src"), "sets working_dir"},
+		"C7 networks":       {withOrders("networks: {default: null, shared: null}"), "sets networks"},
+		"C7 network_mode":   {withOrders("network_mode: host"), "sets network_mode"},
+		"C7 privileged":     {withOrders("privileged: true"), "sets privileged"},
+		"C7 cap_add":        {withOrders("cap_add: [SYS_ADMIN]"), "sets cap_add"},
+		"C7 devices":        {withOrders("devices: [/dev/sda]"), "sets devices"},
+		"C7 pid":            {withOrders("pid: host"), "sets pid"},
+		"C7 volumes_from":   {withOrders("volumes_from: [inventory]"), "sets volumes_from"},
+		"C8 repo":           {withOrders("volumes: [{type: bind, source: " + repo + "/services/inventory, target: /inv}]"), "overlaps " + realPath(repo)},
+		"C8 parent of repo": {withOrders("volumes: [{type: bind, source: " + filepath.Dir(repo) + ", target: /all}]"), "hikari mounts the repos and the store itself"},
+		"C8 store":          {withOrders("volumes: [{type: bind, source: " + store + "/shared, target: /s}]"), "overlaps " + realPath(store)},
+		"C8 docker socket":  {withOrders("volumes: [{type: bind, source: /var/run/docker.sock, target: /var/run/docker.sock}]"), "mounts the Docker socket"},
+		"C9 hikari":         {withOrders("volumes: [{type: volume, source: v, target: /hikari/bin}]"), "hikari owns /hikari"},
+		"C9 bind in scope":  {withOrders("volumes: [{type: bind, source: /data, target: /workspace/services/orders/data}]"), "only named volumes and tmpfs"},
+		"C9 other scope":    {withOrders("volumes: [{type: volume, source: v, target: /workspace/services/inventory/x}]"), "only named volumes and tmpfs"},
+		"C9 over the scope": {withOrders("volumes: [{type: volume, source: v, target: /workspace/services/orders}]"), "only named volumes and tmpfs"},
+		"C9 private":        {withOrders("volumes: [{type: volume, source: v, target: /workspace/services/orders/.hikari/x}]"), "only named volumes and tmpfs"},
+		"C10 HIKARI_":       {withOrders("environment: {HIKARI_TOKEN: x}"), "sets HIKARI_TOKEN"},
+		"C14 sidecar net":   {withOrders("image: x") + "  db: {network_mode: host, x-hikari: {serves: orders}}\n", `service "db": sets network_mode`},
+		"C15 sidecar bind":  {withOrders("image: x") + "  db: {volumes: [{type: bind, source: " + repo + ", target: /r}], x-hikari: {serves: orders}}\n", `service "db": mounts`},
+		"prepare clash":     {withOrders("volumes: [{type: volume, source: v, target: /workspace/services/orders/v}]") + "  orders-prepare: {x-hikari: {serves: orders}}\n", "taken by the prepare service"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(c.src), t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+
+	// A member without a system has no scope, so nothing of /workspace.
+	src := strings.Replace(systemsTopology(repo, validOwners), "lead: {x-hikari: {}}", "lead: {volumes: [{type: volume, source: v, target: /workspace/x}], x-hikari: {}}", 1)
+	if _, err := Parse([]byte(src), t.TempDir()); err == nil || !strings.Contains(err.Error(), "only named volumes and tmpfs") {
+		t.Errorf("C9 member: %v", err)
+	}
+	// A sidecar may run its own command.
+	if _, err := Parse([]byte(withOrders("image: x")+"  db: {command: [postgres], x-hikari: {serves: orders}}\n"), t.TempDir()); err != nil {
+		t.Errorf("a sidecar may set command: %v", err)
 	}
 }

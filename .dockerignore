@@ -1,7 +1,2 @@
+# The image copies nothing from the repo.
 *
-!go.mod
-!go.sum
-!cmd/
-!internal/
-!web/embed.go
-!web/dist/.keep

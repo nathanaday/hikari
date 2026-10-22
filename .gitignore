@@ -2,5 +2,7 @@
 .env
 /bin/
 /.hikari/
-# The store that demo runs create next to the example topologies.
-/examples/store/
+# The stores that runs create next to the example compose files.
+/examples/*/store/
+myprojects/
+/myprojects/

@@ -19,17 +19,19 @@ import (
 // eng-lead and writer. eng-lead orchestrates #eng, whose members are the
 // owners orders and inventory.
 const testTopology = `
-repos:
-  shop: {path: shop, branch: hikari/work}
-agents:
-  lead: {}
-  writer: {}
-  eng-lead: {}
-  orders: {system: {repo: shop, scope: services/orders, test: python3 -m unittest}}
-  inventory: {system: {repo: shop, scope: services/inventory}}
-hubs:
-  product: {orchestrator: lead, members: [eng-lead, writer]}
-  eng: {orchestrator: eng-lead, members: [orders, inventory]}
+name: test
+x-hikari:
+  repos:
+    shop: {path: shop, branch: hikari/work}
+  hubs:
+    product: {orchestrator: lead, members: [eng-lead, writer]}
+    eng: {orchestrator: eng-lead, members: [orders, inventory]}
+services:
+  lead: {x-hikari: {}}
+  writer: {x-hikari: {}}
+  eng-lead: {x-hikari: {}}
+  orders: {x-hikari: {system: {repo: shop, scope: services/orders, test: python3 -m unittest}}}
+  inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
 `
 
 type fixture struct {

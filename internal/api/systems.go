@@ -14,8 +14,10 @@ import (
 // WorkspaceRoot is where an owner's container sees its repo.
 const WorkspaceRoot = "/workspace"
 
-// Where every container sees its hikari documents.
+// Where every container sees hikari: its documents, and the hikari binary.
 const (
+	HikariRoot  = "/hikari"
+	BinaryPath  = "/hikari/bin/hikari"
 	PrivateDir  = "/hikari/private"
 	ExportDir   = "/hikari/public/export"
 	ReadonlyDir = "/hikari/public/readonly"

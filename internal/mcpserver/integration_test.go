@@ -73,12 +73,13 @@ func TestToolsAgainstTheServer(t *testing.T) {
 		}
 	}
 	topo, err := topology.Parse([]byte(`
-repos: {shop: {path: shop, branch: hikari/work}}
-agents:
-  lead: {}
-  orders: {system: {repo: shop, scope: orders}}
-hubs:
-  h: {orchestrator: lead, members: [orders]}
+name: test
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari/work}}
+  hubs: {h: {orchestrator: lead, members: [orders]}}
+services:
+  lead: {x-hikari: {}}
+  orders: {x-hikari: {system: {repo: shop, scope: orders}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)

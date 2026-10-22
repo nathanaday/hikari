@@ -1,11 +1,16 @@
+// Package topology reads a hikari topology: a Docker compose file whose
+// x-hikari keys hold the repos, the systems, the grants, and the hubs.
+// Compose describes each agent's environment; hikari keeps the boundaries.
 package topology
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -20,14 +25,11 @@ import (
 const User = "user"
 
 type Agent struct {
-	Description  string   `yaml:"description"`
-	Instructions string   `yaml:"instructions"`
-	Model        string   `yaml:"model"`
-	System       *System  `yaml:"system"`
-	Grants       Grants   `yaml:"grants"`
-	Packages     []string `yaml:"packages"`
-	Setup        string   `yaml:"setup"`
-	Path         []string `yaml:"path"`
+	Description  string  `yaml:"description"`
+	Instructions string  `yaml:"instructions"`
+	Model        string  `yaml:"model"`
+	System       *System `yaml:"system"`
+	Grants       Grants  `yaml:"grants"`
 }
 
 // Grants give an agent read-only access to parts of the store.
@@ -43,11 +45,9 @@ type System struct {
 	Scope string   `yaml:"scope"`
 	Read  []string `yaml:"read"`
 	Test  string   `yaml:"test"`
-	// ContainerOnly paths are relative to the scope.
-	ContainerOnly []string `yaml:"container_only"`
 }
 
-// Repo is a git repo on the host. Path is absolute after Load.
+// Repo is a git repo on the host. Path is absolute after Parse.
 type Repo struct {
 	Path   string `yaml:"path"`
 	Branch string `yaml:"branch"`
@@ -61,52 +61,221 @@ type Hub struct {
 	Members      []string `yaml:"members"`
 }
 
-type Topology struct {
-	// Store is the directory of the shared store. It is absolute after
-	// Load; the default is store/ next to the topology file.
-	Store  string           `yaml:"store"`
-	Repos  map[string]Repo  `yaml:"repos"`
-	Agents map[string]Agent `yaml:"agents"`
-	Hubs   map[string]Hub   `yaml:"hubs"`
+// Service is what hikari reads of a compose service: an agent or a sidecar.
+type Service struct {
+	// Image is the image that the service runs: its image key, or the name
+	// that compose gives the image it builds.
+	Image string
+	Build bool
+	User  string
+	// Serves is the agent that a sidecar serves. It is empty for an agent.
+	Serves  string
+	Volumes []Volume
+	// Environment maps each variable to its value, or to nil when the
+	// variable is passed by name and is not set.
+	Environment map[string]*string
+	// set holds the compose keys that the service sets.
+	set map[string]bool
+}
 
-	// Dir is the directory of the topology file. Relative repo paths and
-	// vocabulary files start there.
-	Dir string `yaml:"-"`
+// Volume is a mount of a service, in compose's resolved form.
+type Volume struct {
+	Type     string `yaml:"type"`
+	Source   string `yaml:"source"`
+	Target   string `yaml:"target"`
+	ReadOnly bool   `yaml:"read_only"`
+}
+
+type Topology struct {
+	// Name is the compose project name.
+	Name string
+	// Store is the directory of the shared store. It is absolute; the
+	// default is store/ next to the compose file.
+	Store    string
+	Repos    map[string]Repo
+	Agents   map[string]Agent
+	Hubs     map[string]Hub
+	Services map[string]Service
+
+	// File is the compose file, when the topology came from Load.
+	File string
+	// Dir is the directory of the compose file. Relative paths in x-hikari
+	// start there.
+	Dir string
 }
 
 var (
-	validName    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
-	validPackage = regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]*$`)
-	validBranch  = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	validName   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	validBranch = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 )
 
-func Load(path string) (*Topology, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
-	return Parse(data, filepath.Dir(abs))
+type composeFile struct {
+	Name     string               `yaml:"name"`
+	Services map[string]yaml.Node `yaml:"services"`
+	Hikari   yaml.Node            `yaml:"x-hikari"`
 }
 
-// Parse reads a topology whose relative paths start at dir.
+type hikariKeys struct {
+	Store string          `yaml:"store"`
+	Repos map[string]Repo `yaml:"repos"`
+	Hubs  map[string]Hub  `yaml:"hubs"`
+}
+
+type serviceKeys struct {
+	Image       string             `yaml:"image"`
+	Build       yaml.Node          `yaml:"build"`
+	User        string             `yaml:"user"`
+	Volumes     []Volume           `yaml:"volumes"`
+	Environment map[string]*string `yaml:"environment"`
+	Hikari      yaml.Node          `yaml:"x-hikari"`
+}
+
+type serviceHikari struct {
+	Agent  `yaml:",inline"`
+	Serves string `yaml:"serves"`
+}
+
+func (a Agent) empty() bool {
+	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0
+}
+
+// Load reads a compose file through `docker compose config`, so that hikari
+// sees the file as compose will run it. Compose's warnings go to stderr.
+func Load(ctx context.Context, file string) (*Topology, error) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return nil, err
+	}
+	var top map[string]yaml.Node
+	if yaml.Unmarshal(data, &top) == nil {
+		if _, ok := top["agents"]; ok {
+			return nil, fmt.Errorf("%s uses the old topology format; hikari now reads a compose file (see the README)", file)
+		}
+	}
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", abs, "config")
+	cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("docker compose config: %v", err)
+	}
+	t, err := Parse(out, filepath.Dir(abs))
+	if err != nil {
+		return nil, err
+	}
+	t.File = abs
+	return t, nil
+}
+
+// Parse reads compose's resolved form of a compose file, the output of
+// `docker compose config`, whose relative x-hikari paths start at dir.
 func Parse(data []byte, dir string) (*Topology, error) {
-	t := Topology{Dir: dir}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&t); errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("topology is empty")
-	} else if err != nil {
-		return nil, fmt.Errorf("parse topology: %w", err)
+	var f composeFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("parse compose file: %w", err)
+	}
+	if f.Name == "" && len(f.Services) == 0 && f.Hikari.Kind == 0 {
+		return nil, fmt.Errorf("compose file is empty")
+	}
+	t := Topology{Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}}
+	var errs []error
+	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+
+	if t.Name == "" {
+		fail("the compose file has no top-level name; hikari needs a stable project name")
+	}
+	var keys hikariKeys
+	if f.Hikari.Kind == 0 {
+		fail("the compose file has no top-level x-hikari key")
+	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
+		fail("x-hikari: %v", err)
+	}
+	t.Store, t.Repos, t.Hubs = keys.Store, keys.Repos, keys.Hubs
+
+	for _, name := range sortedKeys(f.Services) {
+		node := f.Services[name]
+		var sk serviceKeys
+		var raw map[string]any
+		if err := node.Decode(&sk); err != nil {
+			fail("service %q: %v", name, err)
+			continue
+		}
+		node.Decode(&raw)
+		svc := Service{Image: sk.Image, Build: sk.Build.Kind != 0, User: sk.User, Volumes: sk.Volumes, Environment: sk.Environment, set: setKeys(raw)}
+		if svc.Image == "" && svc.Build {
+			svc.Image = t.Name + "-" + name
+		}
+		if sk.Hikari.Kind == 0 {
+			fail("service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
+			continue
+		}
+		var h serviceHikari
+		if err := decodeStrict(&sk.Hikari, &h); err != nil {
+			fail("service %q: x-hikari: %v", name, err)
+			continue
+		}
+		if h.Serves != "" {
+			if !h.Agent.empty() {
+				fail("service %q is a sidecar, so its x-hikari holds only serves", name)
+			}
+			svc.Serves = h.Serves
+		} else {
+			t.Agents[name] = h.Agent
+		}
+		t.Services[name] = svc
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	t.normalize()
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// decodeStrict decodes node into v and rejects unknown fields.
+func decodeStrict(node *yaml.Node, v any) error {
+	data, err := yaml.Marshal(node)
+	if err != nil {
+		return err
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+// setKeys returns the keys of a service that hold a value. Compose writes
+// some unset keys as null, and every service without networks gets the
+// default network.
+func setKeys(raw map[string]any) map[string]bool {
+	set := map[string]bool{}
+	for k, v := range raw {
+		switch v := v.(type) {
+		case nil:
+		case bool:
+			set[k] = v
+		case string:
+			set[k] = v != ""
+		case []any:
+			set[k] = len(v) > 0
+		case map[string]any:
+			if k == "networks" {
+				delete(v, "default")
+			}
+			set[k] = len(v) > 0
+		default:
+			set[k] = true
+		}
+	}
+	return set
 }
 
 func (t *Topology) normalize() {
@@ -123,9 +292,6 @@ func (t *Topology) normalize() {
 			a.System.Scope = cleanRel(a.System.Scope)
 			for i, p := range a.System.Read {
 				a.System.Read[i] = cleanRel(p)
-			}
-			for i, p := range a.System.ContainerOnly {
-				a.System.ContainerOnly[i] = cleanRel(p)
 			}
 		}
 		t.Agents[name] = a
@@ -211,6 +377,7 @@ func (t *Topology) validate() error {
 
 	errs = append(errs, t.validateRepos()...)
 	errs = append(errs, t.validateSystems()...)
+	errs = append(errs, t.validateServices()...)
 	return errors.Join(errs...)
 }
 
@@ -256,16 +423,6 @@ func (t *Topology) validateSystems() []error {
 	}
 	for _, name := range t.AgentNames() {
 		a := t.Agents[name]
-		for _, p := range a.Packages {
-			if !validPackage.MatchString(p) {
-				fail(name, "invalid package name %q", p)
-			}
-		}
-		for _, p := range a.Path {
-			if !filepath.IsAbs(p) {
-				fail(name, "path entry %q is not an absolute path", p)
-			}
-		}
 		for _, g := range a.Grants.Releases {
 			if g == name {
 				fail(name, "cannot be granted its own releases")
@@ -297,11 +454,6 @@ func (t *Topology) validateSystems() []error {
 				fail(name, "read path %q must be a relative path inside the repo", p)
 			} else if !isDir(filepath.Join(repo.Path, p)) {
 				fail(name, "read path %q is not a directory in repo %q", p, s.Repo)
-			}
-		}
-		for _, p := range s.ContainerOnly {
-			if p == "" || !filepath.IsLocal(p) {
-				fail(name, "container_only path %q must be a relative path inside the scope", p)
 			}
 		}
 	}

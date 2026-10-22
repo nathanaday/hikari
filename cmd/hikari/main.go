@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,7 +22,6 @@ import (
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
 	"github.com/nathanaday/hikari/internal/server"
-	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 )
@@ -29,7 +29,7 @@ import (
 const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
 
 Usage:
-  hikari up [flags] <topology.yaml>   start the server, the web UI, and one container per agent
+  hikari up [flags] <compose.yaml>    start the server, the web UI, and the compose project
 
 Internal commands (hikari starts these; you do not run them):
   hikari node   the agent driver; each container runs it
@@ -66,10 +66,9 @@ func main() {
 func up(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("up", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1:7420", "server address")
-	image := fs.String("image", "hikari-node", "agent container image")
 	noLaunch := fs.Bool("no-launch", false, "start only the server and print agent credentials, for running agents by hand")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] <topology.yaml>")
+		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] <compose.yaml>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -78,13 +77,28 @@ func up(ctx context.Context, args []string) error {
 		os.Exit(2)
 	}
 
-	topo, err := topology.Load(fs.Arg(0))
+	topo, err := topology.Load(ctx, fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	_, port, err := net.SplitHostPort(*listen)
 	if err != nil {
 		return fmt.Errorf("invalid -listen: %w", err)
+	}
+	project := &launcher.Project{Topo: topo}
+	if !*noLaunch {
+		running, err := project.Running(ctx)
+		if err != nil {
+			return err
+		}
+		if running {
+			return fmt.Errorf("containers of project %q are running; stop them with `docker compose -p %s down`", topo.Name, topo.Name)
+		}
+		for _, n := range topo.AgentNames() {
+			if !topo.Services[n].Credentials() {
+				log.Printf("warning: agent %q has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set", n)
+			}
+		}
 	}
 
 	runID := time.Now().Format("20060102-150405")
@@ -118,7 +132,6 @@ func up(ctx context.Context, args []string) error {
 	go httpSrv.Serve(ln)
 	defer httpSrv.Close()
 
-	l := &launcher.Launcher{Image: *image, ServerURL: "http://host.docker.internal:" + port, RunID: runID}
 	// Containers stop before the final commits, so that no agent writes
 	// during them.
 	stopContainers := func() {}
@@ -127,35 +140,21 @@ func up(ctx context.Context, args []string) error {
 			fmt.Printf("%s: HIKARI_SERVER_URL=http://%s HIKARI_TOKEN=%s\n", n, *listen, srv.IssueToken(n))
 		}
 	} else {
-		if err := l.CheckImage(ctx); err != nil {
-			return err
-		}
 		emptyDir, err := os.MkdirTemp("", "hikari-empty-")
 		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(emptyDir)
-		l.EmptyDir = emptyDir
-		defer l.Cleanup()
-		stopContainers = l.Cleanup
-		for _, n := range topo.AgentNames() {
-			spec, err := agentSpec(ctx, l, topo, n)
-			if err != nil {
-				return err
-			}
-			spec.Token = srv.IssueToken(n)
-			err = l.Start(context.Background(), spec, func(err error) {
-				s := api.Status{State: api.StateExited}
-				if err != nil && ctx.Err() == nil {
-					s.Detail = err.Error()
-				}
-				srv.SetStatus(n, s)
-				log.Printf("[%s] container exited", n)
-			})
-			if err != nil {
-				return err
-			}
+		stop, err := launch(ctx, project, srv, launcher.OverrideInput{
+			RunID:     runID,
+			ServerURL: "http://host.docker.internal:" + port,
+			EmptyDir:  emptyDir,
+		})
+		if err != nil {
+			return err
 		}
+		defer stop()
+		stopContainers = stop
 	}
 
 	log.Printf("journal: %s", journalPath)
@@ -172,23 +171,51 @@ func up(ctx context.Context, args []string) error {
 	return nil
 }
 
-// agentSpec describes the container of agent: its image, and for an owner
-// its mounts and working directory.
-func agentSpec(ctx context.Context, l *launcher.Launcher, topo *topology.Topology, agent string) (launcher.Spec, error) {
-	a := topo.Agents[agent]
-	image, err := l.EnsureImage(ctx, agent, launcher.ImageSpec{Packages: a.Packages, Setup: a.Setup, Path: a.Path})
+// launch builds the project's images, checks each agent's image, writes the
+// override file, and starts the project. The returned function stops it;
+// it is safe to call more than once.
+func launch(ctx context.Context, p *launcher.Project, srv *server.Server, in launcher.OverrideInput) (func(), error) {
+	topo := p.Topo
+	if err := p.Build(ctx); err != nil {
+		return nil, err
+	}
+	in.Binaries, in.Users = map[string]string{}, map[string]string{}
+	for _, n := range topo.AgentNames() {
+		img, err := p.InspectAgent(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		if in.Binaries[n], err = launcher.LinuxBinary(img.Arch); err != nil {
+			return nil, err
+		}
+		in.Users[n] = img.User
+	}
+	if err := p.WriteOverride(filepath.Join(".hikari", in.RunID, "compose.override.yaml"), in); err != nil {
+		return nil, err
+	}
+	for _, n := range topo.AgentNames() {
+		p.Env = append(p.Env, launcher.TokenVar(n)+"="+srv.IssueToken(n))
+	}
+	err := p.Watch(ctx, func(service string, code int) {
+		log.Printf("[%s] container exited with code %d", service, code)
+		if _, ok := topo.Agents[service]; ok {
+			s := api.Status{State: api.StateExited}
+			if code != 0 && ctx.Err() == nil {
+				s.Detail = fmt.Sprintf("exit code %d", code)
+			}
+			srv.SetStatus(service, s)
+		}
+	})
 	if err != nil {
-		return launcher.Spec{}, err
+		return nil, err
 	}
-	spec := launcher.Spec{Name: agent, Image: image}
-	if s := a.System; s != nil {
-		repo := topo.Repos[s.Repo]
-		spec.Mounts = launcher.SystemMounts(repo.Path, s.Scope, s.Read, s.ContainerOnly, l.EmptyDir)
-		spec.WorkDir = api.WorkDir(s.Scope)
+	stop := sync.OnceFunc(p.Down)
+	if err := p.Up(ctx); err != nil {
+		stop()
+		return nil, err
 	}
-	st := store.Store{Root: topo.Store}
-	spec.Mounts = append(spec.Mounts, launcher.StoreMounts(st, agent, a.System != nil, topo.VisibleSystems(agent), topo.ReadableReleases(agent), l.EmptyDir)...)
-	return spec, nil
+	p.Logs()
+	return stop, nil
 }
 
 func runNode(ctx context.Context) error {

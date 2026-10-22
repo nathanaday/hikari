@@ -26,14 +26,16 @@ import (
 
 // company: ceo orchestrates lead. eng: lead orchestrates writer and critic.
 const testTopology = `
-agents:
-  ceo: {description: runs the company}
-  lead: {description: leads engineering}
-  writer: {description: writes}
-  critic: {description: reviews}
-hubs:
-  company: {orchestrator: ceo, members: [lead]}
-  eng: {orchestrator: lead, members: [writer, critic]}
+name: test
+x-hikari:
+  hubs:
+    company: {orchestrator: ceo, members: [lead]}
+    eng: {orchestrator: lead, members: [writer, critic]}
+services:
+  ceo: {x-hikari: {description: runs the company}}
+  lead: {x-hikari: {description: leads engineering}}
+  writer: {x-hikari: {description: writes}}
+  critic: {x-hikari: {description: reviews}}
 `
 
 func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
@@ -321,12 +323,13 @@ func TestSystemRoutes(t *testing.T) {
 		}
 	}
 	topo, err := topology.Parse([]byte(`
-repos: {shop: {path: shop, branch: hikari/work}}
-agents:
-  lead: {}
-  orders: {system: {repo: shop, scope: orders}}
-hubs:
-  h: {orchestrator: lead, members: [orders]}
+name: test
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari/work}}
+  hubs: {h: {orchestrator: lead, members: [orders]}}
+services:
+  lead: {x-hikari: {}}
+  orders: {x-hikari: {system: {repo: shop, scope: orders}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -406,12 +409,13 @@ func TestPublishAnnouncesTheRelease(t *testing.T) {
 		}
 	}
 	topo, err := topology.Parse([]byte(`
-repos: {shop: {path: shop, branch: hikari/work}}
-agents:
-  lead: {}
-  orders: {system: {repo: shop, scope: orders}}
-hubs:
-  h: {orchestrator: lead, members: [orders]}
+name: test
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari/work}}
+  hubs: {h: {orchestrator: lead, members: [orders]}}
+services:
+  lead: {x-hikari: {}}
+  orders: {x-hikari: {system: {repo: shop, scope: orders}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)

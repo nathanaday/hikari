@@ -2,7 +2,7 @@
 # Create the demo shop repo at the given path, replacing what is there.
 set -eu
 dest=${1:?usage: make-repo.sh <path>}
-src=$(cd "$(dirname "$0")/shop" && pwd)
+src=$(cd "$(dirname "$0")/repo" && pwd)
 rm -rf "$dest"
 mkdir -p "$dest"
 cp -R "$src/." "$dest/"
