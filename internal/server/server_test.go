@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -359,13 +360,14 @@ services:
 	if err != nil || self.System == nil || self.System.WorkDir != "/workspace/orders" {
 		t.Fatalf("owner self = %+v, %v", self.System, err)
 	}
-	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "create-order", Name: "Create"}}); err != nil {
+	purpose := "## Purpose\n\nA customer places an order.\n"
+	if _, err := orders.ChangeFeatures(ctx, []featurewiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
 		t.Fatal(err)
 	}
 	if e := <-events; e.Type != "system" || e.System.Owner != "orders" || len(e.System.Features) != 1 {
 		t.Fatalf("system event = %+v", e)
 	}
-	if err := orders.UpsertFeatures(ctx, []sysmap.FeatureInput{{ID: "Bad ID", Name: "Bad"}}); err == nil || !strings.Contains(err.Error(), "S1") {
+	if _, err := orders.ChangeFeatures(ctx, []featurewiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {
 		t.Errorf("invalid feature error = %v", err)
 	}
 

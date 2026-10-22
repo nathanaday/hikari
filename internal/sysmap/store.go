@@ -209,6 +209,9 @@ func (s *Store) exists(rel string) bool {
 	return err == nil
 }
 
+// Exists reports whether a path relative to the scope exists.
+func (s *Store) Exists(rel string) bool { return s.exists(rel) }
+
 // privateStamp identifies the current version of the private documents.
 func (s *Store) privateStamp() string {
 	var b strings.Builder

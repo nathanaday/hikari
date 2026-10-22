@@ -146,15 +146,12 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		}
 		return nil, sys.SetSystemInfo(node, p)
 	})
-	handle("PUT /api/node/map/features", func(r *http.Request, node string) (any, error) {
-		var fs []sysmap.FeatureInput
-		if err := decode(r, &fs); err != nil {
+	handle("POST /api/node/map/features", func(r *http.Request, node string) (any, error) {
+		var req api.ChangeRequest
+		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		return nil, sys.UpsertFeatures(node, fs)
-	})
-	handle("DELETE /api/node/map/features/{id}", func(r *http.Request, node string) (any, error) {
-		return nil, sys.RemoveFeature(node, r.PathValue("id"))
+		return sys.ChangeFeatures(node, req.Writes)
 	})
 	handle("POST /api/node/map/tests", func(r *http.Request, node string) (any, error) {
 		var results []sysmap.TestResult

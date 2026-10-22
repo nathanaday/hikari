@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
@@ -45,6 +46,12 @@ type owner struct {
 	branch   string
 	repo     *gitrepo.Repo
 	store    *sysmap.Store
+	wiki     *featurewiki.Store
+
+	mu sync.Mutex
+	// projectErr is the problem of the last projection of the wiki into
+	// the map, when a hand edit of the wiki broke a rule of the map.
+	projectErr string
 }
 
 type Manager struct {
@@ -100,9 +107,25 @@ func New(topo *topology.Topology) (*Manager, error) {
 		if repo.IsIgnored(privatePath) {
 			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", s.Repo, privatePath, name))
 		}
-		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: maps}
+		if note := maps.Note(); note != "" {
+			m.warnings = append(m.warnings, note)
+		}
+		wiki, err := featurewiki.Open(m.store.FeaturesDir(name))
+		if err != nil {
+			return nil, fmt.Errorf("agent %q: %w", name, err)
+		}
+		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: maps, wiki: wiki}
+	}
+	for _, name := range topo.Owners() {
+		o := m.owners[name]
+		if err := m.project(o, nil); err != nil {
+			m.warnings = append(m.warnings, fmt.Sprintf("agent %q: the map does not match the feature wiki: %v", name, err))
+		}
 	}
 	if err := m.checkDeliverables(); err != nil {
+		return nil, err
+	}
+	if err := m.checkAgents(); err != nil {
 		return nil, err
 	}
 	for _, hub := range topo.HubNames() {
@@ -147,6 +170,97 @@ func (m *Manager) checkDeliverables() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// checkAgents refuses a shared agent whose name starts with hikari-, which
+// is reserved for hikari's own agents (rule T17).
+func (m *Manager) checkAgents() error {
+	entries, _ := os.ReadDir(m.store.Shared(store.Agents))
+	var errs []error
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), api.AgentPrefix) {
+			errs = append(errs, fmt.Errorf("shared agent %q: the prefix %s is reserved for hikari's own agents; rename it", e.Name(), api.AgentPrefix))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// project writes the features of o's wiki into its map (rule Q1). renamed
+// maps old ids to new ones, so that test results follow a rename.
+func (m *Manager) project(o *owner, renamed map[string]string) error {
+	w := o.wiki.Wiki()
+	neighbors := w.Neighbors()
+	entries := make([]sysmap.FeatureEntry, 0, len(w))
+	for _, id := range w.IDs() {
+		d := w[id]
+		entries = append(entries, sysmap.FeatureEntry{ID: id, Name: d.Name, Description: d.Description, Interfaces: d.Interfaces, Related: neighbors[id]})
+	}
+	err := o.store.Update(func(mp *sysmap.Map) error { mp.Project(entries, renamed); return nil })
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if err != nil {
+		o.projectErr = err.Error()
+	} else {
+		o.projectErr = ""
+	}
+	return err
+}
+
+// wikiCheck is what the wiki rules need from o's system: its interfaces,
+// the ids of every other system, and the scope.
+func (m *Manager) wikiCheck(o *owner) featurewiki.Check {
+	ifaces := map[string]bool{}
+	mp := o.store.Map()
+	for _, group := range [][]sysmap.Interface{mp.System.Interfaces.Provides, mp.System.Interfaces.Consumes} {
+		for _, in := range group {
+			ifaces[in.Name] = true
+		}
+	}
+	taken := map[string]bool{}
+	for name, other := range m.owners {
+		if name == o.name {
+			continue
+		}
+		for id := range other.wiki.Wiki() {
+			taken[id] = true
+		}
+	}
+	return featurewiki.Check{Interfaces: ifaces, Taken: taken, Exists: o.store.Exists}
+}
+
+// ChangeFeatures applies one change to agent's feature wiki and writes the
+// map from it. The result notes the private documents that still name a
+// renamed or removed id (rule E4).
+func (m *Manager) ChangeFeatures(agent string, writes []featurewiki.Write) (api.ChangeResult, error) {
+	o, err := m.owner(agent)
+	if err != nil {
+		return api.ChangeResult{}, err
+	}
+	res, err := o.wiki.Change(writes, m.wikiCheck(o), m.now())
+	if err != nil {
+		return api.ChangeResult{}, err
+	}
+	out := api.ChangeResult{Result: res}
+	if err := m.project(o, res.Renamed); err != nil {
+		out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
+	}
+	priv, _ := o.store.Private()
+	var gone []string
+	for old := range res.Renamed {
+		gone = append(gone, old)
+	}
+	gone = append(gone, res.Removed...)
+	slices.Sort(gone)
+	for _, id := range gone {
+		if _, ok := priv.Layout.Features[id]; ok {
+			out.Notes = append(out.Notes, fmt.Sprintf("%s still names %q; update it (P2)", sysmap.LayoutFile, id))
+		}
+		if _, ok := priv.Tests.Features[id]; ok {
+			out.Notes = append(out.Notes, fmt.Sprintf("%s still names %q; update it (P2)", sysmap.TestFile, id))
+		}
+	}
+	m.changed(Change{System: agent})
+	return out, nil
 }
 
 // Deliverables returns the deliverables that agent holds, with their
@@ -271,10 +385,33 @@ func (m *Manager) peers(system string) []string {
 	return out
 }
 
-// Watch reloads hand edits of the map files until ctx ends.
+// Watch reloads hand edits of the map files and the feature wikis until
+// ctx ends.
 func (m *Manager) Watch(ctx context.Context) {
 	for _, o := range m.owners {
 		go o.store.Watch(ctx, time.Second, func() { m.changed(Change{System: o.name}) })
+		go m.watchWiki(ctx, o)
+	}
+}
+
+// watchWiki reloads o's wiki every second and writes the map from it after
+// a change (rule W8).
+func (m *Manager) watchWiki(ctx context.Context, o *owner) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if !o.wiki.Reload() {
+				continue
+			}
+			if o.wiki.Error() == "" {
+				m.project(o, nil)
+			}
+			m.changed(Change{System: o.name})
+		}
 	}
 }
 
@@ -354,7 +491,7 @@ func (m *Manager) view(o *owner) sysmap.View {
 	return m.ownerView(o).View
 }
 
-// ownerView returns what the owner sees of its map.
+// ownerView returns what the owner sees of its system.
 func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 	mp := o.store.Map()
 	priv, _ := o.store.Private()
@@ -363,11 +500,37 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 		return h
 	}
 	changed := m.changedPaths(o, mp)
+	w := o.wiki.Wiki()
+	ids := make([]string, len(mp.Features))
+	for i, f := range mp.Features {
+		ids[i] = f.ID
+	}
+	described := func(id string) bool { return w[id] != nil && w[id].DescribedCommit != "" }
+	st := sysmap.FeatureStates(ids, described, priv, changed)
+	warnings := w.Warnings(featurewiki.Check{Exists: o.store.Exists})
+	for _, id := range ids {
+		if len(priv.Layout.Features[id].Code) == 0 {
+			warnings = append(warnings, fmt.Sprintf("feature %q has no code entry in %s; add one so that hikari can tell when its code changes", id, sysmap.LayoutFile))
+		}
+	}
+	o.mu.Lock()
+	projectErr := o.projectErr
+	o.mu.Unlock()
+	var problems []string
+	for _, p := range []string{o.store.Error(), o.wiki.Error(), projectErr} {
+		if p != "" {
+			problems = append(problems, p)
+		}
+	}
 	return sysmap.OwnerView{
-		View:          sysmap.NewView(mp, priv, changed, hash),
-		Changed:       changed,
-		Error:         o.store.Error(),
-		PrivateErrors: o.store.PrivateErrors(mp),
+		View:                sysmap.NewView(mp, priv, changed, hash, st.ByID),
+		Changed:             changed,
+		StaleFeatures:       st.Stale,
+		UndescribedFeatures: st.Undescribed,
+		UnmappedPaths:       st.Unmapped,
+		Warnings:            warnings,
+		Error:               strings.Join(problems, "; "),
+		PrivateErrors:       o.store.PrivateErrors(mp),
 	}
 }
 
@@ -403,24 +566,6 @@ func (m *Manager) update(agent string, fn func(o *owner, mp *sysmap.Map) error) 
 
 func (m *Manager) SetSystemInfo(agent string, p sysmap.SystemPatch) error {
 	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.ApplySystem(p); return nil })
-}
-
-// UpsertFeatures adds or replaces features as one change, so that features
-// in the batch can refer to each other.
-func (m *Manager) UpsertFeatures(agent string, ins []sysmap.FeatureInput) error {
-	if len(ins) == 0 {
-		return errors.New("give at least one feature")
-	}
-	return m.update(agent, func(_ *owner, mp *sysmap.Map) error {
-		for _, in := range ins {
-			mp.Upsert(in)
-		}
-		return nil
-	})
-}
-
-func (m *Manager) RemoveFeature(agent, id string) error {
-	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { return mp.Remove(id) })
 }
 
 // RecordTests stores test results. The private documents must be valid, and
@@ -460,7 +605,11 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return head, m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.MarkCurrent(head, m.now()); return nil })
+	now := m.now()
+	if err := o.wiki.SetDescribed(head, now); err != nil {
+		return "", err
+	}
+	return head, m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.MarkCurrent(head, now); return nil })
 }
 
 // Commit commits the changes in agent's scope. An empty message makes the
@@ -501,7 +650,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Ma
 	rel, err := m.store.Publish(store.PublishInput{
 		System: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommit: v.System.DescribedState.Commit, Map: public,
-		Hubs: hubs, Hikari: version.Version, Now: m.now(),
+		Features: o.wiki.Files(), Hubs: hubs, Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
 		return store.Manifest{}, nil, err
@@ -516,7 +665,8 @@ func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
 		v := m.ownerView(o)
-		tc.MapState, tc.Changed, tc.PrivateErrors = v.State, v.Changed, v.PrivateErrors
+		tc.MapState, tc.PrivateErrors = v.State, v.PrivateErrors
+		tc.StaleFeatures, tc.UndescribedFeatures, tc.UnmappedPaths = v.StaleFeatures, v.UndescribedFeatures, v.UnmappedPaths
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -597,10 +747,12 @@ func (m *Manager) SearchFeatures(agent, query string) ([]api.FeatureHit, error) 
 	q := strings.ToLower(strings.TrimSpace(query))
 	out := []api.FeatureHit{}
 	for _, name := range names {
-		for _, f := range m.view(m.owners[name]).Features {
-			text := strings.ToLower(strings.Join(append([]string{f.ID, f.Name, f.Description}, f.Interfaces...), "\n"))
+		o := m.owners[name]
+		for _, f := range m.view(o).Features {
+			doc := o.wiki.Raw(f.ID)
+			text := strings.ToLower(strings.Join(append([]string{f.ID, f.Name, f.Description, doc}, f.Interfaces...), "\n"))
 			if strings.Contains(text, q) {
-				out = append(out, api.FeatureHit{System: name, Feature: f})
+				out = append(out, api.FeatureHit{System: name, Feature: f, Document: doc})
 			}
 		}
 	}
@@ -615,7 +767,7 @@ func (m *Manager) GetFeature(agent, system, id string) (api.FeatureHit, error) {
 	}
 	for _, f := range m.view(o).Features {
 		if f.ID == id {
-			return api.FeatureHit{System: system, Feature: f}, nil
+			return api.FeatureHit{System: system, Feature: f, Document: o.wiki.Raw(id)}, nil
 		}
 	}
 	return api.FeatureHit{}, fmt.Errorf("%w: system %q has no feature %q", ErrNotFound, system, id)

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -48,10 +49,24 @@ type SelfSystem struct {
 
 // TurnContext tells the driver what changed before an agent's next turn.
 type TurnContext struct {
-	MapState          string   `json:"map_state,omitempty"`
-	Changed           []string `json:"changed,omitempty"`
-	PrivateErrors     []string `json:"private_errors,omitempty"`
-	VocabularyChanged []string `json:"vocabulary_changed,omitempty"`
+	MapState            string                `json:"map_state,omitempty"`
+	StaleFeatures       []sysmap.StaleFeature `json:"stale_features,omitempty"`
+	UndescribedFeatures []string              `json:"undescribed_features,omitempty"`
+	UnmappedPaths       []string              `json:"unmapped_paths,omitempty"`
+	PrivateErrors       []string              `json:"private_errors,omitempty"`
+	VocabularyChanged   []string              `json:"vocabulary_changed,omitempty"`
+}
+
+// ChangeRequest is one change to an owner's feature wiki.
+type ChangeRequest struct {
+	Writes []featurewiki.Write `json:"writes"`
+}
+
+// ChangeResult says what a change did, with notes on what the owner must
+// do next, such as private documents that still name a renamed id.
+type ChangeResult struct {
+	featurewiki.Result
+	Notes []string `json:"notes,omitempty"`
 }
 
 type SystemSummary struct {
@@ -77,6 +92,8 @@ type OrchestratorSystem struct {
 type FeatureHit struct {
 	System  string         `yaml:"system" json:"system"`
 	Feature sysmap.Feature `yaml:"feature" json:"feature"`
+	// Document is the feature's document as it is on disk.
+	Document string `yaml:"document,omitempty" json:"document,omitempty"`
 }
 
 // SystemView is everything about a system, for the UI: the owner's view and
@@ -131,12 +148,11 @@ func (c *Client) SetSystemInfo(ctx context.Context, p sysmap.SystemPatch) error 
 	return c.do(ctx, http.MethodPatch, "/api/node/map/system", p, nil)
 }
 
-func (c *Client) UpsertFeatures(ctx context.Context, fs []sysmap.FeatureInput) error {
-	return c.do(ctx, http.MethodPut, "/api/node/map/features", fs, nil)
-}
-
-func (c *Client) RemoveFeature(ctx context.Context, id string) error {
-	return c.do(ctx, http.MethodDelete, "/api/node/map/features/"+url.PathEscape(id), nil, nil)
+// ChangeFeatures applies one change to the owner's feature wiki.
+func (c *Client) ChangeFeatures(ctx context.Context, writes []featurewiki.Write) (ChangeResult, error) {
+	var out ChangeResult
+	err := c.do(ctx, http.MethodPost, "/api/node/map/features", ChangeRequest{Writes: writes}, &out)
+	return out, err
 }
 
 func (c *Client) RecordTests(ctx context.Context, results []sysmap.TestResult) error {

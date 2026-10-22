@@ -235,7 +235,8 @@ func (d *Document) Render() string {
 }
 
 // needsQuotes reports whether a plain scalar would read back as something
-// else, or would not parse at all.
+// other than text, or would not parse at all. A time stays plain, so that
+// Obsidian reads it as a date.
 func needsQuotes(s string) bool {
 	switch {
 	case s == "", s != strings.TrimSpace(s), strings.ContainsAny(s, "\n\"'"):
@@ -245,13 +246,8 @@ func needsQuotes(s string) bool {
 	case strings.Contains(s, ": "), strings.Contains(s, " #"), strings.HasSuffix(s, ":"):
 		return true
 	}
-	switch strings.ToLower(s) {
-	case "true", "false", "yes", "no", "on", "off", "null", "~":
-		return true
-	}
-	var f float64
-	_, err := fmt.Sscanf(s, "%g", &f)
-	return err == nil && !strings.ContainsAny(s, "T:-")
+	tag := (&yaml.Node{Kind: yaml.ScalarNode, Value: s}).ShortTag()
+	return tag != "!!str" && tag != "!!timestamp"
 }
 
 func formatTime(t time.Time) string {

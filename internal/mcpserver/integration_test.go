@@ -101,14 +101,14 @@ services:
 	}); isErr {
 		t.Fatalf("set_system_info: %s", out)
 	}
-	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{
-		{"id": "create-order", "name": "Create an order", "interfaces": []string{"POST /orders"}, "related": []string{"validate-order"}},
-		{"id": "validate-order", "name": "Validate an order"},
-	}}); isErr {
-		t.Fatalf("upsert_features with a forward reference: %s", out)
+	if out, isErr := call(t, orders, "change_features", map[string]any{"writes": []map[string]any{
+		{"op": "create", "id": "create-order", "name": "Create an order", "description": "Stores an order.", "interfaces": []string{"POST /orders"}, "related": []string{"validate-order"}, "body": "## Purpose\n\nA customer places an order.\n"},
+		{"op": "create", "id": "validate-order", "name": "Validate an order", "description": "Refuses bad orders.", "body": "## Purpose\n\nAn order must be sound before [[create-order]] stores it.\n"},
+	}}); isErr || !strings.Contains(out, "Applied 2 write(s)") {
+		t.Fatalf("change_features with a forward reference: %s", out)
 	}
-	if out, isErr := call(t, orders, "upsert_features", map[string]any{"features": []map[string]any{{"id": "x", "name": "X", "code": []string{"create.py"}}}}); !isErr || !strings.Contains(out, `"code"`) {
-		t.Errorf("the map must not take code paths: %q", out)
+	if out, isErr := call(t, orders, "change_features", map[string]any{"writes": []map[string]any{{"op": "create", "id": "x", "name": "X", "description": "X.", "code": []string{"create.py"}}}}); !isErr || !strings.Contains(out, `"code"`) {
+		t.Errorf("the wiki must not take code paths: %q", out)
 	}
 	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); !isErr || !strings.Contains(out, "lists no tests") {
 		t.Errorf("results before the test plan: %q", out)
@@ -142,6 +142,9 @@ services:
 	}
 	if out, _ := call(t, lead, "search_features", map[string]any{"query": "create"}); !strings.Contains(out, "system: orders") {
 		t.Errorf("search_features:\n%s", out)
+	}
+	if out, _ := call(t, lead, "get_feature", map[string]any{"system": "orders", "id": "validate-order"}); !strings.Contains(out, "## Purpose") || !strings.Contains(out, "related:\n") {
+		t.Errorf("get_feature returns the document:\n%s", out)
 	}
 	if _, err := orders.CallTool(context.Background(), &mcp.CallToolParams{Name: "define_term", Arguments: map[string]any{"hub": "h", "term": "x", "definition": "y"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
 		t.Errorf("an owner has no define_term tool, got %v", err)

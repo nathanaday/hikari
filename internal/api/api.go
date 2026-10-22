@@ -81,6 +81,10 @@ type DeliverableInfo struct {
 // No shared skill or deliverable may use its name.
 const SystemSkill = "hikari-system"
 
+// AgentPrefix starts the name of each of hikari's own agents. No shared
+// agent may use it.
+const AgentPrefix = "hikari-"
+
 // SendRequest sets exactly one of Hub and To.
 type SendRequest struct {
 	Hub  string `json:"hub,omitempty"`

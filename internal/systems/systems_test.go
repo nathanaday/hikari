@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -118,10 +119,11 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Provides: ptr([]sysmap.Interface{{Name: "POST /orders", Kind: "http", Description: "Creates an order."}}),
 		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
 	}))
-	must(t, f.m.UpsertFeatures("orders", []sysmap.FeatureInput{{
-		ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
-		Interfaces: []string{"POST /orders", "inventory.reserve"},
-	}}))
+	_, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{
+		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
+		Interfaces: []string{"POST /orders", "inventory.reserve"}, Body: body("A customer places an order, and the shop stores it."),
+	}})
+	must(t, err)
 	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", `version: 1
 parts: [{path: create.py, description: Order creation.}]
 features:
@@ -135,6 +137,12 @@ features:
     covers: Orders are stored.
     tests: [{suite: unit, files: [tests/test_create.py]}]
 `)
+}
+
+// body makes a document body with the given Purpose.
+func body(purpose string) *string {
+	s := "## Purpose\n\n" + purpose + "\n"
+	return &s
 }
 
 func must(t *testing.T, err error) {
@@ -216,7 +224,8 @@ func TestNewRefusesUncommittedChanges(t *testing.T) {
 func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	must(t, f.m.UpsertFeatures("orders", []sysmap.FeatureInput{{ID: "untested-thing", Name: "Untested"}}))
+	_, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
+	must(t, err)
 	if err := f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "untested-thing", Passed: 1}}); err == nil || !strings.Contains(err.Error(), "lists no tests for feature") {
 		t.Errorf("results for a feature outside the plan: %v", err)
 	}
@@ -257,18 +266,26 @@ func TestOwnerWorkflow(t *testing.T) {
 	}
 
 	// The map change itself is not a code change.
-	if tc := f.m.TurnContext("orders"); tc.MapState != sysmap.Current || len(tc.Changed) != 0 {
+	if tc := f.m.TurnContext("orders"); tc.MapState != sysmap.Current || len(tc.StaleFeatures) != 0 || len(tc.UnmappedPaths) != 0 || len(tc.UndescribedFeatures) != 0 {
 		t.Errorf("turn context after MarkCurrent: %+v", tc)
 	}
-
-	// A host edit makes the map stale and the feature stale.
-	write(t, f.repo, "services/orders/create.py", "def create(): return 1\n")
-	tc := f.m.TurnContext("orders")
-	if tc.MapState != sysmap.Stale || !slices.Equal(tc.Changed, []string{"create.py"}) {
-		t.Errorf("turn context after a host edit: %+v", tc)
+	if v.Features[0].State != sysmap.Current {
+		t.Errorf("S20: state after MarkCurrent: %s", v.Features[0].State)
 	}
-	if v, _ := f.m.OwnView("orders"); v.Features[0].Health != sysmap.Stale {
-		t.Errorf("S9 health after an edit: %s", v.Features[0].Health)
+
+	// A host edit makes the map stale and the feature stale, and an edit
+	// outside every feature is unmapped.
+	write(t, f.repo, "services/orders/create.py", "def create(): return 1\n")
+	write(t, f.repo, "services/orders/README.md", "# orders\n")
+	tc := f.m.TurnContext("orders")
+	if tc.MapState != sysmap.Stale || len(tc.StaleFeatures) != 1 || tc.StaleFeatures[0].ID != "create-order" || !slices.Equal(tc.StaleFeatures[0].Paths, []string{"create.py"}) {
+		t.Errorf("S20: turn context after a host edit: %+v", tc)
+	}
+	if !slices.Equal(tc.UnmappedPaths, []string{"README.md"}) {
+		t.Errorf("S21: unmapped paths: %v", tc.UnmappedPaths)
+	}
+	if v, _ := f.m.OwnView("orders"); v.Features[0].Health != sysmap.Stale || v.Features[0].State != sysmap.Stale {
+		t.Errorf("S9, S20 after an edit: health %s, state %s", v.Features[0].Health, v.Features[0].State)
 	}
 
 	// The automatic commit takes the edit and the map file.
@@ -376,8 +393,11 @@ func TestOrchestratorView(t *testing.T) {
 	if err != nil || len(hits) != 1 || hits[0].System != "orders" {
 		t.Errorf("search = %+v, %v", hits, err)
 	}
-	if hit, err := f.m.GetFeature("eng-lead", "orders", "create-order"); err != nil || hit.Feature.Name != "Create an order" {
-		t.Errorf("get feature = %+v, %v", hit, err)
+	if hit, err := f.m.GetFeature("eng-lead", "orders", "create-order"); err != nil || hit.Feature.Name != "Create an order" || !strings.Contains(hit.Document, "## Purpose") {
+		t.Errorf("Q3: get feature = %+v, %v", hit, err)
+	}
+	if hits, err := f.m.SearchFeatures("eng-lead", "customer places"); err != nil || len(hits) != 1 {
+		t.Errorf("Q3: search matches the document: %+v, %v", hits, err)
 	}
 	if _, err := f.m.GetFeature("eng-lead", "orders", "ghost"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown feature: %v", err)
@@ -529,6 +549,9 @@ func TestPublishRelease(t *testing.T) {
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
 		t.Errorf("the copied map must be the public view:\n%s", copied)
 	}
+	if doc, err := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "features", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
+		t.Errorf("L11: the release holds the wiki: %v\n%s", err, doc)
+	}
 	if len(changes) == 0 || changes[0].System != "orders" {
 		t.Errorf("a release must notify listeners: %+v", changes)
 	}
@@ -589,4 +612,162 @@ func TestDeliverableChecksAtStartup(t *testing.T) {
 			t.Errorf("error = %v", err)
 		}
 	})
+}
+
+func TestChangeFeatures(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	features := filepath.Join(f.dir, "store", "systems", "orders", "features")
+	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err != nil {
+		t.Fatalf("L10, W7: the document is in the store: %v", err)
+	}
+	var changes []Change
+	f.m.OnChange(func(c Change) { changes = append(changes, c) })
+
+	res, err := f.m.ChangeFeatures("orders", []featurewiki.Write{
+		{Op: "create", ID: "cancel-order", Name: "Cancel an order", Description: "Cancel a placed order.", Body: body("After [[create-order]] placed an order, the customer can cancel it.")},
+	})
+	if err != nil || len(res.Applied) != 1 || len(changes) == 0 {
+		t.Fatalf("change = %+v, %v; changes %v", res, err, changes)
+	}
+	v, _ := f.m.OwnView("orders")
+	if len(v.Features) != 2 || v.Features[0].ID != "cancel-order" || !slices.Equal(v.Features[0].Related, []string{"create-order"}) || !slices.Equal(v.Features[1].Related, []string{"cancel-order"}) {
+		t.Errorf("Q1, K3: the map lists both directions: %+v", v.Features)
+	}
+	if v.Features[0].State != sysmap.Undescribed || !slices.Equal(v.UndescribedFeatures, []string{"cancel-order", "create-order"}) {
+		t.Errorf("S20: new features are undescribed: %+v", v)
+	}
+	if !slices.ContainsFunc(v.Warnings, func(w string) bool { return strings.Contains(w, `"cancel-order" has no code entry`) }) {
+		t.Errorf("the owner view warns about a feature without code: %v", v.Warnings)
+	}
+
+	// The rules refuse as a whole, and name the rule.
+	_, err = f.m.ChangeFeatures("orders", []featurewiki.Write{
+		{Op: "create", ID: "ship-order", Name: "Ship", Description: "Ship it.", Body: body("Ships.")},
+		{Op: "create", ID: "bad", Name: "Bad", Description: "Bad.", Interfaces: []string{"GET /nope"}, Body: body("Uses an unknown interface.")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "W3") {
+		t.Errorf("W3: %v", err)
+	}
+	if v, _ := f.m.OwnView("orders"); len(v.Features) != 2 {
+		t.Error("a refused change must not change the wiki")
+	}
+
+	// Ids are unique across systems.
+	_, err = f.m.ChangeFeatures("inventory", []featurewiki.Write{{Op: "create", ID: "create-order", Name: "Create", Description: "Dup.", Body: body("Dup.")}})
+	if err == nil || !strings.Contains(err.Error(), "W1") || !strings.Contains(err.Error(), "another system") {
+		t.Errorf("W1 across systems: %v", err)
+	}
+
+	// A rename keeps test results, rewrites links, and notes the private documents.
+	must(t, f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 3}}))
+	res, err = f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ = f.m.OwnView("orders")
+	if len(v.Features) != 2 || v.Features[1].ID != "place-order" || v.Features[1].Tests.Passed != 3 || !slices.Equal(v.Features[0].Related, []string{"place-order"}) {
+		t.Errorf("E5, K4 after a rename: %+v", v.Features)
+	}
+	if len(res.Notes) != 2 || !strings.Contains(res.Notes[0], "layout.yaml still names") || !strings.Contains(res.Notes[1], "test.yaml still names") {
+		t.Errorf("E4: notes = %v", res.Notes)
+	}
+	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err == nil {
+		t.Error("K4: the old file is gone")
+	}
+	doc, _ := os.ReadFile(filepath.Join(features, "cancel-order.md"))
+	if !strings.Contains(string(doc), "[[place-order]]") {
+		t.Errorf("K4: links follow the rename:\n%s", doc)
+	}
+	hit, err := f.m.GetFeature("eng-lead", "orders", "cancel-order")
+	if err != nil || hit.Document != string(doc) {
+		t.Errorf("Q3: the document as on disk: %v", err)
+	}
+
+	// A remove drops the feature and its results.
+	if _, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "remove", ID: "place-order"}}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := f.m.OwnView("orders"); len(v.Features) != 1 || len(v.Features[0].Related) != 0 {
+		t.Errorf("after a remove: %+v", v.Features)
+	}
+	if _, err := f.m.ChangeFeatures("eng-lead", nil); !errors.Is(err, ErrForbidden) {
+		t.Errorf("only owners change features: %v", err)
+	}
+}
+
+func TestMarkCurrentDescribesEveryDocument(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	commit, err := f.m.MarkCurrent("orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "features", "create-order.md"))
+	if !strings.Contains(string(doc), "described_commit: "+commit) || !strings.Contains(string(doc), "described_at: ") {
+		t.Errorf("S22: the document records the commit:\n%s", doc)
+	}
+	if v, _ := f.m.OwnView("orders"); v.Features[0].State != sysmap.Current {
+		t.Errorf("S20: %s", v.Features[0].State)
+	}
+}
+
+func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	o := f.m.owners["orders"]
+	path := filepath.Join(f.dir, "store", "systems", "orders", "features", "create-order.md")
+	doc, _ := os.ReadFile(path)
+	edited := strings.Replace(string(doc), "description: Stores a new order.", "description: Stores a new order for a customer.", 1)
+	os.WriteFile(path, []byte(edited), 0o644)
+	if !o.wiki.Reload() {
+		t.Fatal("the edit was not seen")
+	}
+	must(t, f.m.project(o, nil))
+	if v, _ := f.m.OwnView("orders"); v.Features[0].Description != "Stores a new order for a customer." || v.Error != "" {
+		t.Errorf("W8: %+v", v)
+	}
+	// An edit that names an unknown interface keeps the wiki but the map
+	// cannot follow; the owner view says so.
+	os.WriteFile(path, []byte(strings.Replace(edited, "interfaces: [", "interfaces: [GET /nope, ", 1)), 0o644)
+	o.wiki.Reload()
+	if err := f.m.project(o, nil); err == nil {
+		t.Fatal("S2 must refuse the projection")
+	}
+	if v, _ := f.m.OwnView("orders"); !strings.Contains(v.Error, "S2") {
+		t.Errorf("W8: the owner view reports the problem: %q", v.Error)
+	}
+}
+
+func TestOldMapsAreDeleted(t *testing.T) {
+	f := newFixture(t)
+	git(t, f.repo, "add", "--all")
+	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
+	mapPath := filepath.Join(f.dir, "store", "systems", "orders", "map.yaml")
+	os.WriteFile(mapPath, []byte("version: 2\nsystem:\n  name: orders\nfeatures:\n  - {id: x, name: X}\n"), 0o644)
+	topo, err := topology.Parse([]byte(testTopology), f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(m.Warnings(), func(w string) bool { return strings.Contains(w, "version 2") }) {
+		t.Errorf("Q4: no warning: %v", m.Warnings())
+	}
+	if v, _ := m.OwnView("orders"); v.State != sysmap.Unbuilt || len(v.Features) != 0 {
+		t.Errorf("Q4: the system starts unbuilt: %+v", v)
+	}
+}
+
+func TestSharedAgentPrefixIsRefused(t *testing.T) {
+	f := newFixture(t)
+	git(t, f.repo, "add", "--all")
+	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
+	write(t, filepath.Join(f.dir, "store", "shared", "agents"), "hikari-feature-survey.md", "---\nname: x\n---\n")
+	topo, _ := topology.Parse([]byte(testTopology), f.dir)
+	if _, err := New(topo); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("T17: %v", err)
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -44,18 +45,28 @@ type systemInfoArgs struct {
 	Consumes         *[]interfaceArg `json:"consumes,omitempty" jsonschema:"the interfaces of other systems that this system uses"`
 }
 
-type featureArgs struct {
-	ID          string   `json:"id" jsonschema:"a short id in lowercase letters, digits, and dashes, unique in your system"`
-	Name        string   `json:"name" jsonschema:"a short name"`
-	Description string   `json:"description,omitempty" jsonschema:"what the feature does for a user or another system"`
-	Interfaces  []string `json:"interfaces,omitempty" jsonschema:"names of interfaces from your provides or consumes that the feature uses"`
-	Findings    []string `json:"findings,omitempty" jsonschema:"known problems"`
-	Plans       []string `json:"plans,omitempty" jsonschema:"planned changes"`
-	Related     []string `json:"related,omitempty" jsonschema:"ids of related features in your system"`
+type fieldsArgs struct {
+	Name        *string   `json:"name,omitempty" jsonschema:"the new name"`
+	Description *string   `json:"description,omitempty" jsonschema:"the new description: one sentence, at most 200 characters"`
+	Interfaces  *[]string `json:"interfaces,omitempty" jsonschema:"the new list of interfaces; an empty list clears it"`
+	Related     *[]string `json:"related,omitempty" jsonschema:"the new list of neighbor ids that the body does not link; an empty list clears it"`
 }
 
-type featuresArgs struct {
-	Features []featureArgs `json:"features" jsonschema:"one or more features; features in one call can refer to each other in related"`
+type writeArgs struct {
+	Op          string      `json:"op" jsonschema:"create, modify, rename, or remove"`
+	ID          string      `json:"id" jsonschema:"the feature id; for a create, a new id in lowercase letters, digits, and dashes, which becomes the file name"`
+	Name        string      `json:"name,omitempty" jsonschema:"create: two to five words, as a user would say it"`
+	Description string      `json:"description,omitempty" jsonschema:"create: one sentence, at most 200 characters"`
+	Interfaces  []string    `json:"interfaces,omitempty" jsonschema:"create: names from your provides or consumes that the feature uses"`
+	Related     []string    `json:"related,omitempty" jsonschema:"create: ids of neighbors that the body does not link"`
+	Body        *string     `json:"body,omitempty" jsonschema:"create and modify: the markdown body, with a ## Purpose section that cites no code; never a ## Notes section, which is the user's and which hikari keeps"`
+	Fields      *fieldsArgs `json:"fields,omitempty" jsonschema:"modify: the properties to change; a property left out stays as it is"`
+	To          string      `json:"to,omitempty" jsonschema:"rename: the new id"`
+	Redirect    string      `json:"redirect,omitempty" jsonschema:"remove: the feature that links to the removed one point at from now on; leave it out to turn those links into plain text"`
+}
+
+type changeArgs struct {
+	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a feature that an earlier one creates"`
 }
 
 type idArgs struct {
@@ -90,7 +101,7 @@ type commitArgs struct {
 func addOwnerTools(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_my_system",
-		Description: "Read your system map as others see it, with the health of each feature, plus what only you see: the state of the map, the paths that changed since it was marked current, and problems in your private documents.",
+		Description: "Read your system map as others see it, with the health and state of each feature, plus what only you see: the state of the map, the stale features with their changed paths, the changed paths that belong to no feature, warnings about the feature wiki, and problems in your private documents.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		v, err := c.MyMap(ctx)
 		if err != nil {
@@ -117,32 +128,32 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "upsert_features",
-		Description: "Add features to your public map, or replace the features with these ids. Recorded test results stay. hikari checks the whole batch, so features in one call can refer to each other. Where a feature lives in the code and how it is tested go in your private documents.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featuresArgs) (*mcp.CallToolResult, any, error) {
-		ins := make([]sysmap.FeatureInput, len(a.Features))
-		ids := make([]string, len(a.Features))
-		for i, f := range a.Features {
-			ins[i] = sysmap.FeatureInput{
-				ID: f.ID, Name: f.Name, Description: f.Description, Interfaces: f.Interfaces,
-				Findings: f.Findings, Plans: f.Plans, Related: f.Related,
+		Name:        "change_features",
+		Description: "Change your feature wiki as one change: create, modify, rename, or remove feature documents in /hikari/public/export/features/. hikari checks every write against the rules of the hikari-system skill and applies all of them or none. Writes in one call can link features that the same call creates. A rename rewrites every link to the feature; a remove points them at the redirect or turns them into text. hikari writes the map's features from the wiki.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
+		writes := make([]featurewiki.Write, len(a.Writes))
+		for i, w := range a.Writes {
+			writes[i] = featurewiki.Write{
+				Op: w.Op, ID: w.ID, Name: w.Name, Description: w.Description, Interfaces: w.Interfaces,
+				Related: w.Related, Body: w.Body, To: w.To, Redirect: w.Redirect,
 			}
-			ids[i] = f.ID
+			if w.Fields != nil {
+				writes[i].Fields = &featurewiki.Fields{Name: w.Fields.Name, Description: w.Fields.Description, Interfaces: w.Fields.Interfaces, Related: w.Fields.Related}
+			}
 		}
-		if err := c.UpsertFeatures(ctx, ins); err != nil {
+		res, err := c.ChangeFeatures(ctx, writes)
+		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Saved %d feature(s): %s.", len(ids), strings.Join(ids, ", "))), nil, nil
-	})
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "remove_feature",
-		Description: "Remove a feature from your map, and the references to it.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a idArgs) (*mcp.CallToolResult, any, error) {
-		if err := c.RemoveFeature(ctx, a.ID); err != nil {
-			return nil, nil, err
+		var b strings.Builder
+		fmt.Fprintf(&b, "Applied %d write(s): %s.", len(res.Applied), strings.Join(res.Applied, "; "))
+		for _, n := range res.Notes {
+			b.WriteString("\nNote: " + n)
 		}
-		return text(fmt.Sprintf("Removed feature %q.", a.ID)), nil, nil
+		for _, w := range res.Warnings {
+			b.WriteString("\nWarning: " + w)
+		}
+		return text(b.String()), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -215,7 +226,7 @@ type systemArgs struct {
 }
 
 type searchArgs struct {
-	Query string `json:"query" jsonschema:"text to find in feature ids, names, descriptions, and interfaces"`
+	Query string `json:"query" jsonschema:"text to find in feature ids, names, descriptions, interfaces, and documents"`
 }
 
 type featureRefArgs struct {
@@ -270,7 +281,7 @@ func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_features",
-		Description: "Find features of your systems by text in their id, name, description, or interfaces.",
+		Description: "Find features of your systems by text in their id, name, description, interfaces, or document.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
 		out, err := c.SearchFeatures(ctx, a.Query)
 		if err != nil {
@@ -284,7 +295,7 @@ func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_feature",
-		Description: "Read one feature of a system.",
+		Description: "Read one feature of a system: its map entry and its document, whose Purpose says why the feature exists and what it promises.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featureRefArgs) (*mcp.CallToolResult, any, error) {
 		out, err := c.GetFeature(ctx, a.System, a.ID)
 		if err != nil {
