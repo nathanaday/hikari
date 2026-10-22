@@ -53,6 +53,12 @@ describe('DeliverableEntry', () => {
   })
 })
 
+// marked returns the highlighted file button, the one shown as the main page.
+const marked = (html: string) => {
+  const at = html.indexOf('bg-neutral-100 font-medium')
+  return html.slice(at, html.indexOf('</button>', at))
+}
+
 describe('ReleaseBody', () => {
   it('shows the manifest, the certificates, and the files with digests (U14)', () => {
     const html = renderToStaticMarkup(<ReleaseBody system="inventory" deliverable="python-library" version="0.1.0" data={release} />)
@@ -60,14 +66,12 @@ describe('ReleaseBody', () => {
       expect(html).toContain(want)
     }
     expect(html.match(/data-testid="certificate"/g)).toHaveLength(2)
-    expect(html).toContain('bg-neutral-100 font-medium">')
-    expect(html.indexOf('product/README.md')).toBeLessThan(html.indexOf('bg-neutral-100'))
+    expect(marked(html)).toContain('product/README.md')
   })
 
   it('opens release.yaml when the product has no README', () => {
     const data = { ...release, files: release.files.filter((f) => !f.endsWith('README.md')) }
     const html = renderToStaticMarkup(<ReleaseBody system="inventory" deliverable="python-library" version="0.1.0" data={data} />)
-    const marked = html.slice(html.indexOf('bg-neutral-100 font-medium'), html.indexOf('bg-neutral-100 font-medium') + 900)
-    expect(marked).toContain('release.yaml')
+    expect(marked(html)).toContain('release.yaml')
   })
 })
