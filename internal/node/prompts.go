@@ -23,7 +23,7 @@ func ownerPrompt(self api.Self) string {
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
 	b.WriteString(`- Three documents describe your system: the public map at /hikari/public/export/map.yaml, which you change only through the map tools, and your private /hikari/private/layout.yaml and /hikari/private/test.yaml, which you edit directly. Your orchestrator plans from the map and never reads your code. Before you build or update the documents, load the hikari-system skill: it explains each document and how to keep it true.
-- To release a version that other systems can use, follow the hikari-system skill: build the deliverable in /hikari/public/export/staging/, run the release-docs skill to write its docs, write staging/release.yaml, then call mcp__hikari__publish_release. Your published releases are in /hikari/public/export/releases/ and never change.
+- Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
@@ -47,13 +47,14 @@ func orchestratorPrompt(self api.Self) string {
 - Owners cannot see each other's code. A system can test against another system only through that system's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
 `)
 		b.WriteString(memberGrants(self))
+		b.WriteString(memberDeliverables(self))
 	}
 	if len(self.VisibleSystems) > 0 {
-		b.WriteString(`
+		fmt.Fprintf(&b, `
 ## Releases of your systems
 
-The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<version>/ with release.yaml, docs/, and the product. When a system announces a release, check it: read its release.yaml and its docs. The docs must explain how to install the product and how to use each interface that it provides, and the interfaces must match what you agreed. Tell the owner what is missing.
-`)
+The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the owner makes it (SKILL.md). When a system announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the hub agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the owner what is missing. You cannot change deliverables or who holds them; ask the user.
+`, api.SharedDir)
 	}
 	fmt.Fprintf(&b, "\n## Your vocabularies\n\nYou keep the vocabulary of %s: the names that everyone in the hub uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.", strings.Join(hubs, ", "))
 	if len(self.VisibleSystems) > 0 {
@@ -148,13 +149,60 @@ func grantsPrompt(self api.Self) string {
 	var b strings.Builder
 	b.WriteString("\n## Releases you can use\n\nYou can read, but not change, the releases of these systems:\n\n")
 	for _, sys := range granted {
-		fmt.Fprintf(&b, "- %s: %s (releases/latest is the newest)\n", sys, api.ReleasesPath(sys))
+		fmt.Fprintf(&b, "- %s: %s\n", sys, api.ReleasesPath(sys))
 	}
-	b.WriteString("\nEach release has release.yaml, which says how to install and run it, docs/, and the product. Read the docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
+	b.WriteString("\nEach release is releases/<deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and map.yaml (the system's public map at release time). releases/<deliverable>/latest is the newest release of that deliverable. Read the product's docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
 	if self.System != nil {
 		b.WriteString(" When your tests use a release, name its system and version in your test plan, under the feature's covers or gaps.")
 	}
 	b.WriteString("\n")
+	return b.String()
+}
+
+// deliverablesPrompt tells an owner which deliverables it holds and how to
+// publish one (rule P12).
+func deliverablesPrompt(self api.Self) string {
+	var b strings.Builder
+	b.WriteString("\n## Your deliverables\n\n")
+	if len(self.Deliverables) == 0 {
+		b.WriteString("You hold no deliverable, so you cannot publish a release. When a release of your work is needed, ask the user to grant you a deliverable.\n")
+		return b.String()
+	}
+	b.WriteString("A deliverable is a named package that says what a product must contain, where it must also be published, and how you make it. You hold these:\n\n")
+	for _, d := range self.Deliverables {
+		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/staging/%s/.\n", d.Name, d.Description, api.SharedDir, d.Name, api.ExportDir, d.Name)
+	}
+	b.WriteString(`
+To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/public/export/releases/<deliverable>/<version>/, and announces the release in your hubs.
+`)
+	return b.String()
+}
+
+// deliverableNames returns the names of the deliverables that self holds.
+func deliverableNames(self api.Self) []string {
+	names := make([]string, len(self.Deliverables))
+	for i, d := range self.Deliverables {
+		names[i] = d.Name
+	}
+	return names
+}
+
+// memberDeliverables lists the deliverables of an orchestrator's members
+// (rule P14).
+func memberDeliverables(self api.Self) string {
+	if len(self.MemberDeliverables) == 0 {
+		return "- No member of your hubs holds a deliverable, so none can publish a release. You cannot change that; if a release is needed, ask the user to grant a deliverable.\n"
+	}
+	var b strings.Builder
+	b.WriteString("- Deliverables of your members:")
+	for _, m := range slices.Sorted(maps.Keys(self.MemberDeliverables)) {
+		var names []string
+		for _, d := range self.MemberDeliverables[m] {
+			names = append(names, fmt.Sprintf("%s (%s)", d.Name, d.Description))
+		}
+		fmt.Fprintf(&b, " %s publishes %s;", m, strings.Join(names, ", "))
+	}
+	b.WriteString(" you cannot change deliverables; if a system needs another, ask the user.\n")
 	return b.String()
 }
 

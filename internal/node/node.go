@@ -33,7 +33,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	shared, err := newSharedArea(self.System != nil)
+	shared, err := newSharedArea(self.System != nil, deliverableNames(self))
 	if err != nil {
 		return err
 	}
@@ -205,6 +205,9 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 		b.WriteString(orchestratorPrompt(self))
 	}
 	b.WriteString(grantsPrompt(self))
+	if self.System != nil {
+		b.WriteString(deliverablesPrompt(self))
+	}
 	if self.Instructions != "" {
 		fmt.Fprintf(&b, "\n# Instructions\n\n%s\n", self.Instructions)
 	}

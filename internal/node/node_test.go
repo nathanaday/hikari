@@ -58,8 +58,8 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		"You can also read, but not change, /workspace/proto.",
 		"/hikari/public/export/map.yaml, which you change only through the map tools",
 		"/hikari/private/layout.yaml and /hikari/private/test.yaml, which you edit directly",
-		"run the release-docs skill",
-		"mcp__hikari__publish_release",
+		"Releases follow your deliverables",
+		"You hold no deliverable, so you cannot publish a release",
 		"/hikari/public/readonly/shared holds what every agent",
 		"load the hikari-system skill",
 		"mcp__hikari__get_vocabulary",
@@ -88,8 +88,10 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 		"get_system flags interface names",
 		"/hikari/public/readonly/systems/<system>/",
 		"When a system announces a release, check it",
+		"the deliverable's definition",
 		"only through that system's published releases",
 		"No member of your hubs is granted another system's releases",
+		"No member of your hubs holds a deliverable",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("D5: orchestrator prompt lacks %q", want)
@@ -135,8 +137,7 @@ func TestTurnNotices(t *testing.T) {
 
 func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
-		"hikari-system": {"## layout.yaml", "## test.yaml", "P1:", "P4:", "## Publish a release", "/hikari/private/layout.yaml", "publish_release"},
-		"release-docs":  {"context: fork\nbackground: false\n", "/hikari/public/export/staging/docs/", "Change no file outside that directory"},
+		"hikari-system": {"## layout.yaml", "## test.yaml", "P1:", "P4:", "## Publish a release", "/hikari/private/layout.yaml", "check_release", "publish_release", "/hikari/public/export/staging/<name>/"},
 	} {
 		data, err := builtinSkills.ReadFile("skills/" + name + ".md")
 		if err != nil {
@@ -158,7 +159,7 @@ func newTestShared(t *testing.T, owner bool) (*sharedArea, string) {
 	t.Helper()
 	root := t.TempDir()
 	shared := filepath.Join(root, "shared")
-	for _, d := range []string{"skills", "agents", "policies", "vocabulary"} {
+	for _, d := range []string{"skills", "agents", "policies", "vocabulary", "deliverables"} {
 		os.MkdirAll(filepath.Join(shared, d), 0o755)
 	}
 	return &sharedArea{home: filepath.Join(root, "home"), dir: shared, owner: owner, warned: map[string]bool{}}, shared
@@ -198,18 +199,25 @@ func TestSharedAreaSync(t *testing.T) {
 	if !strings.HasPrefix(string(data), "---\nname: hikari-system") {
 		t.Errorf("H4: the built-in hikari-system skill was replaced: %.40q", data)
 	}
-	if data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "release-docs", "SKILL.md")); !strings.Contains(string(data), "context: fork") {
-		t.Error("H5: owners get the built-in release-docs skill")
+	if _, err := os.Lstat(filepath.Join(s.skillsDir(), "release-docs")); err == nil {
+		t.Error("H7: there is no built-in release-docs skill")
 	}
 
-	// A shared release-docs replaces the built-in one, and the built-in one
-	// returns when the shared one is removed.
-	writeFile(t, filepath.Join(shared, "skills", "release-docs", "SKILL.md"), "---\nname: release-docs\n---\nmine")
+	// The skill of a held deliverable is linked, and it wins over a shared
+	// skill of the same name.
+	writeFile(t, filepath.Join(shared, "deliverables", "python-library", "SKILL.md"), "---\nname: python-library\n---\n")
+	writeFile(t, filepath.Join(shared, "skills", "python-library", "SKILL.md"), "shared")
+	s.deliverables = []string{"python-library"}
 	s.sync()
-	if target, _ := os.Readlink(filepath.Join(s.skillsDir(), "release-docs")); target != filepath.Join(shared, "skills", "release-docs") {
-		t.Errorf("H5: shared release-docs link = %q", target)
+	if target, _ := os.Readlink(filepath.Join(s.skillsDir(), "python-library")); target != filepath.Join(shared, "deliverables", "python-library") {
+		t.Errorf("H8, H9: deliverable skill link = %q", target)
 	}
-	os.RemoveAll(filepath.Join(shared, "skills", "release-docs"))
+	os.RemoveAll(filepath.Join(shared, "deliverables", "python-library"))
+	s.sync()
+	if _, err := os.Lstat(filepath.Join(s.skillsDir(), "python-library")); err == nil {
+		t.Error("H10: the link of a removed deliverable must go")
+	}
+	os.RemoveAll(filepath.Join(shared, "skills", "python-library"))
 	os.RemoveAll(filepath.Join(shared, "skills", "style"))
 	os.Remove(filepath.Join(shared, "agents", "reviewer.md"))
 	s.sync()
@@ -218,9 +226,6 @@ func TestSharedAreaSync(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(s.agentsDir(), "reviewer.md")); err == nil {
 		t.Error("H6: the link of a removed agent must go")
-	}
-	if data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "release-docs", "SKILL.md")); !strings.Contains(string(data), "context: fork") {
-		t.Error("H5: the built-in release-docs must return")
 	}
 }
 
@@ -253,6 +258,34 @@ func TestGrantsPrompt(t *testing.T) {
 	lead := api.Self{Name: "lead", Orchestrates: []string{"eng"}, VisibleSystems: []string{"orders"}, Releases: []string{"orders"}}
 	if strings.Contains(systemPrompt(lead), "## Releases you can use") {
 		t.Error("an orchestrator's own systems are not grants")
+	}
+}
+
+func TestDeliverablesPrompt(t *testing.T) {
+	holder := owner
+	holder.Deliverables = []api.DeliverableInfo{{Name: "python-library", Description: "A Python library."}}
+	p := systemPrompt(holder)
+	for _, want := range []string{
+		"## Your deliverables",
+		"- python-library: A Python library. Its definition is in /hikari/public/readonly/shared/deliverables/python-library/, and you build its product in /hikari/public/export/staging/python-library/.",
+		"load the skill with the deliverable's name",
+		"mcp__hikari__check_release",
+		"mcp__hikari__publish_release",
+		"one certificate for each",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("P12: prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(p, "You hold no deliverable") {
+		t.Error("a holder must not be told it holds nothing")
+	}
+	if got := deliverableNames(holder); len(got) != 1 || got[0] != "python-library" {
+		t.Errorf("deliverableNames = %v", got)
+	}
+	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, VisibleSystems: []string{"orders"}, MemberDeliverables: map[string][]api.DeliverableInfo{"orders": {{Name: "python-library", Description: "A Python library."}}}}
+	if p := systemPrompt(lead); !strings.Contains(p, "orders publishes python-library (A Python library.)") {
+		t.Errorf("P14: the orchestrator must know its members' deliverables:\n%s", p)
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 name: hikari-system
-description: How to keep your hikari system documents true - the public map, which you change through the map tools, and your private layout.yaml and test.yaml - and how to publish a release. Load it before you build or update your map, after you change code, before you run or record tests, and before you publish a release.
+description: How to keep your hikari system documents true - the public map, which you change through the map tools, and your private layout.yaml and test.yaml - and how a release of a deliverable is published. Load it before you build or update your map, after you change code, before you run or record tests, and before you publish a release.
 ---
 
 # Your system documents
@@ -94,27 +94,11 @@ hikari checks the private documents when you record test results and when you ma
 
 ## Publish a release
 
-A release is a version of your deliverable that other systems can use, with docs for people who cannot see your code. After you publish it, it never changes.
+A release is a published product of one of your deliverables: the named packages that your system prompt lists under "Your deliverables". Each deliverable has a skill with its name that says how to make its product, and `deliverable.yaml` in `/hikari/public/readonly/shared/deliverables/<name>/` says what the product must contain.
 
 1. Make sure the map is current and every feature that the release provides is tested.
-2. Build the deliverable into `/hikari/public/export/staging/product/`. It is whatever another system needs to use your work: a package, a binary, a directory of files. Copy only what a user needs: no tests, no build caches such as `__pycache__` or `node_modules`, and no private documents. If it is hosted elsewhere, such as an image on Docker Hub, skip this step and use a remote product.
-3. Run the `release-docs` skill. It writes the docs into `/hikari/public/export/staging/docs/`.
-4. Write `/hikari/public/export/staging/release.yaml`:
+2. Load the deliverable's skill and build the product in `/hikari/public/export/staging/<name>/`. Put only what the deliverable asks for there: no tests, no build caches such as `__pycache__` or `node_modules`, and no private documents, unless the deliverable asks for them.
+3. Call `check_release` with the deliverable's name, and fix every problem it reports.
+4. Call `publish_release` with the deliverable's name, a semver version greater than its last release, notes that say what changed, and a certificate for each target of the deliverable.
 
-```yaml
-product:
-  kind: files                 # files, or remote
-  path: product/              # for files: inside the staging area
-  # location: {type: docker, ref: docker.io/acme/orders:1.2.0}   # for remote: docker, github-release, huggingface, or url
-runtime:
-  requires: [python >= 3.11]  # what the user needs
-  install: add product/ to PYTHONPATH
-  run: python -m orders       # optional
-docs:
-  index: docs/README.md
-interfaces: [create_order, cancel_order]   # interfaces from your map that this release provides
-```
-
-5. Call `publish_release` with a semver version greater than your last release, and notes that say what changed. hikari adds the version, the time, the source commit, and a copy of your public map, moves the staging area into `/hikari/public/export/releases/<version>/`, and announces the release in your hubs.
-
-Your published releases are in `/hikari/public/export/releases/`, and `releases/latest` is the newest one.
+hikari writes the manifest, moves the product into `/hikari/public/export/releases/<name>/<version>/`, and announces the release in your hubs. A release never changes. `releases/<name>/latest` is the newest release of that deliverable.
