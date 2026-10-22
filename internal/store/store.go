@@ -20,6 +20,10 @@ const (
 	Deliverables = "deliverables"
 )
 
+// Features is the directory of a system's feature wiki, in the system's
+// directory and in each release.
+const Features = "features"
+
 // Store is a store on the host.
 type Store struct {
 	Root string
@@ -36,6 +40,9 @@ func (s Store) VocabularyFile(hub string) string {
 func (s Store) SystemDir(system string) string { return filepath.Join(s.Root, "systems", system) }
 
 func (s Store) MapFile(system string) string { return filepath.Join(s.SystemDir(system), "map.yaml") }
+
+// FeaturesDir is the feature wiki of a system: one document per feature.
+func (s Store) FeaturesDir(system string) string { return filepath.Join(s.SystemDir(system), Features) }
 
 func (s Store) Staging(system string) string { return filepath.Join(s.SystemDir(system), "staging") }
 
@@ -61,7 +68,7 @@ func (s Store) ReleaseDir(system, deliverable, version string) string {
 func (s Store) Prepare(systems []string) error {
 	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents), s.Shared(Deliverables)}
 	for _, sys := range systems {
-		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys))
+		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys), s.FeaturesDir(sys))
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -89,13 +96,15 @@ this file once; you can change it.
         deliverable.yaml        the description, the layout rules, and the cloud targets
         SKILL.md                the skill that tells the owner how to make the product
     systems/<system>/
-      map.yaml                  the public map of the system; its owner writes it through hikari
+      map.yaml                  the public map of the system; hikari writes it from the feature wiki
+      features/<id>.md          the feature wiki: one document per feature; its owner changes it through hikari
       staging/<deliverable>/    where the owner builds the product of its next release
       releases/<deliverable>/<x.y.z>/   published releases, which never change
         release.yaml            the manifest; hikari writes it
         SHA256SUMS              the digest of every file of the product
         product/                the files the owner staged
         map.yaml                the public map at release time
+        features/               the feature wiki at release time
       releases/<deliverable>/latest     the newest release of that deliverable
 
 Every container can read shared/. An owner writes only its own staging/, and

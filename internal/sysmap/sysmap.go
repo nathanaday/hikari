@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -22,7 +23,7 @@ import (
 // <scope>/.hikari/private. The map lives in the store.
 const Dir = ".hikari"
 
-const version = 2
+const version = 3
 
 type Map struct {
 	Version  int       `yaml:"version" json:"version"`
@@ -63,10 +64,11 @@ type Feature struct {
 	Tests       Tests    `yaml:"tests,omitempty" json:"tests"`
 	// Health is computed by the server. The value in the file is the health
 	// at the last write.
-	Health   string   `yaml:"health,omitempty" json:"health"`
-	Findings []string `yaml:"findings,omitempty" json:"findings,omitempty"`
-	Plans    []string `yaml:"plans,omitempty" json:"plans,omitempty"`
-	Related  []string `yaml:"related,omitempty" json:"related,omitempty"`
+	Health string `yaml:"health,omitempty" json:"health"`
+	// State says whether the feature's document describes its code:
+	// undescribed, stale, or current. The view computes it.
+	State   string   `yaml:"state,omitempty" json:"state"`
+	Related []string `yaml:"related,omitempty" json:"related,omitempty"`
 }
 
 // Tests holds the last recorded results of a feature's tests. The test plan
@@ -94,8 +96,6 @@ func (m *Map) Clone() *Map {
 	c.Features = make([]Feature, len(m.Features))
 	for i, f := range m.Features {
 		f.Interfaces = slices.Clone(f.Interfaces)
-		f.Findings = slices.Clone(f.Findings)
-		f.Plans = slices.Clone(f.Plans)
 		f.Related = slices.Clone(f.Related)
 		c.Features[i] = f
 	}
@@ -135,44 +135,37 @@ func (m *Map) ApplySystem(p SystemPatch) {
 	}
 }
 
-// FeatureInput is a feature as its owner describes it. Test results are
-// recorded separately.
-type FeatureInput struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Interfaces  []string `json:"interfaces,omitempty"`
-	Findings    []string `json:"findings,omitempty"`
-	Plans       []string `json:"plans,omitempty"`
-	Related     []string `json:"related,omitempty"`
+// FeatureEntry is one feature as the feature wiki projects it into the map.
+type FeatureEntry struct {
+	ID          string
+	Name        string
+	Description string
+	Interfaces  []string
+	Related     []string
 }
 
-// Upsert adds the feature, or replaces the one with the same ID and keeps its
-// test results.
-func (m *Map) Upsert(in FeatureInput) {
-	f := Feature{
-		ID: in.ID, Name: in.Name, Description: in.Description, Interfaces: in.Interfaces,
-		Findings: in.Findings, Plans: in.Plans, Related: in.Related,
+// Project replaces the features with entries, in id order, and keeps the
+// test results recorded for each id. renamed maps old ids to new ones, so
+// that results follow a rename.
+func (m *Map) Project(entries []FeatureEntry, renamed map[string]string) {
+	tests := map[string]Tests{}
+	for _, f := range m.Features {
+		tests[f.ID] = f.Tests
 	}
-	if i := m.index(in.ID); i >= 0 {
-		f.Tests = m.Features[i].Tests
-		m.Features[i] = f
-		return
+	for old, to := range renamed {
+		if t, ok := tests[old]; ok {
+			tests[to] = t
+		}
 	}
-	m.Features = append(m.Features, f)
-}
-
-// Remove removes a feature and the references to it.
-func (m *Map) Remove(id string) error {
-	i := m.index(id)
-	if i < 0 {
-		return fmt.Errorf("no feature %q", id)
+	out := make([]Feature, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, Feature{
+			ID: e.ID, Name: e.Name, Description: e.Description,
+			Interfaces: slices.Clone(e.Interfaces), Related: slices.Clone(e.Related), Tests: tests[e.ID],
+		})
 	}
-	m.Features = slices.Delete(m.Features, i, i+1)
-	for j := range m.Features {
-		m.Features[j].Related = slices.DeleteFunc(m.Features[j].Related, func(r string) bool { return r == id })
-	}
-	return nil
+	slices.SortFunc(out, func(a, b Feature) int { return strings.Compare(a.ID, b.ID) })
+	m.Features = out
 }
 
 type TestResult struct {
@@ -216,7 +209,9 @@ var (
 	validKind = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
-// Validate checks the rules S1 to S3 and S7 of the spec.
+// Validate checks the rules S1 to S3 and S7 of the spec. The features come
+// from the feature wiki, which checks them first; these checks keep the map
+// consistent with itself.
 func Validate(m *Map) error {
 	var errs []error
 	fail := func(rule, format string, args ...any) {

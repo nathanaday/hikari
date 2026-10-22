@@ -31,6 +31,7 @@ type Store struct {
 	size        int64
 	loadErr     string
 	privateSeen string
+	note        string
 }
 
 // Open loads the map of the system name from mapPath. root is the system's
@@ -48,12 +49,39 @@ func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 		s.m = New(name)
 		return s, true, s.save(s.m)
 	}
+	if v, err := fileVersion(s.path); err == nil && v != version {
+		// A map from an earlier hikari is not converted (rule Q4).
+		if err := os.Remove(s.path); err != nil {
+			return nil, false, err
+		}
+		s.note = fmt.Sprintf("deleted %s: it is a version %d map, and this hikari writes version %d; the owner describes the system again", s.path, v, version)
+		s.m = New(name)
+		return s, true, s.save(s.m)
+	}
 	m, err := s.read()
 	if err != nil {
 		return nil, false, fmt.Errorf("system map %s: %w", s.path, err)
 	}
 	s.m = m
 	return s, false, nil
+}
+
+// Note returns what Open did to a map file from an earlier version, or "".
+func (s *Store) Note() string { return s.note }
+
+// fileVersion reads only the version of a map file.
+func fileVersion(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var v struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(data, &v); err != nil {
+		return 0, err
+	}
+	return v.Version, nil
 }
 
 // Root returns the scope on the host.

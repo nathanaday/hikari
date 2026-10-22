@@ -77,7 +77,7 @@ func stage(t *testing.T, s Store, deliverable string, files map[string]string) {
 func input(version string) PublishInput {
 	return PublishInput{
 		System: "inventory", Deliverable: "python-library", Version: version, Notes: "First release.",
-		SourceCommit: "abc123", Map: []byte("version: 2\n"), Hubs: []string{"shop"}, Hikari: "0.0.1",
+		SourceCommit: "abc123", Map: []byte("version: 3\n"), Features: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hubs: []string{"shop"}, Hikari: "0.0.1",
 		Now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC),
 	}
 }
@@ -231,7 +231,7 @@ func TestPublish(t *testing.T) {
 		t.Errorf("R14 manifest: %+v", m)
 	}
 	dir := s.ReleaseDir("inventory", "python-library", "1.0.0")
-	for _, p := range []string{"product/README.md", "product/src/inventory/stock.py", "product/src/empty", "release.yaml", "SHA256SUMS", "map.yaml"} {
+	for _, p := range []string{"product/README.md", "product/src/inventory/stock.py", "product/src/empty", "release.yaml", "SHA256SUMS", "map.yaml", "features/reserve-stock.md"} {
 		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
 			t.Errorf("R17: release lacks %s", p)
 		}
@@ -378,7 +378,7 @@ func TestPublishChecks(t *testing.T) {
 
 func TestPrepare(t *testing.T) {
 	s := newStore(t)
-	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases"} {
+	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases", "systems/inventory/features"} {
 		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
 			t.Errorf("L7: missing %s", p)
 		}

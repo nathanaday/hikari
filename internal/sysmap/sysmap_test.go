@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,12 +64,10 @@ func describe(m *Map) {
 		Provides: ptr([]Interface{{Name: "POST /orders", Kind: "http"}}),
 		Consumes: ptr([]Interface{{Name: "inventory.reserve", Kind: "function"}}),
 	})
-	m.Upsert(FeatureInput{
-		ID: "create-order", Name: "Create an order",
-		Interfaces: []string{"POST /orders", "inventory.reserve"},
-		Related:    []string{"cancel-order"},
-	})
-	m.Upsert(FeatureInput{ID: "cancel-order", Name: "Cancel an order"})
+	m.Project([]FeatureEntry{
+		{ID: "create-order", Name: "Create an order", Interfaces: []string{"POST /orders", "inventory.reserve"}, Related: []string{"cancel-order"}},
+		{ID: "cancel-order", Name: "Cancel an order", Related: []string{"create-order"}},
+	}, nil)
 }
 
 func TestValidate(t *testing.T) {
@@ -77,11 +76,11 @@ func TestValidate(t *testing.T) {
 		rule   string
 	}{
 		"S1 bad id":            {func(m *Map) { m.Features[0].ID = "Create Order" }, "S1"},
-		"S1 duplicate id":      {func(m *Map) { m.Features[1].ID = "create-order" }, "S1"},
+		"S1 duplicate id":      {func(m *Map) { m.Features[0].ID = "create-order" }, "S1"},
 		"S1 no name":           {func(m *Map) { m.Features[0].Name = "" }, "S1"},
 		"S2 unknown interface": {func(m *Map) { m.Features[0].Interfaces = []string{"GET /nope"} }, "S2"},
 		"S3 unknown related":   {func(m *Map) { m.Features[0].Related = []string{"ghost"} }, "S3"},
-		"S3 self related":      {func(m *Map) { m.Features[0].Related = []string{"create-order"} }, "S3"},
+		"S3 self related":      {func(m *Map) { m.Features[0].Related = []string{"cancel-order"} }, "S3"},
 		"S7 bad kind":          {func(m *Map) { m.System.Interfaces.Provides[0].Kind = "HTTP API" }, "S7"},
 		"old version":          {func(m *Map) { m.Version = 1 }, "version"},
 	}
@@ -158,23 +157,20 @@ func TestEmptyPrivateDocumentsAreValid(t *testing.T) {
 	}
 }
 
-func TestUpsertKeepsResultsAndRemoveDropsReferences(t *testing.T) {
+func TestProjectKeepsResultsAndFollowsRenames(t *testing.T) {
 	m := New("orders")
 	describe(m)
-	m.Features[0].Tests.Passed = 4
-	m.Upsert(FeatureInput{ID: "create-order", Name: "Renamed"})
-	if f := m.Features[0]; f.Name != "Renamed" || f.Tests.Passed != 4 {
-		t.Errorf("after upsert: %+v", f)
+	m.Features[1].Tests.Passed = 4 // create-order, in id order
+	m.Project([]FeatureEntry{{ID: "place-order", Name: "Place an order"}, {ID: "cancel-order", Name: "Cancel"}}, map[string]string{"create-order": "place-order"})
+	if len(m.Features) != 2 || m.Features[0].ID != "cancel-order" || m.Features[1].ID != "place-order" {
+		t.Fatalf("Q1: features in id order: %+v", m.Features)
 	}
-	m.Features[0].Related = []string{"cancel-order"}
-	if err := m.Remove("cancel-order"); err != nil {
-		t.Fatal(err)
+	if m.Features[1].Tests.Passed != 4 || m.Features[1].Name != "Place an order" {
+		t.Errorf("E5: results follow a rename: %+v", m.Features[1])
 	}
-	if len(m.Features) != 1 || len(m.Features[0].Related) != 0 {
-		t.Errorf("after remove: %+v", m.Features)
-	}
-	if err := m.Remove("ghost"); err == nil {
-		t.Error("removing an unknown feature must fail")
+	m.Project([]FeatureEntry{{ID: "cancel-order", Name: "Cancel"}}, nil)
+	if len(m.Features) != 1 {
+		t.Errorf("a removed feature leaves the map: %+v", m.Features)
 	}
 }
 
@@ -191,7 +187,7 @@ func TestHealth(t *testing.T) {
 	writeFile(t, root, ".hikari/private/test.yaml", testDoc)
 	health := func() map[string]string {
 		priv, _ := s.Private()
-		v := NewView(s.Map(), priv, nil, func(id string) string { h, _ := s.FeatureHash(id); return h })
+		v := NewView(s.Map(), priv, nil, func(id string) string { h, _ := s.FeatureHash(id); return h }, nil)
 		out := map[string]string{}
 		for _, f := range v.Features {
 			out[f.ID] = f.Health
@@ -214,7 +210,7 @@ func TestHealth(t *testing.T) {
 	if h := health(); h["create-order"] != Passing || h["cancel-order"] != Untested {
 		t.Errorf("S11 after a passing run, S8 for a feature without tests: %v", h)
 	}
-	if got := s.Map().Features[0].Health; got != Passing {
+	if got := s.Map().Features[1].Health; got != Passing {
 		t.Errorf("the file stores health %q", got)
 	}
 	record(2, 1)
@@ -252,7 +248,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 		t.Fatalf("Open = %v, created %v", err, created)
 	}
 	data, _ := os.ReadFile(s.Path())
-	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 2\nsystem:\n  name: orders\n") {
+	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 3\nsystem:\n  name: orders\n") {
 		t.Errorf("the map file must start with its version, have no comment, and indent by two spaces:\n%s", data)
 	}
 	p, err := s.Private()
@@ -281,7 +277,7 @@ func TestStoreRejectsInvalidChanges(t *testing.T) {
 	s, _, _ := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	before, _ := os.ReadFile(s.Path())
 	err := s.Update(func(m *Map) error {
-		m.Upsert(FeatureInput{ID: "Bad ID", Name: "X"})
+		m.Project([]FeatureEntry{{ID: "Bad ID", Name: "X"}}, nil)
 		return nil
 	})
 	if err == nil || !strings.Contains(err.Error(), "S1") {
@@ -304,12 +300,12 @@ func TestStoreReloadsHandEdits(t *testing.T) {
 		t.Error("Reload without a change reported one")
 	}
 	time.Sleep(10 * time.Millisecond)
-	writeFile(t, root, ".hikari/map.yaml", "version: 2\nsystem:\n  name: orders\n  summary: Edited by hand.\n")
+	writeFile(t, root, ".hikari/map.yaml", "version: 3\nsystem:\n  name: orders\n  summary: Edited by hand.\n")
 	if !s.Reload() || s.Map().System.Summary != "Edited by hand." || s.Error() != "" {
 		t.Fatalf("valid hand edit: summary %q, error %q", s.Map().System.Summary, s.Error())
 	}
 	time.Sleep(10 * time.Millisecond)
-	writeFile(t, root, ".hikari/map.yaml", "version: 2\nsystem:\n  name: orders\nfeatures:\n  - id: BAD\n    name: x\n")
+	writeFile(t, root, ".hikari/map.yaml", "version: 3\nsystem:\n  name: orders\nfeatures:\n  - id: BAD\n    name: x\n")
 	if !s.Reload() || s.Error() == "" || s.Map().System.Summary != "Edited by hand." {
 		t.Fatalf("invalid hand edit: error %q, summary %q", s.Error(), s.Map().System.Summary)
 	}
@@ -333,15 +329,59 @@ func TestPublicViewHoldsNoPaths(t *testing.T) {
 	m := New("orders")
 	describe(m)
 	priv, _ := LoadPrivate(root)
-	v := NewView(m, priv, []string{"orders/create.py"}, func(string) string { return "h" })
+	v := NewView(m, priv, []string{"orders/create.py"}, func(string) string { return "h" }, map[string]string{"create-order": Stale})
 	data, _ := json.Marshal(v)
 	for _, leak := range []string{"orders/", "tests/", "python3", "changed"} {
 		if strings.Contains(string(data), leak) {
 			t.Errorf("the public view contains %q:\n%s", leak, data)
 		}
 	}
-	if v.State != Unbuilt {
-		t.Errorf("state = %s", v.State)
+	if v.State != Unbuilt || v.Features[1].State != Stale {
+		t.Errorf("state = %s, features %+v", v.State, v.Features)
+	}
+}
+
+func TestOpenDeletesOldVersions(t *testing.T) {
+	root := newScope(t, orderFiles)
+	mapPath := filepath.Join(root, ".hikari", "map.yaml")
+	writeFile(t, root, ".hikari/map.yaml", "version: 2\nsystem:\n  name: orders\n  summary: Old.\nfeatures:\n  - {id: x, name: X}\n")
+	s, created, err := Open(root, mapPath, "orders", "")
+	if err != nil || !created || !strings.Contains(s.Note(), "version 2") {
+		t.Fatalf("Q4: Open = %v, created %v, note %q", err, created, s.Note())
+	}
+	if m := s.Map(); m.Version != 3 || len(m.Features) != 0 || m.System.Summary != "" {
+		t.Errorf("Q4: the old map must be replaced, got %+v", m)
+	}
+	if s, _, err := Open(root, mapPath, "orders", ""); err != nil || s.Note() != "" {
+		t.Errorf("a current map is kept: %v %q", err, s.Note())
+	}
+}
+
+func TestFeatureStates(t *testing.T) {
+	root := newScope(t, orderFiles)
+	writeFile(t, root, ".hikari/private/layout.yaml", layoutDoc)
+	writeFile(t, root, ".hikari/private/test.yaml", testDoc)
+	priv, _ := LoadPrivate(root)
+	described := func(id string) bool { return id != "cancel-order" }
+	changed := []string{"orders/create.py", "tests/test_create.py", "orders/cancel.py", "README.md"}
+	st := FeatureStates([]string{"cancel-order", "create-order"}, described, priv, changed)
+	if st.ByID["create-order"] != Stale || st.ByID["cancel-order"] != Undescribed {
+		t.Errorf("S20: %v", st.ByID)
+	}
+	if len(st.Stale) != 1 || st.Stale[0].ID != "create-order" || !slices.Equal(st.Stale[0].Paths, []string{"orders/create.py", "tests/test_create.py"}) {
+		t.Errorf("S20: stale = %+v", st.Stale)
+	}
+	if !slices.Equal(st.Undescribed, []string{"cancel-order"}) || !slices.Equal(st.Unmapped, []string{"README.md"}) {
+		t.Errorf("S21: undescribed %v, unmapped %v", st.Undescribed, st.Unmapped)
+	}
+	if st := FeatureStates([]string{"create-order"}, described, priv, nil); st.ByID["create-order"] != Current {
+		t.Errorf("S20: nothing changed: %v", st.ByID)
+	}
+	// A directory in the code map covers the files below it.
+	writeFile(t, root, ".hikari/private/layout.yaml", "version: 1\nparts: []\nfeatures:\n  create-order: {code: [orders/]}\n")
+	priv, _ = LoadPrivate(root)
+	if st := FeatureStates([]string{"create-order"}, described, priv, []string{"orders/create.py"}); st.ByID["create-order"] != Stale {
+		t.Errorf("S19: a directory covers its files: %v", st.ByID)
 	}
 }
 
