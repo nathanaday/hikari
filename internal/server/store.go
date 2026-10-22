@@ -20,6 +20,9 @@ type releaseDetail struct {
 	Manifest store.Manifest `json:"manifest"`
 	// Files lists the release's files, relative to the store.
 	Files []string `json:"files"`
+	// Digests maps each product file, relative to the release, to its
+	// SHA-256, from SHA256SUMS.
+	Digests map[string]string `json:"digests"`
 }
 
 type sharedEntry struct {
@@ -27,10 +30,23 @@ type sharedEntry struct {
 	Path string `json:"path"` // relative to the store
 }
 
+// deliverableEntry is a deliverable as the UI shows it (rule U12).
+type deliverableEntry struct {
+	Name        string         `json:"name"`
+	Path        string         `json:"path"`  // its directory, relative to the store
+	Skill       string         `json:"skill"` // its SKILL.md, relative to the store
+	Description string         `json:"description"`
+	Layout      store.Layout   `json:"layout"`
+	Targets     []store.Target `json:"targets"`
+	Holders     []string       `json:"holders"`
+	Error       string         `json:"error,omitempty"`
+}
+
 type sharedListing struct {
-	Policies []sharedEntry `json:"policies"`
-	Skills   []sharedEntry `json:"skills"`
-	Agents   []sharedEntry `json:"agents"`
+	Policies     []sharedEntry      `json:"policies"`
+	Skills       []sharedEntry      `json:"skills"`
+	Agents       []sharedEntry      `json:"agents"`
+	Deliverables []deliverableEntry `json:"deliverables"`
 }
 
 // storeRoutes serves the store to the UI: a release, the shared area, and
@@ -38,20 +54,20 @@ type sharedListing struct {
 func (s *Server) storeRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.HandlerFunc) {
 	st := s.sys.Store()
 
-	mux.HandleFunc("GET /api/ui/store/releases/{system}/{version}", ui(func(w http.ResponseWriter, r *http.Request) {
-		system, version := r.PathValue("system"), r.PathValue("version")
+	mux.HandleFunc("GET /api/ui/store/releases/{system}/{deliverable}/{version}", ui(func(w http.ResponseWriter, r *http.Request) {
+		system, deliverable, version := r.PathValue("system"), r.PathValue("deliverable"), r.PathValue("version")
 		releases, err := st.Releases(system)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		i := slices.IndexFunc(releases, func(m store.Manifest) bool { return m.Version == version })
+		i := slices.IndexFunc(releases, func(m store.Manifest) bool { return m.Deliverable == deliverable && m.Version == version })
 		if i < 0 {
-			writeError(w, http.StatusNotFound, "no release "+version+" of "+system)
+			writeError(w, http.StatusNotFound, "no release "+deliverable+" "+version+" of "+system)
 			return
 		}
-		detail := releaseDetail{Manifest: releases[i], Files: []string{}}
-		dir := st.ReleaseDir(system, version)
+		detail := releaseDetail{Manifest: releases[i], Files: []string{}, Digests: map[string]string{}}
+		dir := st.ReleaseDir(system, deliverable, version)
 		filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
 				rel, _ := filepath.Rel(st.Root, p)
@@ -59,6 +75,12 @@ func (s *Server) storeRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 			}
 			return nil
 		})
+		sums, _ := os.ReadFile(filepath.Join(dir, store.SumsFile))
+		for _, line := range strings.Split(string(sums), "\n") {
+			if sum, path, ok := strings.Cut(line, "  "); ok {
+				detail.Digests[path] = sum
+			}
+		}
 		writeJSON(w, http.StatusOK, detail)
 	}))
 
@@ -76,6 +98,7 @@ func (s *Server) storeRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 				listing.Skills = append(listing.Skills, sharedEntry{Name: e.Name(), Path: filepath.ToSlash(rel)})
 			}
 		}
+		listing.Deliverables = s.deliverables(st)
 		writeJSON(w, http.StatusOK, listing)
 	}))
 
@@ -88,6 +111,36 @@ func (s *Server) storeRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(data)
 	}))
+}
+
+// deliverables lists every deliverable in the store with the agents that
+// hold it. An invalid one is listed with its problems.
+func (s *Server) deliverables(st store.Store) []deliverableEntry {
+	out := []deliverableEntry{}
+	names, _ := st.DeliverableNames()
+	for _, name := range names {
+		dir, _ := filepath.Rel(st.Root, st.DeliverableDir(name))
+		entry := deliverableEntry{
+			Name: name, Path: filepath.ToSlash(dir), Skill: filepath.ToSlash(filepath.Join(dir, store.SkillFile)),
+			Targets: []store.Target{}, Holders: []string{},
+		}
+		d, err := st.LoadDeliverable(name)
+		if err != nil {
+			entry.Error = err.Error()
+		} else {
+			entry.Description, entry.Layout = d.Description, d.Layout
+			if d.Targets != nil {
+				entry.Targets = d.Targets
+			}
+		}
+		for _, agent := range s.topo.AgentNames() {
+			if slices.Contains(s.topo.Agents[agent].Grants.Deliverables, name) {
+				entry.Holders = append(entry.Holders, agent)
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func sharedFiles(st store.Store, kind, ext string) []sharedEntry {

@@ -94,8 +94,14 @@ type SystemView struct {
 }
 
 type PublishRequest struct {
-	Version string `json:"version"`
-	Notes   string `json:"notes"`
+	Deliverable  string              `json:"deliverable"`
+	Version      string              `json:"version"`
+	Notes        string              `json:"notes"`
+	Certificates []store.Certificate `json:"certificates,omitempty"`
+}
+
+type CheckRequest struct {
+	Deliverable string `json:"deliverable"`
 }
 
 type CommitRequest struct {
@@ -151,10 +157,18 @@ func (c *Client) Commit(ctx context.Context, message string) (string, error) {
 	return r.Commit, err
 }
 
-func (c *Client) PublishRelease(ctx context.Context, version, notes string) (store.Manifest, error) {
+func (c *Client) PublishRelease(ctx context.Context, req PublishRequest) (store.Manifest, error) {
 	var m store.Manifest
-	err := c.do(ctx, http.MethodPost, "/api/node/releases", PublishRequest{Version: version, Notes: notes}, &m)
+	err := c.do(ctx, http.MethodPost, "/api/node/releases", req, &m)
 	return m, err
+}
+
+// CheckRelease checks the staged product of a deliverable without
+// publishing it.
+func (c *Client) CheckRelease(ctx context.Context, deliverable string) (store.ProductCheck, error) {
+	var out store.ProductCheck
+	err := c.do(ctx, http.MethodPost, "/api/node/releases/check", CheckRequest{Deliverable: deliverable}, &out)
+	return out, err
 }
 
 func (c *Client) TurnContext(ctx context.Context) (TurnContext, error) {

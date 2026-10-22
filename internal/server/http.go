@@ -175,20 +175,24 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		commit, err := sys.Commit(node, req.Message)
 		return api.CommitResponse{Commit: commit}, err
 	})
+	handle("POST /api/node/releases/check", func(r *http.Request, node string) (any, error) {
+		var req api.CheckRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return sys.CheckRelease(node, req.Deliverable)
+	})
 	handle("POST /api/node/releases", func(r *http.Request, node string) (any, error) {
 		var req api.PublishRequest
 		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(req.Notes) == "" {
-			return nil, errors.New("give release notes: what changed in this version")
-		}
-		rel, hubs, err := sys.PublishRelease(node, req.Version, req.Notes)
+		rel, hubs, err := sys.PublishRelease(node, req)
 		if err != nil {
 			return nil, err
 		}
 		for _, hub := range hubs {
-			body := fmt.Sprintf("Released %s %s: %s", node, rel.Version, req.Notes)
+			body := fmt.Sprintf("Released %s %s %s: %s", node, rel.Deliverable, rel.Version, rel.Notes)
 			if _, err := s.Send(node, api.SendRequest{Hub: hub, Body: body}); err != nil {
 				return nil, err
 			}

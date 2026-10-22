@@ -329,11 +329,15 @@ x-hikari:
   hubs: {h: {orchestrator: lead, members: [orders]}}
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {system: {repo: shop, scope: orders}}}
+  orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	deliverable := filepath.Join(dir, "store", "shared", "deliverables", "lib")
+	os.MkdirAll(deliverable, 0o755)
+	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
+	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
 	sys, err := systems.New(topo)
 	if err != nil {
 		t.Fatal(err)
@@ -415,11 +419,15 @@ x-hikari:
   hubs: {h: {orchestrator: lead, members: [orders]}}
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {system: {repo: shop, scope: orders}}}
+  orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	deliverable := filepath.Join(dir, "store", "shared", "deliverables", "lib")
+	os.MkdirAll(deliverable, 0o755)
+	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
+	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
 	sys, err := systems.New(topo)
 	if err != nil {
 		t.Fatal(err)
@@ -433,24 +441,36 @@ services:
 	if _, err := orders.MarkMapCurrent(ctx); err != nil {
 		t.Fatal(err)
 	}
-	staging := filepath.Join(dir, "store", "systems", "orders", "staging")
-	os.MkdirAll(filepath.Join(staging, "docs"), 0o755)
-	os.WriteFile(filepath.Join(staging, "release.yaml"), []byte("product: {kind: remote, location: {type: url, ref: https://example.com/orders.tgz}}\ndocs: {index: docs/README.md}\n"), 0o644)
-	os.WriteFile(filepath.Join(staging, "docs", "README.md"), []byte("# orders\n"), 0o644)
+	staging := filepath.Join(dir, "store", "systems", "orders", "staging", "lib")
+	os.MkdirAll(staging, 0o755)
+	if _, err := orders.CheckRelease(ctx, "lib"); err == nil || !strings.Contains(err.Error(), `no file matches "README.md"`) {
+		t.Errorf("R15 check of an empty product: %v", err)
+	}
+	os.WriteFile(filepath.Join(staging, "README.md"), []byte("# orders\n"), 0o644)
+	if check, err := orders.CheckRelease(ctx, "lib"); err != nil || check.Files != 1 {
+		t.Errorf("R15 check = %+v, %v", check, err)
+	}
 
-	if _, err := orders.PublishRelease(ctx, "1.0.0", ""); err == nil {
+	if _, err := orders.PublishRelease(ctx, api.PublishRequest{Deliverable: "lib", Version: "1.0.0"}); err == nil {
 		t.Error("a release without notes must be refused")
 	}
-	rel, err := orders.PublishRelease(ctx, "1.0.0", "First release.")
+	rel, err := orders.PublishRelease(ctx, api.PublishRequest{Deliverable: "lib", Version: "1.0.0", Notes: "First release."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rel.Version != "1.0.0" {
+	if rel.Version != "1.0.0" || rel.Deliverable != "lib" || rel.Product.Files != 1 {
 		t.Errorf("release = %+v", rel)
 	}
 	msgs := s.Take(ctx, "lead", time.Second)
-	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].Hub != "h" || msgs[0].Body != "Released orders 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
-		t.Errorf("R6 announcement = %+v", msgs)
+	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].Hub != "h" || msgs[0].Body != "Released orders lib 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
+		t.Errorf("R18 announcement = %+v", msgs)
+	}
+	self := s.Self("orders")
+	if len(self.Deliverables) != 1 || self.Deliverables[0].Description != "The library." {
+		t.Errorf("Self.Deliverables = %+v", self.Deliverables)
+	}
+	if lead := s.Self("lead"); len(lead.MemberDeliverables["orders"]) != 1 {
+		t.Errorf("Self.MemberDeliverables = %+v", lead.MemberDeliverables)
 	}
 }
 
@@ -475,6 +495,10 @@ func TestStoreRoutes(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "secret.txt")
 	os.WriteFile(outside, []byte("secret"), 0o644)
 	os.Symlink(outside, filepath.Join(root, "shared", "policies", "escape.md"))
+	os.MkdirAll(filepath.Join(root, "shared", "deliverables", "docs-site"), 0o755)
+	os.WriteFile(filepath.Join(root, "shared", "deliverables", "docs-site", "deliverable.yaml"), []byte("version: 1\ndescription: A site.\ntargets: [{type: dockerhub}]\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "shared", "deliverables", "docs-site", "SKILL.md"), []byte("# site\n"), 0o644)
+	os.MkdirAll(filepath.Join(root, "shared", "deliverables", "broken"), 0o755)
 
 	jar, _ := cookiejar.New(nil)
 	browser := &http.Client{Jar: jar}
@@ -493,6 +517,10 @@ func TestStoreRoutes(t *testing.T) {
 	if code != 200 || !strings.Contains(body, `"name":"style"`) || !strings.Contains(body, `"path":"shared/policies/security.md"`) || strings.Contains(body, "logo") {
 		t.Errorf("shared listing = %d %s", code, body)
 	}
+	if !strings.Contains(body, `"name":"docs-site","path":"shared/deliverables/docs-site","skill":"shared/deliverables/docs-site/SKILL.md","description":"A site."`) ||
+		!strings.Contains(body, `"targets":[{"type":"dockerhub"}],"holders":[]`) || !strings.Contains(body, `"name":"broken"`) || !strings.Contains(body, `"error":"deliverable \"broken\" has no deliverable.yaml`) {
+		t.Errorf("U12 deliverables listing = %s", body)
+	}
 	if code, body := get("/api/ui/store/file?path=shared/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
 		t.Errorf("text file = %d %q", code, body)
 	}
@@ -508,7 +536,7 @@ func TestStoreRoutes(t *testing.T) {
 			t.Errorf("U10: %s = %d, want %d", path, code, want)
 		}
 	}
-	if code, _ := get("/api/ui/store/releases/nope/1.0.0"); code != 404 {
+	if code, _ := get("/api/ui/store/releases/nope/lib/1.0.0"); code != 404 {
 		t.Errorf("unknown release = %d", code)
 	}
 	resp, _ := http.Get(srv.URL + "/api/ui/store/shared")

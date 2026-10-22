@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
 )
@@ -71,9 +72,15 @@ type testResultsArgs struct {
 	Results []testResultArg `json:"results" jsonschema:"one entry for each feature whose tests ran"`
 }
 
+type checkArgs struct {
+	Deliverable string `json:"deliverable" jsonschema:"the name of the deliverable whose product you staged"`
+}
+
 type publishArgs struct {
-	Version string `json:"version" jsonschema:"a semver version, such as 1.2.0, greater than your last release"`
-	Notes   string `json:"notes" jsonschema:"what changed in this version, in one or two sentences"`
+	Deliverable  string              `json:"deliverable" jsonschema:"the name of the deliverable to publish"`
+	Version      string              `json:"version" jsonschema:"a semver version, such as 1.2.0, greater than the last release of this deliverable"`
+	Notes        string              `json:"notes" jsonschema:"what changed in this version, in one or two sentences"`
+	Certificates []store.Certificate `json:"certificates,omitempty" jsonschema:"one certificate for each target of the deliverable, after you published there; leave it out when the deliverable has no targets"`
 }
 
 type commitArgs struct {
@@ -164,14 +171,25 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "publish_release",
-		Description: "Publish your staging area (/hikari/public/export/staging/) as a release that never changes. It needs a current map, valid private documents, staging/release.yaml, the product or a remote location, and the docs index. hikari announces the release in your hubs.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
-		rel, err := c.PublishRelease(ctx, a.Version, a.Notes)
+		Name:        "check_release",
+		Description: "Check the product you staged in /hikari/public/export/staging/<deliverable>/ against the deliverable's layout rules, and check that your map is current and your private documents are valid. It reports every problem and changes nothing. Run it before publish_release.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a checkArgs) (*mcp.CallToolResult, any, error) {
+		check, err := c.CheckRelease(ctx, a.Deliverable)
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Published %s %s from commit %s. It is in /hikari/public/export/releases/%s/.", rel.System, rel.Version, short(rel.SourceCommit), rel.Version)), nil, nil
+		return text(fmt.Sprintf("The product of %s meets its deliverable: %d file(s), %d bytes. It is ready to publish.", a.Deliverable, check.Files, check.Bytes)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "publish_release",
+		Description: "Publish the product you staged in /hikari/public/export/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in your hubs.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
+		rel, err := c.PublishRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Certificates: a.Certificates})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Published %s %s %s from commit %s: %d file(s). It is in %s/releases/%s/%s/.", rel.System, rel.Deliverable, rel.Version, short(rel.SourceCommit), rel.Product.Files, api.ExportDir, rel.Deliverable, rel.Version)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

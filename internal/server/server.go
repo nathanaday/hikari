@@ -369,6 +369,7 @@ func (s *Server) Self(node string) api.Self {
 	self.System, self.Orchestrates = s.sys.Self(node)
 	self.VisibleSystems = s.topo.VisibleSystems(node)
 	self.Releases = s.topo.ReadableReleases(node)
+	self.Deliverables = s.sys.Deliverables(node)
 	for _, hub := range s.topo.OrchestratedHubs(node) {
 		for _, m := range s.topo.Hubs[hub].Members {
 			if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
@@ -376,6 +377,12 @@ func (s *Server) Self(node string) api.Self {
 					self.MemberGrants = map[string][]string{}
 				}
 				self.MemberGrants[m] = g
+			}
+			if d := s.sys.Deliverables(m); len(d) > 0 {
+				if self.MemberDeliverables == nil {
+					self.MemberDeliverables = map[string][]api.DeliverableInfo{}
+				}
+				self.MemberDeliverables[m] = d
 			}
 		}
 	}

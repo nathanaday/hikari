@@ -22,6 +22,7 @@ import (
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"gopkg.in/yaml.v3"
 )
@@ -103,6 +104,12 @@ func New(topo *topology.Topology) (*Manager, error) {
 			m.warnings = append(m.warnings, fmt.Sprintf("%s is no longer used; the map of %q now lives at %s", old, name, m.store.MapFile(name)))
 		}
 		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: maps}
+		for _, old := range m.store.OldReleases(name) {
+			m.warnings = append(m.warnings, fmt.Sprintf("%s is a release in the old layout and is ignored; releases now live in releases/<deliverable>/<version>/", old))
+		}
+	}
+	if err := m.checkDeliverables(); err != nil {
+		return nil, err
 	}
 	for _, hub := range topo.HubNames() {
 		vs, err := vocab.Open(m.store.VocabularyFile(hub), hub)
@@ -126,6 +133,94 @@ func New(topo *topology.Topology) (*Manager, error) {
 
 // Store returns the shared store.
 func (m *Manager) Store() store.Store { return m.store }
+
+// checkDeliverables checks every granted deliverable at startup (rules T15
+// and T16): it exists and is valid, and its name is not a skill's name.
+func (m *Manager) checkDeliverables() error {
+	var errs []error
+	checked := map[string]bool{}
+	for _, name := range m.topo.Owners() {
+		for _, d := range m.topo.Agents[name].Grants.Deliverables {
+			if checked[d] {
+				continue
+			}
+			checked[d] = true
+			if _, err := m.store.LoadDeliverable(d); err != nil {
+				errs = append(errs, err)
+			}
+			if d == api.SystemSkill {
+				errs = append(errs, fmt.Errorf("deliverable %q has the name of hikari's own skill", d))
+			} else if exists(filepath.Join(m.store.Shared(store.Skills), d, store.SkillFile)) {
+				errs = append(errs, fmt.Errorf("deliverable %q has the name of a shared skill; rename one of them", d))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Deliverables returns the deliverables that agent holds, with their
+// descriptions, for its prompt.
+func (m *Manager) Deliverables(agent string) []api.DeliverableInfo {
+	var out []api.DeliverableInfo
+	for _, name := range m.topo.Agents[agent].Grants.Deliverables {
+		info := api.DeliverableInfo{Name: name}
+		if d, err := m.store.LoadDeliverable(name); err != nil {
+			info.Description = "(invalid: " + err.Error() + ")"
+		} else {
+			info.Description = d.Description
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// holds checks that agent is an owner that holds deliverable.
+func (m *Manager) holds(agent, deliverable string) (*owner, error) {
+	o, err := m.owner(agent)
+	if err != nil {
+		return nil, err
+	}
+	granted := m.topo.Agents[agent].Grants.Deliverables
+	switch {
+	case len(granted) == 0:
+		return nil, fmt.Errorf("%w: you hold no deliverable, so you cannot publish; ask the user to grant you one", ErrForbidden)
+	case !slices.Contains(granted, deliverable):
+		return nil, fmt.Errorf("%w: you do not hold the deliverable %q; you hold %s", ErrForbidden, deliverable, strings.Join(granted, ", "))
+	}
+	return o, nil
+}
+
+// releaseProblems lists what blocks a release of agent's system: a map
+// that is not current, or invalid private documents.
+func (m *Manager) releaseProblems(o *owner) (sysmap.OwnerView, []string) {
+	v := m.ownerView(o)
+	var problems []string
+	if v.State != sysmap.Current {
+		problems = append(problems, fmt.Sprintf("the map is %s; update it and call mark_map_current first", v.State))
+	}
+	if len(v.PrivateErrors) > 0 {
+		problems = append(problems, "the private documents have problems: "+strings.Join(v.PrivateErrors, "; "))
+	}
+	return v, problems
+}
+
+// CheckRelease checks the staged product of a deliverable against the
+// deliverable and the state of the system (rule R15). It changes nothing.
+func (m *Manager) CheckRelease(agent, deliverable string) (store.ProductCheck, error) {
+	o, err := m.holds(agent, deliverable)
+	if err != nil {
+		return store.ProductCheck{}, err
+	}
+	_, problems := m.releaseProblems(o)
+	check, err := m.store.Check(agent, deliverable)
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	if len(problems) > 0 {
+		return store.ProductCheck{}, errors.New(strings.Join(problems, "\n"))
+	}
+	return check, nil
+}
 
 func exists(p string) bool {
 	_, err := os.Stat(p)
@@ -395,42 +490,33 @@ func (m *Manager) Commit(agent, message string) (string, error) {
 	return commit, err
 }
 
-// PublishRelease publishes agent's staging area as a release (rules R1 to
-// R5). The map must be current and the private documents valid. It returns
-// the release and the hubs to announce it in.
-func (m *Manager) PublishRelease(agent, version, notes string) (store.Manifest, []string, error) {
-	o, err := m.owner(agent)
+// PublishRelease publishes the staged product of a deliverable as a
+// release (rules R16 and R17). The map must be current and the private
+// documents valid. It returns the release and the hubs to announce it in.
+func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Manifest, []string, error) {
+	o, err := m.holds(agent, req.Deliverable)
 	if err != nil {
 		return store.Manifest{}, nil, err
 	}
-	v := m.ownerView(o)
-	var problems []string
-	if v.State != sysmap.Current {
-		problems = append(problems, fmt.Sprintf("the map is %s; update it and call mark_map_current first", v.State))
-	}
-	if len(v.PrivateErrors) > 0 {
-		problems = append(problems, "the private documents have problems: "+strings.Join(v.PrivateErrors, "; "))
-	}
+	v, problems := m.releaseProblems(o)
 	if len(problems) > 0 {
 		return store.Manifest{}, nil, errors.New(strings.Join(problems, "\n"))
-	}
-	provides := map[string]bool{}
-	for _, in := range v.System.Interfaces.Provides {
-		provides[in.Name] = true
 	}
 	public, err := yaml.Marshal(v.View)
 	if err != nil {
 		return store.Manifest{}, nil, err
 	}
+	hubs := m.topo.HubsOf(agent)
 	rel, err := m.store.Publish(store.PublishInput{
-		System: agent, Version: version, Notes: notes,
-		SourceCommit: v.System.DescribedState.Commit, Provides: provides, Map: public, Now: m.now(),
+		System: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
+		Certificates: req.Certificates, SourceCommit: v.System.DescribedState.Commit, Map: public,
+		Hubs: hubs, Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
 		return store.Manifest{}, nil, err
 	}
 	m.changed(Change{System: agent})
-	return rel, m.topo.HubsOf(agent), nil
+	return rel, hubs, nil
 }
 
 // TurnContext tells the driver what changed before agent's next turn. It

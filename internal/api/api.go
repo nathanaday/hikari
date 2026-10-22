@@ -60,10 +60,26 @@ type Self struct {
 	VisibleSystems []string `json:"visible_systems,omitempty"`
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
+	// Deliverables lists the deliverables that an owner publishes.
+	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
 	// MemberGrants maps each member of the hubs that an orchestrator
 	// orchestrates to the systems whose releases it is granted.
 	MemberGrants map[string][]string `json:"member_grants,omitempty"`
+	// MemberDeliverables maps each member of the hubs that an orchestrator
+	// orchestrates to the deliverables it publishes.
+	MemberDeliverables map[string][]DeliverableInfo `json:"member_deliverables,omitempty"`
 }
+
+// DeliverableInfo names a deliverable for a prompt. Description is the
+// deliverable's description, or a note when the deliverable is invalid.
+type DeliverableInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// SystemSkill is hikari's own skill, which always comes from the binary.
+// No shared skill or deliverable may use its name.
+const SystemSkill = "hikari-system"
 
 // SendRequest sets exactly one of Hub and To.
 type SendRequest struct {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -30,9 +32,24 @@ services:
   lead: {x-hikari: {}}
   writer: {x-hikari: {}}
   eng-lead: {x-hikari: {}}
-  orders: {x-hikari: {system: {repo: shop, scope: services/orders, test: python3 -m unittest}}}
+  orders: {x-hikari: {system: {repo: shop, scope: services/orders, test: python3 -m unittest}, grants: {deliverables: [python-library]}}}
   inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
 `
+
+const pythonLibrary = `version: 1
+description: A Python library that other systems install from the release.
+layout:
+  require: [README.md, "**/*.py"]
+  forbid: ["**/__pycache__/**"]
+`
+
+// defineDeliverable writes a deliverable into the store under dir.
+func defineDeliverable(t *testing.T, dir, name, yaml string) {
+	t.Helper()
+	d := filepath.Join(dir, "store", "shared", "deliverables", name)
+	write(t, d, "deliverable.yaml", yaml)
+	write(t, d, "SKILL.md", "# Make the library\n")
+}
 
 type fixture struct {
 	dir  string
@@ -60,6 +77,7 @@ func newFixture(t *testing.T) *fixture {
 	git(t, repo, "init", "--quiet", "--initial-branch=main")
 	git(t, repo, "add", "--all")
 	git(t, repo, "commit", "--quiet", "-m", "initial")
+	defineDeliverable(t, dir, "python-library", pythonLibrary)
 
 	topo, err := topology.Parse([]byte(testTopology), dir)
 	if err != nil {
@@ -171,6 +189,7 @@ func TestNewWarnsWhenTheMapIsIgnored(t *testing.T) {
 	git(t, repo, "init", "--quiet", "--initial-branch=main")
 	git(t, repo, "add", "--all")
 	git(t, repo, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "--quiet", "-m", "initial")
+	defineDeliverable(t, dir, "python-library", pythonLibrary)
 	topo, err := topology.Parse([]byte(testTopology), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -477,16 +496,27 @@ func TestPrepareKeepsAnExistingReadme(t *testing.T) {
 
 func TestPublishRelease(t *testing.T) {
 	f := newFixture(t)
-	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging")
-	write(t, staging, "release.yaml", "product: {kind: files, path: product/}\ndocs: {index: docs/README.md}\ninterfaces: [POST /orders]\n")
-	write(t, staging, "product/orders/create.py", "def create(): pass\n")
-	write(t, staging, "docs/README.md", "# orders\n")
-
-	if _, _, err := f.m.PublishRelease("orders", "1.0.0", "First."); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
-		t.Errorf("R1: publishing an unbuilt map: %v", err)
+	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging", "python-library")
+	write(t, staging, "README.md", "# orders\n")
+	write(t, staging, "orders/create.py", "def create(): pass\n")
+	publish := func(agent, deliverable, version string) (store.Manifest, []string, error) {
+		return f.m.PublishRelease(agent, api.PublishRequest{Deliverable: deliverable, Version: version, Notes: "First."})
 	}
-	if _, _, err := f.m.PublishRelease("eng-lead", "1.0.0", "x"); !errors.Is(err, ErrForbidden) {
+
+	if _, _, err := publish("orders", "python-library", "1.0.0"); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
+		t.Errorf("R16: publishing an unbuilt map: %v", err)
+	}
+	if _, err := f.m.CheckRelease("orders", "python-library"); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
+		t.Errorf("R15: checking with an unbuilt map: %v", err)
+	}
+	if _, _, err := publish("eng-lead", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) {
 		t.Errorf("only owners publish: %v", err)
+	}
+	if _, _, err := publish("inventory", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "hold no deliverable") {
+		t.Errorf("an owner without deliverables: %v", err)
+	}
+	if _, _, err := publish("orders", "docs", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), `do not hold the deliverable "docs"; you hold python-library`) {
+		t.Errorf("a deliverable the owner does not hold: %v", err)
 	}
 
 	f.describeOrders(t)
@@ -494,27 +524,102 @@ func TestPublishRelease(t *testing.T) {
 	if _, err := f.m.MarkCurrent("orders"); err != nil {
 		t.Fatal(err)
 	}
+	if check, err := f.m.CheckRelease("orders", "python-library"); err != nil || check.Files != 2 {
+		t.Errorf("R15 check = %+v, %v", check, err)
+	}
+	write(t, staging, "orders/__pycache__/create.pyc", "x")
+	if _, err := f.m.CheckRelease("orders", "python-library"); err == nil || !strings.Contains(err.Error(), "layout.forbid") {
+		t.Errorf("R15: the layout rules apply: %v", err)
+	}
+	os.RemoveAll(filepath.Join(staging, "orders", "__pycache__"))
+
 	var changes []Change
 	f.m.OnChange(func(c Change) { changes = append(changes, c) })
-	rel, hubs, err := f.m.PublishRelease("orders", "1.0.0", "First.")
+	rel, hubs, err := publish("orders", "python-library", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	head := git(t, f.repo, "rev-parse", "HEAD")
-	if rel.SourceCommit != head || !slices.Equal(hubs, []string{"eng"}) {
+	if rel.SourceCommit != head || !slices.Equal(hubs, []string{"eng"}) || !slices.Equal(rel.Hubs, []string{"eng"}) || rel.Hikari == "" {
 		t.Errorf("release %+v, hubs %v; HEAD is %s", rel, hubs, head)
 	}
-	copied, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "1.0.0", "map.yaml"))
+	copied, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "map.yaml"))
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
-		t.Errorf("R4: the copied map must be the public view:\n%s", copied)
+		t.Errorf("the copied map must be the public view:\n%s", copied)
 	}
 	if len(changes) == 0 || changes[0].System != "orders" {
 		t.Errorf("a release must notify listeners: %+v", changes)
 	}
-	if v := f.m.SystemView("orders"); len(v.Releases) != 1 || v.Releases[0].Version != "1.0.0" {
+	if v := f.m.SystemView("orders"); len(v.Releases) != 1 || v.Releases[0].Version != "1.0.0" || v.Releases[0].Deliverable != "python-library" {
 		t.Errorf("the UI view must list the release: %+v", v.Releases)
 	}
 	if s, _ := f.m.GetSystem("eng-lead", "orders"); len(s.Releases) != 1 {
 		t.Errorf("the orchestrator view must list the release: %+v", s.Releases)
 	}
+	if d := f.m.Deliverables("orders"); len(d) != 1 || d[0].Name != "python-library" || !strings.HasPrefix(d[0].Description, "A Python library") {
+		t.Errorf("Deliverables = %+v", d)
+	}
+}
+
+func TestDeliverableChecksAtStartup(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(k+"_NAME", "Test User")
+		t.Setenv(k+"_EMAIL", "user@example.com")
+	}
+	newRepo := func(t *testing.T) string {
+		dir := t.TempDir()
+		repo := filepath.Join(dir, "shop")
+		write(t, repo, "services/orders/create.py", "x\n")
+		write(t, repo, "services/inventory/stock.py", "x\n")
+		git(t, repo, "init", "--quiet", "--initial-branch=main")
+		git(t, repo, "add", "--all")
+		git(t, repo, "commit", "--quiet", "-m", "initial")
+		return dir
+	}
+	start := func(t *testing.T, dir string) (*Manager, error) {
+		topo, err := topology.Parse([]byte(testTopology), dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return New(topo)
+	}
+
+	t.Run("T15 missing", func(t *testing.T) {
+		dir := newRepo(t)
+		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), `deliverable "python-library" does not exist`) {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("T15 invalid", func(t *testing.T) {
+		dir := newRepo(t)
+		defineDeliverable(t, dir, "python-library", "version: 1\n")
+		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), "description is required") {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("T16 shared skill", func(t *testing.T) {
+		dir := newRepo(t)
+		defineDeliverable(t, dir, "python-library", pythonLibrary)
+		write(t, filepath.Join(dir, "store", "shared", "skills", "python-library"), "SKILL.md", "# mine\n")
+		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), "has the name of a shared skill") {
+			t.Errorf("error = %v", err)
+		}
+	})
+	t.Run("O1 old layout", func(t *testing.T) {
+		dir := newRepo(t)
+		defineDeliverable(t, dir, "python-library", pythonLibrary)
+		write(t, filepath.Join(dir, "store", "systems", "orders", "releases", "0.1.0"), "release.yaml", "version: 0.1.0\n")
+		m, err := start(t, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := m.Warnings(); len(w) != 1 || !strings.Contains(w[0], "old layout") {
+			t.Errorf("warnings = %v", w)
+		}
+		if v := m.SystemView("orders"); len(v.Releases) != 0 {
+			t.Errorf("an old release must be ignored: %+v", v.Releases)
+		}
+	})
 }
