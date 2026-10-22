@@ -63,6 +63,7 @@ store/
   systems/
     <system>/
       map.yaml                       written by the server, through the owner's map tools
+      features/<id>.md               the feature wiki (docs/specs/feature-wiki.md)
       staging/                       written by the owner
       releases/
         <x.y.z>/

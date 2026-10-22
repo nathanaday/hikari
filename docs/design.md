@@ -92,9 +92,44 @@ the container, not a file in your repo, teaches the owner their formats.
 All three documents live in the scope, so they are versioned and reviewed
 with the code that they describe.
 
-Owners add features in batches. A feature can name related features, and
-the server checks that they exist; one feature at a time, a feature could not
-name one that the owner had not added yet.
+## The feature wiki
+
+Each feature is one markdown document in the store, beside the map, and the
+map's feature list is written from those documents. A map entry of a few
+fields had no room for the reasons behind a feature, and nothing said when
+one feature's description was last true. A document has a header that the
+server checks and a body for people and agents: why the feature exists, what
+it promises, and what it refuses. The body cites no code, so the document is
+the same for every reader; nothing in it is hidden from one reader and shown
+to another. The code paths of a feature stay in the owner's code map,
+`layout.yaml`, which only the owner needs.
+
+The documents live in the store, not in the repo, because they are the public
+surface: orchestrators already mount each system's store directory, a release
+copies them with the map, and the store opens as one Obsidian vault of every
+system. Each document records the commit it describes, so staleness needs no
+git history.
+
+Links are the only structure. A document links the features it works with as
+`[[id]]`, anywhere in its text. A link has no direction, so the owner writes
+it once and the server reads the graph both ways. A link has no kind: a
+labeled relation is a judgment that goes stale, and nothing would read it.
+There are no feature groups, because how broad a group should be is always an
+opinion; the clusters of linked features show the groups by themselves.
+
+The owner changes the wiki through one tool that applies a set of writes as a
+whole, so that the files always have the schema and features in one change
+can link each other. A rename rewrites every link, which an agent editing
+files by hand would get wrong. The owner reads the files directly, and a
+user edits a document's `## Notes` section in Obsidian; the server reloads
+hand edits and keeps the last valid wiki when one breaks a rule. Findings,
+plans, and test health are not in the documents: they will be entities of
+their own that link features, so that each relation is computed instead of
+kept fresh by hand.
+
+Staleness is per feature. The server knows each feature's code paths from the
+code map, so a change in the code names the features it touches, and a
+changed path under no feature is how a missing feature gets found.
 
 Health is computed, never set. Test results are reported on the honor
 system, but the server records a hash of the feature's code and test files,
@@ -203,7 +238,8 @@ container, where Claude Code finds them. Policies are rules, so they go into
 every system prompt; a skill applies only when an agent loads it. The
 driver connects the shared area again before each turn, so a change applies
 from the next turn without a restart. hikari's own `hikari-system` skill
-always comes from the binary, so that it matches the binary's version.
+and its `hikari-` agents always come from the binary, so that they match the
+binary's version; a shared agent cannot take their names.
 
 The skill of a deliverable can run in its own context (`context: fork`), so
 that building a product does not fill the owner's context; it must then

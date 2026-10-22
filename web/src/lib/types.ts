@@ -66,6 +66,9 @@ export type Health = 'passing' | 'failing' | 'stale' | 'untested'
 
 export type MapState = 'unbuilt' | 'current' | 'stale'
 
+// FeatureState says whether a feature's document describes its code.
+export type FeatureState = 'undescribed' | 'stale' | 'current'
+
 export type Feature = {
   id: string
   name: string
@@ -73,8 +76,7 @@ export type Feature = {
   interfaces?: string[]
   tests: { passed: number; failed: number; ran?: string; content_hash?: string }
   health: Health
-  findings?: string[]
-  plans?: string[]
+  state?: FeatureState
   related?: string[]
 }
 

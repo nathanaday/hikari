@@ -116,13 +116,18 @@ function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
         <span className="w-20 shrink-0">
           <HealthBadge health={f.health} />
         </span>
+        {f.state && f.state !== 'current' ? (
+          <span className="w-24 shrink-0 text-xs text-amber-700" data-testid="feature-state">
+            {f.state}
+          </span>
+        ) : (
+          <span className="w-24 shrink-0" />
+        )}
       </summary>
       <div className="space-y-2 pb-3 pl-6.5 text-sm">
         {f.description && <p>{f.description}</p>}
         <p className="text-xs text-muted-foreground sm:hidden">{tests}</p>
         <Paths label="interfaces" paths={f.interfaces} />
-        <List label="Findings" items={f.findings} />
-        <List label="Plans" items={f.plans} />
         {f.related?.length ? (
           <div className="flex flex-wrap items-baseline gap-1.5">
             <span className="text-xs text-muted-foreground">related</span>

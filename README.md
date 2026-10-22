@@ -133,13 +133,14 @@ services:
 
 When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates the branch if needed and checks it out. Each owner's container sees only its scope at `/workspace/<scope>`, with no `.git`. The agent cannot commit by itself: hikari commits the changes inside its scope, with the agent as author and you as committer, when the agent calls `commit_changes` and at the end of every turn. You review the branch and merge it.
 
-Three documents describe each system, and the owner writes all three:
+Four documents describe each system, and the owner is the only author of all four:
 
-- `store/systems/<system>/map.yaml` is the public surface of the system: a summary, the interfaces it provides and consumes, and its features with their test health. It holds no file paths and no commands. The owner changes it only through map tools, and the server checks each change.
-- `<scope>/.hikari/private/layout.yaml` says where each feature lives in the code.
+- `store/systems/<system>/features/<id>.md` is the feature wiki: one markdown document for each feature, with a property header that hikari checks and a body that says why the feature exists and what it promises. Documents link the features that work together with `[[id]]` links. A link has no direction and no kind, and there are no feature groups: the links are the structure. The owner changes the wiki only through `change_features`, which applies a set of writes as a whole or not at all.
+- `store/systems/<system>/map.yaml` is the public map: a summary, the interfaces the system provides and consumes, written through `set_system_info`, and a list of the features that hikari writes from the wiki, with the health and state of each. It holds no file paths and no commands.
+- `<scope>/.hikari/private/layout.yaml` is the code map: where each feature lives in the code.
 - `<scope>/.hikari/private/test.yaml` is the test plan: the suites that run tests, and for each feature what its tests cover, which files hold them, and what they leave out.
 
-The owner edits the private documents directly. A `hikari-system` skill in its container explains their formats. Health is computed: `passing`, `failing`, `untested`, or `stale` when the feature's code or test files changed after its last test run. On its first start, an owner reads its code and builds the documents. When the code changes, the owner updates them and marks the map current.
+The owner edits the private documents directly. The `hikari-system` skill in its container explains each document, what counts as a feature, and how to link; it comes with two read-only agents, `hikari-feature-survey` and `hikari-feature-review`, that read the code for an owner. Health is computed: `passing`, `failing`, `untested`, or `stale` when the feature's code or test files changed after its last test run. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, an owner reads its code and builds the documents. When the code changes, hikari tells the owner which features are stale and which changed paths belong to no feature, and the owner updates them and marks the map current. You can open the store in Obsidian: every link resolves.
 
 An orchestrator reads the public maps of the systems in the hubs it orchestrates, and it keeps a vocabulary for each hub in `store/shared/vocabulary/<hub>.yaml`: the names that every agent uses for domain terms and interfaces. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
 
@@ -171,7 +172,8 @@ store/
     agents/<name>.md         your Claude Code subagent definitions
     deliverables/<name>/     what a release must contain and how to make it
   systems/<system>/
-    map.yaml                 the public map
+    map.yaml                 the public map; hikari writes it from the wiki
+    features/<id>.md         the feature wiki, one document per feature
     staging/<deliverable>/   where the owner builds the product of its next release
     releases/<deliverable>/<x.y.z>/   published releases, which never change
     releases/<deliverable>/latest     the newest release of that deliverable
@@ -191,6 +193,7 @@ Every container sees its hikari documents at the same paths:
 ```
 /hikari/private/                                 an owner's private documents
 /hikari/public/export/map.yaml                   its public map (read-only)
+/hikari/public/export/features/                  its feature wiki (read-only; changed through a tool)
 /hikari/public/export/staging/                   its next release (read-write)
 /hikari/public/export/releases/                  its published releases (read-only)
 /hikari/public/readonly/shared/                  the shared area
@@ -220,7 +223,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - The server is the only authority on the topology. It checks every message against the hubs. A container cannot change who it is or who it can reach.
 - Only the server writes to git. Agents never get `.git`, so they cannot commit outside their scope, rewrite history, or switch branches.
 - The map is a public surface. Paths, commands, and test plans stay in the private documents, which only the owner and you read.
-- The owner is the only author of its documents. The server applies the owner's map changes and checks them, so the map file never holds an invalid map.
+- The owner is the only author of its documents. The server applies the owner's changes to the feature wiki and checks them, so the wiki and the map never hold an invalid document.
 - Containers cannot reach each other directly. Each container has its own Docker network. The only path between agents goes through the server.
 - Compose owns the environment; hikari owns the boundaries. You describe each container in compose, and hikari computes every mount, network, and token that keeps agents apart.
 - One binary does all jobs. `hikari up` runs on the host. hikari mounts its Linux build into each container, where it runs as `hikari node` and `hikari mcp`.
@@ -230,7 +233,8 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `cmd/hikari`: the command-line entry point
 - `internal/server`: message routing, the log, the HTTP API, and the web UI
 - `internal/systems`: repos, system maps, vocabularies, and who may read and change them
-- `internal/sysmap`: the map and the private documents, their rules, and health
+- `internal/sysmap`: the map and the private documents, their rules, health, and feature state
+- `internal/featurewiki`: the feature documents, their links, and the change that writes them
 - `internal/vocab`: the hub vocabulary format
 - `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation and scoped commits
