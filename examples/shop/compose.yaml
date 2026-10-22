@@ -1,8 +1,11 @@
 # A shop with two systems in one repo. lead plans from the system maps and
 # never sees code. orders and inventory each own one directory of the repo.
-# orders can read inventory's releases, so it can test against the real
-# stock library once inventory publishes it. orders also has a sidecar, a
-# small web server that only orders can reach, at http://orders-mock:8000.
+# Both owners hold the python-library deliverable, defined in
+# store/shared/deliverables/python-library/, so each can publish its package
+# as a release. orders can read inventory's releases, so it can test against
+# the real stock library once inventory publishes it. orders also has a
+# sidecar, a small web server that only orders can reach, at
+# http://orders-mock:8000.
 #
 # Create the repo and the store first, then start the network:
 #   make demo-repo
@@ -39,6 +42,7 @@ services:
         scope: services/orders
         test: python3 -m unittest discover -s tests
       grants:
+        deliverables: [python-library]
         releases: [inventory]
 
   inventory:
@@ -50,6 +54,8 @@ services:
         repo: shop
         scope: services/inventory
         test: python3 -m unittest discover -s tests
+      grants:
+        deliverables: [python-library]
 
   orders-mock:
     image: python:3.12-slim

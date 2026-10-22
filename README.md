@@ -127,6 +127,7 @@ services:
         read: [proto]             # optional read-only paths outside every scope
         test: python3 -m unittest discover -s tests
       grants:
+        deliverables: [python-library]  # optional; the releases this owner can publish
         releases: [inventory]     # optional; read-only access to another system's releases
 ```
 
@@ -142,7 +143,7 @@ The owner edits the private documents directly. A `hikari-system` skill in its c
 
 An orchestrator reads the public maps of the systems in the hubs it orchestrates, and it keeps a vocabulary for each hub in `store/shared/vocabulary/<hub>.yaml`: the names that every agent uses for domain terms and interfaces. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
 
-The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test plan. It also shows each hub's vocabulary and the shared area.
+The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test plan. It also shows each hub's vocabulary and the shared area, with each deliverable's rules and holders.
 
 ### Each agent's container
 
@@ -168,16 +169,22 @@ store/
     policies/<name>.md       your rules for every agent; they go into every system prompt
     skills/<name>/SKILL.md   your Claude Code skills for every agent
     agents/<name>.md         your Claude Code subagent definitions
+    deliverables/<name>/     what a release must contain and how to make it
   systems/<system>/
     map.yaml                 the public map
-    staging/                 where the owner prepares its next release
-    releases/<x.y.z>/        published releases, which never change
-    releases/latest          the newest release
+    staging/<deliverable>/   where the owner builds the product of its next release
+    releases/<deliverable>/<x.y.z>/   published releases, which never change
+    releases/<deliverable>/latest     the newest release of that deliverable
 ```
 
-An owner publishes a release in three steps. It builds the deliverable in its staging area, writes the docs with the built-in `release-docs` skill, and calls `publish_release`. hikari checks the release, moves it into `releases/<version>/` with the source commit and a copy of the public map, and announces it in the owner's hubs. A release holds `release.yaml`, which says how to install and run it, the product or a pointer to where it is hosted, and user-facing docs. To change how release docs read, write your own `store/shared/skills/release-docs/SKILL.md`.
+A deliverable is a named package that says what a release must contain and how its owner makes it. You write it, in `store/shared/deliverables/<name>/`, and grant it to an owner with `grants.deliverables`. It holds two files:
 
-The orchestrator reads the maps and releases of the systems in its hubs, so it can check each release. Grant any agent read-only access to another system's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
+- `deliverable.yaml`: a description, optional layout rules on the files of the product as glob lists `require`, `allow`, and `forbid`, and optional targets, which promise that the product is also published to `github-release`, `dockerhub`, or `huggingface`.
+- `SKILL.md`: a Claude Code skill that tells the owner how to build the product. hikari installs it under the deliverable's name in each holder's container.
+
+An owner can hold several deliverables, so one system can publish, for example, a library and a container image. To publish, the owner loads the deliverable's skill, builds the product in `staging/<deliverable>/`, calls `check_release` to check it against the layout rules, then calls `publish_release` with a version and notes. When the deliverable has targets, the owner publishes there first, with the tools and credentials that compose gives its container, and gives one certificate for each target in the same call; hikari checks each certificate's shape and never uploads anything. hikari then writes the manifest, `release.yaml`, with who published, when, from which commit, with which hikari version, the certificates, and the digest of the product, writes `SHA256SUMS`, moves the product into `releases/<deliverable>/<version>/product/` with a copy of the public map, and announces the release in the owner's hubs. The shop example's `python-library` deliverable shows the format.
+
+The orchestrator reads the maps and releases of the systems in its hubs, and the deliverables in the shared area, so it can check each release against its deliverable. Grant any agent read-only access to another system's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
 
 Every container sees its hikari documents at the same paths:
 
@@ -225,7 +232,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/systems`: repos, system maps, vocabularies, and who may read and change them
 - `internal/sysmap`: the map and the private documents, their rules, and health
 - `internal/vocab`: the hub vocabulary format
-- `internal/store`: the store layout and releases
+- `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation and scoped commits
 - `internal/node`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent

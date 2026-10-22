@@ -148,11 +148,44 @@ read-only, so they never change.
 ## Releases connect isolated systems
 
 A system that another system needs, such as a library, publishes it as a
-release: the deliverable and the docs that someone who cannot see the code
+release: the product and the docs that someone who cannot see the code
 needs to use it. Publishing checks that the map is current, so that a
 release matches what the map describes, and records the source commit and a
 copy of the public map. Feature health does not block a release; the copy
 of the map shows it.
+
+## Deliverables put the rules of a release in the store
+
+Every system delivers something different: a Python package, a container
+image, a set of documents. The rules of a release therefore do not belong
+in hikari. They live in the store as a deliverable, a named package of
+`deliverable.yaml` and `SKILL.md`, which you can read, change, and bind to
+owners in the topology. The layout rules are three glob lists, so that you
+can be as loose as a list of file types or as strict as an exact map of
+files. The skill tells the owner how to make the product, and hikari sets
+none of its frontmatter, so its author decides whether it forks its
+context.
+
+Deliverables live in the shared area, which every container already
+mounts, so an orchestrator can check a release against its deliverable and
+a change applies from the next turn. The grant, not the mount, decides who
+publishes a deliverable: only a holder gets its skill and can call the
+publish tools, and only an owner can hold one, because an owner has code
+to build from, a map and a commit for provenance, and a place in the store.
+
+hikari writes the whole manifest. The owner writes nothing in it, so the
+manifest is a record that hikari vouches for: who published, when, from
+which commit, with which hikari version, and the digest of every file. A
+release keeps its product as a directory, not an archive, so that
+consumers and the UI read it with normal tools; the read-only mounts make
+it immutable and `SHA256SUMS` makes it checkable.
+
+A target is a promise that the product also goes to a cloud service. The
+owner uploads, with the credentials that compose gives its container, and
+gives a certificate in the publish call. hikari checks the certificate's
+shape against the promise and records it; it never uploads and does not
+call the service, which would need credentials and network access on the
+server.
 
 Publishing moves the staging area's contents into the release one entry at
 a time. It does not rename the staging directory, because the owner's
@@ -172,10 +205,10 @@ driver connects the shared area again before each turn, so a change applies
 from the next turn without a restart. hikari's own `hikari-system` skill
 always comes from the binary, so that it matches the binary's version.
 
-The `release-docs` skill runs in its own context (`context: fork`), so that
-writing docs does not fill the owner's context, and it waits for the result
-(`background: false`), because a headless turn ends when its prompt is
-answered.
+The skill of a deliverable can run in its own context (`context: fork`), so
+that building a product does not fill the owner's context; it must then
+wait for the result (`background: false`), because a headless turn ends
+when its prompt is answered.
 
 ## One server routes all messages
 

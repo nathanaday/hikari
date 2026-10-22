@@ -1,0 +1,18 @@
+# A deliverable: what a release of this kind must contain and where it must
+# go. SKILL.md beside it tells the owner how to make the product. The
+# topology grants a deliverable to an owner with grants.deliverables.
+version: 1
+description: A Python package that other systems add to their PYTHONPATH, with docs for engineers who cannot see the code.
+layout:
+  require:
+    - README.md                # the docs index
+    - "*/__init__.py"          # one importable package at the top
+  allow:
+    - README.md
+    - "docs/**/*.md"
+    - "*/**/*.py"
+  forbid:
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - "**/tests/**"
+    - "**/test_*.py"
