@@ -60,7 +60,7 @@ function Patterns({ label, patterns }: { label: string; patterns?: string[] }) {
 
 // DeliverableEntry shows what a deliverable asks for and who holds it, and
 // opens to its skill.
-function DeliverableEntry({ d }: { d: Deliverable }) {
+export function DeliverableEntry({ d }: { d: Deliverable }) {
   const [open, setOpen] = useState(false)
   const { data, error } = useFetch(open ? storeFileURL(d.skill) : null, asText)
   const hasRules = d.layout.require?.length || d.layout.allow?.length || d.layout.forbid?.length

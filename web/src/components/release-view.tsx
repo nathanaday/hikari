@@ -68,11 +68,15 @@ function CertificateRow({ c }: { c: Certificate }) {
 export function ReleaseView({ system, deliverable, version }: { system: string; deliverable: string; version: string }) {
   const parse = useCallback((r: Response) => asJSON<ReleaseDetail>(r), [])
   const { data, error } = useFetch(`/api/ui/store/releases/${system}/${deliverable}/${version}`, parse)
-  const [open, setOpen] = useState<string | null>(null)
-
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
+  return <ReleaseBody system={system} deliverable={deliverable} version={version} data={data} />
+}
 
+// ReleaseBody shows a loaded release: its manifest, certificates, and files,
+// with the product's README as the main page when there is one.
+export function ReleaseBody({ system, deliverable, version, data }: { system: string; deliverable: string; version: string; data: ReleaseDetail }) {
+  const [open, setOpen] = useState<string | null>(null)
   const m = data.manifest
   const base = `systems/${system}/releases/${deliverable}/${version}/`
   const readme = base + 'product/README.md'
