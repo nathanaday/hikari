@@ -119,7 +119,7 @@ func (s Store) checkProduct(system, deliverable string) (Deliverable, []productF
 	dir := s.StagingOf(system, deliverable)
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		errs = append(errs, fmt.Errorf("there is no staged product: %s is not a directory", dir))
+		errs = append(errs, fmt.Errorf("there is no staged product: staging/%s/ does not exist", deliverable))
 		return d, nil, errors.Join(errs...)
 	}
 	files, err := walkProduct(dir)
