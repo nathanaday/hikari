@@ -199,10 +199,10 @@ Unchanged from the store spec: an owner writes only its staging area; an orchest
 - **U14.** The release view is at `#/system/<owner>/release/<deliverable>/<version>`. It shows the manifest, the certificates with their URLs as links, and the files with their digests. It renders `product/README.md` as the main page when it exists.
 - **U15.** The release detail endpoint becomes `/api/ui/store/releases/{system}/{deliverable}/{version}`.
 
-## 10. Stores in the old layout
+## 10. Stores from earlier versions
 
-- **O1.** At startup, for each directory `releases/<x.y.z>/` of a system, the server warns that the release is in the old layout, names the new layout, and ignores it. `Versions` and `Releases` list only `releases/<deliverable>/<x.y.z>/`.
-- **O2.** The shop example's seed gets `shared/deliverables/python-library/`, and its compose grants it to `inventory` and `orders`. `make demo-repo` resets the store, so there is no old release to move.
+- **O1.** hikari does not detect or convert stores, maps, vocabularies, or releases in a layout from an earlier version. During development each version starts fresh. A directory under `releases/` that is not a deliverable name is not listed. Remove such files by hand.
+- **O2.** The shop example's seed gets `shared/deliverables/python-library/`, and its compose grants it to `inventory` and `orders`. `make demo-repo` resets the store.
 
 ## 11. Out of scope
 
@@ -219,7 +219,7 @@ Each step ends with its tests passing and a commit to `main`.
 
 1. **Topology.** `grants.deliverables`, rules T13 and T14.
 2. **Store: deliverables.** The format and its checks (D1 to D5), the glob matcher and layout rules (G1 to G7), targets and certificates (C1 to C4), with tests on temporary stores.
-3. **Store: releases.** The new layout (L7 to L9), the manifest (R12 to R14), `SHA256SUMS`, the checks and the publish (R15 to R17, R19), and the old-layout warning (O1).
+3. **Store: releases.** The new layout (L7 to L9), the manifest (R12 to R14), `SHA256SUMS`, and the checks and the publish (R15 to R17, R19).
 4. **Server.** Startup checks (T15, T16), the two node endpoints, the announcement (R18), and `Self` with `deliverables` and `member_deliverables`.
 5. **Driver and tools.** Skill links (H7 to H10), the prompts (P12 to P15), `check_release` and `publish_release` in the MCP server.
 6. **UI.** Deliverables in the Shared view, releases by deliverable, the release view (U12 to U15).

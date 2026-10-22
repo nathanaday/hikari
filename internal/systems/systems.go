@@ -100,13 +100,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		if repo.IsIgnored(privatePath) {
 			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", s.Repo, privatePath, name))
 		}
-		if old := filepath.Join(scopeRoot, sysmap.Dir, "map.yaml"); exists(old) {
-			m.warnings = append(m.warnings, fmt.Sprintf("%s is no longer used; the map of %q now lives at %s", old, name, m.store.MapFile(name)))
-		}
 		m.owners[name] = &owner{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, store: maps}
-		for _, old := range m.store.OldReleases(name) {
-			m.warnings = append(m.warnings, fmt.Sprintf("%s is a release in the old layout and is ignored; releases now live in releases/<deliverable>/<version>/", old))
-		}
 	}
 	if err := m.checkDeliverables(); err != nil {
 		return nil, err
@@ -117,9 +111,6 @@ func New(topo *topology.Topology) (*Manager, error) {
 			return nil, err
 		}
 		m.vocabs[hub] = vs
-		if old := filepath.Join(topo.Dir, "vocabulary", hub+".yaml"); exists(old) {
-			m.warnings = append(m.warnings, fmt.Sprintf("%s is no longer used; the vocabulary of #%s now lives at %s", old, hub, m.store.VocabularyFile(hub)))
-		}
 	}
 	for _, agent := range topo.AgentNames() {
 		m.seen[agent] = map[string]int{}

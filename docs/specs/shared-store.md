@@ -19,7 +19,7 @@ All hikari documents that are not code move into one directory, the store. Its s
 The brainstorm left these points open, or a decision there needed more detail. Please approve or change each one.
 
 1. **The doc builder is a built-in skill, `release-docs`.** It runs in its own context (`context: fork`) and writes the docs into `staging/docs/`. It sets `background: false`, so that the turn waits for the docs before the owner continues. If you write `store/shared/skills/release-docs/`, it replaces the built-in skill.
-2. **Old maps and vocabularies are not moved.** A map left in a repo at `<scope>/.hikari/map.yaml`, or a vocabulary left in `vocabulary/` next to the topology, gets a startup warning and is ignored. The only such files are in the demo, which `make demo-repo` rebuilds.
+2. **Old maps and vocabularies are not moved or detected.** A map left in a repo at `<scope>/.hikari/map.yaml`, or a vocabulary left in `vocabulary/` next to the topology, is ignored without a warning. hikari does not track layouts of earlier versions.
 3. **The orchestrator does not see an owner's staging area.** An empty, read-only directory hides `staging/` in the orchestrator's container. The orchestrator checks releases, not drafts.
 4. **A consumer sees releases only, not maps.** A release grant mounts only `releases/` of the other system. Each release carries a copy of its system's public map, so a consumer still sees what the release provides.
 5. **The driver refreshes shared knowledge before each turn.** It reads the policies again and links any new skills and agent definitions. A change in `store/shared` therefore applies from the next turn, without a restart.
@@ -78,7 +78,7 @@ store/
 - **L3.** The map of each system moves from `<scope>/.hikari/map.yaml` to `store/systems/<system>/map.yaml`. Its format and its rules do not change.
 - **L4.** The vocabulary of each hub moves from `vocabulary/<hub>.yaml` to `store/shared/vocabulary/<hub>.yaml`. Its format and its rules do not change.
 - **L5.** The private documents stay in the repo, at `<scope>/.hikari/private`.
-- **L6.** If an old map or vocabulary file exists (L3, L4), the server prints a warning that names the file and its new place, and ignores it (decision 2).
+- **L6.** hikari does not look for files in the places of L3 and L4. It ignores them without a warning (decision 2).
 
 ## 3. What a container sees
 
@@ -210,7 +210,7 @@ An owner calls `publish_release(version, notes)`.
 Each step ends with its tests passing and a commit to `main`.
 
 1. **Topology.** `store` and `grants.releases`, rules T10 to T12.
-2. **Store.** Layout and creation (L1 to L6). The map and the vocabularies move into the store, and the warnings for old files.
+2. **Store.** Layout and creation (L1 to L6). The map and the vocabularies move into the store.
 3. **Releases.** Manifest format, the checks of R1, publishing (R3 to R5, R7), and the announcement (R6), with tests on temporary stores.
 4. **Mounts.** The container layout of section 3 for owners, orchestrators, and members (M7 to M9).
 5. **Driver.** Links and policies from the shared area (H1 to H6), the `release-docs` skill, and the prompts (P8 to P11). `publish_release` in the MCP server.

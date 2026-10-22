@@ -462,24 +462,6 @@ func TestCommitAllLeavesTheRepoClean(t *testing.T) {
 	}
 }
 
-func TestNewWarnsAboutOldFiles(t *testing.T) {
-	f := newFixture(t)
-	write(t, f.repo, "services/orders/.hikari/map.yaml", "version: 2\n")
-	write(t, f.dir, "vocabulary/eng.yaml", "version: 1\n")
-	f.m.CommitAll()
-	topo, _ := topology.Parse([]byte(testTopology), f.dir)
-	m, err := New(topo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := strings.Join(m.Warnings(), "\n")
-	for _, want := range []string{"services/orders/.hikari/map.yaml is no longer used", "vocabulary/eng.yaml is no longer used"} {
-		if !strings.Contains(w, want) {
-			t.Errorf("L6: warnings lack %q:\n%s", want, w)
-		}
-	}
-}
-
 func TestPrepareKeepsAnExistingReadme(t *testing.T) {
 	f := newFixture(t)
 	readme := filepath.Join(f.dir, "store", "README.md")
@@ -605,21 +587,6 @@ func TestDeliverableChecksAtStartup(t *testing.T) {
 		write(t, filepath.Join(dir, "store", "shared", "skills", "python-library"), "SKILL.md", "# mine\n")
 		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), "has the name of a shared skill") {
 			t.Errorf("error = %v", err)
-		}
-	})
-	t.Run("O1 old layout", func(t *testing.T) {
-		dir := newRepo(t)
-		defineDeliverable(t, dir, "python-library", pythonLibrary)
-		write(t, filepath.Join(dir, "store", "systems", "orders", "releases", "0.1.0"), "release.yaml", "version: 0.1.0\n")
-		m, err := start(t, dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if w := m.Warnings(); len(w) != 1 || !strings.Contains(w[0], "old layout") {
-			t.Errorf("warnings = %v", w)
-		}
-		if v := m.SystemView("orders"); len(v.Releases) != 0 {
-			t.Errorf("an old release must be ignored: %+v", v.Releases)
 		}
 	})
 }

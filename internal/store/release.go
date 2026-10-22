@@ -344,19 +344,6 @@ func (s Store) ReleasedDeliverables(system string) ([]string, error) {
 	return out, nil
 }
 
-// OldReleases returns the directories of a system's releases in the layout
-// before deliverables, releases/<x.y.z>/, which hikari ignores (rule O1).
-func (s Store) OldReleases(system string) []string {
-	entries, _ := os.ReadDir(s.ReleasesDir(system))
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() && ValidVersion(e.Name()) {
-			out = append(out, filepath.Join(s.ReleasesDir(system), e.Name()))
-		}
-	}
-	return out
-}
-
 // Releases returns the manifests of a system's releases: by deliverable
 // name, and newest first within each.
 func (s Store) Releases(system string) ([]Manifest, error) {

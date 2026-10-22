@@ -376,7 +376,7 @@ func TestPublishChecks(t *testing.T) {
 	})
 }
 
-func TestPrepareAndOldLayout(t *testing.T) {
+func TestPrepare(t *testing.T) {
 	s := newStore(t)
 	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases"} {
 		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
@@ -385,14 +385,6 @@ func TestPrepareAndOldLayout(t *testing.T) {
 	}
 	if versions, err := s.Versions("ghost", "x"); err != nil || versions != nil {
 		t.Errorf("Versions of an unknown system: %v, %v", versions, err)
-	}
-	old := filepath.Join(s.ReleasesDir("inventory"), "0.2.0")
-	writeFiles(t, old, map[string]string{"release.yaml": "version: 0.2.0\n"})
-	if got := s.OldReleases("inventory"); !slices.Equal(got, []string{old}) {
-		t.Errorf("O1 old releases = %v", got)
-	}
-	if list, _ := s.Releases("inventory"); len(list) != 0 {
-		t.Errorf("O1: old releases must be ignored: %+v", list)
 	}
 }
 
