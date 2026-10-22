@@ -30,6 +30,27 @@ export type AgentState = 'starting' | 'idle' | 'working' | 'indexing' | 'error' 
 export type Status = {
   state: AgentState
   detail?: string
+  cost?: number
+}
+
+export type ActivityKind = 'turn' | 'thinking' | 'text' | 'tool' | 'done'
+
+// Activity is one step of an agent's turn. The driver sends it when the
+// step starts and again as it changes, with the same id.
+export type Activity = {
+  id: number
+  turn: number
+  time: string
+  kind: ActivityKind
+  text?: string
+  done: boolean
+  tool?: string
+  input?: unknown
+  output?: string
+  error?: boolean
+  cost?: number
+  duration?: number
+  unheard?: boolean
 }
 
 export type Agent = {
@@ -135,12 +156,14 @@ export type Snapshot = {
   messages: Message[]
   systems: SystemView[]
   vocabularies: Vocabulary[]
+  activity?: Record<string, Activity[]>
 }
 
 export type ServerEvent =
   | { type: 'snapshot'; snapshot: Snapshot }
   | { type: 'message'; message: Message }
   | { type: 'status'; node: string; status: Status }
+  | { type: 'activity'; node: string; activity: Activity }
   | { type: 'system'; system: SystemView }
   | { type: 'vocabulary'; vocabulary: Vocabulary }
 

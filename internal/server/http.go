@@ -58,6 +58,16 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
+	mux.HandleFunc("POST /api/node/activity", s.node(func(w http.ResponseWriter, r *http.Request, node string) {
+		var a api.Activity
+		if err := json.NewDecoder(r.Body).Decode(&a); err != nil || a.ID == 0 || a.Kind == "" {
+			writeError(w, http.StatusBadRequest, "body must be an activity entry with an id and a kind")
+			return
+		}
+		s.AddActivity(node, a)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
 	s.systemRoutes(mux)
 
 	ui := func(next http.HandlerFunc) http.HandlerFunc {

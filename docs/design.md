@@ -286,6 +286,26 @@ runs once as root, gives the volumes to the agent's user, and exits; the agent
 starts after it. Each token reaches compose as a variable that the override
 file names, so no token is written to disk.
 
+## The live view shows steps, not a transcript
+
+Each container's driver turns Claude Code's stream into activity entries: a
+turn started, thinking, text, a tool call, the turn ended. It posts each
+entry as its step starts and again as it changes, with the same ID, and the
+server replaces the kept entry and publishes it. So the UI shows a step the
+moment it starts, with its result when it ends, without the server ever
+reading a transcript. Streamed text is sent at most every 250 ms, so a
+narrating agent does not flood the server. The server keeps the last few
+hundred entries of each agent and drops old turns whole, so a new UI session
+sees recent turns and not a growing log; the run's log file keeps all of it.
+
+In headless mode Claude Code has no way to ask a question: `AskUserQuestion`
+is not available, and the text that ends a turn goes to nobody. hikari does
+not forward that text as a message, because most of it is a status line and
+forwarding it would flood the hubs. Instead the system prompt says that the
+closing text reaches no one and that questions go by message, and the UI
+shows the closing text in the turn's card, marked when the agent sent no
+message during the turn, and highlighted when it asks something.
+
 ## The terminal is for people; the log is for the record
 
 `hikari up` sends everything that compose and the containers print, such as

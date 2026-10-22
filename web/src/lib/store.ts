@@ -1,4 +1,4 @@
-import type { Agent, Hub, Message, ServerEvent, SystemView, Vocabulary } from './types'
+import type { Activity, Agent, Hub, Message, ServerEvent, SystemView, Vocabulary } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -12,6 +12,8 @@ export type State = {
   messages: Message[]
   systems: SystemView[]
   vocabularies: Vocabulary[]
+  // activity holds the recent steps of each agent, oldest first.
+  activity: Record<string, Activity[]>
   view: View
   // unread counts messages per conversation key that arrived while another
   // view was open.
@@ -33,6 +35,7 @@ export function initialState(view: View): State {
     messages: [],
     systems: [],
     vocabularies: [],
+    activity: {},
     view,
     unread: {},
   }
@@ -76,6 +79,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         systems,
         messages: e.snapshot.messages ?? [],
         vocabularies: e.snapshot.vocabularies ?? [],
+        activity: e.snapshot.activity ?? {},
         view: resolve(s.view, { agents, hubs, systems }),
         unread: {},
       }
@@ -94,6 +98,10 @@ function applyEvent(s: State, e: ServerEvent): State {
         ...s,
         agents: s.agents.map((ag) => (ag.name === e.node ? { ...ag, status: e.status } : ag)),
       }
+    case 'activity': {
+      const list = s.activity[e.node] ?? []
+      return { ...s, activity: { ...s.activity, [e.node]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+    }
     case 'system':
       return { ...s, systems: replaceBy(s.systems, e.system, (x) => x.owner) }
     case 'vocabulary':

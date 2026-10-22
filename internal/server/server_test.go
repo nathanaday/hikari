@@ -516,3 +516,43 @@ func TestStoreRoutes(t *testing.T) {
 		t.Errorf("the store needs the UI token: %s", resp.Status)
 	}
 }
+
+func TestActivity(t *testing.T) {
+	s, _ := newTestServer(t)
+	events, cancel := s.Subscribe()
+	defer cancel()
+	<-events // the snapshot
+
+	s.AddActivity("writer", api.Activity{ID: 1, Turn: 1, Kind: api.ActivityTurn, Text: "woken by user in #eng"})
+	s.AddActivity("writer", api.Activity{ID: 2, Turn: 1, Kind: api.ActivityTool, Tool: "Read"})
+	s.AddActivity("writer", api.Activity{ID: 2, Turn: 1, Kind: api.ActivityTool, Tool: "Read", Output: "ok", Done: true})
+	s.AddActivity("writer", api.Activity{ID: 3, Turn: 1, Kind: api.ActivityDone, Text: "Should I add it?", Done: true})
+	for range 4 {
+		if e := <-events; e.Type != "activity" || e.Node != "writer" {
+			t.Errorf("event = %+v", e)
+		}
+	}
+	list := s.snapshot().Activity["writer"]
+	if len(list) != 3 || list[1].Output != "ok" || !list[1].Done {
+		t.Errorf("an entry with a kept ID must replace it: %+v", list)
+	}
+	if !list[2].Unheard {
+		t.Error("a closing text with no message sent must be unheard")
+	}
+
+	s.AddActivity("writer", api.Activity{ID: 4, Turn: 2, Kind: api.ActivityTurn})
+	s.Send("writer", post("eng", "done"))
+	s.AddActivity("writer", api.Activity{ID: 5, Turn: 2, Kind: api.ActivityDone, Text: "Posted the draft.", Done: true})
+	list = s.snapshot().Activity["writer"]
+	if list[len(list)-1].Unheard {
+		t.Error("a closing text after a message is heard")
+	}
+
+	for i := range int64(maxActivity + 10) {
+		s.AddActivity("critic", api.Activity{ID: 100 + i, Turn: 10 + i/50, Kind: api.ActivityText})
+	}
+	list = s.snapshot().Activity["critic"]
+	if len(list) > maxActivity || list[0].Turn != 11 || list[0].ID != 150 {
+		t.Errorf("old turns must be dropped whole: %d entries, first %+v", len(list), list[0])
+	}
+}

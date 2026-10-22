@@ -81,6 +81,38 @@ const (
 	StateExited   = "exited"
 )
 
+// Activity kinds.
+const (
+	ActivityTurn     = "turn"     // a turn started; Text says what woke the agent
+	ActivityThinking = "thinking" // the agent is thinking; Done when it stops
+	ActivityText     = "text"     // what the agent writes, streamed until Done
+	ActivityTool     = "tool"     // a tool call; Done once its result is in
+	ActivityDone     = "done"     // the turn ended; Text is its closing text
+)
+
+// Activity is one step of an agent's turn, for the live view. The driver
+// sends an entry when a step starts and again when it changes, with the
+// same ID, so the server replaces it.
+type Activity struct {
+	ID   int64     `json:"id"`
+	Turn int64     `json:"turn"`
+	Time time.Time `json:"time"`
+	Kind string    `json:"kind"`
+	Text string    `json:"text,omitempty"`
+	Done bool      `json:"done"`
+	// Tool, Input, and Output describe a tool call.
+	Tool   string          `json:"tool,omitempty"`
+	Input  json.RawMessage `json:"input,omitempty"`
+	Output string          `json:"output,omitempty"`
+	Error  bool            `json:"error,omitempty"`
+	// Cost and Duration (in milliseconds) describe an ended turn.
+	Cost     float64 `json:"cost,omitempty"`
+	Duration int64   `json:"duration,omitempty"`
+	// Unheard marks closing text that reached no one: the agent sent no
+	// message during the turn. The server sets it.
+	Unheard bool `json:"unheard,omitempty"`
+}
+
 type Status struct {
 	State  string `json:"state"`
 	Detail string `json:"detail,omitempty"`
@@ -133,6 +165,10 @@ func (c *Client) Inbox(ctx context.Context, wait time.Duration) ([]Message, erro
 
 func (c *Client) SetStatus(ctx context.Context, s Status) error {
 	return c.do(ctx, http.MethodPut, "/api/node/status", s, nil)
+}
+
+func (c *Client) PostActivity(ctx context.Context, a Activity) error {
+	return c.do(ctx, http.MethodPost, "/api/node/activity", a, nil)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {

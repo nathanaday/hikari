@@ -31,6 +31,7 @@ type Event struct {
 	Message    *api.Message      `json:"message,omitempty"`
 	Node       string            `json:"node,omitempty"`
 	Status     *api.Status       `json:"status,omitempty"`
+	Activity   *api.Activity     `json:"activity,omitempty"`
 	System     *api.SystemView   `json:"system,omitempty"`
 	Vocabulary *vocab.Vocabulary `json:"vocabulary,omitempty"`
 	Snapshot   *Snapshot         `json:"snapshot,omitempty"`
@@ -50,6 +51,8 @@ type Snapshot struct {
 	Messages     []api.Message      `json:"messages"`
 	Systems      []api.SystemView   `json:"systems"`
 	Vocabularies []vocab.Vocabulary `json:"vocabularies"`
+	// Activity holds the recent steps of each agent.
+	Activity map[string][]api.Activity `json:"activity"`
 }
 
 type delivery struct {
@@ -75,20 +78,30 @@ type Server struct {
 	signal map[string]chan struct{}
 	status map[string]api.Status
 	subs   map[chan Event]struct{}
+	// activity keeps the recent steps of each agent; turnStart holds the
+	// message ID when each agent's current turn began.
+	activity  map[string][]api.Activity
+	turnStart map[string]int64
 }
+
+// maxActivity is the most entries kept per agent. Older turns are dropped
+// whole.
+const maxActivity = 400
 
 // New returns a server for topo and its systems. Each message is also
 // written to journal as one line of JSON when journal is not nil.
 func New(topo *topology.Topology, journal io.Writer, sys *systems.Manager) *Server {
 	s := &Server{
-		topo:    topo,
-		journal: journal,
-		sys:     sys,
-		tokens:  map[string]string{},
-		inbox:   map[string][]delivery{},
-		signal:  map[string]chan struct{}{},
-		status:  map[string]api.Status{},
-		subs:    map[chan Event]struct{}{},
+		topo:      topo,
+		journal:   journal,
+		sys:       sys,
+		tokens:    map[string]string{},
+		inbox:     map[string][]delivery{},
+		signal:    map[string]chan struct{}{},
+		status:    map[string]api.Status{},
+		subs:      map[chan Event]struct{}{},
+		activity:  map[string][]api.Activity{},
+		turnStart: map[string]int64{},
 	}
 	for _, n := range topo.AgentNames() {
 		s.signal[n] = make(chan struct{})
@@ -295,6 +308,50 @@ func (s *Server) SetStatus(node string, st api.Status) {
 	s.publish(Event{Type: "status", Node: node, Status: &st})
 }
 
+// AddActivity records a step of node's turn. An entry with the ID of a kept
+// entry replaces it. A closing text is marked unheard when the agent sent
+// no message during the turn.
+func (s *Server) AddActivity(node string, a api.Activity) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a.Time.IsZero() {
+		a.Time = time.Now().UTC()
+	}
+	switch a.Kind {
+	case api.ActivityTurn:
+		if !a.Done {
+			s.turnStart[node] = s.nextID
+		}
+	case api.ActivityDone:
+		a.Unheard = a.Text != "" && !s.sentSince(node, s.turnStart[node])
+	}
+	list := s.activity[node]
+	if i := slices.IndexFunc(list, func(x api.Activity) bool { return x.ID == a.ID }); i >= 0 {
+		list[i] = a
+	} else {
+		list = append(list, a)
+	}
+	for len(list) > maxActivity {
+		turn := list[0].Turn
+		n := 0
+		for n < len(list) && list[n].Turn == turn {
+			n++
+		}
+		list = slices.Clone(list[n:])
+	}
+	s.activity[node] = list
+	s.publish(Event{Type: "activity", Node: node, Activity: &a})
+}
+
+func (s *Server) sentSince(node string, id int64) bool {
+	for i := len(s.log) - 1; i >= 0 && s.log[i].ID > id; i-- {
+		if s.log[i].From == node {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) Self(node string) api.Self {
 	a := s.topo.Agents[node]
 	self := api.Self{
@@ -388,6 +445,10 @@ func (s *Server) snapshot() Snapshot {
 	}
 	snap.Systems = s.sys.Systems()
 	snap.Vocabularies = s.sys.Vocabularies()
+	snap.Activity = map[string][]api.Activity{}
+	for n, list := range s.activity {
+		snap.Activity[n] = slices.Clone(list)
+	}
 	return snap
 }
 

@@ -3,8 +3,10 @@ import { MessagesSquare, Zap } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
 import { NetworkMap } from '@/components/network-map'
 import { NodeAvatar } from '@/components/node-avatar'
+import { TurnCard } from '@/components/turn-card'
 import { orchestratorOf } from '@/lib/rules'
 import type { State } from '@/lib/store'
+import { groupTurns, timeline, turnInView, type Turn } from '@/lib/turns'
 import type { Message } from '@/lib/types'
 import { inView, viewKey, type View } from '@/lib/view'
 
@@ -19,6 +21,25 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
   const atBottom = useRef(true)
   const v = state.view
   const shown = useMemo(() => state.messages.filter((m) => inView(m, v, state.me)), [state.messages, v, state.me])
+  const turns = useMemo(() => {
+    const out: Turn[] = []
+    for (const a of state.agents) {
+      for (const t of groupTurns(a.name, state.activity[a.name] ?? [])) {
+        if (turnInView(t, v, a.hubs, state.me)) out.push(t)
+      }
+    }
+    return out
+  }, [state.activity, state.agents, v, state.me])
+  const items = useMemo(() => timeline(shown, turns), [shown, turns])
+  // An agent's text can mention anyone that shares a hub with it.
+  const contacts = useMemo(() => {
+    const out = new Map<string, Set<string>>()
+    for (const a of state.agents) {
+      const names = new Set(state.hubs.filter((h) => h.participants.some((p) => p.name === a.name)).flatMap((h) => h.participants.map((p) => p.name)))
+      out.set(a.name, names)
+    }
+    return out
+  }, [state.agents, state.hubs])
   const hubNames = useMemo(
     () => new Map(state.hubs.map((h) => [h.name, new Set(h.participants.map((p) => p.name))])),
     [state.hubs],
@@ -31,15 +52,16 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
     atBottom.current = true
   }, [key])
 
-  // Follow new messages while the reader is at the bottom, and always after
-  // the user sends one.
+  // Follow new messages and live steps while the reader is at the bottom,
+  // and always after the user sends a message.
   const count = shown.length
   const lastFrom = shown.at(-1)?.from
+  const activityCount = turns.reduce((n, t) => n + t.steps.length + (t.end ? 1 : 0), 0)
   useEffect(() => {
     if (ref.current && (atBottom.current || lastFrom === state.me)) {
       ref.current.scrollTo({ top: ref.current.scrollHeight })
     }
-  }, [count, lastFrom, state.me])
+  }, [count, lastFrom, activityCount, state.me])
 
   const onScroll = () => {
     const el = ref.current!
@@ -49,12 +71,18 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
   return (
     <div ref={ref} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto" data-testid="log">
       {v.kind === 'all' && <NetworkMap state={state} show={show} />}
-      {shown.length === 0 ? (
+      {items.length === 0 ? (
         <Empty view={v} />
       ) : (
         <div className="py-3">
-          {shown.map((m, i) => {
-            const prev = shown[i - 1]
+          {items.map((item, i) => {
+            if (item.kind === 'turn') {
+              const t = item.turn
+              return <TurnCard key={`${t.agent}:${t.id}`} turn={t} names={contacts.get(t.agent) ?? noNames} />
+            }
+            const m = item.message
+            const prevItem = items[i - 1]
+            const prev = prevItem?.kind === 'message' ? prevItem.message : undefined
             const compact =
               prev !== undefined &&
               prev.from === m.from &&

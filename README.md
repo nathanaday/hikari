@@ -192,6 +192,10 @@ Every container sees its hikari documents at the same paths:
 
 The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
 
+Each turn of an agent appears in the timeline as a card, after the message that woke it. While the agent works, the card shows its steps live: what it reads, edits, runs, and writes, each with its duration. Click a tool call to see its input and output. When the turn ends, the card folds into one line, such as `26s · 14 tool calls · 3 files changed · $0.18`, which opens again on click.
+
+The text an agent writes at the end of a turn reaches no one; its messages are the only way to reach you or another agent. The card shows that closing note, marked when the agent sent no message during the turn. A note that asks something is highlighted, because the agent may be waiting for your answer: reply to it by message.
+
 ### Work on the UI
 
 The UI is a Vite, React, and shadcn/ui app in `web/`. The `hikari` binary embeds the built UI. To change the UI with hot reload, start a network with `make up`, then run:

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -50,13 +52,14 @@ type dashboard struct {
 
 	mu        sync.Mutex
 	status    map[string]api.Status
+	doing     map[string]string // the current step of each working agent
 	cost      float64
 	connected chan struct{} // closed when no agent is starting
 }
 
 func newDashboard(con *console.Console, srv *server.Server, agents []string, url, logPath string) *dashboard {
 	d := &dashboard{con: con, url: url, logPath: logPath, agents: agents,
-		status: map[string]api.Status{}, connected: make(chan struct{})}
+		status: map[string]api.Status{}, doing: map[string]string{}, connected: make(chan struct{})}
 	events, _ := srv.Subscribe()
 	go d.follow(events)
 	return d
@@ -75,6 +78,8 @@ func (d *dashboard) follow(events <-chan server.Event) {
 			d.setStatus(e.Node, *e.Status)
 		case "message":
 			d.con.Println(d.messageLine(*e.Message))
+		case "activity":
+			d.setDoing(e.Node, *e.Activity)
 		}
 		d.con.Refresh()
 	}
@@ -103,6 +108,44 @@ func (d *dashboard) setStatus(node string, s api.Status) {
 	case s.State == api.StateExited && s.Detail != "":
 		d.con.Error(fmt.Sprintf("%s stopped: %s", node, s.Detail))
 	}
+}
+
+// setDoing keeps the step that the footer shows for an agent: its running
+// tool, or nothing between tools and after the turn.
+func (d *dashboard) setDoing(node string, a api.Activity) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	switch {
+	case a.Kind == api.ActivityTool && !a.Done:
+		d.doing[node] = toolSummary(a)
+	case a.Kind == api.ActivityThinking && !a.Done:
+		d.doing[node] = "thinking"
+	default:
+		delete(d.doing, node)
+	}
+}
+
+// toolSummary names a tool call in a few words.
+func toolSummary(a api.Activity) string {
+	var in struct {
+		FilePath string `json:"file_path"`
+		Command  string `json:"command"`
+		Pattern  string `json:"pattern"`
+		Skill    string `json:"skill"`
+	}
+	json.Unmarshal(a.Input, &in)
+	name := strings.TrimPrefix(a.Tool, "mcp__hikari__")
+	switch {
+	case in.FilePath != "":
+		return name + " " + filepath.Base(in.FilePath)
+	case in.Command != "":
+		return name + " " + in.Command
+	case in.Pattern != "":
+		return name + " " + in.Pattern
+	case in.Skill != "":
+		return name + " " + in.Skill
+	}
+	return name
 }
 
 // waitConnected waits until every agent has reported, and reports whether
@@ -135,7 +178,11 @@ func (d *dashboard) footer(frame int) []string {
 	c := d.con
 	var agents []string
 	for _, a := range d.agents {
-		agents = append(agents, d.glyph(d.status[a].State, frame)+" "+a)
+		label := a
+		if doing := d.doing[a]; doing != "" {
+			label += c.Dim(" · " + console.Truncate(doing, 32))
+		}
+		agents = append(agents, d.glyph(d.status[a].State, frame)+" "+label)
 	}
 	return []string{
 		"",

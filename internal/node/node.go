@@ -37,7 +37,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared}
+	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared, tap: newTap(ctx, c)}
 	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
 
 	if self.System != nil {
@@ -46,7 +46,7 @@ func Run(ctx context.Context, c *api.Client) error {
 			log.Printf("turn context: %v", err)
 		} else if tc.MapState == mapUnbuilt || tc.MapState == mapStale {
 			log.Printf("indexing: the system map is %s", tc.MapState)
-			d.turn(ctx, api.StateIndexing, indexingPrompt(self, tc))
+			d.turn(ctx, api.StateIndexing, "indexing the system: the map is "+tc.MapState, indexingPrompt(self, tc))
 		}
 	}
 	report(ctx, c, api.Status{State: api.StateIdle})
@@ -68,7 +68,7 @@ func Run(ctx context.Context, c *api.Client) error {
 		if err != nil {
 			log.Printf("turn context: %v", err)
 		}
-		d.turn(ctx, api.StateWorking, turnNotices(self, tc)+mcpserver.FormatMessages(msgs))
+		d.turn(ctx, api.StateWorking, trigger(msgs), turnNotices(self, tc)+mcpserver.FormatMessages(msgs))
 	}
 	return nil
 }
@@ -84,19 +84,22 @@ type driver struct {
 	self      api.Self
 	mcpConfig string
 	shared    *sharedArea
+	tap       *tap
 	session   string
 }
 
 // turn runs one Claude Code turn while the agent shows state. After an
 // owner's turn, it asks the server to commit what the turn left, even when
 // the turn failed.
-func (d *driver) turn(ctx context.Context, state, prompt string) {
+func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 	report(ctx, d.c, api.Status{State: state})
+	d.tap.begin(why)
 	// The shared area can change between turns, so the skills, agents, and
 	// policies are connected again before each one.
 	system := systemPrompt(d.self) + d.shared.sync()
-	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, system: system}
+	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, system: system, tap: d.tap}
 	res, err := t.run(ctx)
+	d.tap.end(res, res.closing, err)
 	if res.session != "" {
 		d.session = res.session
 	}
@@ -193,6 +196,7 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 			fmt.Fprintf(&b, "- In #%s you are a member. %s coordinates the hub. Do the tasks that mention you and post the results in the hub. A post from you starts a turn for %s and for each participant you mention.\n", h.Name, orchestrator, orchestrator)
 		}
 	}
+	b.WriteString("\nYour hubs and direct messages are the only way to reach anyone. The text you write at the end of a turn is not a message: nobody reads it. When you need a decision or an answer from someone, send it to them with the message tools, then end the turn; their reply starts your next turn.\n")
 	b.WriteString(sharedPrompt())
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
@@ -209,36 +213,22 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 
 type turn struct {
 	prompt, session, model, mcpConfig, system string
+	tap                                       *tap
 }
 
 type turnResult struct {
 	session  string
 	duration time.Duration
 	cost     float64
-}
-
-// streamEvent holds the fields of Claude Code's stream-json output that the
-// driver uses.
-type streamEvent struct {
-	Type      string  `json:"type"`
-	SessionID string  `json:"session_id"`
-	IsError   bool    `json:"is_error"`
-	Result    string  `json:"result"`
-	Cost      float64 `json:"total_cost_usd"`
-	Message   struct {
-		Content []struct {
-			Type  string          `json:"type"`
-			Text  string          `json:"text"`
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
-		} `json:"content"`
-	} `json:"message"`
+	// closing is the text that ended the turn. It reaches nobody unless
+	// the agent sent it as a message.
+	closing string
 }
 
 func (t turn) run(ctx context.Context) (turnResult, error) {
 	args := []string{
 		"-p",
-		"--output-format", "stream-json", "--verbose",
+		"--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--mcp-config", t.mcpConfig, "--strict-mcp-config",
 		"--append-system-prompt", t.system,
 		"--dangerously-skip-permissions",
@@ -274,6 +264,9 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 		if e.SessionID != "" {
 			res.session = e.SessionID
 		}
+		if t.tap != nil {
+			t.tap.observe(e)
+		}
 		switch e.Type {
 		case "assistant":
 			for _, c := range e.Message.Content {
@@ -295,7 +288,7 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 	case final != nil && final.IsError:
 		return res, fmt.Errorf("claude: %s", clip(final.Result, 500))
 	case final != nil:
-		res.cost = final.Cost
+		res.cost, res.closing = final.Cost, final.Result
 		return res, nil
 	case waitErr != nil:
 		return res, fmt.Errorf("claude: %v: %s", waitErr, clip(stderr.String(), 500))
