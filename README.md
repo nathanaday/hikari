@@ -41,44 +41,50 @@ You are a member of every hub, so you can post in any hub and send a direct mess
 make up
 ```
 
-This command builds the web UI, the `hikari` binary, and the `hikari-node` image. Then it starts the server and one container for each agent. Open the web UI URL that the command prints. The URL contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
+This command builds the web UI, the `hikari` binaries, and the `hikari-agent` image. Then it starts the server and the example's compose project, with one container for each agent. Open the web UI URL that the command prints. The URL contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
 
 To use a different network:
 
 ```sh
-make up TOPOLOGY=examples/team.yaml
+make up COMPOSE=examples/team/compose.yaml
 ```
 
 To try systems on a small demo repo:
 
 ```sh
 make demo-repo
-make up TOPOLOGY=examples/systems.yaml
+make up COMPOSE=examples/shop/compose.yaml
 ```
 
 ## Usage
 
-A topology file names the agents and the hubs. The name `user` always means you.
+The topology is a Docker compose file. Compose describes each agent's container, and the `x-hikari` keys, which compose ignores, describe the network: the hubs at the top, and each agent's role in its service. The name `user` always means you.
 
 ```yaml
-agents:
-  lead:
-    description: Product lead. Turns requests into tasks and reports the result.
-  writer:
-    description: Copywriter.
-  eng-lead:
-    description: Engineering lead.
-  dev:
-    description: Developer.
-    model: haiku
+name: team                     # required; it names the containers, networks, and volumes
 
-hubs:
-  product:
-    orchestrator: lead
-    members: [writer, eng-lead]
-  eng:
-    orchestrator: eng-lead
-    members: [dev]
+x-hikari:
+  hubs:
+    product: {orchestrator: lead, members: [writer, eng-lead]}
+    eng: {orchestrator: eng-lead, members: [dev]}
+
+x-agent: &agent                # a YAML anchor, so that each service repeats less
+  image: hikari-agent
+  environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
+
+services:
+  lead:
+    <<: *agent
+    x-hikari: {description: Product lead. Turns requests into tasks and reports the result.}
+  writer:
+    <<: *agent
+    x-hikari: {description: Copywriter.}
+  eng-lead:
+    <<: *agent
+    x-hikari: {description: Engineering lead.}
+  dev:
+    <<: *agent
+    x-hikari: {description: Developer., model: haiku}
 ```
 
 In this network, `eng-lead` is a member of `#product` and the orchestrator of `#eng`. It is the only path between the two hubs: `dev` cannot reach `lead` or `writer`. Each agent sees the `description` of the other participants in its hubs. The `instructions` field of an agent goes into the system prompt of that agent only.
@@ -91,6 +97,8 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 
 Other participants read the post at the start of their next turn. A direct message always starts a turn. These rules keep a room of agents from all answering at once.
 
+Compose reads the whole file, including `x-hikari`, so write `$$` for a literal `$` in instructions.
+
 Inside a container, every agent has the tools `post_to_hub`, `send_direct_message`, `list_hubs`, `check_inbox`, and `get_vocabulary`, and it sees its hikari documents under `/hikari`.
 
 ### Systems
@@ -98,31 +106,26 @@ Inside a container, every agent has the tools `post_to_hub`, `send_direct_messag
 Give an agent a system to make it the owner of a part of a repo:
 
 ```yaml
-repos:
-  shop:
-    path: ~/code/shop          # relative paths start at the topology file
-    branch: hikari/checkout-v2 # agents commit here; you merge it
+x-hikari:
+  repos:
+    shop:
+      path: ~/code/shop          # relative paths start at the compose file
+      branch: hikari/checkout-v2 # agents commit here; you merge it
+  hubs:
+    shop: {orchestrator: lead, members: [orders]}
 
-agents:
-  lead:
-    description: Product lead. Plans changes from the system maps.
+services:
   orders:
-    description: Owns order intake.
-    system:
-      repo: shop
-      scope: services/orders    # the only code orders can see or change
-      read: [proto]             # optional read-only paths outside every scope
-      test: python3 -m unittest discover -s tests
-      container_only: [.venv]   # optional; kept in a Docker volume, not in your repo
-    grants:
-      releases: [inventory]     # optional; read-only access to another system's releases
-    packages: [python3]         # Debian packages for the agent's image
-    setup: |                    # optional; runs as root when the image is built
-      pip install --break-system-packages tox
-    path: [/opt/tools/bin]      # optional; added to PATH
-
-hubs:
-  shop: {orchestrator: lead, members: [orders]}
+    build: {context: ., dockerfile: python.Dockerfile}
+    x-hikari:
+      description: Owns order intake.
+      system:
+        repo: shop
+        scope: services/orders    # the only code orders can see or change
+        read: [proto]             # optional read-only paths outside every scope
+        test: python3 -m unittest discover -s tests
+      grants:
+        releases: [inventory]     # optional; read-only access to another system's releases
 ```
 
 When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates the branch if needed and checks it out. Each owner's container sees only its scope at `/workspace/<scope>`, with no `.git`. The agent cannot commit by itself: hikari commits the changes inside its scope, with the agent as author and you as committer, when the agent calls `commit_changes` and at the end of every turn. You review the branch and merge it.
@@ -139,9 +142,22 @@ An orchestrator reads the public maps of the systems in the hubs it orchestrates
 
 The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test plan. It also shows each hub's vocabulary and the shared area.
 
+### Each agent's container
+
+Compose owns each agent's environment: its image or Dockerfile, its variables, env files, and secrets, its volumes, its ports, and anything else compose offers. hikari owns the boundaries. It writes an override file for each run that gives every agent its mounts, its token, its own network, and the hikari binary, and runs `docker compose` with both files.
+
+An agent's image must meet one contract: `claude` is on its `PATH`, and its user is not root. The `hikari-agent` image meets it, so a Dockerfile can start `FROM hikari-agent` and add a toolchain. Any other image works when it installs Claude Code and sets a user. `hikari up` checks each image before it starts any container.
+
+- **Dependencies.** A named volume inside the agent's scope keeps Linux builds out of your repo, for example `volumes: [modules:/workspace/web/node_modules]`. hikari makes the volume writable for the agent's user, and it stays between runs.
+- **Secrets.** Give each agent only its own variables and env files. An agent can read every variable that its container has.
+- **Sidecars.** A service with `x-hikari: {serves: orders}` runs beside orders, for example a database for its tests. It joins only orders' network, so only orders can reach it, by its service name.
+- **Extra mounts.** An agent can mount other host paths, such as a dataset, but not a path in a topology repo, the store, or the Docker socket.
+
+hikari sets an agent's `entrypoint`, `command`, `working_dir`, and networks, and it refuses a file that sets them or that gives a service host-level access, such as `privileged` or `network_mode`. Every service needs `x-hikari`, so no container runs outside the rules.
+
 ### The store and releases
 
-The store is one directory, `store/` next to the topology file unless the topology sets `store:`. It holds every hikari document that is not code, so you can see your whole ecosystem in one place:
+The store is one directory, `store/` next to the compose file unless `x-hikari` sets `store:`. It holds every hikari document that is not code, so you can see your whole ecosystem in one place:
 
 ```
 store/
@@ -193,7 +209,8 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - The map is a public surface. Paths, commands, and test plans stay in the private documents, which only the owner and you read.
 - The owner is the only author of its documents. The server applies the owner's map changes and checks them, so the map file never holds an invalid map.
 - Containers cannot reach each other directly. Each container has its own Docker network. The only path between agents goes through the server.
-- One binary does all jobs. `hikari up` runs on the host. `hikari node` and `hikari mcp` run inside the containers.
+- Compose owns the environment; hikari owns the boundaries. You describe each container in compose, and hikari computes every mount, network, and token that keeps agents apart.
+- One binary does all jobs. `hikari up` runs on the host. hikari mounts its Linux build into each container, where it runs as `hikari node` and `hikari mcp`.
 
 ## Layout
 
@@ -206,12 +223,13 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/gitrepo`: branch preparation and scoped commits
 - `internal/node`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent
-- `internal/launcher`: starts and removes containers
-- `internal/topology`: reads and checks topology files
+- `internal/launcher`: writes the override file and runs the compose project
+- `internal/topology`: reads and checks compose files
 - `web/`: the browser UI
-- `examples/`: `studio.yaml` (one hub), `team.yaml` (two hubs in a tree), and `systems.yaml` (two systems in the demo repo)
+- `examples/`: `studio` (one hub), `team` (two hubs in a tree), and `shop` (two systems in the demo repo, with a sidecar)
 
 External:
 
+- Docker Compose: https://docs.docker.com/compose/
 - MCP Go SDK: https://github.com/modelcontextprotocol/go-sdk
 - Claude Code headless mode: https://docs.claude.com/en/docs/claude-code/headless

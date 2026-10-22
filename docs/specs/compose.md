@@ -1,6 +1,11 @@
 # Spec: the topology is a compose file
 
-Status: draft, for approval.
+Status: built. Changes made during the build:
+
+- hikari pulls an agent's image with `docker pull` only when the image is not on the machine. `docker compose pull --policy missing` tried to pull local images, such as `hikari-agent`, from a registry.
+- Sidecars may not set the host-level keys of C7 either (`privileged`, `cap_add`, `devices`, `pid`, `ipc`, `userns_mode`, `volumes_from`), not only the network keys. A privileged sidecar could reach the host, and so the repos.
+- Every compose command of a run gets the token variables, not only `up`, because `ps`, `logs`, `events`, and `down` also read the override file.
+- The shop example has a sidecar, `orders-mock`, so that the demo shows one.
 
 ## Summary
 
@@ -8,9 +13,9 @@ The topology becomes a Docker compose file. Compose describes each agent's envir
 
 This replaces the topology fields that copied compose: `packages`, `setup`, `path`, `container_only`, the derived images, and the fixed list of passed variables.
 
-## Decisions to approve
+## Decisions
 
-The brainstorm settled one file, `x-` keys, and an image contract instead of a base image. These points remained. Please approve or change each one.
+The brainstorm settled one file, `x-` keys, and an image contract instead of a base image. You approved these points with the spec.
 
 1. **hikari reads compose's resolved YAML.** `hikari up` runs `docker compose -f <file> config` and reads its output, so that hikari sees the file exactly as compose will run it: anchors, `extends`, interpolation, and `env_file` resolved. A test showed that the JSON output drops `x-` keys on services, so hikari reads the YAML output.
 2. **A top-level `name:` is required.** The compose project name names the containers, the networks, and the volumes. A stable name keeps volumes such as `node_modules` between runs, and stops two projects in one directory from sharing them.
@@ -111,7 +116,7 @@ The image contract:
 
 ## 3. Sidecars
 
-- **C14.** A sidecar joins only the network of the agent it serves. hikari sets its `networks`, so the sidecar sets none of the keys in C7 that concern networks.
+- **C14.** A sidecar joins only the network of the agent it serves. hikari sets its `networks`, so the sidecar sets none of the keys in C7 except `entrypoint`, `command`, and `working_dir`.
 - **C15.** C8 applies to sidecars. A sidecar gets no hikari mounts and no token.
 
 ## 4. What hikari adds
@@ -135,7 +140,7 @@ The override file goes to `.hikari/<run id>/compose.override.yaml`, next to the 
 1. Run `docker compose config`, then read and check the file (C1 to C15, except C11 to C13).
 2. Refuse to start when containers of the project are running (decision 13).
 3. Open the listener, then prepare the repos and the store, as today.
-4. Run `docker compose build`, then check the image contract (C11 and C12).
+4. Run `docker compose build`, pull each agent image that is not on the machine, then check the image contract (C11 and C12).
 5. Write the override file, and run `docker compose -p <name> -f <file> -f <override> up`.
 6. Show each line of container output in hikari's log with the service name. When an agent's container stops, the UI shows it as exited.
 7. On Ctrl-C: `docker compose down --remove-orphans`, which keeps named volumes. Then the final commits and the summary, as today.

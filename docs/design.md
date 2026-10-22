@@ -197,9 +197,11 @@ That is the same reach that its MCP tools give it.
 
 ## Containers cannot reach each other
 
-Each container has its own bridge network. Containers can reach the internet,
+Each agent has its own bridge network. Containers can reach the internet,
 because Claude Code needs the Anthropic API, and the server on the host. They
-cannot reach each other.
+cannot reach each other. A sidecar joins only the network of the agent it
+serves. hikari gives each agent its networks with compose's `!override` tag,
+so the list replaces the user's list instead of merging with it.
 
 ## The UI needs its own secret
 
@@ -243,8 +245,9 @@ on the bridge address, so that containers can reach it.
 The UI is a Vite and React app in `web/`. The `hikari` binary embeds its build
 output, so a run needs no Node.js and no second process. The `web/dist/.keep`
 file lets the Go code compile before the first UI build; the server then
-serves a page that asks for `make ui`. The agent image gets only that empty
-directory, because containers never serve the UI.
+serves a page that asks for `make ui`. The Linux builds that hikari mounts
+into containers embed the UI too; they never serve it, and one build is
+simpler than a second variant without it.
 
 The UI signs in by posting the token from the printed URL to the server, which
 answers with a cookie. A sign-in through an API call, not a page redirect,
@@ -253,15 +256,35 @@ works the same behind the Vite dev server, which owns the page in development.
 The composer shows who a draft will wake. To do this, `web/src/lib/rules.ts`
 repeats the wake rules of the server. The tests of both use the same cases.
 
-## Images for each agent
+## Compose owns the environment; hikari owns the boundaries
 
-An owner must run its tests, so its container needs the system's toolchain.
-An agent can list Debian packages, a setup script, and PATH entries. hikari
-builds an image from the base image for each such agent, tagged by a hash of
-the base image and those fields, so it builds again only when they change.
-Project dependencies are the agent's job at run time. Paths listed as
-`container_only` get a Docker volume, so that Linux builds of dependencies
-stay out of your repo.
+An owner must run its tests, so its container needs the system's toolchain,
+and some systems need more: secrets, a database, a GPU. The topology once grew
+its own fields for this, such as Debian packages and a setup script, and each
+new need would have copied another part of Docker compose. So the topology is
+now a compose file, and every compose feature works.
+
+hikari keeps the parts that must not be written by hand: the mounts of each
+scope and of the store, the networks, the tokens, the entrypoint, and the
+hikari binary. It writes them into an override file for each run, which
+compose merges with the user's file. Before it runs anything, hikari reads the
+file as compose resolves it (`docker compose config`) and refuses a file that
+would cross a boundary: a bind mount of a repo or the store, the Docker
+socket, host networking, privileges, or a mount over `/hikari` or over
+another agent's code. So the guarantees come from checks, with one test for
+each rule, instead of from hikari building every container itself.
+
+hikari reads compose's YAML output, because the JSON output drops `x-` keys
+on services. It requires a project name, because the name keeps named volumes
+between runs. It mounts its own Linux binary into each container instead of
+asking images to include it, so an image never holds an old hikari after an
+upgrade. The image needs only Claude Code and a user that is not root.
+
+A new named volume belongs to root, so the agent's user cannot write it. For
+each agent with named volumes, the override file adds a prepare service that
+runs once as root, gives the volumes to the agent's user, and exits; the agent
+starts after it. Each token reaches compose as a variable that the override
+file names, so no token is written to disk.
 
 ## Known limitations
 
@@ -281,5 +304,6 @@ stay out of your repo.
   schema grants yet: a system that owns a contract publishes it in its
   releases.
 - Files that an owner creates in its scope belong to the container user. On
-  Docker Desktop for macOS this is your user; on Linux, it is the user with
-  ID 1000.
+  Docker Desktop for macOS this is your user; on Linux, it is the user ID of
+  the agent's image, 1000 in `hikari-agent`.
+- A sidecar serves one agent. Agents cannot share a sidecar yet.

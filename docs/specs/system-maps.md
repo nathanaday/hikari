@@ -1,6 +1,6 @@
 # Spec: systems, system maps, and hub vocabularies
 
-Status: built. The shared store spec (`docs/specs/shared-store.md`) later moved the map to `store/systems/<system>/map.yaml`, the vocabularies to `store/shared/vocabulary/<hub>.yaml`, and the container paths of the documents under `/hikari`; where this spec names older paths, that spec decides. Section 5 was redesigned after the first build: the map became a public surface with no paths, and the layout and the test plan moved into private documents. Changes made during the build, with their reasons in `docs/design.md`:
+Status: built. The shared store spec (`docs/specs/shared-store.md`) later moved the map to `store/systems/<system>/map.yaml`, the vocabularies to `store/shared/vocabulary/<hub>.yaml`, and the container paths of the documents under `/hikari`; where this spec names older paths, that spec decides. The compose spec (`docs/specs/compose.md`) later made the topology a compose file and replaced rules M4, T8, and I1 to I3. Section 5 was redesigned after the first build: the map became a public surface with no paths, and the layout and the test plan moved into private documents. Changes made during the build, with their reasons in `docs/design.md`:
 
 - Owners add features in batches with `upsert_features` (see section 8).
 - hikari commits what each owner left when hikari stops, in addition to rule G13, so that rule G1 does not block the next start.
@@ -108,6 +108,8 @@ The container of an owner sees only:
 - **M6.** An agent without a system gets no mounts.
 
 ## 4. Images
+
+The compose spec replaced this section: compose describes each agent's image and volumes.
 
 - **I1.** An agent with `packages`, `setup`, or `path` runs an image built `FROM hikari-node`. It installs the packages, then runs the setup script as root with `bash -euo pipefail`, then adds the `path` directories to the front of `PATH`. The image runs as the `agent` user.
 - **I2.** The image tag is `hikari-node-<hash>`. The hash covers the base image ID, the packages, the setup script, and the path entries. When the tag exists, the image is not built again.
