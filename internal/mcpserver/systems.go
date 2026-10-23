@@ -468,7 +468,14 @@ func interfaces(args []interfaceArg) []sysmap.Interface {
 	return out
 }
 
-func yamlResult(v any) (*mcp.CallToolResult, any, error) {
+// yamlResult renders a result as YAML. A value that YAML cannot render is
+// an error of the call, never a crash of the server.
+func yamlResult(v any) (res *mcp.CallToolResult, _ any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			res, err = nil, fmt.Errorf("hikari could not render the result: %v", r)
+		}
+	}()
 	data, err := yaml.Marshal(v)
 	if err != nil {
 		return nil, nil, err

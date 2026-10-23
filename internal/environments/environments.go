@@ -49,8 +49,8 @@ type Status struct {
 	Scenario string    `yaml:"scenario,omitempty" json:"scenario,omitempty"`
 	Reason   string    `yaml:"reason,omitempty" json:"reason,omitempty"`
 	Services []Service `yaml:"services,omitempty" json:"services,omitempty"`
-	Started  time.Time `yaml:"started,omitzero" json:"started,omitzero"`
-	Stops    time.Time `yaml:"stops,omitzero" json:"stops,omitzero"`
+	Started  time.Time `yaml:"started,omitempty" json:"started,omitzero"`
+	Stops    time.Time `yaml:"stops,omitempty" json:"stops,omitzero"`
 	// Logs is where the tester reads each service's log.
 	Logs string `yaml:"logs,omitempty" json:"logs,omitempty"`
 	// Connected says whether the tester's container joined the network.

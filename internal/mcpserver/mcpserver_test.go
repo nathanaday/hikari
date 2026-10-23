@@ -4,10 +4,12 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/environments"
 )
 
 func toolNames(t *testing.T, self api.Self) []string {
@@ -66,5 +68,25 @@ func TestToolsByRole(t *testing.T) {
 				t.Errorf("A4 tools:\n got %v\nwant %v", got, c.want)
 			}
 		})
+	}
+}
+
+// Every result of a tool renders as YAML.
+func TestResultsRender(t *testing.T) {
+	now := time.Now()
+	for _, v := range []any{
+		api.TestPlan{Environment: &environments.Status{State: environments.Running, Started: now, Stops: now, Services: []environments.Service{{Name: "a"}}}},
+		environments.Status{State: environments.None},
+		api.DocumentHit{Backlinks: []api.DocRef{{ID: "a"}}},
+		api.WikiView{Documents: []api.WikiDoc{{ID: "a", Created: now}}},
+	} {
+		if _, _, err := yamlResult(v); err != nil {
+			t.Errorf("%T: %v", v, err)
+		}
+	}
+	if _, _, err := yamlResult(struct {
+		X int `yaml:"x,bogus"`
+	}{}); err == nil {
+		t.Error("a value YAML cannot render is an error, not a panic")
 	}
 }
