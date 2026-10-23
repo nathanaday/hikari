@@ -52,6 +52,6 @@ feature are computed.
 > - As a future note to plant: docstrings on the unit test in a hikari format can be
 >   automatically parsed and converted to the markdown set.
 
-Notes: replaces `test.yaml`, `record_test_results`, and the health rules S8 to S12.
-Until then the feature wiki keeps those as they are, and the map carries the computed
-`tests` and `health` as a placeholder.
+Notes: built, as `docs/specs/test-health.md`, from `test-health.md` and its answers.
+Docstrings parsed into the test map stay planted, and so does hikari running the suites
+itself, with the validation agent of `phase-2.md`.

@@ -73,7 +73,7 @@ services:
       system:
         repo: shop
         scope: services/orders
-        test: python3 -m unittest discover -s tests
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         releases: [inventory]
 
@@ -86,7 +86,7 @@ volumes:
   orders-venv: {}
 ```
 
-The agent fields of a service's `x-hikari` are `description`, `instructions`, `model`, `system` (`repo`, `scope`, `read`, `test`), and `grants`. The top-level `x-hikari` holds `store`, `repos`, and `hubs`. Unknown fields are errors.
+The agent fields of a service's `x-hikari` are `description`, `instructions`, `model`, `system` (`repo`, `scope`, `read`, `test`), and `grants`. `system.test` is the command of the suite `all` in a new test map; it must write a JUnit XML report to `/hikari/private/reports/all.xml` (`docs/specs/test-health.md`, rule O9). The top-level `x-hikari` holds `store`, `repos`, and `hubs`. Unknown fields are errors.
 
 - **C1.** The file has a top-level `name`.
 - **C2.** Each service has `x-hikari`. It holds agent fields or `serves`, not both.

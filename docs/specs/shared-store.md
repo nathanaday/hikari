@@ -187,7 +187,7 @@ An owner calls `publish_release(version, notes)`.
 - **P7.** New owner tool: `publish_release(version, notes)`.
 - **P8.** The owner prompt and the `hikari-system` skill name the private documents at `/hikari/private/`, and describe the release flow: build the deliverable in `staging/`, run the `release-docs` skill, write `release.yaml`, then call `publish_release`.
 - **P9.** The orchestrator prompt says where the releases of its systems are, and that it must check a new release: that its docs explain how to use what it provides, and that its interfaces match what was agreed.
-- **P10.** The prompt of an agent with release grants lists each granted system and the path of its releases. It tells the agent to choose a version, and to record that version in its test plan when its tests use it.
+- **P10.** The prompt of an agent with release grants lists each granted system and the path of its releases. It tells the agent to choose a version, and to record that version in its test plan when its tests use it. Since the tests and health spec, that is the description of the suite in `tests.yaml` that runs those tests.
 - **P11.** Every prompt says that `/hikari/public/readonly/shared/` holds the hub vocabularies, policies, skills, and agents.
 
 ## 8. UI

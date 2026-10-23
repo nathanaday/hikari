@@ -1,6 +1,16 @@
 # Spec: tests and health
 
-Status: draft, for approval.
+Status: built. Checked in live runs on 2026-10-22. In the shop, both owners built their test maps from nothing in one indexing turn each, at about $0.15 per owner; a bug put into `inventory/stock.py` on the host made its features `pending`, a recorded run made two of them `failing` with the test and its message, the next turn's notice named the failing test, and the owner fixed the bug; a rename rewrote `tests.yaml`, `layout.yaml`, and the results, and the feature stayed `passing`; no result, report, or test name reached a commit or a public map. In yami, the library owner mapped 534 tests to 11 features with 32 file keys, and every feature passed; the plugin's end-to-end suite, which needs a running Obsidian, showed as `failing` and `pending`, which is true in a container.
+
+Changes made during the build:
+
+1. **Steps 3, 4, and 5 are one commit.** The old record tool could not compile against the new private documents.
+2. **A stale key matches no recorded test (S30).** The build first counted a key that decides no test, because more specific keys override it, as stale. The shop's orders owner wrote such a key, and its feature showed `pending` with every test passing. A key that is only overridden is now harmless, and the owner view warns about it.
+3. **Health order (S24 to S28).** `untested` now means that no recorded test touches the feature and no stale key links it. Before, a feature linked only by an overridden key read as `passing` with no test.
+4. **A rename also renames the code hashes in `results.yaml` (E7).** Otherwise a rename made the feature's results `pending`, because each run records hashes by feature id.
+5. **The problems of the test map are in `private_errors` (P20).** They are private documents like `layout.yaml`, so they share its list, and `TurnContext` has no `test_map_errors`.
+6. **`set_system_info` writes the features from the wiki again.** After an old map is deleted (Q4), the wiki names interfaces that the new map lacks, so the projection fails until the owner gives them again. Found in the yami run.
+7. **The Build procedure ends with a check.** The skill says to call `get_my_system` and fix unmapped tests, stale keys, and test map warnings before `mark_map_current`. The orders owner had marked its map current without checking.
 
 Sources: `docs/brainstorm/test-health.md` (round 1) and `test-health-answers.md`. Every question was agreed. D2 changed one word: the health of a feature whose code is ahead of its test results is `pending`, and `stale` means only that a feature document is behind the code. A6 had no answer and is taken as agreed.
 
@@ -24,7 +34,7 @@ From round 1 and its answers:
 8. The server keeps the last result of each test. No history of runs.
 9. Results are private, in `/hikari/private/results.yaml`, written only by the server. Reports are scratch and are deleted after they are read.
 10. A test that no entry covers is unmapped: a warning. A result counts only while the test's file and the code of the features it touches are unchanged.
-11. Health is `untested`, `failing`, `pending`, or `passing`, in that order. One failing test makes every feature it touches fail.
+11. Health is `untested`, `failing`, `pending`, or `passing`, and a known failure always shows. One failing test makes every feature it touches fail. (The build changed the order of the checks; see change 3 of the status.)
 12. `stale` is a state of a feature document. `pending` is a health. They stay two fields.
 13. The public map shows per-feature counts and health. No test id, file, or hash.
 14. A third read-only agent, `hikari-test-survey`, proposes test map entries.
@@ -130,13 +140,13 @@ Because the links are applied when health is computed, not when the run is recor
 
 For each feature, the server takes its touching tests: every recorded test whose links include the feature.
 
-- **S24.** `untested`: no key of the test map links the feature.
-- **S25.** `failing`: a current result of a touching test failed.
-- **S26.** `pending`: a touching test has a result that is not current, or was skipped; or a key that links the feature matches no recorded test.
+- **S24.** `failing`: a current result of a touching test failed.
+- **S25.** `pending`: a touching test has a result that is not current, or was skipped; or a stale key links the feature (S30).
+- **S26.** `untested`: no recorded test touches the feature.
 - **S27.** `passing`: none of the above.
 - **S28.** The checks run in the order S24 to S27. The first match decides. S24 to S28 replace S8 to S12.
 - **S29.** The server computes health when it builds a view and when it writes the map, never from stored totals. It hashes each path once per computation.
-- **S30.** A key that matches no test of any recorded run is a stale key. A stale key is a warning in the owner view, and it makes the features it links `pending` (S26).
+- **S30.** A key that matches no test of any recorded run is a stale key. The owner view lists stale keys, and a stale key makes the features it links `pending` (S25). A key that matches tests but decides none, because a more specific key decides each of them, is not stale; the owner view warns that it does nothing.
 
 ## 5. The map
 
@@ -157,7 +167,7 @@ For each feature, the server takes its touching tests: every recorded test whose
 
 ## 7. Renames and removes
 
-- **E7.** A rename of a feature, in the same change, rewrites every `[[old]]` link in `tests.yaml` to `[[new]]`, and renames the key `old` under `gaps` in `tests.yaml` and under `features` in `layout.yaml` (change 5).
+- **E7.** A rename of a feature, in the same change, rewrites every `[[old]]` link in `tests.yaml` to `[[new]]`, and renames the key `old` under `gaps` in `tests.yaml`, under `features` in `layout.yaml` (change 5), and in the code hashes of every run in `results.yaml`. A remove drops its code hashes.
 - **E8.** A remove with a redirect rewrites `[[old]]` in `tests.yaml` to the redirect, and drops a link that would then appear twice in one list. A remove without a redirect drops `[[old]]` from every list, and removes a key whose list it empties, so that its tests show as unmapped and the owner maps them again. An empty list is only ever the owner's choice (X10). The key under `gaps` is dropped. `layout.yaml` is left as it is.
 - **E9.** The server rewrites the private files through the YAML node tree, so comments and the order of keys survive. When a private file is invalid YAML, the change still applies to the wiki, and the result says which file the owner must fix by hand.
 - **E10.** The notes of E4 after a rename go away. After a remove, the result names the `layout.yaml` entry that still uses the old id.
@@ -173,7 +183,7 @@ For each feature, the server takes its touching tests: every recorded test whose
 - **D10.** The turn notices add one notice when any feature is `failing` or `pending`. It names each failing feature with its failing test ids, at most 5 for each feature, and each pending feature. It lists at most 20 features and counts the others. It says: run the suites that touch them, record each run, and fix the code or the test map.
 - **D11.** The indexing turn does not change when it runs. Its Build prompt says: write the test map, run each suite, call `record_test_run` for each, then map the unmapped tests.
 - **P19.** The owner prompt names `/hikari/private/tests.yaml`, which you edit directly, and `record_test_run`. It drops `test.yaml` and `record_test_results`.
-- **P20.** `TurnContext` carries `failing_features` (each with its failing test ids), `pending_features`, and `test_map_errors`.
+- **P20.** `TurnContext` carries `failing_features` (each with its failing test ids) and `pending_features`. The problems of the test map are in `private_errors`.
 
 ## 10. The skill and the agent
 

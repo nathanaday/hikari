@@ -73,10 +73,8 @@ whether each feature exists and is tested. A file path or a test command in
 the map would invite them to reason about code that they cannot see. The
 owner still needs that knowledge, so it lives in two private documents in
 the same directory: `layout.yaml`, which says where each feature lives in the
-code, and `test.yaml`, a test plan. One test command for a whole system
-limits the tests an owner can describe; the plan names suites, such as unit
-and integration tests, and says for each feature what its tests cover and
-what they leave out.
+code, and `tests.yaml`, a test map that says which features each test
+touches.
 
 Only the owner can describe its system accurately, so it writes all three
 documents. It changes the map through tools, not by editing the file: the
@@ -85,7 +83,7 @@ atomic rename. A typo cannot corrupt the public surface, and the server knows
 at once when it changed. The private documents are the owner's working
 notes, so the owner edits them with its normal file tools, and the container
 mounts them read-write while the map stays read-only. The server reads them
-when it computes health, and it refuses to record test results or to mark
+when it computes health, and it refuses to record a test run or to mark
 the map current while they are invalid, so that they stay true. A skill in
 the container, not a file in your repo, teaches the owner their formats.
 
@@ -131,12 +129,49 @@ Staleness is per feature. The server knows each feature's code paths from the
 code map, so a change in the code names the features it touches, and a
 changed path under no feature is how a missing feature gets found.
 
-Health is computed, never set. Test results are reported on the honor
-system, but the server records a hash of the feature's code and test files,
-as the private documents list them, with each result. When the files change, the feature is `stale` until its
-tests run again. A map records the commit that it describes; when files in
-the scope change after that commit, the map is `stale`, and the driver lists
-the changed paths in the owner's next prompt.
+A map records the commit that it describes; when files in the scope change
+after that commit, the map is `stale`, and the driver lists the changed paths
+in the owner's next prompt.
+
+## Tests and health
+
+Health is computed, never set, and no agent types a number into it. Each
+suite's command makes the test runner write a JUnit XML report, the one
+format that almost every runner writes, and the owner only tells the server
+which suite ran. The server reads the report, keeps the last result of each
+test, and deletes the report. An agent that summed results by hand could
+miscount or credit a failure to the wrong feature; a runner's report cannot.
+The owner still runs the suites. The server could run them in the owner's
+container, which would take the agent out of the path entirely, but that
+needs long blocking calls and timeouts, and it belongs with the validation
+agent planted for later.
+
+A test is one test case, as the runner names it, and it links the features it
+touches with the same `[[id]]` links as the wiki. One test can touch many
+features, so the links go from tests to features, and a feature's tests are
+computed. The links live in one private file, not a document per test: a
+library with five hundred tests would need five hundred documents with
+nothing to say beyond their names. One key can cover a test, a describe
+block, a file, or a directory, and the most specific key decides, so that a
+large system needs a few dozen lines. The links are applied when health is
+computed, not when a run is recorded, so an owner can run the suites first
+and map the tests afterward.
+
+A result counts only while the test's file and the code of every feature it
+touches are unchanged since the run; the server stores their content hashes
+with each run. A feature is `failing` when a current result of a touching
+test failed, `pending` when a touching test has no current result, `untested`
+when no test touches it, and otherwise `passing`. A failure shows first, even
+while other tests wait for a run. `pending` is not `stale`: a stale document
+is behind the code and `mark_map_current` clears it; pending results are
+behind the code and only a run clears them.
+
+Test names, files, and failure messages stay private. The public map shows
+each feature's health and counts of its touching tests. Results change with
+every run, so the server keeps them out of commits with an ignore file; they
+stay on the host between runs, like the map in the store. A rename in the
+wiki follows into the test map, the code map, and the recorded hashes, so
+that a rename never makes results pending or leaves a private file invalid.
 
 ## Orchestrators see what they orchestrate
 

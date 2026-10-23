@@ -125,7 +125,7 @@ services:
         repo: shop
         scope: services/orders    # the only code orders can see or change
         read: [proto]             # optional read-only paths outside every scope
-        test: python3 -m unittest discover -s tests
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml  # optional; must write a JUnit report
       grants:
         deliverables: [python-library]  # optional; the releases this owner can publish
         releases: [inventory]     # optional; read-only access to another system's releases
@@ -138,13 +138,13 @@ Four documents describe each system, and the owner is the only author of all fou
 - `store/systems/<system>/features/<id>.md` is the feature wiki: one markdown document for each feature, with a property header that hikari checks and a body that says why the feature exists and what it promises. Documents link the features that work together with `[[id]]` links. A link has no direction and no kind, and there are no feature groups: the links are the structure. The owner changes the wiki only through `change_features`, which applies a set of writes as a whole or not at all.
 - `store/systems/<system>/map.yaml` is the public map: a summary, the interfaces the system provides and consumes, written through `set_system_info`, and a list of the features that hikari writes from the wiki, with the health and state of each. It holds no file paths and no commands.
 - `<scope>/.hikari/private/layout.yaml` is the code map: where each feature lives in the code.
-- `<scope>/.hikari/private/test.yaml` is the test plan: the suites that run tests, and for each feature what its tests cover, which files hold them, and what they leave out.
+- `<scope>/.hikari/private/tests.yaml` is the test map: the suites that run tests, the features that each test touches, and what no test checks. Each suite's command writes a JUnit XML report to `/hikari/private/reports/<suite>.xml`, and `record_test_run` hands it to hikari. hikari keeps the last result of each test in `results.yaml` beside it. Results and reports are never committed.
 
-The owner edits the private documents directly. The `hikari-system` skill in its container explains each document, what counts as a feature, and how to link; it comes with two read-only agents, `hikari-feature-survey` and `hikari-feature-review`, that read the code for an owner. Health is computed: `passing`, `failing`, `untested`, or `stale` when the feature's code or test files changed after its last test run. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, an owner reads its code and builds the documents. When the code changes, hikari tells the owner which features are stale and which changed paths belong to no feature, and the owner updates them and marks the map current. You can open the store in Obsidian: every link resolves.
+The owner edits the private documents directly. The `hikari-system` skill in its container explains each document, what counts as a feature, and how to link; it comes with three read-only agents, `hikari-feature-survey`, `hikari-feature-review`, and `hikari-test-survey`, that read the code for an owner. Health is computed from the tests that touch each feature: `failing` when one of them failed, `pending` when one has not run since its file or the code it tests changed, `untested` when no test touches the feature, and otherwise `passing`. The owner never reports a count: the test runner writes the results. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, an owner reads its code and builds the documents. When the code changes, hikari tells the owner which features are stale and which changed paths belong to no feature, and the owner updates them and marks the map current. You can open the store in Obsidian: every link resolves.
 
 An orchestrator reads the public maps of the systems in the hubs it orchestrates, and it keeps a vocabulary for each hub in `store/shared/vocabulary/<hub>.yaml`: the names that every agent uses for domain terms and interfaces. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
 
-The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test plan. It also shows each hub's vocabulary and the shared area, with each deliverable's rules and holders.
+The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test map. It also shows each hub's vocabulary and the shared area, with each deliverable's rules and holders.
 
 ### Each agent's container
 
@@ -222,7 +222,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
 - The server is the only authority on the topology. It checks every message against the hubs. A container cannot change who it is or who it can reach.
 - Only the server writes to git. Agents never get `.git`, so they cannot commit outside their scope, rewrite history, or switch branches.
-- The map is a public surface. Paths, commands, and test plans stay in the private documents, which only the owner and you read.
+- The map is a public surface. Paths, commands, and test names stay in the private documents, which only the owner and you read.
 - The owner is the only author of its documents. The server applies the owner's changes to the feature wiki and checks them, so the wiki and the map never hold an invalid document.
 - Containers cannot reach each other directly. Each container has its own Docker network. The only path between agents goes through the server.
 - Compose owns the environment; hikari owns the boundaries. You describe each container in compose, and hikari computes every mount, network, and token that keeps agents apart.
@@ -235,6 +235,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/systems`: repos, system maps, vocabularies, and who may read and change them
 - `internal/sysmap`: the map and the private documents, their rules, health, and feature state
 - `internal/featurewiki`: the feature documents, their links, and the change that writes them
+- `internal/testmap`: the test map, JUnit reports, recorded runs, and the health of each feature
 - `internal/vocab`: the hub vocabulary format
 - `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation and scoped commits
