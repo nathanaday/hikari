@@ -183,6 +183,7 @@ type TestPlan struct {
 	Problems []string      `yaml:"problems,omitempty" json:"problems,omitempty"`
 	Warnings []string      `yaml:"warnings,omitempty" json:"warnings,omitempty"`
 	Gaps     []GapView     `yaml:"gaps" json:"gaps"`
+	Bench    []BenchView   `yaml:"bench,omitempty" json:"bench"`
 	Stories  []StoryHealth `yaml:"stories" json:"stories"`
 	// Environment is the state of the hub's environment (rule UE2 of the
 	// environments spec).
@@ -194,6 +195,20 @@ type GapView struct {
 	ID       string `yaml:"id" json:"id"`
 	e2e.Gap  `yaml:",inline"`
 	Approved bool `yaml:"approved" json:"approved"`
+}
+
+// BenchView is a bench procedure of the plan with your last result (rule
+// BR4 of the bench spec).
+type BenchView struct {
+	ID            string `yaml:"id" json:"id"`
+	e2e.Procedure `yaml:",inline"`
+	Result        *BenchResultView `yaml:"result,omitempty" json:"result,omitempty"`
+}
+
+// BenchResultView is a result and whether it still counts.
+type BenchResultView struct {
+	e2e.BenchResult `yaml:",inline"`
+	Current         bool `yaml:"current" json:"current"`
 }
 
 // StoryHealth is the E2E health of one story or rule (rules EH1 to EH4).
@@ -209,6 +224,7 @@ type StoryHealth struct {
 	Support  string   `yaml:"support,omitempty" json:"support,omitempty"`
 	Suspects []string `yaml:"suspects,omitempty" json:"suspects,omitempty"`
 	Gaps     []string `yaml:"gaps,omitempty" json:"gaps,omitempty"`
+	Bench    []string `yaml:"bench,omitempty" json:"bench,omitempty"`
 }
 
 // DocRef names a document in a wiki.

@@ -69,6 +69,7 @@ describe('HubTests', () => {
           body: '## The test system\n\nThe libraries, installed from their releases.',
           lock: { version: 1, releases: [{ system: 'tally', deliverable: 'python-library', version: '0.1.0', digest: 'sha256:0123456789abcdef0123' }] },
           warnings: ['the key story "x" has no test and no gap'],
+          bench: [{ id: 'npu', title: 'Runs on the NPU', touches: ['[[x]]'], procedure: '1. Flash the image.', result: { passed: true, note: 'Fast.', at: '2026-10-23T08:00:00Z', current: false } }],
           gaps: [{ id: 'real-machine', what: 'Ballots from a real machine', why: 'no machine', touches: ['[[accept-ballot]]'], approved: false }],
           environment: {
             state: 'running',
@@ -83,7 +84,7 @@ describe('HubTests', () => {
         }}
       />,
     )
-    for (const want of ['vote-e2e proves', 'Raw ballots to a winner', 'failing', 'suspects: ballots', 'gap proposed: Ballots from a real machine', 'Approve', 'release tally/python-library', 'a voting machine', '1 operator', 'tally/python-library', '0.1.0', 'has no test and no gap', 'The test system', 'scenario smoke', 'Stop', 'hikari/p-cloud-http-service:1.0.0 · linux/amd64 · emulated']) {
+    for (const want of ['vote-e2e proves', 'Raw ballots to a winner', 'failing', 'suspects: ballots', 'gap proposed: Ballots from a real machine', 'Approve', 'release tally/python-library', 'a voting machine', '1 operator', 'tally/python-library', '0.1.0', 'has no test and no gap', 'The test system', 'scenario smoke', 'Stop', 'hikari/p-cloud-http-service:1.0.0 · linux/amd64 · emulated', 'Runs on the NPU', 'Flash the image', 'pending: the release set or the procedure changed', 'Note: Fast.', 'Passed', 'Failed']) {
       expect(html).toContain(want)
     }
   })

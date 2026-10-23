@@ -246,6 +246,7 @@ export type StoryHealth = {
   support?: Health
   suspects?: string[]
   gaps?: string[]
+  bench?: string[]
 }
 
 // TestPlan is the plan of a tested hub as hikari reads it (rule PL7 of the
@@ -264,8 +265,19 @@ export type TestPlan = {
   problems?: string[]
   warnings?: string[]
   gaps: Gap[]
+  bench?: BenchProcedure[]
   stories: StoryHealth[]
   environment?: EnvironmentStatus
+}
+
+// BenchProcedure is a check the user runs on hardware, with the last result
+// (rule BR4 of the bench spec).
+export type BenchProcedure = {
+  id: string
+  title: string
+  touches: string[]
+  procedure: string
+  result?: { passed: boolean; note?: string; at: string; current: boolean }
 }
 
 export type EnvironmentService = { name: string; state: string; health?: string; image: string; platform?: string; replicas: number; emulated?: boolean }

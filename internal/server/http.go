@@ -148,6 +148,21 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	mux.HandleFunc("PUT /api/ui/e2e/{hub}/bench/{id}", ui(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Passed bool   `json:"passed"`
+			Note   string `json:"note"`
+		}
+		if err := decode(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.sys.RecordBench(r.PathValue("hub"), r.PathValue("id"), req.Passed, req.Note); err != nil {
+			writeSystemError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("POST /api/ui/e2e/{hub}/environment/stop", ui(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.sys.StopHubEnvironment(r.Context(), r.PathValue("hub")); err != nil {
 			writeSystemError(w, err)

@@ -3,9 +3,9 @@ import { Star } from 'lucide-react'
 import { HealthBadge } from '@/components/health'
 import { Markdown } from '@/components/markdown'
 import { Button } from '@/components/ui/button'
-import type { EnvironmentStatus, Gap, StoryHealth, TestPlan } from '@/lib/types'
+import type { BenchProcedure, EnvironmentStatus, Gap, StoryHealth, TestPlan } from '@/lib/types'
 import type { View } from '@/lib/view'
-import { approveGap, stopEnvironment } from '@/lib/wikis'
+import { approveGap, recordBench, stopEnvironment } from '@/lib/wikis'
 
 const noNames: ReadonlySet<string> = new Set()
 
@@ -73,6 +73,16 @@ export function HubTests({ plan, show }: { plan: TestPlan; show: (v: View) => vo
             </ul>
           )}
         </Section>
+
+        {(plan.bench ?? []).length > 0 && (
+          <Section title="Bench checks">
+            <ul className="space-y-3">
+              {(plan.bench ?? []).map((b) => (
+                <BenchItem key={b.id} hub={plan.hub} bench={b} />
+              ))}
+            </ul>
+          </Section>
+        )}
 
         {plan.body && (
           <Section title="The plan">
@@ -195,6 +205,42 @@ function Environment({ hub, env }: { hub: string; env: EnvironmentStatus }) {
         {error && <p className="text-xs text-red-700">{error}</p>}
       </div>
     </Section>
+  )
+}
+
+// BenchItem shows a bench procedure, its last result, and records a new one
+// (rules BR1 and BR4 of the bench spec).
+function BenchItem({ hub, bench }: { hub: string; bench: BenchProcedure }) {
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const record = async (passed: boolean) => {
+    const err = await recordBench(hub, bench.id, passed, note)
+    setError(err)
+    if (!err) setNote('')
+  }
+  const r = bench.result
+  return (
+    <li className="space-y-2 rounded-md border px-3 py-2" data-testid="bench">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm font-medium">{bench.title}</div>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {r ? `${r.passed ? 'passed' : 'failed'} ${new Date(r.at).toLocaleDateString()}${r.current ? '' : ' · pending: the release set or the procedure changed'}` : 'not run'}
+        </span>
+      </div>
+      <Markdown text={bench.procedure} names={noNames} />
+      <div className="text-xs text-muted-foreground">touches {bench.touches.join(', ')}</div>
+      {r?.note && <div className="text-xs text-muted-foreground">Note: {r.note}</div>}
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="A note on what you saw" aria-label="Note" className="min-w-0 flex-1 rounded-md border px-2 py-1 text-sm" />
+        <Button size="sm" variant="outline" onClick={() => record(true)}>
+          Passed
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => record(false)}>
+          Failed
+        </Button>
+      </div>
+      {error && <p className="text-xs text-red-700">{error}</p>}
+    </li>
   )
 }
 

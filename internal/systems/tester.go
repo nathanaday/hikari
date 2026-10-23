@@ -3,11 +3,13 @@ package systems
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/e2e"
@@ -190,6 +192,20 @@ func (m *Manager) testPlan(hub string, health map[string]string) *api.TestPlan {
 	covered := map[string]bool{}
 	var key []string
 	out := &api.TestPlan{Hub: hub, Tester: tester, Plan: plan, Body: body, Lock: lock, Problems: problems, Stories: []api.StoryHealth{}, Gaps: []api.GapView{}}
+	bench, err := e2e.LoadBenchResults(m.benchPath(hub))
+	if err != nil {
+		problems = append(problems, err.Error())
+		out.Problems = problems
+	}
+	lh := lockHash(o)
+	for _, id := range slices.Sorted(maps.Keys(plan.Bench)) {
+		proc := plan.Bench[id]
+		bv := api.BenchView{ID: id, Procedure: proc}
+		if r, ok := bench[id]; ok {
+			bv.Result = &api.BenchResultView{BenchResult: r, Current: r.Current(proc, lh)}
+		}
+		out.Bench = append(out.Bench, bv)
+	}
 	for _, id := range stories {
 		d := docs[id]
 		fh := rep.Features[id]
@@ -199,7 +215,8 @@ func (m *Manager) testPlan(hub string, health map[string]string) *api.TestPlan {
 		if d.Key {
 			key = append(key, id)
 		}
-		sh := api.StoryHealth{ID: id, Kind: d.KindOf(), Name: d.Name, Key: d.Key, Health: fh.Health, Support: support(d, health), Gaps: plan.GapsTouching(id)}
+		fh.Health = joinBench(fh.Health, plan.BenchTouching(id), out.Bench)
+		sh := api.StoryHealth{ID: id, Kind: d.KindOf(), Name: d.Name, Key: d.Key, Health: fh.Health, Support: support(d, health), Gaps: plan.GapsTouching(id), Bench: plan.BenchTouching(id)}
 		sh.Passed, sh.Failed, sh.Pending = fh.Passed, fh.Failed, fh.Pending
 		if fh.Health == "failing" {
 			sh.Suspects = m.suspects(d)
@@ -232,6 +249,65 @@ func (m *Manager) testPlan(hub string, health map[string]string) *api.TestPlan {
 	env := m.hubEnvironment(context.Background(), hub)
 	out.Environment = &env
 	return out
+}
+
+// joinBench joins a story's E2E health with the results of the procedures
+// that touch it (rule BH1).
+func joinBench(health string, ids []string, bench []api.BenchView) string {
+	seen := map[string]bool{health: health != "untested"}
+	for _, b := range bench {
+		if !slices.Contains(ids, b.ID) || b.Result == nil {
+			continue
+		}
+		switch {
+		case !b.Result.Current:
+			seen["pending"] = true
+		case b.Result.Passed:
+			seen["passing"] = true
+		default:
+			seen["failing"] = true
+		}
+	}
+	for _, h := range []string{"failing", "pending", "passing"} {
+		if seen[h] {
+			return h
+		}
+	}
+	return "untested"
+}
+
+func (m *Manager) benchPath(hub string) string {
+	return filepath.Join(m.store.HubDir(hub), "bench.yaml")
+}
+
+// RecordBench records your result of a bench procedure of hub's plan
+// (rules BR1 and BR3).
+func (m *Manager) RecordBench(hub, id string, passed bool, note string) error {
+	tester := m.topo.Tester(hub)
+	if tester == "" {
+		return fmt.Errorf("%w: #%s has no tester", ErrNotFound, hub)
+	}
+	o := m.owners[tester]
+	plan, _, _, _ := m.testerDocs(o)
+	proc, ok := plan.Bench[id]
+	if !ok {
+		return fmt.Errorf("%w: the plan of #%s has no bench procedure %q", ErrNotFound, hub, id)
+	}
+	results, err := e2e.LoadBenchResults(m.benchPath(hub))
+	if err != nil {
+		return err
+	}
+	results[id] = e2e.BenchResult{Passed: passed, Note: strings.TrimSpace(note), At: m.now().UTC().Truncate(time.Second), Lock: lockHash(o), Procedure: proc.Digest()}
+	if err := results.Save(m.benchPath(hub)); err != nil {
+		return err
+	}
+	outcome := "fail"
+	if passed {
+		outcome = "pass"
+	}
+	m.commitStore("", fmt.Sprintf("user: record %s as %s in #%s", id, outcome, hub), path.Join("hubs", hub, "bench.yaml"))
+	m.changed(Change{Wiki: api.HubWikiRef(hub)})
+	return nil
 }
 
 // suspects returns the systems whose features a story links (rule EH3).

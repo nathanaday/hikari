@@ -134,3 +134,8 @@ export const approveGap = (hub: string, gap: string, approved: boolean) =>
 // stopEnvironment stops a hub's environment (rule UE1 of the environments
 // spec).
 export const stopEnvironment = (hub: string) => request(`/api/ui/e2e/${hub}/environment/stop`, 'POST')
+
+// recordBench records the user's result of a bench procedure (rule BR1 of
+// the bench spec).
+export const recordBench = (hub: string, id: string, passed: boolean, note: string) =>
+  request(`/api/ui/e2e/${hub}/bench/${encodeURIComponent(id)}`, 'PUT', { passed, note })

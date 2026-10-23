@@ -220,3 +220,35 @@ Orders, installed from its release.
 		t.Errorf("TT2: tests.yaml =\n%s", data)
 	}
 }
+
+func TestBenchResults(t *testing.T) {
+	f := newTesterFixture(t)
+	f.describeOrders(t)
+	f.story(t)
+	f.publishOrders(t, "1.0.0")
+	_, err := f.m.PinReleases("e2e", []e2e.LockedRelease{{System: "orders", Deliverable: "python-library", Version: "1.0.0"}})
+	must(t, err)
+	write(t, f.repo, "e2e/plan.md", "---\nbench:\n  real-stock:\n    title: Stock in a real warehouse\n    touches: [\"[[order-items]]\"]\n    procedure: Order two items from the warehouse and check the shelf.\n---\n")
+	if err := f.m.RecordBench("eng", "ghost", true, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("BR1: no such procedure: %v", err)
+	}
+	must(t, f.m.RecordBench("eng", "real-stock", true, "Two items held."))
+	if got := storyHealth(t, f, "order-items"); got.Health != "passing" || !slices.Equal(got.Bench, []string{"real-stock"}) {
+		t.Errorf("BH1: a passed bench check = %+v", got)
+	}
+	p, _ := f.m.GetTestPlan("e2e", "eng")
+	if len(p.Bench) != 1 || p.Bench[0].Result == nil || !p.Bench[0].Result.Current || p.Bench[0].Result.Note != "Two items held." {
+		t.Errorf("BR4: bench = %+v", p.Bench)
+	}
+	must(t, f.m.RecordBench("eng", "real-stock", false, "One item short."))
+	if got := storyHealth(t, f, "order-items").Health; got != "failing" {
+		t.Errorf("BH1: a failed bench check = %s", got)
+	}
+	// BR2: a new pin makes the result pending.
+	f.publishOrders(t, "1.1.0")
+	_, err = f.m.PinReleases("e2e", []e2e.LockedRelease{{System: "orders", Deliverable: "python-library", Version: "1.1.0"}})
+	must(t, err)
+	if got := storyHealth(t, f, "order-items").Health; got != "pending" {
+		t.Errorf("BR2: after a new pin = %s", got)
+	}
+}

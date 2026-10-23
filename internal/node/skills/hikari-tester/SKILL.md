@@ -49,6 +49,19 @@ How the parts fit together, in prose, and a diagram when one helps.
 - **Scenarios** run stories with set actor counts: a smoke run with one of each, a load run with many.
 - **Gaps** are what the test system cannot test, and why: hardware that is not there, a cloud service you cannot reach, timing that a loaded host does not show. Each gap touches the stories, rules, or features it leaves untested. A gap counts only when the user approves it in the UI; until then, the story is untested. Never call a hard test a gap to close it: say what it would take.
 
+- **Bench procedures** are checks that need hardware the test system lacks and the user has: a model on the device's accelerator, a relay on a real output, a real camera. Write one instead of a gap when the user can run it: what to set up, what to do, and what proves a pass, in steps a person follows without the code. The user records pass or fail in the UI; the result counts for the stories it touches until the lock or the procedure changes.
+
+  ```yaml
+  bench:
+    edge-watchdog:
+      title: The watchdog restarts a hung edge
+      touches: ["[[edge-retries-until-cloud-accepts]]"]
+      procedure: |
+        1. Install the pinned edge release on a real device, with the watchdog on.
+        2. Stop the edge process with SIGSTOP.
+        3. Pass when the device restarts the edge within a minute and its readings reach the cloud again.
+  ```
+
 hikari reads the plan and warns about a release you did not pin, a story or link that does not exist, and a key story with neither a test nor a gap. A plan that does not parse blocks your runs.
 
 ## The release set

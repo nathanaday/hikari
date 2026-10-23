@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +31,24 @@ type Plan struct {
 	Actors     map[string]Actor     `yaml:"actors,omitempty" json:"actors"`
 	Scenarios  map[string]Scenario  `yaml:"scenarios,omitempty" json:"scenarios"`
 	Gaps       map[string]Gap       `yaml:"gaps,omitempty" json:"gaps"`
+	Bench      map[string]Procedure `yaml:"bench,omitempty" json:"bench"`
+}
+
+// Procedure is a check that the user runs on real hardware, and records
+// (rule BE1 of the bench spec).
+type Procedure struct {
+	Title     string   `yaml:"title" json:"title"`
+	Touches   []string `yaml:"touches" json:"touches"`
+	Procedure string   `yaml:"procedure" json:"procedure"`
+}
+
+// Links returns the ids that a procedure touches.
+func (p Procedure) Links() []string { return Gap{Touches: p.Touches}.Links() }
+
+// Digest identifies the text of a procedure, for its results (rule BR2).
+func (p Procedure) Digest() string {
+	sum := sha256.Sum256([]byte(p.Title + "\x00" + p.Procedure + "\x00" + strings.Join(p.Touches, "\x00")))
+	return hex.EncodeToString(sum[:8])
 }
 
 // Component is one part of the test system.
@@ -151,6 +170,18 @@ func (p Plan) shape() error {
 			fail("PL4", "scenario %q: minutes must be at least 1", name)
 		}
 	}
+	for _, id := range sorted(p.Bench) {
+		b := p.Bench[id]
+		if !gapID.MatchString(id) {
+			fail("BE1", "bench id %q must match %s", id, gapID)
+		}
+		if strings.TrimSpace(b.Title) == "" || strings.TrimSpace(b.Procedure) == "" {
+			fail("BE1", "bench %q needs a title and a procedure", id)
+		}
+		if len(b.Touches) == 0 {
+			fail("BE1", "bench %q touches nothing; link the stories, rules, or principles it checks", id)
+		}
+	}
 	for _, id := range sorted(p.Gaps) {
 		g := p.Gaps[id]
 		if !gapID.MatchString(id) {
@@ -222,9 +253,29 @@ func (p Plan) Warnings(c Context) []string {
 			}
 		}
 	}
+	benched := map[string]bool{}
+	for _, id := range sorted(p.Bench) {
+		for _, t := range p.Bench[id].Links() {
+			benched[t] = true
+			if !c.Stories[t] {
+				out = append(out, fmt.Sprintf("bench %q touches %q, which is no story, rule, or principle of the hub", id, t))
+			}
+		}
+	}
 	for _, id := range c.Key {
-		if !c.Covered[id] && !gapped[id] {
+		if !c.Covered[id] && !gapped[id] && !benched[id] {
 			out = append(out, fmt.Sprintf("the key story %q has no test and no gap", id))
+		}
+	}
+	return out
+}
+
+// BenchTouching returns the ids of the procedures that touch id, sorted.
+func (p Plan) BenchTouching(id string) []string {
+	var out []string
+	for _, b := range sorted(p.Bench) {
+		if slices.Contains(p.Bench[b].Links(), id) {
+			out = append(out, b)
 		}
 	}
 	return out
@@ -343,4 +394,55 @@ func sorted[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// BenchResult is the last result of one procedure (rule BR1).
+type BenchResult struct {
+	Passed    bool      `yaml:"passed" json:"passed"`
+	Note      string    `yaml:"note,omitempty" json:"note,omitempty"`
+	At        time.Time `yaml:"at" json:"at"`
+	Lock      string    `yaml:"lock" json:"lock"`
+	Procedure string    `yaml:"procedure" json:"procedure"`
+}
+
+// Current reports whether the result still speaks for the procedure and
+// the release set (rule BR2).
+func (r BenchResult) Current(p Procedure, lock string) bool {
+	return r.Procedure == p.Digest() && r.Lock == lock
+}
+
+// BenchResults are the user's results of one hub's procedures.
+type BenchResults map[string]BenchResult
+
+// LoadBenchResults reads the results at path. A missing file has none.
+func LoadBenchResults(path string) (BenchResults, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return BenchResults{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var file struct {
+		Results map[string]BenchResult `yaml:"results"`
+	}
+	if err := yaml.Unmarshal(data, &file); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if file.Results == nil {
+		return BenchResults{}, nil
+	}
+	return BenchResults(file.Results), nil
+}
+
+// Save writes the results to path.
+func (r BenchResults) Save(path string) error {
+	var b bytes.Buffer
+	b.WriteString("# The user's last result of each bench procedure of the E2E plan.\n")
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(map[string]any{"results": map[string]BenchResult(r)}); err != nil {
+		return err
+	}
+	return os.WriteFile(path, b.Bytes(), 0o644)
 }

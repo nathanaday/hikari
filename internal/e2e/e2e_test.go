@@ -123,3 +123,43 @@ func TestLockAndApprovals(t *testing.T) {
 		t.Error("GA2: a changed gap needs a new approval")
 	}
 }
+
+func TestBench(t *testing.T) {
+	p, _, err := ParsePlan("---\nbench:\n  npu:\n    title: Runs on the NPU\n    touches: [\"[[winner]]\"]\n    procedure: Flash, drive a car through, check the log.\n---\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.BenchTouching("winner"); !slices.Equal(got, []string{"npu"}) {
+		t.Errorf("BenchTouching = %v", got)
+	}
+	ws := p.Warnings(Context{Stories: map[string]bool{"winner": true}, Key: []string{"winner"}, Covered: map[string]bool{}})
+	if len(ws) != 0 {
+		t.Errorf("BH2: a benched key story is covered: %v", ws)
+	}
+	for name, c := range map[string]struct{ text, want string }{
+		"BE1 id":      {"---\nbench: {Bad: {title: t, touches: [x], procedure: p}}\n---\n", "bench id"},
+		"BE1 title":   {"---\nbench: {b: {touches: [x], procedure: p}}\n---\n", "needs a title and a procedure"},
+		"BE1 touches": {"---\nbench: {b: {title: t, procedure: p}}\n---\n", "touches nothing"},
+	} {
+		if _, _, err := ParsePlan(c.text); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	proc := p.Bench["npu"]
+	r := BenchResult{Passed: true, Lock: "L1", Procedure: proc.Digest()}
+	if !r.Current(proc, "L1") || r.Current(proc, "L2") {
+		t.Error("BR2: a new lock makes a result pending")
+	}
+	proc.Procedure = "Changed."
+	if r.Current(proc, "L1") {
+		t.Error("BR2: a changed procedure makes a result pending")
+	}
+	path := filepath.Join(t.TempDir(), "bench.yaml")
+	must := BenchResults{"npu": r}
+	if err := must.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if back, err := LoadBenchResults(path); err != nil || !back["npu"].Passed {
+		t.Errorf("BR1 round trip: %v %v", back, err)
+	}
+}
