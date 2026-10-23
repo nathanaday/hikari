@@ -603,8 +603,22 @@ func (m *Manager) update(agent string, fn func(o *owner, mp *sysmap.Map) error) 
 	return nil
 }
 
+// SetSystemInfo changes the system section, then writes the features from
+// the wiki again: a wiki that names interfaces the map lost, as after an old
+// map is deleted (rule Q4), projects once the interfaces return.
 func (m *Manager) SetSystemInfo(agent string, p sysmap.SystemPatch) error {
-	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.ApplySystem(p); return nil })
+	o, err := m.owner(agent)
+	if err != nil {
+		return err
+	}
+	if err := o.store.Update(func(mp *sysmap.Map) error { mp.ApplySystem(p); return nil }); err != nil {
+		return err
+	}
+	defer m.changed(Change{System: agent})
+	if err := m.project(o); err != nil {
+		return fmt.Errorf("the system info is saved, but the map could not be written from the wiki: %w", err)
+	}
+	return nil
 }
 
 // RecordRun records the report of one run of a suite (rules J1 to J8): it

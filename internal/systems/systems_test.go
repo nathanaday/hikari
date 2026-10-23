@@ -795,6 +795,7 @@ func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
 
 func TestOldMapsAreDeleted(t *testing.T) {
 	f := newFixture(t)
+	f.describeOrders(t)
 	git(t, f.repo, "add", "--all")
 	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
 	mapPath := filepath.Join(f.dir, "store", "systems", "orders", "map.yaml")
@@ -812,6 +813,15 @@ func TestOldMapsAreDeleted(t *testing.T) {
 	}
 	if v, _ := m.OwnView("orders"); v.State != sysmap.Unbuilt || len(v.Features) != 0 {
 		t.Errorf("Q4: the system starts unbuilt: %+v", v)
+	}
+	// The wiki names interfaces that the deleted map held; once the owner
+	// gives them again, the features return.
+	must(t, m.SetSystemInfo("orders", sysmap.SystemPatch{
+		Provides: ptr([]sysmap.Interface{{Name: "POST /orders", Kind: "http"}}),
+		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
+	}))
+	if v, _ := m.OwnView("orders"); len(v.Features) != 1 || v.Features[0].ID != "create-order" || v.Error != "" {
+		t.Errorf("Q4: set_system_info writes the features again: %+v", v)
 	}
 }
 
