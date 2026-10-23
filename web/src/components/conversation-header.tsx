@@ -1,4 +1,4 @@
-import { BookOpen, Boxes, Hash, Package } from 'lucide-react'
+import { BookOpen, Boxes, Hash, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -24,6 +24,34 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         <p className="text-sm text-muted-foreground">
           Every message in the network, including private messages between agents.
         </p>
+      </>
+    )
+  } else if (v.kind === 'map') {
+    body = v.system ? (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Network className="size-4 text-muted-foreground" />
+          <button type="button" className="font-normal text-muted-foreground hover:text-foreground" onClick={() => show({ kind: 'map' })}>
+            Map
+          </button>
+          <span className="font-normal text-muted-foreground">/</span>
+          {v.system}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          The features of {v.system}, joined by the links of its feature wiki.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.system! })}>
+            Open the system page
+          </button>
+          .
+        </p>
+      </>
+    ) : (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Network className="size-4 text-muted-foreground" />
+          Map
+        </h1>
+        <p className="text-sm text-muted-foreground">Each system with its repository and the deliverables it holds. Click a system to open its features.</p>
       </>
     )
   } else if (v.kind === 'shared') {
@@ -136,7 +164,11 @@ export function ConversationHeader({ state, show, onMention }: Props) {
               {' '}
               · describes <code className="text-xs">{described.commit.slice(0, 7)}</code>
             </>
-          )}
+          )}{' '}
+          ·{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', system: sys.owner })}>
+            Feature map
+          </button>
         </p>
       </>
     )

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
+import { MapView } from '@/components/map-view'
 import { MessageList } from '@/components/message-list'
 import { SignIn } from '@/components/sign-in'
 import { ReleaseView } from '@/components/release-view'
@@ -28,7 +29,9 @@ export default function App() {
 
   const v = state.view
   let main: React.ReactNode
-  if (v.kind === 'system') {
+  if (v.kind === 'map') {
+    main = <MapView state={state} show={show} />
+  } else if (v.kind === 'system') {
     main = <SystemDetail state={state} system={state.systems.find((x) => x.owner === v.name)!} />
   } else if (v.kind === 'release') {
     main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} system={v.name} deliverable={v.deliverable} version={v.version} />
@@ -53,7 +56,7 @@ export default function App() {
         <SidebarInset className="h-svh min-w-0">
           <ConversationHeader state={state} show={show} onMention={mention} />
           {main}
-          <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />
+          {v.kind !== 'map' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

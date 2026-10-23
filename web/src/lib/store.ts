@@ -1,4 +1,4 @@
-import type { Activity, Agent, Hub, Message, ServerEvent, SystemView, Vocabulary } from './types'
+import type { Activity, Agent, DeliverableInfo, Hub, Message, RepoInfo, ServerEvent, SystemView, Vocabulary } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -14,6 +14,9 @@ export type State = {
   messages: Message[]
   systems: SystemView[]
   vocabularies: Vocabulary[]
+  // repos and deliverables let the map draw the topology.
+  repos: RepoInfo[]
+  deliverables: DeliverableInfo[]
   // activity holds the recent steps of each agent, oldest first.
   activity: Record<string, Activity[]>
   view: View
@@ -38,6 +41,8 @@ export function initialState(view: View): State {
     messages: [],
     systems: [],
     vocabularies: [],
+    repos: [],
+    deliverables: [],
     activity: {},
     view,
     unread: {},
@@ -50,6 +55,7 @@ function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems'>): View {
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
   if (v.kind === 'shared') return v
+  if (v.kind === 'map') return !v.system || s.systems.some((x) => x.owner === v.system) ? v : { kind: 'map' }
   return allView
 }
 
@@ -83,6 +89,8 @@ function applyEvent(s: State, e: ServerEvent): State {
         systems,
         messages: e.snapshot.messages ?? [],
         vocabularies: e.snapshot.vocabularies ?? [],
+        repos: e.snapshot.repos ?? [],
+        deliverables: e.snapshot.deliverables ?? [],
         activity: e.snapshot.activity ?? {},
         view: resolve(s.view, { agents, hubs, systems }),
         unread: {},

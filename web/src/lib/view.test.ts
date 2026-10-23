@@ -11,6 +11,8 @@ describe('view', () => {
       { kind: 'system', name: 'orders' },
       { kind: 'release', name: 'orders', deliverable: 'python-library', version: '1.2.0-rc.1' },
       { kind: 'shared' },
+      { kind: 'map' },
+      { kind: 'map', system: 'orders' },
     ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)
     }

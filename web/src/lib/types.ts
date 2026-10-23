@@ -78,6 +78,9 @@ export type Feature = {
   health: Health
   state?: FeatureState
   related?: string[]
+  // created is when the feature's document was created; older documents
+  // have none.
+  created?: string
 }
 
 export type Flag = { interface: string; problem: string }
@@ -174,6 +177,9 @@ export type SystemView = {
   repo: string
   scope: string
   branch: string
+  // dirty says whether the scope has uncommitted changes.
+  dirty?: boolean
+  grants?: { releases: string[]; deliverables: string[] }
   flags: Flag[] | null
   providers: Record<string, string[]> | null
 }
@@ -193,8 +199,16 @@ export type Snapshot = {
   messages: Message[]
   systems: SystemView[]
   vocabularies: Vocabulary[]
+  repos?: RepoInfo[]
+  deliverables?: DeliverableInfo[]
   activity?: Record<string, Activity[]>
 }
+
+// RepoInfo is one repository of the topology with the systems in it.
+export type RepoInfo = { name: string; branch: string; systems: string[] }
+
+// DeliverableInfo is a deliverable of the store with the agents that hold it.
+export type DeliverableInfo = { name: string; description?: string; holders: string[]; error?: string }
 
 export type ServerEvent =
   | { type: 'snapshot'; snapshot: Snapshot }
