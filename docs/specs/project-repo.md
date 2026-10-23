@@ -1,6 +1,13 @@
 # Spec: the project repository
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-22 of a project from `hikari init` with one owner, `app`, whose scope is in the project repository: its first turn made the commits `app: set the system info`, `app: change features: create count-votes, create refuse-blank-votes, create pick-winner`, and `app: mark the map current at 71cd386`; the lead's vocabulary change was `lead: define vote in the #main vocabulary`; the owner's test run changed the health in `map.yaml` with no commit; the stop commit `app: store changes left when hikari stopped` left the repository clean. A start from `main` checked out `hikari` and refused a compose file on it that named another branch; two later starts made no commit.
+
+Changes made during the build:
+
+1. **The runs directory is ignored as `/.hikari/`** (PR11, PR23). A `.hikari/` pattern also matches the `.hikari` directory of each scope, which hides the private documents. Found in the tests.
+2. **The start check skips test results and reports** (PR10). Their ignore file is on the hikari branch, so on your branch they looked like changes, and `hikari up` refused to start. This applies to every repo. Found in the live run.
+3. **The times of a feature document keep whole seconds.** The document stores seconds, and the wiki in memory kept nanoseconds, so each start wrote the map again and made a commit at stop. Found in the live run.
+4. **A failed store commit is noted only in the result of `change_features`** (PR21). The other tools have no notes; the server logs the failure.
 
 Sources: `docs/brainstorm/e2e.md` (round 1, section H) and `e2e-answers.md`. Every recommendation of section H was agreed. This is the first of four steps of the E2E work.
 
@@ -65,13 +72,13 @@ services:
 - **PR8.** `hikari up` prepares the project repository first, as it prepares every repo: it refuses uncommitted changes, creates the project branch from HEAD when the branch does not exist, and checks it out.
 - **PR9.** When the checkout changed HEAD, hikari reads the topology again from the checked-out compose file. When the second topology names another project branch, or no project, hikari stops with an error that says so.
 - **PR10.** When `hikari up` refuses a repo with uncommitted changes, the error names up to ten of the changed paths. This applies to every repo.
-- **PR11.** With `project` set, hikari refuses to start when git does not ignore `.env` or `.hikari/` in the project repository. The error names the lines to add to `.gitignore`.
+- **PR11.** With `project` set, hikari refuses to start when git does not ignore `.env` or `.hikari/` at the top of the project repository. The error names the lines to add to `.gitignore`.
 
 ## 3. What is versioned
 
 ```
 <project>/
-  .gitignore                     .env, .hikari/, .obsidian/, .DS_Store (written by hikari init)
+  .gitignore                     .env, /.hikari/, .obsidian/, .DS_Store (written by hikari init)
   compose.yaml
   store/
     .gitignore                   written by hikari
@@ -115,7 +122,7 @@ hikari init ~/code/p3-project
 ```
 
 - **PR23.** `hikari init <dir>` refuses a directory that exists and is not empty. It creates the directory and writes:
-  - `.gitignore` with `.env`, `.hikari/`, `.obsidian/`, and `.DS_Store`;
+  - `.gitignore` with `.env`, `/.hikari/`, `.obsidian/`, and `.DS_Store`;
   - `compose.yaml`: a starter topology named after the directory, with `x-hikari.project: {branch: hikari}`, one hub with a lead, and comments that show how to add a system and a repo;
   - `store/README.md` and `store/.gitignore`;
   - `.env.example` with the two credential variables, and a comment that says to copy it to `.env`.

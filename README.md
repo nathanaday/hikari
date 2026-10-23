@@ -157,7 +157,7 @@ An agent's image must meet one contract: `claude` is on its `PATH`, and its user
 - **Dependencies.** A named volume inside the agent's scope keeps Linux builds out of your repo, for example `volumes: [modules:/workspace/web/node_modules]`. hikari makes the volume writable for the agent's user, and it stays between runs.
 - **Secrets.** Give each agent only its own variables and env files. An agent can read every variable that its container has.
 - **Sidecars.** A service with `x-hikari: {serves: orders}` runs beside orders, for example a database for its tests. It joins only orders' network, so only orders can reach it, by its service name.
-- **Extra mounts.** An agent can mount other host paths, such as a dataset, but not a path in a topology repo, the store, or the Docker socket.
+- **Extra mounts.** An agent can mount other host paths, such as a dataset, but not a path in a topology repo, the store, or the Docker socket. In a project repository, only the store, `.git`, and the scopes of its systems are refused.
 
 hikari sets an agent's `entrypoint`, `command`, `working_dir`, and networks, and it refuses a file that sets them or that gives a service host-level access, such as `privileged` or `network_mode`. Every service needs `x-hikari`, so no container runs outside the rules.
 
@@ -201,6 +201,25 @@ Every container sees its hikari documents at the same paths:
 /hikari/public/readonly/shared/                  the shared area
 /hikari/public/readonly/systems/<s>/releases/    releases it can read
 ```
+
+### Project repositories
+
+A project can be a git repository of its own, which holds the topology, its Dockerfiles, and the store. Make one with:
+
+```sh
+hikari init ~/code/myproject
+```
+
+This writes a starter `compose.yaml`, a `.gitignore`, an `.env.example`, and the store, and makes the first commit. Copy `.env.example` to `.env`, set a credential, and run `hikari up ~/code/myproject/compose.yaml`.
+
+The key `x-hikari.project: {branch: hikari}` makes the compose file's directory a project repository. Then:
+
+- The store is versioned: the maps, the feature wikis, the vocabularies, and your shared area. Releases and staging areas are not, and `store/.gitignore` keeps them out.
+- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `lead: define order in the #shop vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the system's next commit. At stop, hikari commits what each agent's paths still hold.
+- hikari never commits your own files in `store/shared`: policies, skills, agents, and deliverables. Commit them yourself.
+- The project repository follows the rules of every repo: it must be clean when hikari starts, and agents commit only to the project branch, which you merge. When the checkout of the branch changes the compose file, hikari reads it again.
+- A system's code can live in the project repository too: `system: {repo: project, scope: app}`. The scope cannot overlap the store.
+- The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each scope.
 
 The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
 

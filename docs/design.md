@@ -197,10 +197,37 @@ whether to add the name or to ask the owner to rename.
 Maps, vocabularies, shared rules, and releases live in one directory, the
 store, so that you can open it and see your whole ecosystem. The private
 documents are the exception: they describe the code at a commit, so they
-stay in the repo and change in the same commits as the code. The store is
-a plain directory, not a git repo. Releases are versioned by their
-immutable version directories, and they can hold large binaries, which git
-handles badly.
+stay in the repo and change in the same commits as the code. Releases are
+versioned by their immutable version directories, and they can hold large
+binaries, which git handles badly, so git never holds them.
+
+## The project repository
+
+A store outside git loses its history: no one can say who changed a
+feature or when. So a project can be a git repository of its own, which
+holds the topology and the store, and hikari commits each change that an
+agent makes through a tool, with the agent as author. The knowledge is
+versioned; products and results are not.
+
+A project opts in with `x-hikari.project`. hikari could find the
+repository that holds the compose file by itself, but the examples sit
+inside the hikari repo, and hikari would then check out a branch of its
+own repo. An explicit key costs one line.
+
+The project repository follows the branch rules of every repo: clean at
+start, and agent commits only on a branch that you merge. The checkout of
+that branch can change the compose file, so hikari reads it again after
+the checkout, and the branch's file decides.
+
+A test run changes the health in a map, but it makes no commit. A commit
+for each run would bury the changes of the wiki in noise, so the health
+goes into the system's next commit. For the same reason, a time in a
+document keeps whole seconds: a finer time in memory would rewrite the map
+on each start.
+
+In a project repository, a compose service may bind mount a config
+directory next to the compose file. The guard covers only what hikari
+mounts itself: the store, `.git`, and the scopes of the systems in it.
 
 ## /hikari: the same paths in every container
 
