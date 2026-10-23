@@ -66,6 +66,19 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* The lens colors of the map, named for what they mean. The status dots
+     use the activity colors. */
+  --lens-active: oklch(0.715 0.143 215.221);
+  --lens-waiting: oklch(0.86 0.06 210);
+  --lens-pass: oklch(0.696 0.17 162.48);
+  --lens-pending: oklch(0.852 0.199 91.936);
+  --lens-fail: oklch(0.637 0.237 25.331);
+  --lens-dirty: oklch(0.667 0.295 322.15);
+  --lens-none: oklch(0.87 0 0);
+  --lens-outline: oklch(0.708 0 0);
+  --graph-edge: oklch(0.87 0 0);
+  --graph-label: oklch(0.45 0 0);
+  --graph-selected: oklch(0.205 0 0);
 }
 
 @layer base {
