@@ -206,6 +206,18 @@ func (c *Client) PostActivity(ctx context.Context, a Activity) error {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
+	return c.doWith(c.HTTP, ctx, method, path, in, out)
+}
+
+// doLong is do for a call that may take minutes, such as the start of an
+// environment.
+func (c *Client) doLong(ctx context.Context, method, path string, in, out any) error {
+	long := *c.HTTP
+	long.Timeout = 7 * time.Minute
+	return c.doWith(&long, ctx, method, path, in, out)
+}
+
+func (c *Client) doWith(hc *http.Client, ctx context.Context, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -222,7 +234,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}

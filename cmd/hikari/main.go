@@ -172,6 +172,7 @@ func up(ctx context.Context, args []string) error {
 		log.Printf("warning: %s", w)
 		con.Warn(w)
 	}
+	sys.SetRun(runID)
 	sys.Watch(ctx)
 	journal := &lazyFile{path: filepath.Join(runDir, "messages.jsonl")}
 	defer journal.Close()
@@ -226,6 +227,7 @@ func up(ctx context.Context, args []string) error {
 	log.Print("shutting down")
 	con.ClearFooter()
 	con.Println("")
+	sys.StopEnvironments(context.Background())
 	if !*noLaunch {
 		step = con.Step("Stopping the containers")
 		stopContainers()

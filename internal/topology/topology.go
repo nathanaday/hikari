@@ -38,6 +38,16 @@ type Agent struct {
 	// Tests names the hub whose stories this owner checks: it is the hub's
 	// tester (rules TS1 to TS3 of the tester spec).
 	Tests string `yaml:"tests"`
+	// E2E limits each service of a tester's environment (rule ST7 of the
+	// environments spec).
+	E2E *E2ELimits `yaml:"e2e"`
+}
+
+// E2ELimits are the most CPUs and memory that a service of an environment
+// may use.
+type E2ELimits struct {
+	CPUs   string `yaml:"cpus"`
+	Memory string `yaml:"memory"`
 }
 
 // Grants bind an agent to parts of the store: the releases it can read,
@@ -160,7 +170,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && a.Tests == ""
+	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && a.Tests == "" && a.E2E == nil
 }
 
 // Load reads a compose file through `docker compose config`, so that hikari
@@ -535,6 +545,9 @@ func (t *Topology) validateSystems() []error {
 				fail(name, "cannot hold the deliverable %q: only an agent with a system can hold deliverables", d)
 			}
 			seen[d] = true
+		}
+		if a.E2E != nil && a.Tests == "" {
+			fail(name, "sets e2e limits, which only a tester has")
 		}
 		if a.Tests != "" {
 			h, ok := t.Hubs[a.Tests]

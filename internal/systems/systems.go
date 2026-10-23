@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/environments"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/images"
 	"github.com/nathanaday/hikari/internal/store"
@@ -79,6 +80,8 @@ type Manager struct {
 	projectRepo *gitrepo.Repo
 	storeRel    string
 
+	envs envs
+
 	// wikis holds every wiki by ref. wikiMu lets one wiki change run at a
 	// time, because a change reads and rewrites the other wikis (decision
 	// 9 of the wikis spec).
@@ -107,6 +110,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		seen:     map[string]map[string]int{},
 		seenDocs: map[string]map[string]map[string]string{},
 		wikis:    map[string]*wikiOf{},
+		envs:     envs{by: map[string]*environments.Env{}},
 		onChange: func(Change) {},
 	}
 	for name, r := range topo.Repos {

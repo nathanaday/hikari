@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/e2e"
+	"github.com/nathanaday/hikari/internal/environments"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -183,6 +184,9 @@ type TestPlan struct {
 	Warnings []string      `yaml:"warnings,omitempty" json:"warnings,omitempty"`
 	Gaps     []GapView     `yaml:"gaps" json:"gaps"`
 	Stories  []StoryHealth `yaml:"stories" json:"stories"`
+	// Environment is the state of the hub's environment (rule UE2 of the
+	// environments spec).
+	Environment *environments.Status `yaml:"environment,omitempty" json:"environment,omitempty"`
 }
 
 // GapView is a gap of the plan with the user's approval.
@@ -386,6 +390,29 @@ func (c *Client) GetSystem(ctx context.Context, name string) (OrchestratorSystem
 func (c *Client) PinReleases(ctx context.Context, pins []e2e.LockedRelease) (e2e.Lock, error) {
 	var out e2e.Lock
 	err := c.do(ctx, http.MethodPost, "/api/node/e2e/lock", pins, &out)
+	return out, err
+}
+
+// StartEnvironment starts the environment of the tester's hub for a
+// scenario, and waits until it is healthy.
+func (c *Client) StartEnvironment(ctx context.Context, scenario string) (environments.Status, error) {
+	var out environments.Status
+	err := c.doLong(ctx, http.MethodPost, "/api/node/e2e/environment", map[string]string{"scenario": scenario}, &out)
+	return out, err
+}
+
+// StopEnvironment stops the environment of the tester's hub.
+func (c *Client) StopEnvironment(ctx context.Context) (environments.Status, error) {
+	var out environments.Status
+	err := c.doLong(ctx, http.MethodDelete, "/api/node/e2e/environment", nil, &out)
+	return out, err
+}
+
+// EnvironmentStatus returns the state of the environment of the tester's
+// hub.
+func (c *Client) EnvironmentStatus(ctx context.Context) (environments.Status, error) {
+	var out environments.Status
+	err := c.do(ctx, http.MethodGet, "/api/node/e2e/environment", nil, &out)
 	return out, err
 }
 

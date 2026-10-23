@@ -27,7 +27,11 @@ const (
 )
 
 // gitignore keeps the results and the reports out of commits (rule L13).
-const gitignore = testmap.ReportsDir + "/\n" + testmap.ResultsFile + "\n"
+const gitignore = testmap.ReportsDir + "/\n" + testmap.ResultsFile + "\n" + EnvironmentDir + "/\n"
+
+// EnvironmentDir holds the logs of a tester's environment (rule LG2 of the
+// environments spec).
+const EnvironmentDir = "environment"
 
 const privateVersion = 1
 

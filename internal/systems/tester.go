@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -227,7 +228,9 @@ func (m *Manager) testPlan(hub string, health map[string]string) *api.TestPlan {
 	for _, id := range stories {
 		storySet[id] = true
 	}
-	out.Warnings = plan.Warnings(e2e.Context{Lock: lock, Stories: storySet, Touchable: touchable, Key: key, Covered: covered})
+	out.Warnings = append(plan.Warnings(e2e.Context{Lock: lock, Stories: storySet, Touchable: touchable, Key: key, Covered: covered}), m.environmentFindings(o, plan, lock)...)
+	env := m.hubEnvironment(context.Background(), hub)
+	out.Environment = &env
 	return out
 }
 

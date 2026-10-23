@@ -35,6 +35,7 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	}
 	if self.Tests != "" {
 		addTesterTools(s, c)
+		addEnvironmentTools(s, c)
 	}
 	if self.Tests != "" || len(self.Testers) > 0 {
 		addTestPlanReader(s, c)

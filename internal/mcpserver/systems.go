@@ -288,6 +288,45 @@ func addTesterTools(s *mcp.Server, c *api.Client) {
 	})
 }
 
+type scenarioArgs struct {
+	Scenario string `json:"scenario" jsonschema:"the scenario of plan.md to run: its actors set the replicas of the services"`
+}
+
+// addEnvironmentTools adds the tools that run a tester's environment
+// (section 3 of the environments spec).
+func addEnvironmentTools(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "start_environment",
+		Description: "Start the services of environment.yaml for a scenario of plan.md, and wait until they are healthy, up to five minutes. hikari connects your container to the environment's network: reach each service by its name. Each service's log is written under /hikari/private/environment/logs/. Run your suites, then call stop_environment.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scenarioArgs) (*mcp.CallToolResult, any, error) {
+		st, err := c.StartEnvironment(ctx, a.Scenario)
+		if err != nil {
+			return nil, nil, err
+		}
+		return yamlResult(st)
+	})
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "stop_environment",
+		Description: "Stop your environment: hikari disconnects your container and removes the services, their networks, and their volumes, so that the next start is fresh.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		st, err := c.StopEnvironment(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return yamlResult(st)
+	})
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "environment_status",
+		Description: "Read the state of your environment: none, starting, running, failed with the reason, or stopped, with each service's state, image, platform, replicas, and whether it runs under emulation.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		st, err := c.EnvironmentStatus(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return yamlResult(st)
+	})
+}
+
 // addTestPlanReader adds get_test_plan, for a tester and an orchestrator of
 // a tested hub (rule PL7).
 func addTestPlanReader(s *mcp.Server, c *api.Client) {

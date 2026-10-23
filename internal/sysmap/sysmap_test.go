@@ -230,7 +230,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 	if errs := s.PrivateErrors(s.Map()); len(errs) != 0 {
 		t.Errorf("new skeletons must be valid: %v", errs)
 	}
-	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\n" {
+	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\nenvironment/\n" {
 		t.Errorf("L13: .gitignore = %q", ignore)
 	}
 	if info, err := os.Stat(filepath.Join(root, ".hikari/private/reports")); err != nil || !info.IsDir() {
@@ -264,7 +264,7 @@ func TestOpenDeletesTheOldTestPlan(t *testing.T) {
 	if len(s.Notes()) != 1 || !strings.Contains(s.Notes()[0], "test.yaml") {
 		t.Errorf("O8: notes %v", s.Notes())
 	}
-	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\n" {
+	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\nenvironment/\n" {
 		t.Errorf("L13: a different .gitignore is rewritten: %q", ignore)
 	}
 }
