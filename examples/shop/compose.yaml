@@ -40,7 +40,7 @@ services:
       system:
         repo: shop
         scope: services/orders
-        test: python3 -m unittest discover -s tests
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         deliverables: [python-library]
         releases: [inventory]
@@ -53,7 +53,7 @@ services:
       system:
         repo: shop
         scope: services/inventory
-        test: python3 -m unittest discover -s tests
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         deliverables: [python-library]
 
