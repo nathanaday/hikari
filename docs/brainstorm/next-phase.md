@@ -55,3 +55,13 @@ feature are computed.
 Notes: built, as `docs/specs/test-health.md`, from `test-health.md` and its answers.
 Docstrings parsed into the test map stay planted, and so does hikari running the suites
 itself, with the validation agent of `phase-2.md`.
+
+## Working with remote repositories
+
+> We need to do some more working with remote repos and it deserves its own design
+> cycle.
+
+Notes: planted from the system graphs round, question D5. The git lens of the topology
+map was to show each repository's commits ahead of and behind its remote. That needs
+answers first: whether hikari fetches, with whose credentials, which upstream the hikari
+branch compares with before it is pushed, and whether hikari pushes.
