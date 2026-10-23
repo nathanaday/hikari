@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"maps"
 	"os"
 	"path"
@@ -70,6 +71,10 @@ type Manager struct {
 	vocabs   map[string]*vocab.Store
 	warnings []string
 	now      func() time.Time
+	// projectRepo is the project repository, or nil. storeRel is the store's
+	// path in it.
+	projectRepo *gitrepo.Repo
+	storeRel    string
 
 	mu       sync.Mutex
 	seen     map[string]map[string]int
@@ -100,6 +105,13 @@ func New(topo *topology.Topology) (*Manager, error) {
 	}
 	if err := m.store.Prepare(topo.Owners()); err != nil {
 		return nil, fmt.Errorf("store %s: %w", m.store.Root, err)
+	}
+	if topo.Project != nil {
+		m.projectRepo, m.storeRel = m.repos[topology.ProjectRepo], topo.StoreInProject()
+		if _, err := m.store.WriteIgnore(); err != nil {
+			return nil, fmt.Errorf("store %s: %w", m.store.Root, err)
+		}
+		m.commitOwnFiles()
 	}
 	for _, name := range topo.Owners() {
 		s := topo.Agents[name].System
@@ -149,6 +161,67 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 	}
 	return m, nil
+}
+
+// storePath returns a store path, relative to the store, as a path of the
+// project repository.
+func (m *Manager) storePath(rel string) string { return path.Join(m.storeRel, rel) }
+
+// ownerPaths are the store paths that an owner changes through tools (rule
+// PR14).
+func ownerPaths(owner string) []string {
+	dir := path.Join("systems", owner)
+	return []string{path.Join(dir, "map.yaml"), path.Join(dir, store.Features)}
+}
+
+// vocabularyPath is the store path that a hub's orchestrator changes.
+func vocabularyPath(hub string) string { return path.Join("shared", store.Vocabulary, hub+".yaml") }
+
+// commitStore commits the store paths of agent in the project repository
+// (rules PR14 to PR17). It returns a note when the commit failed, and does
+// nothing outside a project repository.
+func (m *Manager) commitStore(agent, message string, paths ...string) string {
+	if m.projectRepo == nil {
+		return ""
+	}
+	specs := make([]string, len(paths))
+	for i, p := range paths {
+		specs[i] = m.storePath(p)
+	}
+	if _, err := m.projectRepo.CommitPaths(m.topo.Project.Branch, specs, agent, message); err != nil {
+		log.Printf("store commit for %s: %v", agent, err)
+		return "the store change could not be committed: " + err.Error()
+	}
+	return ""
+}
+
+// commitOwnFiles commits the store files that hikari writes itself (rule
+// PR18).
+func (m *Manager) commitOwnFiles() {
+	for _, f := range []string{"README.md", store.IgnoreFile} {
+		verb := "update"
+		if !m.projectRepo.Tracked(m.storePath(f)) {
+			verb = "add"
+		}
+		m.commitStore("hikari", fmt.Sprintf("hikari: %s %s", verb, m.storePath(f)), f)
+	}
+}
+
+// describeWrites says what a change of the wiki does, for its commit
+// message: at most four writes, then a count.
+func describeWrites(writes []featurewiki.Write) string {
+	var parts []string
+	for _, w := range writes {
+		part := w.Op + " " + w.ID
+		if w.Op == "rename" {
+			part += " to " + w.To
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) > 4 {
+		return strings.Join(parts[:4], ", ") + fmt.Sprintf(", and %d more", len(parts)-4)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Store returns the shared store.
@@ -290,6 +363,9 @@ func (m *Manager) ChangeFeatures(agent string, writes []featurewiki.Write) (api.
 	}
 	if err := m.project(o); err != nil {
 		out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
+	}
+	if note := m.commitStore(agent, agent+": change features: "+describeWrites(writes), ownerPaths(agent)...); note != "" {
+		out.Notes = append(out.Notes, note)
 	}
 	m.changed(Change{System: agent})
 	return out, nil
@@ -497,6 +573,9 @@ func (m *Manager) Repos() []api.RepoInfo {
 			}
 		}
 		slices.Sort(info.Systems)
+		if name == topology.ProjectRepo && len(info.Systems) == 0 {
+			continue
+		}
 		out = append(out, info)
 	}
 	return out
@@ -511,6 +590,18 @@ func (m *Manager) CommitAll() []error {
 		if _, err := o.repo.Commit(o.branch, o.scope, name, name+": changes left when hikari stopped"); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		}
+		if note := m.commitStore(name, name+": store changes left when hikari stopped", ownerPaths(name)...); note != "" {
+			errs = append(errs, fmt.Errorf("%s: %s", name, note))
+		}
+	}
+	for _, hub := range m.topo.HubNames() {
+		orch := m.topo.Hubs[hub].Orchestrator
+		if note := m.commitStore(orch, orch+": store changes left when hikari stopped", vocabularyPath(hub)); note != "" {
+			errs = append(errs, fmt.Errorf("%s: %s", orch, note))
+		}
+	}
+	if m.projectRepo != nil {
+		m.commitOwnFiles()
 	}
 	return errs
 }
@@ -527,6 +618,14 @@ func (m *Manager) Summary() []string {
 			continue
 		}
 		out = append(out, fmt.Sprintf("%s made %d commit(s) on %s in repo %q", name, n, o.branch, o.repoName))
+	}
+	if m.projectRepo != nil {
+		n, err := m.projectRepo.CountOn(m.start[topology.ProjectRepo], m.storeRel)
+		if err != nil {
+			out = append(out, fmt.Sprintf("the store: %v", err))
+		} else {
+			out = append(out, fmt.Sprintf("the store has %d commit(s) on %s in the project repository", n, m.topo.Project.Branch))
+		}
 	}
 	return out
 }
@@ -671,7 +770,9 @@ func (m *Manager) SetSystemInfo(agent string, p sysmap.SystemPatch) error {
 		return err
 	}
 	defer m.changed(Change{System: agent})
-	if err := m.project(o); err != nil {
+	err = m.project(o)
+	m.commitStore(agent, agent+": set the system info", ownerPaths(agent)...)
+	if err != nil {
 		return fmt.Errorf("the system info is saved, but the map could not be written from the wiki: %w", err)
 	}
 	return nil
@@ -780,7 +881,11 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	if err := o.wiki.SetDescribed(head, now); err != nil {
 		return "", err
 	}
-	return head, m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.MarkCurrent(head, now); return nil })
+	if err := m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.MarkCurrent(head, now); return nil }); err != nil {
+		return "", err
+	}
+	m.commitStore(agent, fmt.Sprintf("%s: mark the map current at %.7s", agent, head), ownerPaths(agent)...)
+	return head, nil
 }
 
 // Commit commits the changes in agent's scope. An empty message makes the
@@ -972,7 +1077,9 @@ func (m *Manager) orchestratedVocab(agent, hub string) (*vocab.Store, error) {
 	return m.vocabs[hub], nil
 }
 
-func (m *Manager) changeVocab(agent, hub string, fn func(*vocab.Store) error) error {
+// changeVocab applies fn to hub's vocabulary and commits it with a message
+// that says what changed: verb and name.
+func (m *Manager) changeVocab(agent, hub, verb, name string, fn func(*vocab.Store) error) error {
 	s, err := m.orchestratedVocab(agent, hub)
 	if err != nil {
 		return err
@@ -980,20 +1087,21 @@ func (m *Manager) changeVocab(agent, hub string, fn func(*vocab.Store) error) er
 	if err := fn(s); err != nil {
 		return err
 	}
+	m.commitStore(agent, fmt.Sprintf("%s: %s %s in the #%s vocabulary", agent, verb, name, hub), vocabularyPath(hub))
 	m.changed(Change{Hub: hub})
 	return nil
 }
 
 func (m *Manager) DefineTerm(agent, hub string, t vocab.Term) error {
-	return m.changeVocab(agent, hub, func(s *vocab.Store) error { return s.DefineTerm(t) })
+	return m.changeVocab(agent, hub, "define", t.Term, func(s *vocab.Store) error { return s.DefineTerm(t) })
 }
 
 func (m *Manager) DefineInterface(agent, hub string, in vocab.Interface) error {
-	return m.changeVocab(agent, hub, func(s *vocab.Store) error { return s.DefineInterface(in) })
+	return m.changeVocab(agent, hub, "define", in.Name, func(s *vocab.Store) error { return s.DefineInterface(in) })
 }
 
 func (m *Manager) RemoveEntry(agent, hub, name string) error {
-	return m.changeVocab(agent, hub, func(s *vocab.Store) error { return s.Remove(name) })
+	return m.changeVocab(agent, hub, "remove", name, func(s *vocab.Store) error { return s.Remove(name) })
 }
 
 // GetVocabulary returns the vocabulary of a hub that agent is in.

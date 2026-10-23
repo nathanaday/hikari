@@ -115,10 +115,16 @@ func (r *Repo) CommitPaths(branch string, paths []string, agent, message string)
 	if _, err := r.git(append([]string{"add", "--all", "--"}, specs...)...); err != nil {
 		return "", err
 	}
-	if _, err := r.git(append([]string{"diff", "--cached", "--quiet", "--"}, specs...)...); err == nil {
+	// git commit refuses a path that matches no tracked file, such as an
+	// empty directory, so the commit names the staged files.
+	staged, err := r.git(append([]string{"diff", "--cached", "--name-only", "--no-renames", "--"}, specs...)...)
+	if err != nil {
+		return "", err
+	}
+	if staged == "" {
 		return "", nil
 	}
-	args := append([]string{"commit", "--quiet", "--no-verify", "--author", Author(agent), "-m", message, "--"}, specs...)
+	args := append([]string{"commit", "--quiet", "--no-verify", "--author", Author(agent), "-m", message, "--"}, lines(staged)...)
 	if _, err := r.git(args...); err != nil {
 		return "", err
 	}
@@ -193,6 +199,14 @@ func (r *Repo) IsIgnored(path string) bool {
 	defer r.mu.Unlock()
 	_, err := r.git("check-ignore", "--quiet", path)
 	return err == nil
+}
+
+// Tracked reports whether git tracks path, which is relative to the repo.
+func (r *Repo) Tracked(path string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, _ := r.git("ls-files", "--", path)
+	return out != ""
 }
 
 // CountOn returns the number of commits between since and HEAD that

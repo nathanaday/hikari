@@ -82,6 +82,22 @@ func (s Store) Prepare(systems []string) error {
 	return nil
 }
 
+// IgnoreFile is the store's ignore file in a project repository (rule
+// PR12): products and drafts stay out of git.
+const IgnoreFile = ".gitignore"
+
+const ignoreText = "systems/*/staging/\nsystems/*/releases/\n"
+
+// WriteIgnore writes the store's ignore file unless it already holds what
+// hikari writes. It reports whether it wrote the file.
+func (s Store) WriteIgnore() (bool, error) {
+	p := filepath.Join(s.Root, IgnoreFile)
+	if data, err := os.ReadFile(p); err == nil && string(data) == ignoreText {
+		return false, nil
+	}
+	return true, os.WriteFile(p, []byte(ignoreText), 0o644)
+}
+
 const readmeText = `# hikari store
 
 This directory holds every hikari document that is not code. hikari wrote
@@ -106,6 +122,9 @@ this file once; you can change it.
         map.yaml                the public map at release time
         features/               the feature wiki at release time
       releases/<deliverable>/latest     the newest release of that deliverable
+
+In a project repository, git ignores staging/ and releases/: products
+stay out of git, and hikari commits what agents change in the store.
 
 Every container can read shared/. An owner writes only its own staging/, and
 publishes only the deliverables that the topology grants it. An orchestrator
