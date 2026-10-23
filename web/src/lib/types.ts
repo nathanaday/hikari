@@ -265,6 +265,22 @@ export type TestPlan = {
   warnings?: string[]
   gaps: Gap[]
   stories: StoryHealth[]
+  environment?: EnvironmentStatus
+}
+
+export type EnvironmentService = { name: string; state: string; health?: string; image: string; platform?: string; replicas: number; emulated?: boolean }
+
+// EnvironmentStatus is the state of a hub's environment (rule ST6 of the
+// environments spec).
+export type EnvironmentStatus = {
+  state: 'none' | 'starting' | 'running' | 'failed' | 'stopped'
+  scenario?: string
+  reason?: string
+  services?: EnvironmentService[]
+  started?: string
+  stops?: string
+  logs?: string
+  connected: boolean
 }
 
 export type Snapshot = {

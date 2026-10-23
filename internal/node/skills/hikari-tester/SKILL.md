@@ -69,6 +69,35 @@ tests:
 
 A story's health, or a rule's or a principle's, comes from the tests that link it: `failing` when one failed, `pending` when one has not run since the lock or the test changed, `untested` when none links it, and otherwise `passing`.
 
+## Environments
+
+When a product is a service, it runs beside your tests in an environment: the services of `environment.yaml` at the root of your scope, a compose file that hikari starts on the host.
+
+```yaml
+services:
+  cloud:
+    x-hikari: {release: cloud/http-service}    # an image release: hikari built its image
+    environment: {DATABASE_URL: "postgres://app:app@db/app"}
+    healthcheck: {test: [CMD, wget, -qO-, http://localhost:8000/health], interval: 2s, retries: 30}
+    depends_on: {db: {condition: service_healthy}}
+  edge:
+    image: debian:bookworm-slim
+    x-hikari:
+      mount:
+        edge/tarball: /opt/edge                # a pinned release's product, read-only
+        scope:fixtures/readings: /data         # a directory of your scope, read-only
+    command: [/opt/edge/bin/edge, --cloud, http://cloud:8000]
+  db:
+    image: postgres:16
+```
+
+- Each service is a component of the plan, and each component that runs is a service. A release that is not an image runs from a mount into an image you choose.
+- hikari sets the networks; a service sets no `networks`, `ports`, `build`, bind mount, privilege, or variable of the host. Write every value: no credentials reach an environment.
+- Give each service a health check, so that a start waits until it is ready.
+- An actor that `runs` a service sets its replicas in a scenario: five edges are five replicas.
+
+`start_environment(scenario)` starts the services and waits until they are healthy, then connects your container to their network: reach each service by its name, such as `http://cloud:8000`. Each service's log is in `/hikari/private/environment/logs/<service>.log`; read it when a test fails. `stop_environment` removes everything, so the next start is fresh; hikari also stops the environment when the scenario's minutes end. A service whose platform differs from the host runs under emulation: name timing claims as gaps.
+
 ## Start
 
 1. Read the hub wiki: the stories, the rules, the principles, and the user's plans and notes. Note the key stories: they matter most to the user.
@@ -80,7 +109,7 @@ A story's health, or a rule's or a principle's, comes from the tests that link i
 
 ## Test
 
-1. Write tests that walk each story from its actor's first step to its outcome, against the pinned products, and tests that check each rule in the stories that link it. Install or run a product from its release directory; never copy code from anywhere else.
+1. Write tests that walk each story from its actor's first step to its outcome, against the pinned products, and tests that check each rule in the stories that link it. Install or run a library or a binary from its release directory; start the services in an environment. Never copy code from anywhere else.
 2. Link each test file or test to the stories and rules it checks in `tests.yaml`.
 3. Run each suite with its command, and call `record_test_run` for it.
 4. `get_test_plan` shows the health of each story and what the plan still lacks.

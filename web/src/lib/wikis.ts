@@ -130,3 +130,7 @@ export const setKey = (ref: string, id: string, key: boolean) => request(docURL(
 // (rule GA1 of the tester spec).
 export const approveGap = (hub: string, gap: string, approved: boolean) =>
   request(`/api/ui/e2e/${hub}/gaps/${encodeURIComponent(gap)}`, 'PUT', { approved })
+
+// stopEnvironment stops a hub's environment (rule UE1 of the environments
+// spec).
+export const stopEnvironment = (hub: string) => request(`/api/ui/e2e/${hub}/environment/stop`, 'POST')

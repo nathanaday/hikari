@@ -3,9 +3,9 @@ import { Star } from 'lucide-react'
 import { HealthBadge } from '@/components/health'
 import { Markdown } from '@/components/markdown'
 import { Button } from '@/components/ui/button'
-import type { Gap, StoryHealth, TestPlan } from '@/lib/types'
+import type { EnvironmentStatus, Gap, StoryHealth, TestPlan } from '@/lib/types'
 import type { View } from '@/lib/view'
-import { approveGap } from '@/lib/wikis'
+import { approveGap, stopEnvironment } from '@/lib/wikis'
 
 const noNames: ReadonlySet<string> = new Set()
 
@@ -37,6 +37,8 @@ export function HubTests({ plan, show }: { plan: TestPlan; show: (v: View) => vo
             ))}
           </ul>
         )}
+
+        {plan.environment && plan.environment.state !== 'none' && <Environment hub={plan.hub} env={plan.environment} />}
 
         <Section title="Stories and rules">
           {stories.length === 0 ? (
@@ -155,6 +157,44 @@ function StoryRow({ story, plan, show }: { story: StoryHealth; plan: TestPlan; s
         ))}
       </td>
     </tr>
+  )
+}
+
+// Environment shows the hub's environment, and stops it (rule UE1 of the
+// environments spec).
+function Environment({ hub, env }: { hub: string; env: EnvironmentStatus }) {
+  const [error, setError] = useState<string | null>(null)
+  const active = env.state === 'running' || env.state === 'starting'
+  return (
+    <Section title="Environment">
+      <div className="space-y-2 rounded-md border px-3 py-2" data-testid="environment">
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span>
+            <span className="font-medium">{env.state}</span>
+            {env.scenario && <span className="text-muted-foreground"> · scenario {env.scenario}</span>}
+            {env.state === 'running' && env.stops && <span className="text-muted-foreground"> · stops at {new Date(env.stops).toLocaleTimeString()}</span>}
+          </span>
+          {active && (
+            <Button size="sm" variant="outline" onClick={async () => setError(await stopEnvironment(hub))}>
+              Stop
+            </Button>
+          )}
+        </div>
+        {env.reason && <p className="text-xs whitespace-pre-wrap text-muted-foreground">{env.reason}</p>}
+        {(env.services ?? []).length > 0 && (
+          <Table
+            head={['Service', 'State', 'Image', 'Replicas']}
+            rows={(env.services ?? []).map((s) => [
+              s.name,
+              s.health ? `${s.state} (${s.health})` : s.state,
+              `${s.image}${s.platform ? ` · ${s.platform}` : ''}${s.emulated ? ' · emulated' : ''}`,
+              String(s.replicas),
+            ])}
+          />
+        )}
+        {error && <p className="text-xs text-red-700">{error}</p>}
+      </div>
+    </Section>
   )
 }
 

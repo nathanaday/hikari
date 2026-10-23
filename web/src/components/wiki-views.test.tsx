@@ -70,13 +70,20 @@ describe('HubTests', () => {
           lock: { version: 1, releases: [{ system: 'tally', deliverable: 'python-library', version: '0.1.0', digest: 'sha256:0123456789abcdef0123' }] },
           warnings: ['the key story "x" has no test and no gap'],
           gaps: [{ id: 'real-machine', what: 'Ballots from a real machine', why: 'no machine', touches: ['[[accept-ballot]]'], approved: false }],
+          environment: {
+            state: 'running',
+            scenario: 'smoke',
+            connected: true,
+            stops: '2026-10-23T08:00:00Z',
+            services: [{ name: 'cloud', state: 'running', image: 'hikari/p-cloud-http-service:1.0.0', platform: 'linux/amd64', replicas: 1, emulated: true }],
+          },
           stories: [
             { id: 'ballots-decide-winner', kind: 'story', name: 'Raw ballots to a winner', key: true, health: 'failing', passed: 0, failed: 1, pending: 0, support: 'passing', suspects: ['ballots'], gaps: ['real-machine'] },
           ],
         }}
       />,
     )
-    for (const want of ['vote-e2e proves', 'Raw ballots to a winner', 'failing', 'suspects: ballots', 'gap proposed: Ballots from a real machine', 'Approve', 'release tally/python-library', 'a voting machine', '1 operator', 'tally/python-library', '0.1.0', 'has no test and no gap', 'The test system']) {
+    for (const want of ['vote-e2e proves', 'Raw ballots to a winner', 'failing', 'suspects: ballots', 'gap proposed: Ballots from a real machine', 'Approve', 'release tally/python-library', 'a voting machine', '1 operator', 'tally/python-library', '0.1.0', 'has no test and no gap', 'The test system', 'scenario smoke', 'Stop', 'hikari/p-cloud-http-service:1.0.0 · linux/amd64 · emulated']) {
       expect(html).toContain(want)
     }
   })
