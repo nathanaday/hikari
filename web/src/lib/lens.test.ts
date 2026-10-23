@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { agent, feature, system, withHealth } from './fixtures'
-import { featureGraph, topologyGraph } from './graph'
+import { agent, doc, feature, system, wikiOf, withHealth } from './fixtures'
+import { topologyGraph, wikiGraph, type GraphNode } from './graph'
 import {
   activityPaint,
   age,
-  featureContext,
-  featureDetail,
-  featurePaint,
+  docDetail,
+  docPaint,
   healthCounts,
   legend,
   minAge,
@@ -15,7 +14,9 @@ import {
   topologyContext,
   topologyDetail,
   topologyPaint,
+  wikiContext,
 } from './lens'
+import { wikiIndex } from './wikis'
 
 describe('activity lens (U33)', () => {
   it('maps each status', () => {
@@ -85,37 +86,50 @@ describe('topology lenses', () => {
   })
 })
 
-describe('feature lenses', () => {
-  const features = [
-    feature('old', { created: '2026-10-01T00:00:00Z', health: 'passing', tests: { passed: 2, failed: 0, pending: 0 } }),
-    feature('mid', { created: '2026-10-11T00:00:00Z', state: 'stale' }),
-    feature('new', { created: '2026-10-21T00:00:00Z', state: 'undescribed' }),
-    feature('unknown'),
+describe('wiki lenses', () => {
+  const docs = [
+    doc('old', 'feature', { created: '2026-10-01T00:00:00Z', health: 'passing' }),
+    doc('mid', 'feature', { created: '2026-10-11T00:00:00Z' }),
+    doc('new', 'rule', { created: '2026-10-21T00:00:00Z' }),
+    doc('Roadmap', 'plan', { status: 'idea' }),
   ]
-  const ctx = featureContext(features)
-  const g = featureGraph(system('inventory', features))
+  const features = [feature('old'), feature('mid', { state: 'stale' })]
+  const wiki = wikiOf('system:inventory', docs)
+  const g = wikiGraph(wiki, wikiIndex([wiki]))
+  const ctx = wikiContext(g.nodes, (n) => docs.find((d) => d.id === n.ref), features)
   const node = (ref: string) => g.nodes.find((n) => n.ref === ref)!
 
-  it('scales age between the oldest and the newest (U39)', () => {
-    expect(age(ctx.features.get('old'), ctx)).toBe(minAge)
-    expect(age(ctx.features.get('new'), ctx)).toBe(1)
-    expect(age(ctx.features.get('mid'), ctx)).toBeCloseTo(minAge + (1 - minAge) / 2)
-    expect(age(ctx.features.get('unknown'), ctx)).toBe(minAge)
-    const one = featureContext([feature('a', { created: '2026-10-01T00:00:00Z' }), feature('b', { created: '2026-10-01T00:00:00Z' })])
-    expect(age(one.features.get('a'), one)).toBe(1)
-    expect(featurePaint('age', node('new'), ctx)).toMatchObject({ fill: 'active', opacity: 1 })
+  it('scales age between the oldest and the newest, and a user document is the oldest (U39, U4)', () => {
+    expect(age(docs[0].created, ctx)).toBe(minAge)
+    expect(age(docs[2].created, ctx)).toBe(1)
+    expect(age(docs[1].created, ctx)).toBeCloseTo(minAge + (1 - minAge) / 2)
+    expect(age(undefined, ctx)).toBe(minAge)
+    expect(age('2026-10-01T00:00:00Z', { oldest: 5, newest: 5 })).toBe(1)
+    expect(docPaint('age', node('new'), ctx)).toMatchObject({ fill: 'active', opacity: 1 })
   })
 
-  it('colors health and dashes stale or undescribed documents under every lens (U40, U40a)', () => {
-    expect(featurePaint('tests', node('old'), ctx)).toMatchObject({ fill: 'pass', dashed: false })
-    expect(featurePaint('tests', node('mid'), ctx)).toMatchObject({ fill: 'none', dashed: true })
-    expect(featurePaint('age', node('new'), ctx).dashed).toBe(true)
-    expect(featureDetail('tests', node('old'), ctx)).toBe('passing · 2 passed, 0 failed, 0 pending')
-    expect(featureDetail('age', node('mid'), ctx)).toBe('created 2026-10-11 · document stale')
-    expect(featureDetail('age', node('unknown'), ctx)).toBe('creation date unknown')
+  it('colors each kind, and a user document lighter (U4)', () => {
+    expect(docPaint('kind', node('old'), ctx)).toMatchObject({ fill: 'feature', opacity: 1 })
+    expect(docPaint('kind', node('new'), ctx)).toMatchObject({ fill: 'rule' })
+    expect(docPaint('kind', node('Roadmap'), ctx)).toMatchObject({ fill: 'plan', opacity: 0.45 })
+    expect(docDetail('kind', node('Roadmap'), ctx)).toBe('plan · idea')
+  })
+
+  it('colors health or support, and dashes a stale feature under every lens (U40, U40a)', () => {
+    expect(docPaint('tests', node('old'), ctx)).toMatchObject({ fill: 'pass', dashed: false })
+    expect(docPaint('tests', node('mid'), ctx)).toMatchObject({ dashed: true })
+    expect(docPaint('kind', node('mid'), ctx).dashed).toBe(true)
+    expect(docPaint('tests', node('Roadmap'), ctx)).toEqual(neutral)
+    expect(docDetail('tests', node('old'), ctx)).toBe('passing')
+    expect(docDetail('age', node('mid'), ctx)).toBe('created 2026-10-11 · document stale')
+    expect(docDetail('tests', node('Roadmap'), ctx)).toBe('no tests')
+    const story: GraphNode = { id: 's', kind: 'doc', ref: 's', label: 's', shape: 'circle', radius: 5, docKind: 'story' }
+    const withStory = wikiContext([story], () => doc('s', 'story', { support: 'failing' }), [])
+    expect(docPaint('tests', story, withStory)).toMatchObject({ fill: 'fail' })
+    expect(docDetail('tests', story, withStory)).toBe('support failing')
   })
 
   it('has a legend for every lens (U37)', () => {
-    for (const lens of ['activity', 'tests', 'git', 'age'] as const) expect(legend(lens).length).toBeGreaterThan(1)
+    for (const lens of ['activity', 'tests', 'git', 'age', 'kind'] as const) expect(legend(lens).length).toBeGreaterThan(1)
   })
 })

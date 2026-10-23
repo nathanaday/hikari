@@ -76,6 +76,13 @@
   --lens-dirty: oklch(0.667 0.295 322.15);
   --lens-none: oklch(0.87 0 0);
   --lens-outline: oklch(0.708 0 0);
+  /* The kind lens of a wiki map. These hues are not used by any other
+     lens, so that one color means one thing. */
+  --kind-feature: oklch(0.62 0.17 255);
+  --kind-story: oklch(0.6 0.2 300);
+  --kind-rule: oklch(0.72 0.16 55);
+  --kind-principle: oklch(0.45 0.04 260);
+  --kind-plan: oklch(0.58 0.1 70);
   --graph-edge: oklch(0.87 0 0);
   --graph-label: oklch(0.45 0 0);
   --graph-selected: oklch(0.205 0 0);

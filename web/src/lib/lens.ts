@@ -1,16 +1,19 @@
 import type { GraphNode } from './graph'
-import type { Agent, AgentState, Feature, Health, SystemView } from './types'
+import type { Agent, AgentState, DocKind, Feature, FeatureState, Health, SystemView, WikiDoc } from './types'
+import { docHealth } from './wikis'
 
 export type TopologyLens = 'activity' | 'tests' | 'git'
-export type FeatureLens = 'age' | 'tests'
-export type Lens = TopologyLens | FeatureLens
+export type WikiLens = 'kind' | 'tests' | 'age'
+export type Lens = TopologyLens | WikiLens
 
 export const topologyLenses: TopologyLens[] = ['activity', 'tests', 'git']
-export const featureLenses: FeatureLens[] = ['age', 'tests']
+export const wikiLenses: WikiLens[] = ['kind', 'tests', 'age']
 
 // Color is the name of a lens color token in index.css (rule U46), or
-// white. outline is the gray outline of a neutral node.
-export type Color = 'active' | 'waiting' | 'pass' | 'pending' | 'fail' | 'dirty' | 'none' | 'outline' | 'white'
+// white. outline is the gray outline of a neutral node. The kind colors
+// are the kind lens's (rule U4 of the wikis spec).
+export type Color = 'active' | 'waiting' | 'pass' | 'pending' | 'fail' | 'dirty' | 'none' | 'outline' | 'white' | DocColor
+export type DocColor = 'feature' | 'story' | 'rule' | 'principle' | 'plan'
 
 // Paint is how a lens draws one node: its fill and outline, how strong the
 // fill is (age), whether the outline pulses, and whether it is dashed.
@@ -112,51 +115,95 @@ export function healthCounts(features: Feature[]): string {
     .join(', ')
 }
 
-// FeatureContext is what the feature lenses read: the features by id, and
-// the range of their creation times.
-export type FeatureContext = { features: Map<string, Feature>; oldest: number; newest: number }
+// WikiContext is what the wiki lenses read: every document by node, the
+// state of each feature, and the range of the creation times on the map.
+export type WikiContext = {
+  docs: Map<string, WikiDoc>
+  states: Map<string, FeatureState | undefined>
+  oldest: number
+  newest: number
+}
 
-export function featureContext(features: Feature[]): FeatureContext {
-  const times = features.map((f) => (f.created ? Date.parse(f.created) : NaN)).filter((t) => !Number.isNaN(t))
+// wikiContext reads the documents of the nodes of a wiki map. docOf finds a
+// node's document; features gives the state of each feature.
+export function wikiContext(nodes: GraphNode[], docOf: (n: GraphNode) => WikiDoc | undefined, features: Feature[]): WikiContext {
+  const docs = new Map<string, WikiDoc>()
+  for (const n of nodes) {
+    const d = docOf(n)
+    if (d) docs.set(n.id, d)
+  }
+  const times = [...docs.values()].map((d) => (d.created ? Date.parse(d.created) : NaN)).filter((t) => !Number.isNaN(t))
   return {
-    features: new Map(features.map((f) => [f.id, f])),
+    docs,
+    states: new Map(features.map((f) => [f.id, f.state])),
     oldest: times.length ? Math.min(...times) : NaN,
     newest: times.length ? Math.max(...times) : NaN,
   }
 }
 
-// The dimmest age a feature can have, so that it stays visible.
+// The dimmest age a document can have, so that it stays visible.
 export const minAge = 0.2
 
-// age scales a feature's creation time between the oldest and the newest
-// of its system, from minAge to 1 (rule U39). With one distinct time every
-// feature is 1; a feature with no time is minAge.
-export function age(f: Feature | undefined, ctx: FeatureContext): number {
-  const t = f?.created ? Date.parse(f.created) : NaN
+// age scales a document's creation time between the oldest and the newest
+// on its map, from minAge to 1 (rule U39). With one distinct time every
+// document is 1; a document with no time, such as a user document, is
+// minAge (rule U4 of the wikis spec).
+export function age(created: string | undefined, ctx: { oldest: number; newest: number }): number {
+  const t = created ? Date.parse(created) : NaN
   if (Number.isNaN(t)) return minAge
   if (!(ctx.newest > ctx.oldest)) return 1
   return minAge + (1 - minAge) * ((t - ctx.oldest) / (ctx.newest - ctx.oldest))
 }
 
-// featurePaint gives a feature its paint under a lens. A stale or
-// undescribed document is dashed under every lens (rule U40a).
-export function featurePaint(lens: FeatureLens, node: GraphNode, ctx: FeatureContext): Paint {
-  const f = ctx.features.get(node.ref)
-  const dashed = f?.state === 'stale' || f?.state === 'undescribed'
-  const paint = lens === 'age' ? filled('active', { opacity: age(f, ctx) }) : healthPaint(f?.health ?? 'untested')
+const kindColor: Record<DocKind, Color> = { feature: 'feature', story: 'story', rule: 'rule', principle: 'principle', plan: 'plan', note: 'none' }
+
+// kindPaint colors a document by its kind. A user document is lighter, so
+// that the agents' documents stand out.
+export function kindPaint(kind: DocKind): Paint {
+  const user = kind === 'plan' || kind === 'note'
+  return filled(kindColor[kind], user ? { opacity: 0.45 } : {})
+}
+
+// docPaint gives a document its paint under a lens. A stale or undescribed
+// feature is dashed under every lens (rule U40a).
+export function docPaint(lens: WikiLens, node: GraphNode, ctx: WikiContext): Paint {
+  const d = ctx.docs.get(node.id)
+  if (!d) return neutral
+  const state = d.kind === 'feature' && !node.foreign ? ctx.states.get(d.id) : undefined
+  const dashed = state === 'stale' || state === 'undescribed'
+  let paint: Paint
+  switch (lens) {
+    case 'kind':
+      paint = kindPaint(d.kind)
+      break
+    case 'tests': {
+      const h = docHealth(d)
+      paint = h ? healthPaint(h) : neutral
+      break
+    }
+    case 'age':
+      paint = filled('active', { opacity: age(d.created, ctx) })
+      break
+  }
   return { ...paint, dashed }
 }
 
-// featureDetail is the lens line of a feature's hover card.
-export function featureDetail(lens: FeatureLens, node: GraphNode, ctx: FeatureContext): string {
-  const f = ctx.features.get(node.ref)
-  if (!f) return ''
-  const state = f.state === 'stale' || f.state === 'undescribed' ? ` · document ${f.state}` : ''
-  if (lens === 'age') {
-    return (f.created ? `created ${f.created.slice(0, 10)}` : 'creation date unknown') + state
+// docDetail is the lens line of a document's hover card.
+export function docDetail(lens: WikiLens, node: GraphNode, ctx: WikiContext): string {
+  const d = ctx.docs.get(node.id)
+  if (!d) return ''
+  const state = d.kind === 'feature' && !node.foreign ? ctx.states.get(d.id) : undefined
+  const stale = state === 'stale' || state === 'undescribed' ? ` · document ${state}` : ''
+  switch (lens) {
+    case 'kind':
+      return [d.kind, d.key ? 'key' : '', d.status ?? ''].filter(Boolean).join(' · ') + stale
+    case 'tests':
+      if (d.health) return d.health + stale
+      if (d.support) return `support ${d.support}`
+      return 'no tests'
+    case 'age':
+      return (d.created ? `created ${d.created.slice(0, 10)}` : 'creation date unknown') + stale
   }
-  const t = f.tests
-  return `${f.health} · ${t.passed} passed, ${t.failed} failed, ${t.pending} pending${state}`
 }
 
 // Legend lists the colors of a lens and what each means (rule U37).
@@ -188,5 +235,7 @@ export function legend(lens: Lens): LegendEntry[] {
         { paint: filled('active'), label: 'newest' },
         { paint: filled('active', { opacity: minAge }), label: 'oldest or unknown' },
       ]
+    case 'kind':
+      return (['story', 'rule', 'principle', 'feature', 'plan', 'note'] as DocKind[]).map((k) => ({ paint: kindPaint(k), label: k }))
   }
 }

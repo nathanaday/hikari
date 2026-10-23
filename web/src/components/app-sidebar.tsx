@@ -56,7 +56,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
         <SidebarGroup>
           <SidebarMenu>
             {item({ kind: 'all' }, 'All activity', <Activity />)}
-            {state.systems.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
+            {(state.systems.length > 0 || state.hubs.length > 0) && item({ kind: 'map' }, 'Map', <Network />)}
             {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
           </SidebarMenu>
         </SidebarGroup>

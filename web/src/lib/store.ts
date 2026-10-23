@@ -58,7 +58,11 @@ function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems'>): View {
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
   if (v.kind === 'shared') return v
-  if (v.kind === 'map') return !v.system || s.systems.some((x) => x.owner === v.system) ? v : { kind: 'map' }
+  if (v.kind === 'map') {
+    if (v.system) return s.systems.some((x) => x.owner === v.system) ? v : { kind: 'map' }
+    if (v.hub) return s.hubs.some((h) => h.name === v.hub) ? v : { kind: 'map' }
+    return v
+  }
   return allView
 }
 

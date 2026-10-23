@@ -13,6 +13,10 @@ describe('view', () => {
       { kind: 'shared' },
       { kind: 'map' },
       { kind: 'map', system: 'orders' },
+      { kind: 'map', system: 'orders', doc: 'reserve-stock' },
+      { kind: 'map', hub: 'shop' },
+      { kind: 'map', hub: 'shop', doc: 'Ideas for Q1' },
+      { kind: 'hub', name: 'eng', tab: 'wiki' },
     ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)
     }

@@ -1,10 +1,11 @@
-import type { DeliverableInfo, RepoInfo, SystemView } from './types'
+import type { DeliverableInfo, DocKind, Hub, RepoInfo, SystemView, WikiDoc, WikiView } from './types'
+import { wikiName, type WikiIndex } from './wikis'
 
-export type NodeKind = 'system' | 'repo' | 'deliverable' | 'feature'
-export type Shape = 'circle' | 'square' | 'diamond'
+export type NodeKind = 'system' | 'repo' | 'deliverable' | 'hub' | 'doc'
+export type Shape = 'circle' | 'square' | 'diamond' | 'hexagon'
 
 // GraphNode is one node as the canvas draws it. ref names what it stands
-// for: a system, a repository, a deliverable, or a feature id.
+// for: a system, a repository, a deliverable, a hub, or a document id.
 export type GraphNode = {
   id: string
   kind: NodeKind
@@ -12,6 +13,11 @@ export type GraphNode = {
   label: string
   shape: Shape
   radius: number
+  // A document node names its wiki and kind. foreign marks a document of
+  // another wiki on a wiki map (rule U2 of the wikis spec).
+  wiki?: string
+  docKind?: DocKind
+  foreign?: boolean
 }
 
 export type GraphEdge = { source: string; target: string; dashed: boolean }
@@ -32,11 +38,12 @@ export function featureRadius(neighbors: number): number {
   return Math.min(14, 5 + 1.5 * neighbors)
 }
 
-type TopologyInput = { systems: SystemView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[] }
+type TopologyInput = { systems: SystemView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; hubs?: Hub[] }
 
-// topologyGraph builds the topology map: systems, repositories, and held
-// deliverables, with their edges (rules U30 and U31).
-export function topologyGraph({ systems, repos, deliverables }: TopologyInput): Graph {
+// topologyGraph builds the topology map: systems, repositories, held
+// deliverables, and hubs, with their edges (rules U30 and U31, and U1 of the
+// wikis spec).
+export function topologyGraph({ systems, repos, deliverables, hubs = [] }: TopologyInput): Graph {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
   const names = new Set(systems.map((s) => s.owner))
@@ -53,6 +60,20 @@ export function topologyGraph({ systems, repos, deliverables }: TopologyInput): 
     if (holders.length === 0) continue
     nodes.push({ id: nodeID('deliverable', d.name), kind: 'deliverable', ref: d.name, label: d.name, shape: 'diamond', radius: 10 })
     for (const h of holders) edges.push({ source: nodeID('deliverable', d.name), target: nodeID('system', h), dashed: false })
+  }
+  const hubNames = new Set(hubs.map((h) => h.name))
+  for (const h of [...hubs].sort(byName)) {
+    nodes.push({ id: nodeID('hub', h.name), kind: 'hub', ref: h.name, label: `#${h.name}`, shape: 'hexagon', radius: 11 })
+    const members = h.participants.filter((p) => p.role === 'member').map((p) => p.name)
+    for (const m of [...members].sort()) {
+      if (names.has(m)) edges.push({ source: nodeID('hub', h.name), target: nodeID('system', m), dashed: false })
+    }
+    for (const child of [...hubs].sort(byName)) {
+      const orchestrator = child.participants.find((p) => p.role === 'orchestrator')?.name
+      if (child.name !== h.name && orchestrator && members.includes(orchestrator) && hubNames.has(child.name)) {
+        edges.push({ source: nodeID('hub', h.name), target: nodeID('hub', child.name), dashed: false })
+      }
+    }
   }
   const pairs = new Set<string>()
   const dashed = (a: string, b: string) => {
@@ -71,37 +92,66 @@ export function topologyGraph({ systems, repos, deliverables }: TopologyInput): 
   return { nodes, edges }
 }
 
-// featureGraph builds the feature map of one system: one node per feature,
-// one edge per pair of neighbors (rule U38).
-export function featureGraph(sys: SystemView): Graph {
-  const ids = new Set(sys.features.map((f) => f.id))
-  const neighbors = new Map<string, Set<string>>()
+// docShape gives each kind its shape (rule U3).
+export const docShape: Record<DocKind, Shape> = {
+  feature: 'circle',
+  story: 'circle',
+  principle: 'diamond',
+  rule: 'square',
+  plan: 'circle',
+  note: 'circle',
+}
+
+export const docNodeID = (wiki: string, id: string) => `doc:${wiki}/${id}`
+
+// wikiGraph builds the wiki map of one system or hub: a node per document,
+// and a smaller node for each document of another wiki that links one of
+// them or that one of them links, with an edge when either links the other
+// (rules U2 and U3).
+export function wikiGraph(wiki: WikiView, index: WikiIndex): Graph {
+  const own = new Map(wiki.documents.map((d) => [d.id, d]))
+  const nodes = new Map<string, GraphNode>()
   const edges: GraphEdge[] = []
   const pairs = new Set<string>()
-  for (const f of sys.features) {
-    for (const r of f.related ?? []) {
-      if (!ids.has(r) || r === f.id) continue
-      const key = [f.id, r].sort().join('\n')
-      if (pairs.has(key)) continue
-      pairs.add(key)
-      edges.push({ source: nodeID('feature', f.id), target: nodeID('feature', r), dashed: false })
-      for (const [a, b] of [[f.id, r], [r, f.id]]) {
-        if (!neighbors.has(a)) neighbors.set(a, new Set())
-        neighbors.get(a)!.add(b)
+  const degree = new Map<string, number>()
+  const edge = (a: string, b: string) => {
+    if (a === b) return
+    const key = [a, b].sort().join('\n')
+    if (pairs.has(key)) return
+    pairs.add(key)
+    edges.push({ source: a, target: b, dashed: false })
+    degree.set(a, (degree.get(a) ?? 0) + 1)
+    degree.set(b, (degree.get(b) ?? 0) + 1)
+  }
+  const foreign = (ref: string, d: WikiDoc) => {
+    const id = docNodeID(ref, d.id)
+    if (!nodes.has(id)) {
+      nodes.set(id, { id, kind: 'doc', ref: d.id, wiki: ref, docKind: d.kind, foreign: true, label: `${d.name || d.id} · ${wikiName(ref)}`, shape: docShape[d.kind], radius: 4 })
+    }
+    return id
+  }
+  for (const d of [...wiki.documents].sort((a, b) => a.id.localeCompare(b.id))) {
+    const id = docNodeID(wiki.ref, d.id)
+    nodes.set(id, { id, kind: 'doc', ref: d.id, wiki: wiki.ref, docKind: d.kind, label: d.name || d.id, shape: docShape[d.kind], radius: 0 })
+  }
+  for (const d of wiki.documents) {
+    const from = docNodeID(wiki.ref, d.id)
+    for (const target of d.links) {
+      if (own.has(target)) {
+        edge(from, docNodeID(wiki.ref, target))
+        continue
       }
+      const found = index.byID.get(target)
+      if (found) edge(from, foreign(found.wiki.ref, found.doc))
+    }
+    for (const back of index.backlinks.get(d.id) ?? []) {
+      if (back.wiki.ref !== wiki.ref && index.byID.get(d.id)?.wiki.ref === wiki.ref) edge(from, foreign(back.wiki.ref, back.doc))
     }
   }
-  const nodes = [...sys.features]
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map<GraphNode>((f) => ({
-      id: nodeID('feature', f.id),
-      kind: 'feature',
-      ref: f.id,
-      label: f.name || f.id,
-      shape: 'circle',
-      radius: featureRadius(neighbors.get(f.id)?.size ?? 0),
-    }))
-  return { nodes, edges }
+  for (const n of nodes.values()) {
+    if (!n.foreign) n.radius = n.docKind === 'plan' || n.docKind === 'note' ? 5 : featureRadius(degree.get(n.id) ?? 0)
+  }
+  return { nodes: [...nodes.values()], edges }
 }
 
 // neighborsOf returns the ids of the nodes that share an edge with id.

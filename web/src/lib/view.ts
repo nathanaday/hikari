@@ -1,6 +1,6 @@
 import type { Message } from './types'
 
-export type HubTab = 'messages' | 'vocabulary'
+export type HubTab = 'messages' | 'vocabulary' | 'wiki'
 
 export type View =
   | { kind: 'all' }
@@ -9,8 +9,9 @@ export type View =
   | { kind: 'dm'; name: string }
   | { kind: 'system'; name: string }
   | { kind: 'release'; name: string; deliverable: string; version: string }
-  // map is the topology map, or with system the feature map of one system.
-  | { kind: 'map'; system?: string }
+  // map is the topology map, or with system or hub the wiki map of one
+  // system or hub; doc selects one of its documents.
+  | { kind: 'map'; system?: string; hub?: string; doc?: string }
 
 export const allView: View = { kind: 'all' }
 
@@ -18,7 +19,7 @@ export const allView: View = { kind: 'all' }
 // one key.
 export function viewKey(v: View): string {
   if (v.kind === 'all' || v.kind === 'shared') return v.kind
-  if (v.kind === 'map') return v.system ? `map:${v.system}` : 'map'
+  if (v.kind === 'map') return v.system ? `map:${v.system}` : v.hub ? `map:hub:${v.hub}` : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
 }
@@ -26,8 +27,13 @@ export function viewKey(v: View): string {
 export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
   if (v.kind === 'shared') return '#/shared'
-  if (v.kind === 'map') return v.system ? `#/map/${v.system}` : '#/map'
-  if (v.kind === 'hub' && v.tab === 'vocabulary') return `#/hub/${v.name}/vocabulary`
+  if (v.kind === 'map') {
+    const doc = v.doc ? `/${encodeURIComponent(v.doc)}` : ''
+    if (v.system) return `#/map/${v.system}${doc}`
+    if (v.hub) return `#/hub/${v.hub}/map${doc}`
+    return '#/map'
+  }
+  if (v.kind === 'hub' && v.tab) return `#/hub/${v.name}/${v.tab}`
   if (v.kind === 'release') return `#/system/${v.name}/release/${v.deliverable}/${v.version}`
   return `#/${v.kind}/${v.name}`
 }
@@ -35,12 +41,14 @@ export function viewHash(v: View): string {
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
   if (hash === '#/map') return { kind: 'map' }
-  const map = hash.match(/^#\/map\/([\w-]+)$/)
-  if (map) return { kind: 'map', system: map[1] }
+  const map = hash.match(/^#\/map\/([\w-]+)(?:\/([^/]+))?$/)
+  if (map) return map[2] ? { kind: 'map', system: map[1], doc: decodeURIComponent(map[2]) } : { kind: 'map', system: map[1] }
+  const hubMap = hash.match(/^#\/hub\/([\w-]+)\/map(?:\/([^/]+))?$/)
+  if (hubMap) return hubMap[2] ? { kind: 'map', hub: hubMap[1], doc: decodeURIComponent(hubMap[2]) } : { kind: 'map', hub: hubMap[1] }
   const release = hash.match(/^#\/system\/([\w-]+)\/release\/([\w-]+)\/([0-9A-Za-z.-]+)$/)
   if (release) return { kind: 'release', name: release[1], deliverable: release[2], version: release[3] }
-  const hub = hash.match(/^#\/hub\/([\w-]+)\/vocabulary$/)
-  if (hub) return { kind: 'hub', name: hub[1], tab: 'vocabulary' }
+  const hub = hash.match(/^#\/hub\/([\w-]+)\/(vocabulary|wiki)$/)
+  if (hub) return { kind: 'hub', name: hub[1], tab: hub[2] as HubTab }
   const m = hash.match(/^#\/(hub|dm|system)\/([\w-]+)$/)
   return m ? { kind: m[1] as 'hub' | 'dm' | 'system', name: m[2] } : allView
 }

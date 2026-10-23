@@ -628,6 +628,15 @@ function shapePath(ctx: CanvasRenderingContext2D, shape: GraphNode['shape'], p: 
   ctx.beginPath()
   if (shape === 'square') {
     ctx.roundRect(p.x - r, p.y - r, 2 * r, 2 * r, r * 0.3)
+  } else if (shape === 'hexagon') {
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3
+      const x = p.x + r * 1.1 * Math.cos(a)
+      const y = p.y + r * 1.1 * Math.sin(a)
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
   } else if (shape === 'diamond') {
     const d = r * 1.25
     ctx.moveTo(p.x, p.y - d)
@@ -653,6 +662,11 @@ function readColors(): Record<Color | 'edge' | 'label' | 'selected', string> {
     dirty: v('--lens-dirty', '#d946ef'),
     none: v('--lens-none', '#d4d4d4'),
     outline: v('--lens-outline', '#a3a3a3'),
+    feature: v('--kind-feature', '#3b82f6'),
+    story: v('--kind-story', '#8b5cf6'),
+    rule: v('--kind-rule', '#f59e0b'),
+    principle: v('--kind-principle', '#475569'),
+    plan: v('--kind-plan', '#a16207'),
     white: '#ffffff',
     edge: v('--graph-edge', '#d4d4d4'),
     label: v('--graph-label', '#525252'),

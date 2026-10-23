@@ -27,20 +27,38 @@ export function ConversationHeader({ state, show, onMention }: Props) {
       </>
     )
   } else if (v.kind === 'map') {
+    const crumb = (
+      <button type="button" className="font-normal text-muted-foreground hover:text-foreground" onClick={() => show({ kind: 'map' })}>
+        Map
+      </button>
+    )
     body = v.system ? (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <Network className="size-4 text-muted-foreground" />
-          <button type="button" className="font-normal text-muted-foreground hover:text-foreground" onClick={() => show({ kind: 'map' })}>
-            Map
-          </button>
+          {crumb}
           <span className="font-normal text-muted-foreground">/</span>
           {v.system}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The features of {v.system}, joined by the links of its feature wiki.{' '}
+          The wiki of {v.system}: its features, principles, and rules, your plans and notes, and the documents of its hubs that link them.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.system! })}>
             Open the system page
+          </button>
+          .
+        </p>
+      </>
+    ) : v.hub ? (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Network className="size-4 text-muted-foreground" />
+          {crumb}
+          <span className="font-normal text-muted-foreground">/</span>#{v.hub}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          The wiki of #{v.hub}: its stories, rules, and principles, your plans and notes, and the features of its systems that they link.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'hub', name: v.hub!, tab: 'wiki' })}>
+            Open the list
           </button>
           .
         </p>
@@ -51,7 +69,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           <Network className="size-4 text-muted-foreground" />
           Map
         </h1>
-        <p className="text-sm text-muted-foreground">Each system with its repository and the deliverables it holds. Click a system to open its features.</p>
+        <p className="text-sm text-muted-foreground">Each hub and system, with its repository and the deliverables it holds. Click a system or a hub to open its wiki.</p>
       </>
     )
   } else if (v.kind === 'shared') {
@@ -90,6 +108,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
     const hub = state.hubs.find((h) => h.name === v.name)!
     const vocab = state.vocabularies.find((x) => x.hub === hub.name)
     const entries = (vocab?.terms.length ?? 0) + (vocab?.interfaces.length ?? 0)
+    const docs = state.wikis.find((w) => w.ref === `hub:${hub.name}`)?.documents.length ?? 0
     const tab = v.tab ?? 'messages'
     const tabButton = (t: HubTab, label: string) => (
       <button
@@ -135,6 +154,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         <div className="mt-3 -mb-3 flex gap-4">
           {tabButton('messages', 'Messages')}
           {tabButton('vocabulary', entries ? `Vocabulary (${entries})` : 'Vocabulary')}
+          {tabButton('wiki', docs ? `Wiki (${docs})` : 'Wiki')}
         </div>
       </>
     )

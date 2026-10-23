@@ -59,13 +59,14 @@ export function useHikari() {
     }
   }, [])
 
-  // A move between the two maps adds a history entry, so that back and
-  // forward run the map transition (rule U17). Other moves replace the
-  // entry.
+  // A move between two maps adds a history entry, so that back and forward
+  // run the map transition (rule U17). Other moves, such as a selection on
+  // a wiki map, replace the entry.
   const lastView = useRef(state.view)
   useEffect(() => {
     const hash = viewHash(state.view)
-    const between = lastView.current.kind === 'map' && state.view.kind === 'map'
+    const last = lastView.current
+    const between = last.kind === 'map' && state.view.kind === 'map' && (last.system !== state.view.system || last.hub !== state.view.hub)
     lastView.current = state.view
     if (location.hash === hash) return
     if (between) history.pushState(null, '', location.pathname + location.search + hash)
