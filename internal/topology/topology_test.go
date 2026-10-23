@@ -502,3 +502,31 @@ func TestHubRelations(t *testing.T) {
 		t.Errorf("A1 ReadableHubWikis(dev) = %v", got)
 	}
 }
+
+func TestTester(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory", "e2e")
+	src := systemsTopology(repo, validOwners+"  e2e: {x-hikari: {system: {repo: shop, scope: e2e}, tests: h}}\n")
+	src = strings.Replace(src, "members: [orders, inventory]", "members: [orders, inventory, e2e]", 1)
+	topo, err := Parse([]byte(src), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := topo.ReadableReleases("e2e"); !slices.Equal(got, []string{"inventory", "orders"}) {
+		t.Errorf("TS4 ReadableReleases(e2e) = %v", got)
+	}
+	if topo.Tester("h") != "e2e" || topo.Tester("x") != "" {
+		t.Errorf("Tester(h) = %q", topo.Tester("h"))
+	}
+	for name, c := range map[string]struct{ src, want string }{
+		"TS1 no system": {strings.Replace(src, "lead: {x-hikari: {}}", "lead: {x-hikari: {tests: h}}", 1), "only an agent with a system can be a tester"},
+		"TS1 no hub":    {strings.Replace(src, "tests: h}", "tests: ghost}", 1), `tests the hub "ghost"`},
+		"TS2 member":    {strings.Replace(src, "members: [orders, inventory, e2e]", "members: [orders, inventory]", 1), "must be a member of #h"},
+		"TS3 one":       {strings.Replace(src, "scope: services/orders}}}", "scope: services/orders}, tests: h}}", 1), "a hub has one tester"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Parse([]byte(c.src), t.TempDir()); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
