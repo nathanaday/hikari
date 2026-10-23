@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { initialState, reducer } from '@/lib/store'
 import type { SendRequest, ServerEvent } from '@/lib/types'
 import { parseHash, viewHash, type View } from '@/lib/view'
@@ -59,9 +59,17 @@ export function useHikari() {
     }
   }, [])
 
+  // A move between the two maps adds a history entry, so that back and
+  // forward run the map transition (rule U17). Other moves replace the
+  // entry.
+  const lastView = useRef(state.view)
   useEffect(() => {
     const hash = viewHash(state.view)
-    if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash)
+    const between = lastView.current.kind === 'map' && state.view.kind === 'map'
+    lastView.current = state.view
+    if (location.hash === hash) return
+    if (between) history.pushState(null, '', location.pathname + location.search + hash)
+    else history.replaceState(null, '', location.pathname + location.search + hash)
   }, [state.view])
 
   useEffect(() => {

@@ -19,6 +19,8 @@ export type Handoff = { kind: 'in'; from: string } | { kind: 'out'; to: string }
 
 export type Callbacks = {
   onClick: (id: string | null) => void
+  // onSelect reports a selection made with the keyboard.
+  onSelect: (id: string | null) => void
   onOpen: (id: string) => void
   onEscape: () => void
   onHover: (node: GraphNode | null, at: Point) => void
@@ -130,19 +132,21 @@ export class GraphEngine {
   // setScene gives the engine a graph. The same key updates the graph on
   // the canvas in place; a new key replaces it, with a transition when
   // handoff says how the two relate.
-  setScene(graph: Graph, key: string, paint: (n: GraphNode) => Paint, handoff?: Handoff) {
+  setScene(graph: Graph, key: string, paint: (n: GraphNode) => Paint, handoffFor?: (from: string, to: string) => Handoff | undefined) {
     if (key === this.key) {
       this.paint = paint
       this.merge(graph)
+      this.request()
       return
     }
+    const handoff = this.key ? handoffFor?.(this.key, key) : undefined
     const now = performance.now()
     const old = this.freeze()
     if (this.key) this.cache.set(this.key, { at: new Map(this.nodes.map((n) => [n.id, { x: n.x!, y: n.y! }])), camera: this.camera })
     const from = this.camera
     this.key = key
     this.paint = paint
-    this.hover = null
+    this.setHover(null)
     this.dim = 0
     this.follow = false
     this.tween = null
@@ -176,11 +180,6 @@ export class GraphEngine {
       this.outgoing = old
       this.transition = { kind: 'out', start: now, via: handoff.to, at: to ? { x: to.x!, y: to.y! } : { x: 0, y: 0 }, from, to: target }
     }
-    this.request()
-  }
-
-  setPaint(paint: (n: GraphNode) => Paint) {
-    this.paint = paint
     this.request()
   }
 
@@ -242,7 +241,7 @@ export class GraphEngine {
     this.sim.nodes(this.nodes)
     ;(this.sim.force('link') as ReturnType<typeof forceLink<SimNode, SimLink>>).links(this.links)
     if (changed) this.sim.alpha(Math.max(this.sim.alpha(), 0.3))
-    if (this.hover && !this.byID.has(this.hover)) this.hover = null
+    if (this.hover && !this.byID.has(this.hover)) this.setHover(null)
     this.request()
   }
 
@@ -299,6 +298,10 @@ export class GraphEngine {
     const box = (this.canvas.parentElement ?? this.canvas).getBoundingClientRect()
     if (!box.width || !box.height) return
     this.dpr = window.devicePixelRatio || 1
+    if (this.width && this.height && !this.needsFit) {
+      // Keep the world point at the center of the view where it was.
+      this.setCamera({ ...this.camera, x: this.camera.x + (box.width - this.width) / 2, y: this.camera.y + (box.height - this.height) / 2 })
+    }
     this.width = box.width
     this.height = box.height
     this.canvas.width = Math.round(box.width * this.dpr)
@@ -488,6 +491,9 @@ export class GraphEngine {
     const k = this.camera.k
     const r = node.radius
     shapePath(ctx, node.shape, p, r)
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = this.colors.white
+    ctx.fill()
     ctx.globalAlpha = alpha * paint.opacity
     ctx.fillStyle = this.colors[paint.fill]
     ctx.fill()
@@ -598,13 +604,13 @@ export class GraphEngine {
       const next = e.shiftKey ? (i < 0 ? order.length - 1 : i - 1) : i + 1
       if (next < 0 || next >= order.length) return
       e.preventDefault()
-      this.cb.onClick(order[next].id)
+      this.cb.onSelect(order[next].id)
     } else if (e.key === 'Enter' && this.selected) {
       e.preventDefault()
       this.cb.onOpen(this.selected)
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      if (this.selected) this.cb.onClick(null)
+      if (this.selected) this.cb.onSelect(null)
       else this.cb.onEscape()
     }
   }
