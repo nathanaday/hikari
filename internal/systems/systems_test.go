@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featurewiki"
@@ -894,5 +897,48 @@ tests:
 	}
 	if !slices.Equal(v.StaleKeys, []string{"tests/test_gone.py"}) || v.Features[0].Health != testmap.Pending {
 		t.Errorf("S30: stale keys %v, health %s", v.StaleKeys, v.Features[0].Health)
+	}
+}
+
+func TestDirtyScopes(t *testing.T) {
+	f := newFixture(t)
+	git(t, f.repo, "add", "--all")
+	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
+	f.m.checkDirty(f.m.owners["orders"])
+	if f.m.SystemView("orders").Dirty {
+		t.Fatal("N1: a committed scope is clean")
+	}
+	var mu sync.Mutex
+	var seen []Change
+	f.m.OnChange(func(c Change) { mu.Lock(); seen = append(seen, c); mu.Unlock() })
+	write(t, f.repo, "services/orders/create.py", "def create(): return 1\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	go f.m.watchDirty(ctx, 10*time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for !f.m.SystemView("orders").Dirty && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if !f.m.SystemView("orders").Dirty || f.m.SystemView("inventory").Dirty {
+		t.Fatal("N4: the watch finds the change in orders only")
+	}
+	mu.Lock()
+	sent := slices.ContainsFunc(seen, func(c Change) bool { return c.System == "orders" })
+	mu.Unlock()
+	if !sent {
+		t.Error("N4: no change was sent")
+	}
+	if _, err := f.m.Commit("orders", "Edit"); err != nil {
+		t.Fatal(err)
+	}
+	if f.m.SystemView("orders").Dirty {
+		t.Error("N1: a commit makes the scope clean at once")
+	}
+	if g := f.m.SystemView("orders").Grants; !slices.Equal(g.Deliverables, []string{"python-library"}) || len(g.Releases) != 0 || g.Releases == nil {
+		t.Errorf("N1: grants %+v", g)
+	}
+	repos := f.m.Repos()
+	if len(repos) != 1 || repos[0].Name != "shop" || !slices.Equal(repos[0].Systems, []string{"inventory", "orders"}) {
+		t.Errorf("N2: %+v", repos)
 	}
 }

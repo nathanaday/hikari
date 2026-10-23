@@ -54,6 +54,9 @@ type Snapshot struct {
 	Messages     []api.Message      `json:"messages"`
 	Systems      []api.SystemView   `json:"systems"`
 	Vocabularies []vocab.Vocabulary `json:"vocabularies"`
+	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
+	Repos        []api.RepoInfo     `json:"repos"`
+	Deliverables []deliverableEntry `json:"deliverables"`
 	// Activity holds the recent steps of each agent.
 	Activity map[string][]api.Activity `json:"activity"`
 }
@@ -455,6 +458,8 @@ func (s *Server) snapshot() Snapshot {
 	}
 	snap.Systems = s.sys.Systems()
 	snap.Vocabularies = s.sys.Vocabularies()
+	snap.Repos = s.sys.Repos()
+	snap.Deliverables = s.deliverables(s.sys.Store())
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {
 		snap.Activity[n] = slices.Clone(list)

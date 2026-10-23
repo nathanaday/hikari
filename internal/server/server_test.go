@@ -353,8 +353,21 @@ services:
 
 	events, cancel := s.Subscribe()
 	defer cancel()
-	if snap := (<-events).Snapshot; len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || len(snap.Vocabularies) != 1 {
+	snap := (<-events).Snapshot
+	if len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || len(snap.Vocabularies) != 1 {
 		t.Fatalf("snapshot systems = %+v, vocabularies = %+v", snap.Systems, snap.Vocabularies)
+	}
+	if len(snap.Repos) != 1 || snap.Repos[0].Name != "shop" || snap.Repos[0].Branch != "hikari/work" || !slices.Equal(snap.Repos[0].Systems, []string{"orders"}) {
+		t.Errorf("N2: repos = %+v", snap.Repos)
+	}
+	if len(snap.Deliverables) != 1 || snap.Deliverables[0].Name != "lib" || !slices.Equal(snap.Deliverables[0].Holders, []string{"orders"}) {
+		t.Errorf("N3: deliverables = %+v", snap.Deliverables)
+	}
+	if g := snap.Systems[0].Grants; !slices.Equal(g.Deliverables, []string{"lib"}) || g.Releases == nil {
+		t.Errorf("N1: grants = %+v", g)
+	}
+	if data, _ := json.Marshal(snap.Repos); strings.Contains(string(data), dir) {
+		t.Errorf("N2: repos hold a host path: %s", data)
 	}
 
 	self, err := orders.Self(ctx)

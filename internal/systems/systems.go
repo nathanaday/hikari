@@ -56,6 +56,9 @@ type owner struct {
 	projectErr string
 	// runs serializes the recording of test runs.
 	runs sync.Mutex
+	// dirty says whether the scope had uncommitted changes at the last
+	// check (rule N4).
+	dirty bool
 }
 
 type Manager struct {
@@ -120,6 +123,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 	}
 	for _, name := range topo.Owners() {
 		o := m.owners[name]
+		m.checkDirty(o)
 		if err := m.project(o); err != nil {
 			m.warnings = append(m.warnings, fmt.Sprintf("agent %q: the map does not match the feature wiki: %v", name, err))
 		}
@@ -413,9 +417,10 @@ func (m *Manager) peers(system string) []string {
 	return out
 }
 
-// Watch reloads hand edits of the map files and the feature wikis until
-// ctx ends.
+// Watch reloads hand edits of the map files and the feature wikis, and
+// checks each scope for uncommitted changes, until ctx ends.
 func (m *Manager) Watch(ctx context.Context) {
+	go m.watchDirty(ctx, 2*time.Second)
 	for _, o := range m.owners {
 		go o.store.Watch(ctx, time.Second, func() {
 			m.project(o)
@@ -444,6 +449,57 @@ func (m *Manager) watchWiki(ctx context.Context, o *owner) {
 			m.changed(Change{System: o.name})
 		}
 	}
+}
+
+// watchDirty checks every scope for uncommitted changes every interval, and
+// reports each system whose answer changed (rule N4).
+func (m *Manager) watchDirty(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			for _, name := range m.topo.Owners() {
+				if o := m.owners[name]; m.checkDirty(o) {
+					m.changed(Change{System: name})
+				}
+			}
+		}
+	}
+}
+
+// checkDirty asks git whether o's scope has uncommitted changes, records
+// the answer, and reports whether it changed. A failed check keeps the last
+// answer.
+func (m *Manager) checkDirty(o *owner) bool {
+	dirty, err := o.repo.Dirty(o.scope)
+	if err != nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	changed := o.dirty != dirty
+	o.dirty = dirty
+	return changed
+}
+
+// Repos returns the repositories of the topology with their systems, for
+// the UI (rule N2).
+func (m *Manager) Repos() []api.RepoInfo {
+	out := []api.RepoInfo{}
+	for _, name := range slices.Sorted(maps.Keys(m.topo.Repos)) {
+		info := api.RepoInfo{Name: name, Branch: m.topo.Repos[name].Branch, Systems: []string{}}
+		for _, owner := range m.topo.Owners() {
+			if m.owners[owner].repoName == name {
+				info.Systems = append(info.Systems, owner)
+			}
+		}
+		slices.Sort(info.Systems)
+		out = append(out, info)
+	}
+	return out
 }
 
 // CommitAll commits the changes left in every owner's scope, so that the
@@ -715,6 +771,7 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	if _, err := o.repo.Commit(o.branch, o.scope, agent, agent+": changes described by the system map"); err != nil {
 		return "", err
 	}
+	m.checkDirty(o)
 	head, err := o.repo.Head()
 	if err != nil {
 		return "", err
@@ -739,6 +796,7 @@ func (m *Manager) Commit(agent, message string) (string, error) {
 	}
 	commit, err := o.repo.Commit(o.branch, o.scope, agent, message)
 	if err == nil && commit != "" {
+		m.checkDirty(o)
 		m.changed(Change{System: agent})
 	}
 	return commit, err
@@ -978,8 +1036,14 @@ func (m *Manager) SystemView(name string) api.SystemView {
 	}
 	providers := m.providers(peers)
 	releases, _ := m.store.Releases(name)
+	o.mu.Lock()
+	dirty := o.dirty
+	o.mu.Unlock()
+	grants := m.topo.Agents[name].Grants
 	return api.SystemView{
 		OwnerView: v,
+		Dirty:     dirty,
+		Grants:    api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables)},
 		Private:   priv,
 		Releases:  releases,
 		Owner:     name,
@@ -1048,6 +1112,13 @@ func interfaceNames(ins []sysmap.Interface) []string {
 		out[i] = in.Name
 	}
 	return out
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return slices.Clone(s)
 }
 
 func keys[V any](m map[string]V) map[string]bool {

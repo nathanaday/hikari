@@ -120,6 +120,15 @@ func (r *Repo) ChangedSince(commit, scope string, exclude ...string) ([]string, 
 	return out, nil
 }
 
+// Dirty reports whether scope has uncommitted changes: modified, deleted,
+// or untracked files that git does not ignore.
+func (r *Repo) Dirty(scope string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, err := r.git("status", "--porcelain", "--untracked-files=all", "--", pathspec(scope))
+	return out != "", err
+}
+
 // HasCommit reports whether commit names a commit in the repo.
 func (r *Repo) HasCommit(commit string) bool {
 	r.mu.Lock()

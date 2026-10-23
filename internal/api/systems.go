@@ -131,6 +131,9 @@ type FeatureHit struct {
 // the private documents.
 type SystemView struct {
 	sysmap.OwnerView
+	// Dirty says whether the scope has uncommitted changes (rule N1).
+	Dirty     bool                `json:"dirty"`
+	Grants    Grants              `json:"grants"`
 	Private   sysmap.Private      `json:"private"`
 	Releases  []store.Manifest    `json:"releases"`
 	Owner     string              `json:"owner"`
@@ -139,6 +142,21 @@ type SystemView struct {
 	Branch    string              `json:"branch"`
 	Flags     []vocab.Flag        `json:"flags"`
 	Providers map[string][]string `json:"providers"`
+}
+
+// Grants are what the topology grants an owner: the systems whose releases
+// it reads, and the deliverables it holds.
+type Grants struct {
+	Releases     []string `json:"releases"`
+	Deliverables []string `json:"deliverables"`
+}
+
+// RepoInfo is one repository of the topology, for the UI: its hikari
+// branch and the systems whose scope is in it. It holds no host path.
+type RepoInfo struct {
+	Name    string   `json:"name"`
+	Branch  string   `json:"branch"`
+	Systems []string `json:"systems"`
 }
 
 type PublishRequest struct {

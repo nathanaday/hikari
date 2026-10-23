@@ -186,3 +186,25 @@ func TestIsIgnored(t *testing.T) {
 		t.Error("a/b.txt is not ignored")
 	}
 }
+
+func TestDirty(t *testing.T) {
+	r := newRepo(t, map[string]string{"a/x.py": "x\n", "b/y.py": "y\n", ".gitignore": "*.log\n"})
+	check := func(scope string, want bool) {
+		t.Helper()
+		if got, err := r.Dirty(scope); err != nil || got != want {
+			t.Errorf("Dirty(%q) = %v, %v; want %v", scope, got, err, want)
+		}
+	}
+	check("a", false)
+	write(t, r.Path, "a/debug.log", "ignored")
+	check("a", false)
+	write(t, r.Path, "a/new.py", "untracked")
+	check("a", true)
+	check("b", false)
+	write(t, r.Path, "b/y.py", "changed\n")
+	check("b", true)
+	os.Remove(filepath.Join(r.Path, "a/new.py"))
+	os.Remove(filepath.Join(r.Path, "a/x.py"))
+	check("a", true)
+	check("", true)
+}
