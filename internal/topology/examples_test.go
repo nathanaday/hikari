@@ -32,3 +32,19 @@ func TestExamples(t *testing.T) {
 		})
 	}
 }
+
+// TestSensorsExample loads the sensors example's project repository, which
+// `make example-sensors` makes.
+func TestSensorsExample(t *testing.T) {
+	file := "../../.hikari/demo/sensors/compose.yaml"
+	if _, err := os.Stat(file); err != nil || exec.Command("docker", "compose", "version").Run() != nil {
+		t.Skip("run `make example-sensors` first")
+	}
+	topo, err := Load(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topo.Project == nil || topo.Tester("main") != "sensors-e2e" || len(topo.Owners()) != 5 {
+		t.Errorf("project %+v, tester %q, owners %v", topo.Project, topo.Tester("main"), topo.Owners())
+	}
+}

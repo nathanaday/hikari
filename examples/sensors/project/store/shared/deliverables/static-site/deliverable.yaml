@@ -1,0 +1,5 @@
+version: 1
+description: A static web page, with the nginx configuration that serves it and forwards its API calls, and a README.
+layout:
+  require: [README.md, index.html, nginx.conf]
+  allow: [README.md, "*.html", "*.js", "*.css", nginx.conf]

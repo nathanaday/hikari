@@ -1,0 +1,5 @@
+version: 1
+description: A program for Linux, as a static binary under bin/ with a README that says how to run it. Other systems run it from the release, mounted into a Linux image.
+layout:
+  require: [README.md, "bin/*"]
+  allow: [README.md, "bin/*", "docs/**/*.md"]

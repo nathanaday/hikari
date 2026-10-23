@@ -6,7 +6,7 @@ LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
 
-.PHONY: build ui image up dev-ui test clean demo-repo
+.PHONY: build ui image up dev-ui test clean demo-repo example-sensors
 
 # The Linux binaries are what hikari mounts into each agent's container.
 build: web/dist/index.html
@@ -45,6 +45,17 @@ demo-repo:
 	rm -rf examples/shop/store
 	mkdir -p examples/shop/store
 	cp -R examples/shop/seed/. examples/shop/store/
+
+# Make the sensors example's project repository in .hikari/demo/sensors,
+# replacing what is there.
+example-sensors:
+	rm -rf .hikari/demo/sensors
+	mkdir -p .hikari/demo
+	cp -R examples/sensors/project .hikari/demo/sensors
+	git -C .hikari/demo/sensors init --quiet --initial-branch=main
+	git -C .hikari/demo/sensors add --all
+	git -C .hikari/demo/sensors -c user.name="hikari demo" -c user.email=demo@hikari.invalid commit --quiet -m "Start the sensors project"
+	@echo "made the sensors project in .hikari/demo/sensors; run: make up COMPOSE=.hikari/demo/sensors/compose.yaml"
 
 # Remove containers and networks left by runs that did not shut down cleanly.
 clean:
