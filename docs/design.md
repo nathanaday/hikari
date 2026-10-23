@@ -119,7 +119,43 @@ The owner changes the wiki through one tool that applies a set of writes as a
 whole, so that the files always have the schema and features in one change
 can link each other. A rename rewrites every link, which an agent editing
 files by hand would get wrong. The owner reads the files directly, and a
-user edits a document's `## Notes` section in Obsidian; the server reloads
+user edits a document's `## Hub and system wikis
+
+The feature wiki became one of many wikis: every system and every hub has one,
+and a document has a kind. A system's features, principles, and rules, and a
+hub's stories, rules, and principles, share one format and one change model,
+because the reasons to check a header, to keep links as the only structure,
+and to apply a change as a whole are the same for every kind.
+
+Ids are unique across the store, which the feature wiki already required
+across systems. So `[[reserve-stock]]` names one document in any wiki, in
+hikari and in Obsidian, and a story links the features of its systems with
+no other syntax. A link names a document by its last path segment, because
+Obsidian writes a path when two files share a name, as a release copy does.
+
+The user's plans and notes live beside the agents' documents, so that the
+wiki of a system or a hub is also where the user keeps what they intend for
+it. Agents read them and never change them. A file with no kind is a note,
+so that a page dropped into the folder in Obsidian is valid as it is. A
+hand edit is checked file by file: a broken document keeps its last valid
+version, and a broken link is a warning, because a wiki that refuses a note
+is a worse place to write than one that warns. A tool write checks links
+and uniqueness only for the documents it writes, so a warning that a hand
+edit left never blocks an agent.
+
+A change reads the ids of every wiki and can rewrite the links of all of
+them, so hikari applies one wiki change at a time. Every tool change is
+committed when it is made, so an uncommitted change in a wiki is always the
+user's, and hikari commits it with the user's identity: before an agent's
+next change of that wiki, at stop, and at start. Configuration in the shared
+area stays the user's to commit, because it changes how agents behave.
+
+An owner reads the wikis of its hubs, because their rules and principles
+apply to it, and an orchestrator reads the wikis of its child hubs, which
+speak for their systems as the child orchestrator does. Before each turn,
+an agent learns which documents of those wikis someone else changed.
+
+## Notes` section in Obsidian; the server reloads
 hand edits and keeps the last valid wiki when one breaks a rule. Findings,
 plans, and test health are not in the documents: they will be entities of
 their own that link features, so that each relation is computed instead of
