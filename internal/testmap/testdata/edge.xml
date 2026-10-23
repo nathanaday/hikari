@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="outer" file="/workspace/lib/test/outer.test.ts">
+    <testsuite name="inner">
+      <testcase classname="outer" name="uses the suite file"/>
+      <testcase classname="outer" name="twice"/>
+      <testcase classname="outer" name="twice"><failure>first line of the text
+second line</failure></testcase>
+      <testcase classname="outer" name="skipped twice"><skipped/></testcase>
+      <testcase classname="outer" name="skipped twice"><skipped/></testcase>
+      <testcase classname="outer" name="skipped once"><skipped/></testcase>
+      <testcase classname="outer" name="skipped once"/>
+    </testsuite>
+  </testsuite>
+  <testsuite name="no file">
+    <testcase classname="pkg/thing" name="TestThing"><error message="panic: nil map"/></testcase>
+    <testcase name="no class"/>
+    <testcase classname="x" name="outside" file="/elsewhere/x_test.go"/>
+  </testsuite>
+</testsuites>

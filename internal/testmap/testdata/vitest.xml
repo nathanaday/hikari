@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="7" failures="0" errors="0" time="0.002456958">
+    <testsuite name="test/unit/text-ops.test.ts" timestamp="2026-10-23T02:22:04.142Z" hostname="host" tests="7" failures="0" errors="0" skipped="0" time="0.002456958">
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; diffOps turns &quot;The quick brown fox&quot; into &quot;The slow brown fox&quot;" time="0.000956916">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; diffOps turns &quot;one\ntwo\nthree&quot; into &quot;one\n2\nthree\nfour&quot;" time="0.00022575">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; diffOps turns &quot;&quot; into &quot;new text&quot;" time="0.000058125">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; diffOps turns &quot;old text&quot; into &quot;&quot;" time="0.000148583">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; diffOps turns &quot;abc&quot; into &quot;abc&quot;" time="0.000043167">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; joins a delete and an insert at one spot into one replacement" time="0.000269833">
+        </testcase>
+        <testcase classname="test/unit/text-ops.test.ts" name="the text operations of yami/document &gt; turns a text delta into ops on the text before the change, and shifts them" time="0.000280375">
+        </testcase>
+    </testsuite>
+</testsuites>

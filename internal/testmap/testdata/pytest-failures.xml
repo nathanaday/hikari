@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="1" tests="6" time="0.013" timestamp="2026-10-22T19:29:27.069167-07:00" hostname="host"><testcase classname="tests.test_fail.FailTest" name="test_errors" file="tests/test_fail.py" line="7" time="0.000"><failure message="RuntimeError: boom&#10;second line">self = &lt;test_fail.FailTest testMethod=test_errors&gt;
+
+    def test_errors(self):
+&gt;       raise RuntimeError("boom\nsecond line")
+E       RuntimeError: boom
+E       second line
+
+tests/test_fail.py:9: RuntimeError</failure></testcase><testcase classname="tests.test_fail.FailTest" name="test_fails" file="tests/test_fail.py" line="2" time="0.000"><failure message="AssertionError: 1 != 2 : one is not two">self = &lt;test_fail.FailTest testMethod=test_fails&gt;
+
+    def test_fails(self):
+&gt;       self.assertEqual(1, 2, "one is not two")
+E       AssertionError: 1 != 2 : one is not two
+
+tests/test_fail.py:4: AssertionError</failure></testcase><testcase classname="tests.test_fail.FailTest" name="test_skipped" file="tests/test_fail.py" line="4" time="0.000"><skipped type="pytest.skip" message="needs a live service">/workspace/inventory/tests/test_fail.py:5: needs a live service</skipped></testcase><testcase classname="tests.test_stock.StockTest" name="test_reserve_fails_when_too_little_is_available" file="tests/test_stock.py" line="11" time="0.000" /><testcase classname="tests.test_stock.StockTest" name="test_reserve_holds_stock" file="tests/test_stock.py" line="6" time="0.000" /><testcase classname="tests.test_stock.StockTest" name="test_restock_adds_stock" file="tests/test_stock.py" line="16" time="0.000" /></testsuite></testsuites>
