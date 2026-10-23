@@ -127,6 +127,23 @@ func TestChangesMakeResultsPending(t *testing.T) {
 	}
 }
 
+func TestShadowedKey(t *testing.T) {
+	m, w, r := healthFixture()
+	delete(m.Tests, "tests/gone.py > test_old_thing")
+	// A class key that every test overrides is harmless: not stale.
+	m.Tests["tests/stock.py > test_restock"] = []string{"[[restock]]"}
+	m.Tests["tests/stock.py > test_reserve"] = []string{"[[reserve]]"}
+	m.Tests["tests/stock.py > test_reserve_fails"] = []string{"[[reserve]]"}
+	m.Tests["tests/stock.py"] = []string{"[[cancel]]"}
+	rep := compute(m, w, r)
+	if len(rep.StaleKeys) != 0 || len(rep.Shadowed) != 1 || rep.Shadowed[0] != "tests/stock.py" {
+		t.Fatalf("stale %v, shadowed %v", rep.StaleKeys, rep.Shadowed)
+	}
+	if rep.Features["cancel"].Health != Untested || rep.Features["reserve"].Health != Passing {
+		t.Fatalf("a feature that only a shadowed key links has no touching test: %+v", rep.Features)
+	}
+}
+
 func TestSkippedIsPending(t *testing.T) {
 	m, w, r := healthFixture()
 	m.Tests["tests/live.py"] = []string{"[[audit]]"}

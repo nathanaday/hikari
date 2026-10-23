@@ -54,7 +54,7 @@ Each key under `tests` covers one test or a group of tests. Its value is a list 
 - A **file key** names a file of your scope, such as `tests/test_stock.py`. It covers every test in that file.
 - An **id key** is anything else. It covers the test with that id, and every test whose id starts with the key followed by ` > ` or `.`: `tests.test_stock.StockTest` covers the class, `test/unit/wiki.test.ts > lint` covers the describe block.
 
-hikari decides the kind from the disk. When keys overlap, the most specific decides a test's links: an id key beats a file key, a file key beats a directory key, and between two keys of the same kind the longer wins. The links do not add up: write every feature the test touches on the key that decides it.
+hikari decides the kind from the disk. When keys overlap, the most specific decides a test's links: an id key beats a file key, a file key beats a directory key, and between two keys of the same kind the longer wins. The links do not add up: write every feature the test touches on the key that decides it. A key that a more specific key overrides for every test it matches does nothing, and `get_my_system` warns about it.
 
 Write the fewest keys that give each test its right links: a file key where a file tests one feature, and an id key only for the tests that differ.
 
@@ -70,9 +70,9 @@ An empty list, `[]`, says that the tests touch no feature on purpose: a live tes
 
 hikari computes each feature's health from its touching tests, in this order. The first match decides.
 
-1. `untested`: no key links the feature.
-2. `failing`: a touching test failed in its last run, and its code has not changed since.
-3. `pending`: a touching test has not run since its test file or the code of a feature it touches changed, or it was skipped, or a key that links the feature matches no recorded test.
+1. `failing`: a touching test failed in its last run, and its code has not changed since.
+2. `pending`: a touching test has not run since its test file or the code of a feature it touches changed, or it was skipped, or a key that links the feature matches no recorded test (a stale key: the suite has not run, or the key is wrong).
+3. `untested`: no recorded test touches the feature.
 4. `passing`: every touching test passed in a run that is still current.
 
 The code of a feature is its `code` entry in `layout.yaml`. A test's result stays current while its test file and the code of every feature it touches are unchanged.

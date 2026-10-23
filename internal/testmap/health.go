@@ -48,6 +48,9 @@ type Report struct {
 	Failing   []FailingTest
 	Unmapped  []UnmappedFile
 	StaleKeys []string
+	// Shadowed lists the keys that match recorded tests but decide none,
+	// because a more specific key decides each of them.
+	Shadowed []string
 	// TestFiles holds the test file of every recorded test (rule S21).
 	TestFiles map[string]bool
 }
@@ -69,20 +72,19 @@ func Compute(m Map, mt *Matcher, r Results, features []string, h Hashes) Report 
 		known[id] = true
 		health[id] = &FeatureHealth{}
 	}
-	linked := map[string]bool{}
-	for key := range m.Tests {
-		for _, id := range m.Links(key) {
-			linked[id] = true
-		}
-	}
 	rep := Report{Features: map[string]FeatureHealth{}, TestFiles: map[string]bool{}}
-	used := map[string]bool{}
+	used, matched := map[string]bool{}, map[string]bool{}
 	unmapped := map[string][]string{}
 	for _, suite := range sorted(r.Runs) {
 		run := r.Runs[suite]
 		for _, t := range run.Tests {
 			if t.File != "" {
 				rep.TestFiles[t.File] = true
+			}
+			for key := range m.Tests {
+				if !matched[key] && mt.Matches(key, t.ID, t.File) {
+					matched[key] = true
+				}
 			}
 			key, ok := mt.Key(t.ID, t.File)
 			if !ok {
@@ -128,22 +130,26 @@ func Compute(m Map, mt *Matcher, r Results, features []string, h Hashes) Report 
 	}
 	staleLinked := map[string]bool{}
 	for _, key := range sorted(m.Tests) {
-		if !used[key] {
+		switch {
+		case !matched[key]:
 			rep.StaleKeys = append(rep.StaleKeys, key)
 			for _, id := range m.Links(key) {
 				staleLinked[id] = true
 			}
+		case !used[key]:
+			rep.Shadowed = append(rep.Shadowed, key)
 		}
 	}
 	for _, id := range features {
 		f := health[id]
+		touched := f.Passed+f.Failed+f.Pending > 0
 		switch {
-		case !linked[id]:
-			f.Health = Untested
 		case f.Failed > 0:
 			f.Health = Failing
 		case f.Pending > 0 || staleLinked[id]:
 			f.Health = Pending
+		case !touched:
+			f.Health = Untested
 		default:
 			f.Health = Passing
 		}

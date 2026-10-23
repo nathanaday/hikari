@@ -46,7 +46,8 @@ For a system with no wiki:
 6. Write the code map in `layout.yaml`: a `code` entry for every feature.
 7. Write the suites of `tests.yaml`, each with a command that writes its JUnit XML report ([tests.md](references/tests.md)). Run each suite and call `record_test_run` for it.
 8. Map the tests. `get_my_system` lists the unmapped tests by file. Write the keys of `tests.yaml` for them, and the `gaps`. When more than about 50 tests are unmapped, send the `hikari-test-survey` agent for each group of up to 10 test files, and work from its keys. You need not run the suites again: hikari applies new keys to the recorded results.
-9. Call `mark_map_current`.
+9. Call `get_my_system` and check that no test is unmapped, no key is stale, and no warning names `tests.yaml`. Fix what it lists.
+10. Call `mark_map_current`.
 
 ## Keep true
 

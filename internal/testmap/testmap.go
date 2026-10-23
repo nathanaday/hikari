@@ -233,6 +233,13 @@ func rank(k Kind) int {
 	return 0
 }
 
+// Matches reports whether a key matches a test, whether or not it decides
+// the test's links.
+func (mt *Matcher) Matches(key, id, file string) bool {
+	kind, ok := mt.kinds[key]
+	return ok && mt.matches(key, kind, id, file)
+}
+
 func (mt *Matcher) matches(key string, kind Kind, id, file string) bool {
 	switch kind {
 	case FileKey:

@@ -540,6 +540,9 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 	if resultsProblem != "" {
 		warnings = append(warnings, resultsProblem)
 	}
+	for _, key := range rep.Shadowed {
+		warnings = append(warnings, fmt.Sprintf("%s: the key %q decides no test, because a more specific key decides each test it matches; remove it", testmap.MapFile, key))
+	}
 	for _, id := range ids {
 		if len(priv.Layout.Features[id].Code) == 0 {
 			warnings = append(warnings, fmt.Sprintf("feature %q has no code entry in %s; add one so that hikari can tell when its code changes", id, sysmap.LayoutFile))
