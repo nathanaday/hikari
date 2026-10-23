@@ -1,5 +1,6 @@
 ---
 id: reserve-stock
+kind: feature
 name: Reserve stock
 description: Hold a quantity of a SKU for an order when enough is available.
 interfaces: [Stock.reserve]

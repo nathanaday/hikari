@@ -22,7 +22,7 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Your features are documents in /hikari/public/export/features/, one markdown file per feature with links between the features that work together. You read them as files and change them only with mcp__hikari__change_features. hikari writes the public map, /hikari/public/export/map.yaml, from them and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, how to link, and how to keep them true.
+	b.WriteString(`- Your system's wiki is /hikari/public/export/wiki/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes the public map, /hikari/public/export/map.yaml, from the features and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
@@ -41,7 +41,7 @@ func orchestratorPrompt(self api.Self) string {
 	if len(self.VisibleSystems) > 0 {
 		fmt.Fprintf(&b, "\n## Your systems\n\nThe members of %s own these systems: %s. You have no code and cannot read any. You plan from their system maps.\n\n",
 			strings.Join(hubs, ", "), strings.Join(self.VisibleSystems, ", "))
-		b.WriteString(`- mcp__hikari__list_systems, get_system, search_features, and get_feature read the maps: what each system does, its interfaces, and the health and state of its features. Each system's features are documents in /hikari/public/readonly/systems/<system>/features/, one per feature; get_feature returns the document, whose Purpose says why the feature exists and what it promises, and the documents link the features that work together.
+		b.WriteString(`- mcp__hikari__list_systems and get_system read the maps: what each system does, its interfaces, and the health and state of its features. Each system's wiki is in /hikari/public/readonly/systems/<system>/wiki/: one document for each feature, principle, and rule. get_document returns a document with the documents that link it, and search_wiki searches every wiki you can read.
 - When a map does not answer a question, ask the owner.
 - Ask owners for changes in terms of features and interfaces, not code. The owner decides how to make a change, and can push back with a reason.
 - Owners cannot see each other's code. A system can test against another system only through that system's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
@@ -56,6 +56,7 @@ func orchestratorPrompt(self api.Self) string {
 The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the owner makes it (SKILL.md). When a system announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the hub agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the owner what is missing. You cannot change deliverables or who holds them; ask the user.
 `, api.SharedDir)
 	}
+	fmt.Fprintf(&b, "\n## Your hub wikis\n\nYou keep the wiki of %s: the stories, rules, and principles that say what the hub's systems must do together. Change it only with mcp__hikari__change_hub_wiki, and link each story to the features of the systems that carry it out. Before you write or change a hub wiki, load the hikari-hub skill. A story that the user marked key is part of the integration test that matters most to the user.\n", strings.Join(hubs, ", "))
 	fmt.Fprintf(&b, "\n## Your vocabularies\n\nYou keep the vocabulary of %s: the names that everyone in the hub uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.", strings.Join(hubs, ", "))
 	if len(self.VisibleSystems) > 0 {
 		b.WriteString(" get_system flags interface names that are not in your vocabularies, and consumed interfaces that no system provides.")
@@ -77,7 +78,7 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 		b.WriteString(`Your system documents are not built yet. Load the hikari-system skill and follow its Build procedure:
 
 1. Read the code in your scope to learn what the system does, and write the parts of layout.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
-2. Describe the system with set_system_info, then write one feature document for each feature with change_features, linked to the features it works with.
+2. Describe the system with set_system_info, then write one feature document for each feature with change_wiki, linked to the features it works with, and a principle or a rule where the code shows one.
 3. Write the code map of each feature in /hikari/private/layout.yaml.
 4. Write the suites of /hikari/private/tests.yaml, each with a command that writes a JUnit XML report to /hikari/private/reports/<suite>.xml. Run each suite and call record_test_run for it.
 5. Map the unmapped tests that get_my_system lists to the features they touch, in tests.yaml; send the hikari-test-survey agent when there are many.
@@ -202,6 +203,21 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
 		}
 	}
+	for _, w := range tc.WikiChanged {
+		items := make([]string, len(w.Docs))
+		for i, d := range w.Docs {
+			if d.Removed {
+				items[i] = d.ID + " (removed)"
+			} else {
+				items[i] = fmt.Sprintf("%s (%s)", d.ID, d.Kind)
+			}
+		}
+		where := "The wiki of " + w.Wiki
+		if !strings.HasPrefix(w.Wiki, "#") && w.Wiki == self.Name {
+			where = "Your wiki"
+		}
+		notes = append(notes, fmt.Sprintf("%s changed: %s. Read the documents that concern your work.", where, capped(items, maxNoticeFeatures)))
+	}
 	for _, hub := range tc.VocabularyChanged {
 		note := fmt.Sprintf("The vocabulary of #%s changed. Call get_vocabulary to read it.", hub)
 		if self.System != nil {
@@ -215,6 +231,25 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 	var b strings.Builder
 	for _, n := range notes {
 		fmt.Fprintf(&b, "<notice>%s</notice>\n", n)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// wikisPrompt names the hub wikis that the agent reads (rules A1, E2, and
+// S3 of the wikis spec).
+func wikisPrompt(self api.Self) string {
+	if len(self.HubWikis) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n## The wikis of your hubs\n\nEach hub has a wiki: its stories, which say what the hub's systems must do together and for whom, its rules, which must always hold, and its principles, which guide how the systems work together. You read these, read-only:\n\n")
+	for _, hub := range self.HubWikis {
+		fmt.Fprintf(&b, "- #%s: %s\n", hub, api.HubWikiPath(hub))
+	}
+	b.WriteString("\nA document links others as [[id]]; an id is unique in every wiki, and mcp__hikari__get_document reads any document you can read, with the documents that link it. Plans and notes in a wiki are the user's: read them for context, and act on a plan only when the user asks you to.")
+	if self.System != nil {
+		b.WriteString(" The rules and principles of your hubs apply to your system. When a story needs a feature your system lacks, or a feature cannot keep a hub rule, tell your orchestrator.")
 	}
 	b.WriteString("\n")
 	return b.String()

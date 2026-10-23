@@ -18,12 +18,12 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 // company: ceo orchestrates lead. eng: lead orchestrates writer and critic.
@@ -375,13 +375,28 @@ services:
 		t.Fatalf("owner self = %+v, %v", self.System, err)
 	}
 	purpose := "## Purpose\n\nA customer places an order.\n"
-	if _, err := orders.ChangeFeatures(ctx, []featurewiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
+	if _, err := orders.ChangeWiki(ctx, "", []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
 		t.Fatal(err)
 	}
-	if e := <-events; e.Type != "system" || e.System.Owner != "orders" || len(e.System.Features) != 1 {
-		t.Fatalf("system event = %+v", e)
+	// One change sends the wiki, the system, and the support of its hub.
+	got := map[string]bool{}
+	for range 3 {
+		e := <-events
+		switch {
+		case e.Type == "wiki" && e.Wiki.Ref == "system:orders" && len(e.Wiki.Documents) == 1:
+			got["system wiki"] = true
+		case e.Type == "system" && e.System.Owner == "orders" && len(e.System.Features) == 1:
+			got["system"] = true
+		case e.Type == "wiki" && e.Wiki.Ref == "hub:h":
+			got["hub wiki"] = true
+		default:
+			t.Fatalf("event = %+v", e)
+		}
 	}
-	if _, err := orders.ChangeFeatures(ctx, []featurewiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {
+	if len(got) != 3 {
+		t.Errorf("events = %v", got)
+	}
+	if _, err := orders.ChangeWiki(ctx, "", []wiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {
 		t.Errorf("invalid feature error = %v", err)
 	}
 

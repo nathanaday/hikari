@@ -90,4 +90,4 @@ The public map shows each feature's health and counts of its touching tests: pas
 
 `record_test_run` and `mark_map_current` fail while these rules are broken. `get_my_system` lists the problems, the keys that match no test (`stale_keys`), and the failing tests with their messages.
 
-When you rename or remove a feature with `change_features`, hikari rewrites its links and its `gaps` key in this file for you. A remove without a redirect drops the key whose only link it was, so its tests show as unmapped and you map them again.
+When you rename or remove a feature with `change_wiki`, hikari rewrites its links and its `gaps` key in this file for you. A remove without a redirect drops the key whose only link it was, so its tests show as unmapped and you map them again.

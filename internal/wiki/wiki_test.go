@@ -1,4 +1,4 @@
-package featurewiki
+package wiki
 
 import (
 	"os"
@@ -13,6 +13,7 @@ var now = time.Date(2026, 10, 22, 9, 30, 0, 0, time.UTC)
 
 const reserveDoc = `---
 id: reserve-stock
+kind: feature
 name: Reserve stock
 description: Hold a quantity of a SKU for an order when enough is available.
 interfaces: [Stock.reserve]
@@ -103,7 +104,7 @@ func TestParseRefusals(t *testing.T) {
 		"no header":    "## Purpose\n",
 		"no close":     "---\nid: x\n",
 		"bad yaml":     "---\nid: [\n---\n",
-		"heading link": "---\nid: x\nrelated: [\"[[y#top]]\"]\n---\n",
+		"heading link": "---\nid: x\nkind: feature\nrelated: [\"[[y#top]]\"]\n---\n",
 	} {
 		if _, err := Parse(text); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -123,14 +124,16 @@ func TestLinks(t *testing.T) {
 
 func TestValidateRules(t *testing.T) {
 	ok := small()
-	if err := ok.Validate(Check{Interfaces: map[string]bool{"Stock.reserve": true}}); err != nil {
+	if err := ok.Validate(Check{Interfaces: map[string]bool{"Stock.reserve": true}}, all(ok)); err != nil {
 		t.Fatalf("a valid wiki: %v", err)
 	}
 	cases := map[string]struct {
 		edit func(Wiki)
 		c    Check
 	}{
-		"W1 id":        {func(w Wiki) { w["Bad"] = &Document{ID: "Bad", Name: "x", Description: "y", Body: *body("p")} }, Check{}},
+		"W1 id": {func(w Wiki) {
+			w["Bad"] = &Document{ID: "Bad", Kind: Feature, Name: "x", Description: "y", Body: *body("p")}
+		}, Check{}},
 		"W1 taken":     {func(Wiki) {}, Check{Taken: map[string]bool{"reserve-stock": true}}},
 		"W1 file name": {func(w Wiki) { w["reserve-stock"].ID = "other" }, Check{}},
 		"W2 name":      {func(w Wiki) { w["reserve-stock"].Name = " " }, Check{}},
@@ -146,12 +149,21 @@ func TestValidateRules(t *testing.T) {
 	for name, tc := range cases {
 		w := small()
 		tc.edit(w)
-		err := w.Validate(tc.c)
+		err := w.Validate(tc.c, all(w))
 		rule := strings.Fields(name)[0]
 		if err == nil || !strings.Contains(err.Error(), rule+":") {
 			t.Errorf("%s: got %v", name, err)
 		}
 	}
+}
+
+// all marks every document of w for the strict checks.
+func all(w Wiki) map[string]bool {
+	out := map[string]bool{}
+	for id := range w {
+		out[id] = true
+	}
+	return out
 }
 
 func TestNeighborsAreUndirected(t *testing.T) {
@@ -299,7 +311,7 @@ func TestRemoveRedirectsOrUnlinks(t *testing.T) {
 
 func TestWarnings(t *testing.T) {
 	w := small()
-	w["lonely"] = &Document{ID: "lonely", Name: "Lonely", Description: "Alone.", Body: "## Purpose\n\nIt reads orders/create.py and nothing else.\n"}
+	w["lonely"] = &Document{ID: "lonely", Kind: Feature, Name: "Lonely", Description: "Alone.", Body: "## Purpose\n\nIt reads orders/create.py and nothing else.\n"}
 	exists := func(rel string) bool { return rel == "orders/create.py" }
 	got := w.Warnings(Check{Exists: exists})
 	for _, want := range []string{`"lonely" has no neighbor`, "names the path orders/create.py"} {
@@ -313,7 +325,7 @@ func TestWarnings(t *testing.T) {
 	big := Wiki{}
 	for i := 0; i <= ManyFeatures; i++ {
 		id := "f" + strings.Repeat("a", i)
-		big[id] = &Document{ID: id, Name: "x", Description: "y", Body: *body("p [[f]]")}
+		big[id] = &Document{ID: id, Kind: Feature, Name: "x", Description: "y", Body: *body("p [[f]]")}
 	}
 	if got := big.Warnings(Check{}); !strings.Contains(strings.Join(got, "\n"), "listing parts") {
 		t.Errorf("many features warn: %v", got)
@@ -321,8 +333,8 @@ func TestWarnings(t *testing.T) {
 }
 
 func TestStoreWritesReloadsAndKeepsTheLastValidWiki(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "features")
-	s, err := Open(dir)
+	dir := filepath.Join(t.TempDir(), "wiki")
+	s, err := Open(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,8 +358,8 @@ func TestStoreWritesReloadsAndKeepsTheLastValidWiki(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "release-stock.md")); err == nil {
 		t.Error("a rename removes the old file")
 	}
-	if len(s.Files()) != 2 || s.Files()["free-stock.md"] == nil {
-		t.Errorf("files: %v", s.Files())
+	if len(s.Files(Feature)) != 2 || s.Files(Feature)["free-stock.md"] == nil {
+		t.Errorf("files: %v", s.Files(Feature))
 	}
 	if s.Reload() {
 		t.Error("nothing changed on disk")
@@ -359,14 +371,16 @@ func TestStoreWritesReloadsAndKeepsTheLastValidWiki(t *testing.T) {
 	if !s.Reload() || !strings.Contains(s.Wiki()["free-stock"].Body, "Edited by hand") || s.Error() != "" {
 		t.Errorf("W8: a valid hand edit is read: %q", s.Error())
 	}
-	// An invalid edit keeps the last valid wiki and reports the error.
-	os.WriteFile(filepath.Join(dir, "free-stock.md"), []byte("---\nid: other\n---\n"), 0o644)
-	if !s.Reload() || s.Error() == "" || s.Wiki()["free-stock"] == nil {
-		t.Errorf("W8: an invalid edit keeps the last wiki; error %q", s.Error())
+	// D4: an invalid edit keeps the file's last valid version and reports
+	// the problem; the other documents are read as they are.
+	os.WriteFile(filepath.Join(dir, "free-stock.md"), []byte("---\nid: other\nkind: feature\n---\n"), 0o644)
+	if !s.Reload() || !strings.Contains(s.Error(), "free-stock.md: W1") || s.Wiki()["free-stock"] == nil || s.Wiki()["reserve-stock"] == nil {
+		t.Errorf("D4: an invalid edit keeps the last version; problems %q", s.Error())
 	}
-	// Reopening an invalid directory fails with the problem.
-	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "W1") {
-		t.Errorf("open an invalid wiki: %v", err)
+	// Reopening leaves the broken file out and opens the rest.
+	again, err := Open(dir, nil)
+	if err != nil || again.Wiki()["free-stock"] != nil || again.Wiki()["reserve-stock"] == nil || !strings.Contains(again.Error(), "W1") {
+		t.Errorf("D4: open with a broken file: %v, %q", err, again.Error())
 	}
 }
 

@@ -9,10 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 type hubArgs struct {
@@ -54,19 +54,56 @@ type fieldsArgs struct {
 
 type writeArgs struct {
 	Op          string      `json:"op" jsonschema:"create, modify, rename, or remove"`
-	ID          string      `json:"id" jsonschema:"the feature id; for a create, a new id in lowercase letters, digits, and dashes, which becomes the file name"`
+	ID          string      `json:"id" jsonschema:"the document id; for a create, a new id in lowercase letters, digits, and dashes, unique in every wiki, which becomes the file name"`
+	Kind        string      `json:"kind,omitempty" jsonschema:"create: the kind of the document; in a system wiki feature (the default), principle, or rule; in a hub wiki story, rule, or principle"`
 	Name        string      `json:"name,omitempty" jsonschema:"create: two to five words, as a user would say it"`
 	Description string      `json:"description,omitempty" jsonschema:"create: one sentence, at most 200 characters"`
-	Interfaces  []string    `json:"interfaces,omitempty" jsonschema:"create: names from your provides or consumes that the feature uses"`
+	Interfaces  []string    `json:"interfaces,omitempty" jsonschema:"create, a feature only: names from your provides or consumes that the feature uses"`
 	Related     []string    `json:"related,omitempty" jsonschema:"create: ids of neighbors that the body does not link"`
 	Body        *string     `json:"body,omitempty" jsonschema:"create and modify: the markdown body, with a ## Purpose section that cites no code; never a ## Notes section, which is the user's and which hikari keeps"`
 	Fields      *fieldsArgs `json:"fields,omitempty" jsonschema:"modify: the properties to change; a property left out stays as it is"`
 	To          string      `json:"to,omitempty" jsonschema:"rename: the new id"`
-	Redirect    string      `json:"redirect,omitempty" jsonschema:"remove: the feature that links to the removed one point at from now on; leave it out to turn those links into plain text"`
+	Redirect    string      `json:"redirect,omitempty" jsonschema:"remove: the document that the links to the removed one point at from now on; leave it out to turn those links into plain text"`
 }
 
 type changeArgs struct {
-	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a feature that an earlier one creates"`
+	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a document that an earlier one creates"`
+}
+
+type hubChangeArgs struct {
+	Hub    string      `json:"hub" jsonschema:"the hub whose wiki to change, without the #"`
+	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a document that an earlier one creates"`
+}
+
+// wikiWrites turns the tool's writes into the wiki's.
+func wikiWrites(in []writeArgs) []wiki.Write {
+	writes := make([]wiki.Write, len(in))
+	for i, w := range in {
+		writes[i] = wiki.Write{
+			Op: w.Op, ID: w.ID, Kind: w.Kind, Name: w.Name, Description: w.Description, Interfaces: w.Interfaces,
+			Related: w.Related, Body: w.Body, To: w.To, Redirect: w.Redirect,
+		}
+		if w.Fields != nil {
+			writes[i].Fields = &wiki.Fields{Name: w.Fields.Name, Description: w.Fields.Description, Interfaces: w.Fields.Interfaces, Related: w.Fields.Related}
+		}
+	}
+	return writes
+}
+
+// changeResult says what a change did, for the agent.
+func changeResult(res api.ChangeResult) *mcp.CallToolResult {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Applied %d write(s): %s.", len(res.Applied), strings.Join(res.Applied, "; "))
+	if len(res.Rewritten) > 0 {
+		fmt.Fprintf(&b, "\nRewrote the links in %s.", strings.Join(res.Rewritten, ", "))
+	}
+	for _, n := range res.Notes {
+		b.WriteString("\nNote: " + n)
+	}
+	for _, w := range res.Warnings {
+		b.WriteString("\nWarning: " + w)
+	}
+	return text(b.String())
 }
 
 type idArgs struct {
@@ -122,32 +159,14 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "change_features",
-		Description: "Change your feature wiki as one change: create, modify, rename, or remove feature documents in /hikari/public/export/features/. hikari checks every write against the rules of the hikari-system skill and applies all of them or none. Writes in one call can link features that the same call creates. A rename rewrites every link to the feature; a remove points them at the redirect or turns them into text. hikari writes the map's features from the wiki.",
+		Name:        "change_wiki",
+		Description: "Change your system's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/public/export/wiki/. hikari checks every write against the rules of the hikari-system skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of your hubs' wikis. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
-		writes := make([]featurewiki.Write, len(a.Writes))
-		for i, w := range a.Writes {
-			writes[i] = featurewiki.Write{
-				Op: w.Op, ID: w.ID, Name: w.Name, Description: w.Description, Interfaces: w.Interfaces,
-				Related: w.Related, Body: w.Body, To: w.To, Redirect: w.Redirect,
-			}
-			if w.Fields != nil {
-				writes[i].Fields = &featurewiki.Fields{Name: w.Fields.Name, Description: w.Fields.Description, Interfaces: w.Fields.Interfaces, Related: w.Fields.Related}
-			}
-		}
-		res, err := c.ChangeFeatures(ctx, writes)
+		res, err := c.ChangeWiki(ctx, "", wikiWrites(a.Writes))
 		if err != nil {
 			return nil, nil, err
 		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "Applied %d write(s): %s.", len(res.Applied), strings.Join(res.Applied, "; "))
-		for _, n := range res.Notes {
-			b.WriteString("\nNote: " + n)
-		}
-		for _, w := range res.Warnings {
-			b.WriteString("\nWarning: " + w)
-		}
-		return text(b.String()), nil, nil
+		return changeResult(res), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -225,12 +244,40 @@ type systemArgs struct {
 }
 
 type searchArgs struct {
-	Query string `json:"query" jsonschema:"text to find in feature ids, names, descriptions, interfaces, and documents"`
+	Query string `json:"query" jsonschema:"text to find in the documents' ids and text"`
 }
 
-type featureRefArgs struct {
-	System string `json:"system" jsonschema:"the system name"`
-	ID     string `json:"id" jsonschema:"the feature id"`
+type documentArgs struct {
+	ID string `json:"id" jsonschema:"the document id, as it appears in a [[link]]"`
+}
+
+// addWikiReaders adds the tools that read the wikis, for every agent
+// (rules T4 and T5 of the wikis spec).
+func addWikiReaders(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_document",
+		Description: "Read one document of the wikis you can read, by its id: its text, its kind, its wiki, the documents that link it, and a feature's health or a hub story's support.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a documentArgs) (*mcp.CallToolResult, any, error) {
+		out, err := c.GetDocument(ctx, a.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return yamlResult(out)
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "search_wiki",
+		Description: "Find documents of the wikis you can read by text in their id or text: features, principles, rules, stories, and the user's plans and notes.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
+		out, err := c.SearchWiki(ctx, a.Query)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(out) == 0 {
+			return text("No document matches."), nil, nil
+		}
+		return yamlResult(out)
+	})
 }
 
 type termArgs struct {
@@ -279,28 +326,14 @@ func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "search_features",
-		Description: "Find features of your systems by text in their id, name, description, interfaces, or document.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a searchArgs) (*mcp.CallToolResult, any, error) {
-		out, err := c.SearchFeatures(ctx, a.Query)
+		Name:        "change_hub_wiki",
+		Description: "Change the wiki of a hub you orchestrate as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/readonly/hubs/<hub>/wiki/. hikari checks every write against the rules of the hikari-hub skill and applies all of them or none. A document can link the documents of the hub's systems and of its child and parent hubs. A rename rewrites every link to the document in every wiki. The user's plans and notes, and the key of a story, are not yours to change.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a hubChangeArgs) (*mcp.CallToolResult, any, error) {
+		res, err := c.ChangeWiki(ctx, hubName(a.Hub), wikiWrites(a.Writes))
 		if err != nil {
 			return nil, nil, err
 		}
-		if len(out) == 0 {
-			return text("No feature matches."), nil, nil
-		}
-		return yamlResult(out)
-	})
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_feature",
-		Description: "Read one feature of a system: its map entry and its document, whose Purpose says why the feature exists and what it promises.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a featureRefArgs) (*mcp.CallToolResult, any, error) {
-		out, err := c.GetFeature(ctx, a.System, a.ID)
-		if err != nil {
-			return nil, nil, err
-		}
-		return yamlResult(out)
+		return changeResult(res), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

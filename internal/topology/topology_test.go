@@ -480,3 +480,25 @@ func TestProjectErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestHubRelations(t *testing.T) {
+	topo, err := Parse([]byte(tree), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := topo.ChildHubs("company"); !slices.Equal(got, []string{"eng"}) {
+		t.Errorf("ChildHubs(company) = %v", got)
+	}
+	if got := topo.ParentHubs("eng"); !slices.Equal(got, []string{"company"}) {
+		t.Errorf("ParentHubs(eng) = %v", got)
+	}
+	if got := topo.MemberHubs("eng-lead"); !slices.Equal(got, []string{"company"}) {
+		t.Errorf("MemberHubs(eng-lead) = %v", got)
+	}
+	if got := topo.ReadableHubWikis("ceo"); !slices.Equal(got, []string{"company", "eng"}) {
+		t.Errorf("A2 ReadableHubWikis(ceo) = %v", got)
+	}
+	if got := topo.ReadableHubWikis("dev"); !slices.Equal(got, []string{"eng"}) {
+		t.Errorf("A1 ReadableHubWikis(dev) = %v", got)
+	}
+}

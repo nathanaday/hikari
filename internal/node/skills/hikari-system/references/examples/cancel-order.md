@@ -1,5 +1,6 @@
 ---
 id: cancel-order
+kind: feature
 name: Cancel an order
 description: Cancel a placed order and release the stock it holds.
 interfaces: [cancel_order, Stock.release]

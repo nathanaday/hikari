@@ -1,9 +1,11 @@
-// Package featurewiki holds the feature wiki of one system: one markdown
-// document per feature, with a property header that the server checks and a
-// body for people and agents. Documents link each other with [[id]] links;
-// a link has no direction and no kind. The owner changes the wiki through
-// one change, which applies a set of writes as a whole or not at all.
-package featurewiki
+// Package wiki holds the wiki of one system or one hub: one markdown
+// document per entry, with a property header that the server checks and a
+// body for people and agents. A document has a kind: agents write features,
+// principles, rules, and stories; the user writes plans and notes.
+// Documents link each other with [[id]] links, also across wikis; a link
+// has no direction and no kind. An agent changes its wiki through one
+// change, which applies a set of writes as a whole or not at all.
+package wiki
 
 import (
 	"bytes"
@@ -17,14 +19,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Document is one feature document: its header and its body.
+// The kinds of documents (rule K1 of the wikis spec).
+const (
+	Feature   = "feature"
+	Principle = "principle"
+	Rule      = "rule"
+	Story     = "story"
+	Plan      = "plan"
+	Note      = "note"
+)
+
+// AgentKinds are the kinds that agents write; the others are the user's.
+var AgentKinds = []string{Feature, Principle, Rule, Story}
+
+// Kinds names every kind.
+var Kinds = []string{Feature, Principle, Rule, Story, Plan, Note}
+
+// Document is one document of a wiki: its header and its body.
 type Document struct {
-	ID          string
+	ID string
+	// Kind is the kind property as written. A document without one is a
+	// note; KindOf says what the document is.
+	Kind        string
 	Name        string
 	Description string
 	Interfaces  []string
 	// Related holds the ids that the related property links.
 	Related []string
+	// Key marks a key story; only the user sets it (rule K3).
+	Key bool
+	// Status is a plan's status, which hikari shows and never reads.
+	Status string
 	// Created is the time of the create write. A document from before the
 	// property existed has none.
 	Created time.Time
@@ -47,18 +72,34 @@ type Property struct {
 }
 
 // The properties that code knows, in the order they are written.
-var known = []string{"id", "name", "description", "interfaces", "related", "created", "updated", "described_commit", "described_at"}
+var known = []string{"id", "kind", "name", "description", "interfaces", "related", "key", "status", "created", "updated", "described_commit", "described_at"}
 
 // Owned are the properties that code owns; a write may not give them.
 var Owned = []string{"created", "updated", "described_commit", "described_at"}
 
 const timeLayout = "2006-01-02T15:04:05Z"
 
+// KindOf returns the document's kind: a document without a kind, or with a
+// kind that hikari does not know, is a note (rule K2).
+func (d *Document) KindOf() string {
+	if slices.Contains(Kinds, d.Kind) {
+		return d.Kind
+	}
+	return Note
+}
+
+// User reports whether the document is the user's: a plan or a note.
+func (d *Document) User() bool { k := d.KindOf(); return k == Plan || k == Note }
+
+// ErrNoHeader is the error of Parse for a text without a property header.
+// In a wiki, such a file is a note.
+var ErrNoHeader = errors.New("the document does not start with a property header (---)")
+
 // Parse reads a document from its text.
 func Parse(text string) (*Document, error) {
 	rest, ok := strings.CutPrefix(text, "---\n")
 	if !ok {
-		return nil, errors.New("the document does not start with a property header (---)")
+		return nil, ErrNoHeader
 	}
 	header, body, ok := strings.Cut(rest, "\n---\n")
 	if !ok {
@@ -81,12 +122,19 @@ func Parse(text string) (*Document, error) {
 		return nil, errors.New("the property header must be a mapping of properties")
 	}
 	m := node.Content[0]
+	var relatedErr error
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		key, val := m.Content[i].Value, m.Content[i+1]
 		var err error
 		switch key {
 		case "id":
 			d.ID, err = scalar(val)
+		case "kind":
+			d.Kind, err = scalar(val)
+		case "key":
+			d.Key, err = boolean(val)
+		case "status":
+			d.Status, err = scalar(val)
 		case "name":
 			d.Name, err = scalar(val)
 		case "description":
@@ -99,8 +147,8 @@ func Parse(text string) (*Document, error) {
 				for _, l := range links {
 					id, lerr := linkTarget(l)
 					if lerr != nil {
-						err = lerr
-						break
+						relatedErr = fmt.Errorf("property related: %w", lerr)
+						continue
 					}
 					d.Related = append(d.Related, id)
 				}
@@ -120,6 +168,10 @@ func Parse(text string) (*Document, error) {
 			return nil, fmt.Errorf("property %s: %w", key, err)
 		}
 	}
+	// A user document's links are its own business (rule N1).
+	if relatedErr != nil && !d.User() {
+		return nil, relatedErr
+	}
 	return d, nil
 }
 
@@ -128,6 +180,19 @@ func scalar(n *yaml.Node) (string, error) {
 		return "", errors.New("must be one value")
 	}
 	return n.Value, nil
+}
+
+func boolean(n *yaml.Node) (bool, error) {
+	s, err := scalar(n)
+	switch {
+	case err != nil:
+		return false, err
+	case s == "true":
+		return true, nil
+	case s == "false" || s == "":
+		return false, nil
+	}
+	return false, fmt.Errorf("%q is not true or false", s)
 }
 
 func list(n *yaml.Node) ([]string, error) {
@@ -176,9 +241,19 @@ func linkTarget(s string) (string, error) {
 		if strings.Contains(target, "#") {
 			return "", fmt.Errorf("K1: link %q names a heading; link the document", s)
 		}
-		return strings.TrimSpace(target), nil
+		return Target(target), nil
 	}
 	return s, nil
+}
+
+// Target returns the document that a link target names: its last path
+// segment, without .md (rule N1).
+func Target(t string) string {
+	t = strings.TrimSpace(t)
+	if i := strings.LastIndex(t, "/"); i >= 0 {
+		t = t[i+1:]
+	}
+	return strings.TrimSpace(strings.TrimSuffix(t, ".md"))
 }
 
 // Render writes the document as text: the known properties in order, then
@@ -203,6 +278,9 @@ func (d *Document) Render() string {
 		return n
 	}
 	add("id", str(d.ID))
+	if d.Kind != "" {
+		add("kind", str(d.Kind))
+	}
 	add("name", str(d.Name))
 	add("description", str(d.Description))
 	if len(d.Interfaces) > 0 {
@@ -215,12 +293,20 @@ func (d *Document) Render() string {
 		}
 		add("related", flow(links))
 	}
+	if d.Key {
+		add("key", &yaml.Node{Kind: yaml.ScalarNode, Value: "true", Tag: "!!bool"})
+	}
+	if d.Status != "" {
+		add("status", str(d.Status))
+	}
 	if !d.Created.IsZero() {
 		add("created", str(formatTime(d.Created)))
 	}
 	add("updated", str(formatTime(d.Updated)))
-	add("described_commit", str(d.DescribedCommit))
-	add("described_at", str(formatTime(d.DescribedAt)))
+	if d.DescribedCommit != "" || !d.DescribedAt.IsZero() || d.Kind == Feature || d.Kind == "" {
+		add("described_commit", str(d.DescribedCommit))
+		add("described_at", str(formatTime(d.DescribedAt)))
+	}
 	for _, p := range d.Extra {
 		add(p.Key, p.Value)
 	}
@@ -282,18 +368,17 @@ func Links(body string) ([]string, error) {
 	var out []string
 	var errs []error
 	for _, m := range linkRE.FindAllStringSubmatch(body, -1) {
-		target := strings.TrimSpace(m[1])
-		if strings.Contains(target, "#") {
+		if strings.Contains(m[1], "#") {
 			errs = append(errs, fmt.Errorf("K1: link %q names a heading; link the document", m[0]))
 			continue
 		}
-		out = append(out, target)
+		out = append(out, Target(m[1]))
 	}
 	return out, errors.Join(errs...)
 }
 
-// Neighbors returns every feature that d links, in the body and in related,
-// in order of first mention and without repeats.
+// Neighbors returns every document that d links, in the body and in
+// related, in order of first mention and without repeats.
 func (d *Document) Neighbors() []string {
 	var out []string
 	add := func(id string) {
@@ -317,7 +402,7 @@ func (d *Document) Neighbors() []string {
 func rewriteLinks(body, old, to string) string {
 	return linkRE.ReplaceAllStringFunc(body, func(link string) string {
 		m := linkRE.FindStringSubmatch(link)
-		if strings.TrimSpace(m[1]) != old {
+		if strings.Contains(m[1], "#") || Target(m[1]) != old {
 			return link
 		}
 		if to != "" {

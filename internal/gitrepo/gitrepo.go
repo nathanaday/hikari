@@ -68,6 +68,33 @@ func (r *Repo) Prepare(branch string) (string, error) {
 	return r.git("rev-parse", "HEAD")
 }
 
+// Branch returns the branch that is checked out, or "" when HEAD is
+// detached.
+func (r *Repo) Branch() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	b, _ := r.git("symbolic-ref", "--short", "--quiet", "HEAD")
+	return b
+}
+
+// Changed returns the paths with uncommitted changes, untracked files
+// included, without the files that hikari keeps out of commits.
+func (r *Repo) Changed() ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	status, err := r.git(append([]string{"status", "--porcelain", "--untracked-files=all", "--no-renames", "--", "."}, runtimeFiles...)...)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, l := range lines(status) {
+		if len(l) > 3 {
+			out = append(out, strings.Trim(l[3:], `"`))
+		}
+	}
+	return out, nil
+}
+
 // Head returns the commit at HEAD.
 func (r *Repo) Head() (string, error) {
 	r.mu.Lock()
@@ -101,7 +128,8 @@ func (r *Repo) Commit(branch, scope, agent, message string) (string, error) {
 }
 
 // CommitPaths is Commit for several paths, relative to the repo. A path
-// that neither exists nor is tracked is skipped.
+// that neither exists nor is tracked is skipped. An empty agent commits
+// with the user's own git identity.
 func (r *Repo) CommitPaths(branch string, paths []string, agent, message string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,7 +160,11 @@ func (r *Repo) CommitPaths(branch string, paths []string, agent, message string)
 	if staged == "" {
 		return "", nil
 	}
-	args := append([]string{"commit", "--quiet", "--no-verify", "--author", Author(agent), "-m", message, "--"}, lines(staged)...)
+	args := []string{"commit", "--quiet", "--no-verify", "-m", message}
+	if agent != "" {
+		args = append(args, "--author", Author(agent))
+	}
+	args = append(append(args, "--"), lines(staged)...)
 	if _, err := r.git(args...); err != nil {
 		return "", err
 	}

@@ -5,11 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"time"
 
-	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 // WorkspaceRoot is where an owner's container sees its repo.
@@ -26,6 +27,16 @@ const (
 
 // SharedDir is the shared area of the store in a container.
 var SharedDir = path.Join(ReadonlyDir, "shared")
+
+// HubWikiPath returns where a container sees the wiki of a hub that it can
+// read (rule A1 of the wikis spec).
+func HubWikiPath(hub string) string {
+	return path.Join(ReadonlyDir, "hubs", hub, "wiki")
+}
+
+// SystemWikiRef and HubWikiRef name a wiki.
+func SystemWikiRef(system string) string { return "system:" + system }
+func HubWikiRef(hub string) string       { return "hub:" + hub }
 
 // ReleasesPath returns where a container sees the releases of a system that
 // it can read.
@@ -57,6 +68,22 @@ type TurnContext struct {
 	PendingFeatures     []string              `json:"pending_features,omitempty"`
 	PrivateErrors       []string              `json:"private_errors,omitempty"`
 	VocabularyChanged   []string              `json:"vocabulary_changed,omitempty"`
+	// WikiChanged lists the documents of the agent's readable wikis that
+	// someone else changed since its last turn (rule E1).
+	WikiChanged []WikiChange `json:"wiki_changed,omitempty"`
+}
+
+// WikiChange names the changed documents of one wiki. Wiki is its label:
+// "#shop" for a hub, or the system's name.
+type WikiChange struct {
+	Wiki string      `json:"wiki"`
+	Docs []DocChange `json:"docs"`
+}
+
+type DocChange struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Removed bool   `json:"removed,omitempty"`
 }
 
 // FailingFeature is a failing feature with the ids of its failing tests.
@@ -88,16 +115,76 @@ type HealthChange struct {
 	To      string `json:"to"`
 }
 
-// ChangeRequest is one change to an owner's feature wiki.
+// ChangeRequest is one change to a wiki: an owner's, or with Hub, a hub's.
 type ChangeRequest struct {
-	Writes []featurewiki.Write `json:"writes"`
+	Hub    string       `json:"hub,omitempty"`
+	Writes []wiki.Write `json:"writes"`
 }
 
-// ChangeResult says what a change did, with notes on what the owner must
+// ChangeResult says what a change did, with notes on what the author must
 // do next, such as private documents that still name a renamed id.
 type ChangeResult struct {
-	featurewiki.Result
-	Notes []string `json:"notes,omitempty"`
+	wiki.Result
+	// Rewritten names the documents of other wikis whose links the change
+	// rewrote.
+	Rewritten []string `json:"rewritten,omitempty"`
+	Notes     []string `json:"notes,omitempty"`
+}
+
+// WikiDoc is one document of a wiki, without its body.
+type WikiDoc struct {
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Links are the documents it links, in order of first mention.
+	Links  []string `json:"links"`
+	Key    bool     `json:"key,omitempty"`
+	Status string   `json:"status,omitempty"`
+	// Health is a feature's health; Support is the health of the features
+	// that a hub's story or rule links (rule H2).
+	Health  string    `json:"health,omitempty"`
+	Support string    `json:"support,omitempty"`
+	Created time.Time `json:"created,omitzero"`
+	// File is the document's path in the store, and Hash a digest of its
+	// text, so that the UI reads it again when it changes.
+	File string `json:"file"`
+	Hash string `json:"hash"`
+}
+
+// WikiView is one wiki for the UI.
+type WikiView struct {
+	Ref       string    `json:"ref"`
+	Scope     string    `json:"scope"`
+	Name      string    `json:"name"`
+	Documents []WikiDoc `json:"documents"`
+	// Problems are the files that a hand edit broke (rule D4); Warnings
+	// the rest.
+	Problems []string `json:"problems,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// DocRef names a document in a wiki.
+type DocRef struct {
+	Wiki string `yaml:"wiki" json:"wiki"`
+	ID   string `yaml:"id" json:"id"`
+	Kind string `yaml:"kind" json:"kind"`
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+}
+
+// DocumentHit is a document for the read tools (rules T4 and T5).
+type DocumentHit struct {
+	Wiki        string `yaml:"wiki" json:"wiki"`
+	ID          string `yaml:"id" json:"id"`
+	Kind        string `yaml:"kind" json:"kind"`
+	Name        string `yaml:"name,omitempty" json:"name,omitempty"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	Health      string `yaml:"health,omitempty" json:"health,omitempty"`
+	State       string `yaml:"state,omitempty" json:"state,omitempty"`
+	Support     string `yaml:"support,omitempty" json:"support,omitempty"`
+	// Document is the text as it is on disk; a search leaves it out.
+	Document  string   `yaml:"document,omitempty" json:"document,omitempty"`
+	Backlinks []DocRef `yaml:"backlinks,omitempty" json:"backlinks,omitempty"`
 }
 
 type SystemSummary struct {
@@ -118,13 +205,6 @@ type OrchestratorSystem struct {
 	// Providers maps each interface the system consumes to the visible
 	// systems that provide it.
 	Providers map[string][]string `yaml:"providers,omitempty" json:"providers"`
-}
-
-type FeatureHit struct {
-	System  string         `yaml:"system" json:"system"`
-	Feature sysmap.Feature `yaml:"feature" json:"feature"`
-	// Document is the feature's document as it is on disk.
-	Document string `yaml:"document,omitempty" json:"document,omitempty"`
 }
 
 // SystemView is everything about a system, for the UI: the owner's view and
@@ -198,9 +278,11 @@ func (c *Client) SetSystemInfo(ctx context.Context, p sysmap.SystemPatch) error 
 }
 
 // ChangeFeatures applies one change to the owner's feature wiki.
-func (c *Client) ChangeFeatures(ctx context.Context, writes []featurewiki.Write) (ChangeResult, error) {
+// ChangeWiki applies one change to the owner's wiki, or with hub set, to
+// the wiki of a hub the agent orchestrates.
+func (c *Client) ChangeWiki(ctx context.Context, hub string, writes []wiki.Write) (ChangeResult, error) {
 	var out ChangeResult
-	err := c.do(ctx, http.MethodPost, "/api/node/map/features", ChangeRequest{Writes: writes}, &out)
+	err := c.do(ctx, http.MethodPost, "/api/node/wiki", ChangeRequest{Hub: hub, Writes: writes}, &out)
 	return out, err
 }
 
@@ -257,15 +339,17 @@ func (c *Client) GetSystem(ctx context.Context, name string) (OrchestratorSystem
 	return out, err
 }
 
-func (c *Client) SearchFeatures(ctx context.Context, query string) ([]FeatureHit, error) {
-	var out []FeatureHit
-	err := c.do(ctx, http.MethodGet, "/api/node/features?q="+url.QueryEscape(query), nil, &out)
+// SearchWiki searches every wiki the agent can read.
+func (c *Client) SearchWiki(ctx context.Context, query string) ([]DocumentHit, error) {
+	var out []DocumentHit
+	err := c.do(ctx, http.MethodGet, "/api/node/wiki/search?q="+url.QueryEscape(query), nil, &out)
 	return out, err
 }
 
-func (c *Client) GetFeature(ctx context.Context, system, id string) (FeatureHit, error) {
-	var out FeatureHit
-	err := c.do(ctx, http.MethodGet, "/api/node/systems/"+url.PathEscape(system)+"/features/"+url.PathEscape(id), nil, &out)
+// GetDocument returns one document of the wikis the agent can read.
+func (c *Client) GetDocument(ctx context.Context, id string) (DocumentHit, error) {
+	var out DocumentHit
+	err := c.do(ctx, http.MethodGet, "/api/node/wiki/docs/"+url.PathEscape(id), nil, &out)
 	return out, err
 }
 

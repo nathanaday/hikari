@@ -5,13 +5,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/testmap"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 func TestSystemPromptStatesRolePerHub(t *testing.T) {
@@ -61,9 +62,9 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		`You own the system "orders": the directory services/orders of the repo "shop".`,
 		"Your working directory, /workspace/services/orders, is your scope.",
 		"You can also read, but not change, /workspace/proto.",
-		"/hikari/public/export/map.yaml, from them",
-		"/hikari/public/export/features/",
-		"mcp__hikari__change_features",
+		"/hikari/public/export/map.yaml, from the features",
+		"/hikari/public/export/wiki/",
+		"mcp__hikari__change_wiki",
 		"/hikari/private/tests.yaml, the test map",
 		"mcp__hikari__record_test_run for each run",
 		"Releases follow your deliverables",
@@ -95,8 +96,11 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 		"You keep the vocabulary of #eng",
 		"get_system flags interface names",
 		"/hikari/public/readonly/systems/<system>/",
-		"/hikari/public/readonly/systems/<system>/features/",
-		"get_feature returns the document",
+		"/hikari/public/readonly/systems/<system>/wiki/",
+		"get_document returns a document",
+		"You keep the wiki of #eng",
+		"mcp__hikari__change_hub_wiki",
+		"load the hikari-hub skill",
 		"When a system announces a release, check it",
 		"the deliverable's definition",
 		"only through that system's published releases",
@@ -118,7 +122,7 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 
 func TestIndexingPrompt(t *testing.T) {
 	build := indexingPrompt(owner, api.TurnContext{MapState: "unbuilt"})
-	for _, want := range []string{"not built yet", "Load the hikari-system skill", "Build procedure", "set_system_info", "change_features", "hikari-feature-survey", "layout.yaml", "tests.yaml", "/hikari/private/reports/<suite>.xml", "record_test_run", "hikari-test-survey", "mark_map_current", "Send no messages"} {
+	for _, want := range []string{"not built yet", "Load the hikari-system skill", "Build procedure", "set_system_info", "change_wiki", "hikari-feature-survey", "layout.yaml", "tests.yaml", "/hikari/private/reports/<suite>.xml", "record_test_run", "hikari-test-survey", "mark_map_current", "Send no messages"} {
 		if !strings.Contains(build, want) {
 			t.Errorf("D8: build prompt lacks %q", want)
 		}
@@ -155,15 +159,16 @@ func TestTurnNotices(t *testing.T) {
 
 func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
-		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_features", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/features.md", "references/layout.md", "references/tests.md"},
-		"skills/hikari-system/references/features.md":               {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## What a feature is", "## How to link", "create", "modify", "rename", "remove"},
+		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_wiki", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/wiki.md", "references/layout.md", "references/tests.md"},
+		"skills/hikari-system/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The hub wikis", "create", "modify", "rename", "remove"},
+		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes"},
 		"skills/hikari-system/references/layout.md":                 {"P2", "P3", "code:"},
 		"skills/hikari-system/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
 		"skills/hikari-system/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
 		"agents/hikari-test-survey.md":                              {"name: hikari-test-survey", "tools: Read, Grep, Glob", "keys", "gaps"},
 		"skills/hikari-system/references/examples/reserve-stock.md": {"---\nid: reserve-stock\n", "## Purpose", "[[release-stock]]"},
 		"agents/hikari-feature-survey.md":                           {"name: hikari-feature-survey", "tools: Read, Grep, Glob", "candidates", "evidence"},
-		"agents/hikari-feature-review.md":                           {"name: hikari-feature-review", "tools: Read, Grep, Glob", "findings", "change_features"},
+		"agents/hikari-feature-review.md":                           {"name: hikari-feature-review", "tools: Read, Grep, Glob", "findings", "change_wiki"},
 	} {
 		data, err := builtin.ReadFile(name)
 		if err != nil {
@@ -201,8 +206,8 @@ func TestBuiltinSkills(t *testing.T) {
 			continue
 		}
 		data, _ := builtin.ReadFile("skills/hikari-system/references/examples/" + e.Name())
-		d, err := featurewiki.Parse(string(data))
-		if err != nil || d.ID+".md" != e.Name() {
+		d, err := wiki.Parse(string(data))
+		if err != nil || d.ID+".md" != e.Name() || d.KindOf() != wiki.Feature {
 			t.Errorf("example %s: %v", e.Name(), err)
 		}
 	}
@@ -215,7 +220,11 @@ func newTestShared(t *testing.T, owner bool) (*sharedArea, string) {
 	for _, d := range []string{"skills", "agents", "policies", "vocabulary", "deliverables"} {
 		os.MkdirAll(filepath.Join(shared, d), 0o755)
 	}
-	return &sharedArea{home: filepath.Join(root, "home"), dir: shared, owner: owner, warned: map[string]bool{}}, shared
+	var builtins []string
+	if owner {
+		builtins = []string{api.SystemSkill}
+	}
+	return &sharedArea{home: filepath.Join(root, "home"), dir: shared, builtins: builtins, warned: map[string]bool{}}, shared
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -248,7 +257,7 @@ func TestSharedAreaSync(t *testing.T) {
 	if !strings.Contains(policies, "# Policies") || strings.Index(policies, "## a-style") > strings.Index(policies, "## b-security") || !strings.Contains(policies, "Never log secrets.") {
 		t.Errorf("H3: policies:\n%s", policies)
 	}
-	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-system", "references", "features.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-system", "references", "wiki.md")); err != nil {
 		t.Errorf("H11: the skill package is installed with its references: %v", err)
 	}
 	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md", "hikari-test-survey.md"} {
@@ -381,5 +390,42 @@ func TestMemberGrantsPrompt(t *testing.T) {
 	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, VisibleSystems: []string{"inventory", "orders"}, MemberGrants: map[string][]string{"orders": {"inventory"}}}
 	if p := systemPrompt(lead); !strings.Contains(p, "orders reads the releases of inventory") {
 		t.Errorf("the orchestrator must know its members' grants:\n%s", p)
+	}
+}
+
+func TestHubSkillAndWikiPrompts(t *testing.T) {
+	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, HubWikis: []string{"shop"}}
+	if got := builtinSkills(lead); !slices.Equal(got, []string{api.HubSkill}) {
+		t.Errorf("S2: an orchestrator gets %v", got)
+	}
+	if got := builtinSkills(owner); !slices.Equal(got, []string{api.SystemSkill}) {
+		t.Errorf("an owner gets %v", got)
+	}
+	s, shared := newTestShared(t, false)
+	s.builtins = []string{api.HubSkill}
+	writeFile(t, filepath.Join(shared, "skills", "hikari-hub", "SKILL.md"), "fake")
+	s.sync()
+	if data, err := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-hub", "SKILL.md")); err != nil || !strings.Contains(string(data), "change_hub_wiki") {
+		t.Errorf("S2, S4: the hub skill comes from hikari: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.agentsDir(), "hikari-feature-survey.md")); err == nil {
+		t.Error("the owner's agents are not installed for an orchestrator")
+	}
+
+	member := api.Self{Name: "orders", HubWikis: []string{"shop"}, System: owner.System}
+	p := systemPrompt(member)
+	for _, want := range []string{"## The wikis of your hubs", "- #shop: /hikari/public/readonly/hubs/shop/wiki", "act on a plan only when the user asks", "The rules and principles of your hubs apply to your system"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("A1, E2: prompt lacks %q", want)
+		}
+	}
+	n := turnNotices(member, api.TurnContext{WikiChanged: []api.WikiChange{
+		{Wiki: "#shop", Docs: []api.DocChange{{ID: "order-items", Kind: "story"}, {ID: "old", Removed: true}}},
+		{Wiki: "orders", Docs: []api.DocChange{{ID: "Roadmap", Kind: "plan"}}},
+	}})
+	for _, want := range []string{"The wiki of #shop changed: order-items (story), old (removed).", "Your wiki changed: Roadmap (plan)."} {
+		if !strings.Contains(n, want) {
+			t.Errorf("E1: notices lack %q:\n%s", want, n)
+		}
 	}
 }

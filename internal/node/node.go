@@ -33,7 +33,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	shared, err := newSharedArea(self.System != nil, deliverableNames(self))
+	shared, err := newSharedArea(builtinSkills(self), deliverableNames(self))
 	if err != nil {
 		return err
 	}
@@ -198,6 +198,7 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 	}
 	b.WriteString("\nYour hubs and direct messages are the only way to reach anyone. The text you write at the end of a turn is not a message: nobody reads it. When you need a decision or an answer from someone, send it to them with the message tools, then end the turn; their reply starts your next turn.\n")
 	b.WriteString(sharedPrompt())
+	b.WriteString(wikisPrompt(self))
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
 	}

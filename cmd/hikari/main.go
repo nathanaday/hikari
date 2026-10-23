@@ -271,6 +271,16 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("the project repository %s must ignore %s; add these lines to its .gitignore: %s", p.Path, strings.Join(missing, " and "), strings.Join(missing, ", "))
 	}
+	// Your edits in the wikis while hikari was stopped are knowledge, not
+	// configuration, so hikari commits them as yours (rule C5 of the wikis
+	// spec).
+	if repo.Branch() == p.Branch {
+		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !systems.IsWikiPath(topo.StoreInProject(), path) }) {
+			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: wiki edits made while hikari was stopped"); err != nil {
+				return nil, fmt.Errorf("the project repository: commit your wiki edits: %w", err)
+			}
+		}
+	}
 	before, _ := repo.Head()
 	after, err := repo.Prepare(p.Branch)
 	if err != nil {

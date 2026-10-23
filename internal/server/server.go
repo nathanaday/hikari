@@ -35,6 +35,7 @@ type Event struct {
 	Activity   *api.Activity     `json:"activity,omitempty"`
 	System     *api.SystemView   `json:"system,omitempty"`
 	Vocabulary *vocab.Vocabulary `json:"vocabulary,omitempty"`
+	Wiki       *api.WikiView     `json:"wiki,omitempty"`
 	Snapshot   *Snapshot         `json:"snapshot,omitempty"`
 }
 
@@ -57,6 +58,8 @@ type Snapshot struct {
 	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
 	Repos        []api.RepoInfo     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
+	// Wikis holds every wiki of the systems and the hubs.
+	Wikis []api.WikiView `json:"wikis"`
 	// Activity holds the recent steps of each agent.
 	Activity map[string][]api.Activity `json:"activity"`
 }
@@ -126,6 +129,19 @@ func (s *Server) systemChanged(c systems.Change) {
 	if c.System != "" {
 		v := s.sys.SystemView(c.System)
 		s.publish(Event{Type: "system", System: &v})
+	}
+	// A system's health is the support of the stories of its hubs.
+	refs := []string{}
+	if c.Wiki != "" {
+		refs = append(refs, c.Wiki)
+	}
+	if c.System != "" {
+		refs = append(refs, s.sys.HubRefsOf(c.System)...)
+	}
+	for _, ref := range refs {
+		if v, ok := s.sys.WikiView(ref); ok {
+			s.publish(Event{Type: "wiki", Wiki: &v})
+		}
 	}
 	if c.Hub != "" {
 		v := s.sys.Vocabulary(c.Hub)
@@ -371,6 +387,7 @@ func (s *Server) Self(node string) api.Self {
 	}
 	self.System, self.Orchestrates = s.sys.Self(node)
 	self.VisibleSystems = s.topo.VisibleSystems(node)
+	self.HubWikis = s.topo.ReadableHubWikis(node)
 	self.Releases = s.topo.ReadableReleases(node)
 	self.Deliverables = s.sys.Deliverables(node)
 	for _, hub := range s.topo.OrchestratedHubs(node) {
@@ -460,6 +477,7 @@ func (s *Server) snapshot() Snapshot {
 	snap.Vocabularies = s.sys.Vocabularies()
 	snap.Repos = s.sys.Repos()
 	snap.Deliverables = s.deliverables(s.sys.Store())
+	snap.Wikis = s.sys.Wikis()
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {
 		snap.Activity[n] = slices.Clone(list)

@@ -1,5 +1,6 @@
 ---
 id: check-availability
+kind: feature
 name: Check availability
 description: Report how much of a SKU is free to sell.
 interfaces: [Stock.available]

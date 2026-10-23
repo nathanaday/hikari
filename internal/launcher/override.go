@@ -47,7 +47,7 @@ func AgentMounts(t *topology.Topology, agent, emptyDir string) []Mount {
 		mounts = SystemMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
 	}
 	st := store.Store{Root: t.Store}
-	return append(mounts, StoreMounts(st, agent, a.System != nil, t.VisibleSystems(agent), t.ReadableReleases(agent), emptyDir)...)
+	return append(mounts, StoreMounts(st, agent, a.System != nil, t.VisibleSystems(agent), t.ReadableReleases(agent), t.ReadableHubWikis(agent), emptyDir)...)
 }
 
 type overrideFile struct {

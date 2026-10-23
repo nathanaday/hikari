@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Hub, Message, RepoInfo, ServerEvent, SystemView, Vocabulary } from './types'
+import type { Activity, Agent, DeliverableInfo, Hub, Message, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -17,6 +17,8 @@ export type State = {
   // repos and deliverables let the map draw the topology.
   repos: RepoInfo[]
   deliverables: DeliverableInfo[]
+  // wikis holds the wiki of every system and hub.
+  wikis: WikiView[]
   // activity holds the recent steps of each agent, oldest first.
   activity: Record<string, Activity[]>
   view: View
@@ -43,6 +45,7 @@ export function initialState(view: View): State {
     vocabularies: [],
     repos: [],
     deliverables: [],
+    wikis: [],
     activity: {},
     view,
     unread: {},
@@ -91,6 +94,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         vocabularies: e.snapshot.vocabularies ?? [],
         repos: e.snapshot.repos ?? [],
         deliverables: e.snapshot.deliverables ?? [],
+        wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
         view: resolve(s.view, { agents, hubs, systems }),
         unread: {},
@@ -118,6 +122,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, systems: replaceBy(s.systems, e.system, (x) => x.owner) }
     case 'vocabulary':
       return { ...s, vocabularies: replaceBy(s.vocabularies, e.vocabulary, (x) => x.hub) }
+    case 'wiki':
+      return { ...s, wikis: replaceBy(s.wikis, e.wiki, (x) => x.ref) }
   }
 }
 

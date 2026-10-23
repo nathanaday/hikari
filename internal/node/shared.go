@@ -14,32 +14,43 @@ import (
 	"github.com/nathanaday/hikari/internal/store"
 )
 
-// builtin holds hikari's own skill package and agents, which always come
+// builtin holds hikari's own skill packages and agents, which always come
 // from the binary (rule H11).
 //
 //go:embed skills agents
 var builtin embed.FS
 
-// systemSkill is hikari's own skill, which always comes from the binary.
-const systemSkill = api.SystemSkill
-
 // sharedArea connects the store's shared area to Claude Code in the
 // container (rules H1 to H10): the shared skills and agents, the policies,
 // and the skill of each deliverable that the agent holds.
 type sharedArea struct {
-	home         string
-	dir          string // the shared area in the container
-	owner        bool
+	home string
+	dir  string // the shared area in the container
+	// builtins are hikari's own skills that the agent's roles need.
+	builtins     []string
 	deliverables []string
 	warned       map[string]bool
 }
 
-func newSharedArea(owner bool, deliverables []string) (*sharedArea, error) {
+func newSharedArea(builtins, deliverables []string) (*sharedArea, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	return &sharedArea{home: home, dir: api.SharedDir, owner: owner, deliverables: deliverables, warned: map[string]bool{}}, nil
+	return &sharedArea{home: home, dir: api.SharedDir, builtins: builtins, deliverables: deliverables, warned: map[string]bool{}}, nil
+}
+
+// builtinSkills returns hikari's own skills that self's roles need: the
+// system skill for an owner, the hub skill for an orchestrator.
+func builtinSkills(self api.Self) []string {
+	var out []string
+	if self.System != nil {
+		out = append(out, api.SystemSkill)
+	}
+	if len(self.Orchestrates) > 0 {
+		out = append(out, api.HubSkill)
+	}
+	return out
 }
 
 func (s *sharedArea) skillsDir() string { return filepath.Join(s.home, ".claude", "skills") }
@@ -56,12 +67,12 @@ func (s *sharedArea) sync() string {
 			return ""
 		}
 	}
-	if s.owner {
-		s.writeBuiltin()
+	for _, name := range s.builtins {
+		s.writeBuiltin(name)
 	}
 	for _, name := range s.sharedSkills() {
 		switch {
-		case name == systemSkill:
+		case slices.Contains(api.BuiltinSkills, name):
 			s.warnOnce(name, "ignoring skills/%s; hikari's own %s skill always comes from hikari", name, name)
 			continue
 		case slices.Contains(s.deliverables, name):
@@ -117,17 +128,17 @@ func (s *sharedArea) files(kind, ext string) []string {
 	return out
 }
 
-// writeBuiltin installs hikari's own skill package and agents, replacing
-// whatever is at their paths, such as a link that a shared skill of the
-// same name left behind.
-func (s *sharedArea) writeBuiltin() {
-	dir := filepath.Join(s.skillsDir(), systemSkill)
+// writeBuiltin installs one of hikari's own skill packages, and with the
+// system skill hikari's agents, replacing whatever is at their paths, such
+// as a link that a shared skill of the same name left behind.
+func (s *sharedArea) writeBuiltin(skill string) {
+	dir := filepath.Join(s.skillsDir(), skill)
 	os.RemoveAll(dir)
-	err := fs.WalkDir(builtin, "skills/"+systemSkill, func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(builtin, "skills/"+skill, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		rel, _ := filepath.Rel("skills/"+systemSkill, path)
+		rel, _ := filepath.Rel("skills/"+skill, path)
 		data, err := builtin.ReadFile(path)
 		if err != nil {
 			return err
@@ -139,7 +150,10 @@ func (s *sharedArea) writeBuiltin() {
 		return os.WriteFile(target, data, 0o644)
 	})
 	if err != nil {
-		log.Printf("shared area: install the %s skill: %v", systemSkill, err)
+		log.Printf("shared area: install the %s skill: %v", skill, err)
+	}
+	if skill != api.SystemSkill {
+		return
 	}
 	agents, _ := fs.ReadDir(builtin, "agents")
 	for _, a := range agents {

@@ -71,8 +71,9 @@ type PublishInput struct {
 	SourceCommit string
 	// Map is the public map at release time, as YAML.
 	Map []byte
-	// Features holds the feature wiki at release time, by file name.
-	Features map[string][]byte
+	// Wiki holds the agent documents of the system wiki at release time,
+	// by file name (rule L2 of the wikis spec).
+	Wiki map[string][]byte
 	// Hubs are the hubs where the release is announced.
 	Hubs []string
 	// Hikari is the version of the server.
@@ -281,11 +282,11 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 	if err := os.WriteFile(filepath.Join(dest, "map.yaml"), in.Map, 0o644); err != nil {
 		return Manifest{}, err
 	}
-	if err := os.Mkdir(filepath.Join(dest, Features), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(dest, Wiki), 0o755); err != nil {
 		return Manifest{}, err
 	}
-	for name, data := range in.Features {
-		if err := os.WriteFile(filepath.Join(dest, Features, name), data, 0o644); err != nil {
+	for name, data := range in.Wiki {
+		if err := os.WriteFile(filepath.Join(dest, Wiki, name), data, 0o644); err != nil {
 			return Manifest{}, err
 		}
 	}

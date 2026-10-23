@@ -723,3 +723,55 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// ChildHubs returns the hubs whose orchestrator is a member of hub, in
+// sorted order.
+func (t *Topology) ChildHubs(hub string) []string {
+	var out []string
+	for _, h := range t.HubNames() {
+		if h != hub && slices.Contains(t.Hubs[hub].Members, t.Hubs[h].Orchestrator) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// ParentHubs returns the hubs that have the orchestrator of hub as a
+// member, in sorted order.
+func (t *Topology) ParentHubs(hub string) []string {
+	var out []string
+	for _, h := range t.HubNames() {
+		if h != hub && slices.Contains(t.Hubs[h].Members, t.Hubs[hub].Orchestrator) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// MemberHubs returns the hubs that agent is a member of, not the
+// orchestrator of, in sorted order.
+func (t *Topology) MemberHubs(agent string) []string {
+	var out []string
+	for _, h := range t.HubNames() {
+		if slices.Contains(t.Hubs[h].Members, agent) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// ReadableHubWikis returns the hubs whose wikis agent reads (rules A1 and
+// A2 of the wikis spec): the hubs it is in, and the child hubs of the hubs
+// it orchestrates, in sorted order.
+func (t *Topology) ReadableHubWikis(agent string) []string {
+	set := map[string]bool{}
+	for _, h := range t.HubsOf(agent) {
+		set[h] = true
+	}
+	for _, h := range t.OrchestratedHubs(agent) {
+		for _, c := range t.ChildHubs(h) {
+			set[c] = true
+		}
+	}
+	return sortedKeys(set)
+}

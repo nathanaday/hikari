@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 // The tree of the tests: lead orchestrates #product, whose members are
@@ -124,7 +124,7 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Provides: ptr([]sysmap.Interface{{Name: "POST /orders", Kind: "http", Description: "Creates an order."}}),
 		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
 	}))
-	_, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{
+	_, err := f.m.ChangeWiki("orders", "", []wiki.Write{{
 		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
 		Interfaces: []string{"POST /orders", "inventory.reserve"}, Body: body("A customer places an order, and the shop stores it."),
 	}})
@@ -252,7 +252,7 @@ func TestNewRefusesUncommittedChanges(t *testing.T) {
 func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	_, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
+	_, err := f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
 	must(t, err)
 	if _, err := f.m.RecordRun("orders", "e2e"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "its suites are unit") {
 		t.Errorf("J2: a suite that the test map lacks: %v", err)
@@ -388,8 +388,12 @@ func TestAccess(t *testing.T) {
 	forbidden("A3 owner lists systems", err)
 	_, err = f.m.GetSystem("inventory", "orders")
 	forbidden("A3 owner reads a peer", err)
-	_, err = f.m.SearchFeatures("writer", "order")
-	forbidden("A3 member searches", err)
+	// A1 of the wikis spec: a member reads its hubs' wikis, not a system's.
+	if hits, err := f.m.SearchWiki("writer", "order"); err != nil || len(hits) != 0 {
+		t.Errorf("A1 member searches = %+v, %v", hits, err)
+	}
+	_, err = f.m.GetDocument("writer", "create-order")
+	notFound("T4 member reads a feature", err)
 
 	// V3: vocabularies.
 	forbidden("V3 member defines a term", f.m.DefineTerm("orders", "eng", vocab.Term{Term: "x", Definition: "y"}))
@@ -433,18 +437,18 @@ func TestOrchestratorView(t *testing.T) {
 		t.Errorf("features = %+v", s.Features)
 	}
 
-	hits, err := f.m.SearchFeatures("eng-lead", "STORES")
-	if err != nil || len(hits) != 1 || hits[0].System != "orders" {
-		t.Errorf("search = %+v, %v", hits, err)
+	hits, err := f.m.SearchWiki("eng-lead", "STORES")
+	if err != nil || len(hits) != 1 || hits[0].Wiki != "orders" || hits[0].Kind != "feature" {
+		t.Errorf("T5 search = %+v, %v", hits, err)
 	}
-	if hit, err := f.m.GetFeature("eng-lead", "orders", "create-order"); err != nil || hit.Feature.Name != "Create an order" || !strings.Contains(hit.Document, "## Purpose") {
-		t.Errorf("Q3: get feature = %+v, %v", hit, err)
+	if hit, err := f.m.GetDocument("eng-lead", "create-order"); err != nil || hit.Name != "Create an order" || !strings.Contains(hit.Document, "## Purpose") || hit.Health == "" {
+		t.Errorf("T4: get document = %+v, %v", hit, err)
 	}
-	if hits, err := f.m.SearchFeatures("eng-lead", "customer places"); err != nil || len(hits) != 1 {
-		t.Errorf("Q3: search matches the document: %+v, %v", hits, err)
+	if hits, err := f.m.SearchWiki("eng-lead", "customer places"); err != nil || len(hits) != 1 {
+		t.Errorf("T5: search matches the document: %+v, %v", hits, err)
 	}
-	if _, err := f.m.GetFeature("eng-lead", "orders", "ghost"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("unknown feature: %v", err)
+	if _, err := f.m.GetDocument("eng-lead", "ghost"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown document: %v", err)
 	}
 
 	// The UI view flags the same way from the owner's hubs.
@@ -593,7 +597,7 @@ func TestPublishRelease(t *testing.T) {
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
 		t.Errorf("the copied map must be the public view:\n%s", copied)
 	}
-	if doc, err := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "features", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
+	if doc, err := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "wiki", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
 		t.Errorf("L11: the release holds the wiki: %v\n%s", err, doc)
 	}
 	if len(changes) == 0 || changes[0].System != "orders" {
@@ -661,14 +665,14 @@ func TestDeliverableChecksAtStartup(t *testing.T) {
 func TestChangeFeatures(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	features := filepath.Join(f.dir, "store", "systems", "orders", "features")
+	features := filepath.Join(f.dir, "store", "systems", "orders", "wiki")
 	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err != nil {
 		t.Fatalf("L10, W7: the document is in the store: %v", err)
 	}
 	var changes []Change
 	f.m.OnChange(func(c Change) { changes = append(changes, c) })
 
-	res, err := f.m.ChangeFeatures("orders", []featurewiki.Write{
+	res, err := f.m.ChangeWiki("orders", "", []wiki.Write{
 		{Op: "create", ID: "cancel-order", Name: "Cancel an order", Description: "Cancel a placed order.", Body: body("After [[create-order]] placed an order, the customer can cancel it.")},
 	})
 	if err != nil || len(res.Applied) != 1 || len(changes) == 0 {
@@ -686,7 +690,7 @@ func TestChangeFeatures(t *testing.T) {
 	}
 
 	// The rules refuse as a whole, and name the rule.
-	_, err = f.m.ChangeFeatures("orders", []featurewiki.Write{
+	_, err = f.m.ChangeWiki("orders", "", []wiki.Write{
 		{Op: "create", ID: "ship-order", Name: "Ship", Description: "Ship it.", Body: body("Ships.")},
 		{Op: "create", ID: "bad", Name: "Bad", Description: "Bad.", Interfaces: []string{"GET /nope"}, Body: body("Uses an unknown interface.")},
 	})
@@ -698,15 +702,15 @@ func TestChangeFeatures(t *testing.T) {
 	}
 
 	// Ids are unique across systems.
-	_, err = f.m.ChangeFeatures("inventory", []featurewiki.Write{{Op: "create", ID: "create-order", Name: "Create", Description: "Dup.", Body: body("Dup.")}})
-	if err == nil || !strings.Contains(err.Error(), "W1") || !strings.Contains(err.Error(), "another system") {
+	_, err = f.m.ChangeWiki("inventory", "", []wiki.Write{{Op: "create", ID: "create-order", Name: "Create", Description: "Dup.", Body: body("Dup.")}})
+	if err == nil || !strings.Contains(err.Error(), "W1") || !strings.Contains(err.Error(), "another wiki") {
 		t.Errorf("W1 across systems: %v", err)
 	}
 
 	// A rename keeps test results and rewrites links in the wiki and the
 	// private documents.
 	f.runOrders(t, testmap.Passed, testmap.Passed, testmap.Passed)
-	res, err = f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
+	res, err = f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,14 +731,14 @@ func TestChangeFeatures(t *testing.T) {
 	if !strings.Contains(string(doc), "[[place-order]]") {
 		t.Errorf("K4: links follow the rename:\n%s", doc)
 	}
-	hit, err := f.m.GetFeature("eng-lead", "orders", "cancel-order")
+	hit, err := f.m.GetDocument("eng-lead", "cancel-order")
 	if err != nil || hit.Document != string(doc) {
 		t.Errorf("Q3: the document as on disk: %v", err)
 	}
 
 	// A remove drops the feature; its tests become unmapped, and the code
 	// map is left to the owner.
-	res, err = f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "remove", ID: "place-order"}})
+	res, err = f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "remove", ID: "place-order"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,8 +752,8 @@ func TestChangeFeatures(t *testing.T) {
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `layout.yaml still names the removed feature "place-order"`) {
 		t.Errorf("E10: notes %v", res.Notes)
 	}
-	if _, err := f.m.ChangeFeatures("eng-lead", nil); !errors.Is(err, ErrForbidden) {
-		t.Errorf("only owners change features: %v", err)
+	if _, err := f.m.ChangeWiki("eng-lead", "", nil); !errors.Is(err, ErrForbidden) {
+		t.Errorf("only owners change a system wiki: %v", err)
 	}
 }
 
@@ -760,7 +764,7 @@ func TestMarkCurrentDescribesEveryDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "features", "create-order.md"))
+	doc, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "wiki", "create-order.md"))
 	if !strings.Contains(string(doc), "described_commit: "+commit) || !strings.Contains(string(doc), "described_at: ") {
 		t.Errorf("S22: the document records the commit:\n%s", doc)
 	}
@@ -773,7 +777,7 @@ func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
 	o := f.m.owners["orders"]
-	path := filepath.Join(f.dir, "store", "systems", "orders", "features", "create-order.md")
+	path := filepath.Join(f.dir, "store", "systems", "orders", "wiki", "create-order.md")
 	doc, _ := os.ReadFile(path)
 	edited := strings.Replace(string(doc), "description: Stores a new order.", "description: Stores a new order for a customer.", 1)
 	os.WriteFile(path, []byte(edited), 0o644)
@@ -866,12 +870,12 @@ func TestTestHealth(t *testing.T) {
 			t.Errorf("Q5: the map holds %q:\n%s", leak, public)
 		}
 	}
-	hit, _ := f.m.GetFeature("eng-lead", "orders", "create-order")
-	if hit.Feature.Health != testmap.Failing {
-		t.Errorf("E13: orchestrators see the health: %+v", hit.Feature)
+	hit, _ := f.m.GetDocument("eng-lead", "create-order")
+	if hit.Health != testmap.Failing {
+		t.Errorf("E13: orchestrators see the health: %+v", hit)
 	}
-	if hit.Feature.Created.IsZero() || !strings.Contains(string(public), "created: ") {
-		t.Errorf("Q7: the map entry carries created: %+v", hit.Feature)
+	if !strings.Contains(string(public), "created: ") {
+		t.Errorf("Q7: the map entry carries created:\n%s", public)
 	}
 
 	// Results and reports stay out of commits (rule L13).

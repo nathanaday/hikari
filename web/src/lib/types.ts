@@ -191,6 +191,41 @@ export type Vocabulary = {
   interfaces: Interface[]
 }
 
+// DocKind is the kind of a wiki document: agents write features,
+// principles, rules, and stories; the user writes plans and notes.
+export type DocKind = 'feature' | 'principle' | 'rule' | 'story' | 'plan' | 'note'
+
+// WikiDoc is one document of a wiki, without its body.
+export type WikiDoc = {
+  id: string
+  kind: DocKind
+  name?: string
+  description?: string
+  // links are the documents it links, in any wiki.
+  links: string[]
+  key?: boolean
+  status?: string
+  // health is a feature's; support sums the features a hub's story or
+  // rule links.
+  health?: Health
+  support?: Health
+  created?: string
+  // file is the document's path in the store; hash changes with its text.
+  file: string
+  hash: string
+}
+
+// WikiView is the wiki of a system or a hub. ref is "system:<name>" or
+// "hub:<name>".
+export type WikiView = {
+  ref: string
+  scope: 'system' | 'hub'
+  name: string
+  documents: WikiDoc[]
+  problems?: string[]
+  warnings?: string[]
+}
+
 export type Snapshot = {
   version?: string
   me: string
@@ -201,6 +236,7 @@ export type Snapshot = {
   vocabularies: Vocabulary[]
   repos?: RepoInfo[]
   deliverables?: DeliverableInfo[]
+  wikis?: WikiView[]
   activity?: Record<string, Activity[]>
 }
 
@@ -217,5 +253,6 @@ export type ServerEvent =
   | { type: 'activity'; node: string; activity: Activity }
   | { type: 'system'; system: SystemView }
   | { type: 'vocabulary'; vocabulary: Vocabulary }
+  | { type: 'wiki'; wiki: WikiView }
 
 export type SendRequest = { hub: string; body: string } | { to: string; body: string }

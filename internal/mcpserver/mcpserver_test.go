@@ -35,9 +35,9 @@ func toolNames(t *testing.T, self api.Self) []string {
 }
 
 var (
-	everyone     = []string{"check_inbox", "get_vocabulary", "list_hubs", "post_to_hub", "send_direct_message"}
-	ownerOnly    = []string{"change_features", "check_release", "commit_changes", "get_my_system", "mark_map_current", "publish_release", "record_test_run", "set_system_info"}
-	orchestrator = []string{"define_interface", "define_term", "get_feature", "get_system", "list_systems", "remove_entry", "search_features"}
+	everyone     = []string{"check_inbox", "get_document", "get_vocabulary", "list_hubs", "post_to_hub", "search_wiki", "send_direct_message"}
+	ownerOnly    = []string{"change_wiki", "check_release", "commit_changes", "get_my_system", "mark_map_current", "publish_release", "record_test_run", "set_system_info"}
+	orchestrator = []string{"change_hub_wiki", "define_interface", "define_term", "get_system", "list_systems", "remove_entry"}
 )
 
 func sorted(lists ...[]string) []string {

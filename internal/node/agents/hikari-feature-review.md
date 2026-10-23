@@ -8,7 +8,7 @@ tools: Read, Grep, Glob
 
 You check a system's feature wiki against its code and report what no longer holds. The owner decides what to change; you find.
 
-**Takes**: the directory of the feature documents (`/hikari/public/export/features/`), the code map (`/hikari/private/layout.yaml`), the working directory, and, when the owner gives them, the paths that changed.
+**Takes**: the directory of the feature documents (`/hikari/public/export/wiki/`), the code map (`/hikari/private/layout.yaml`), the working directory, and, when the owner gives them, the paths that changed.
 
 **Returns**, as your final message and nothing after it:
 
@@ -45,7 +45,7 @@ You check a system's feature wiki against its code and report what no longer hol
 2. When the owner gave changed paths, start with the features whose `code` covers them, then look at the paths that no `code` entry covers.
 3. For each feature, read its code and compare it with its description and Purpose.
 4. Look for behavior in the code that no document describes, and for calls between features that no document links.
-5. Write each finding with its `path:line` evidence and the suggested write, in the shape that `change_features` takes.
+5. Write each finding with its `path:line` evidence and the suggested write, in the shape that `change_wiki` takes.
 
 ## Rules
 

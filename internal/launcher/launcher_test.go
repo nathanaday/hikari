@@ -48,9 +48,10 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 
 func TestStoreMounts(t *testing.T) {
 	st := store.Store{Root: "/s"}
-	owner := StoreMounts(st, "orders", true, nil, []string{"inventory"}, "/tmp/empty")
+	owner := StoreMounts(st, "orders", true, nil, []string{"inventory"}, []string{"shop"}, "/tmp/empty")
 	wantOwner := []Mount{
 		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
+		{Source: "/s/hubs/shop/wiki", Target: "/hikari/public/readonly/hubs/shop/wiki", ReadOnly: true},
 		{Source: "/s/systems/orders", Target: "/hikari/public/export", ReadOnly: true},
 		{Source: "/s/systems/orders/staging", Target: "/hikari/public/export/staging"},
 		{Source: "/s/systems/inventory/releases", Target: "/hikari/public/readonly/systems/inventory/releases", ReadOnly: true},
@@ -59,7 +60,7 @@ func TestStoreMounts(t *testing.T) {
 		t.Errorf("owner mounts:\n got %+v\nwant %+v", owner, wantOwner)
 	}
 
-	lead := StoreMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, "/tmp/empty")
+	lead := StoreMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, nil, "/tmp/empty")
 	wantLead := []Mount{
 		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
 		{Source: "/s/systems/orders", Target: "/hikari/public/readonly/systems/orders", ReadOnly: true},
@@ -70,7 +71,7 @@ func TestStoreMounts(t *testing.T) {
 		t.Errorf("orchestrator mounts:\n got %+v\nwant %+v", lead, wantLead)
 	}
 
-	member := StoreMounts(st, "writer", false, nil, nil, "/tmp/empty")
+	member := StoreMounts(st, "writer", false, nil, nil, nil, "/tmp/empty")
 	if len(member) != 1 || member[0].Target != "/hikari/public/readonly/shared" {
 		t.Errorf("a member without grants sees only shared: %+v", member)
 	}

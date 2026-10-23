@@ -101,6 +101,47 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	s.storeRoutes(mux, ui)
+	// The user's changes to the wikis (rules U6, U8, and C4 of the wikis
+	// spec). {scope} is hub or system.
+	wikiRef := func(r *http.Request) (string, bool) {
+		scope := r.PathValue("scope")
+		return scope + ":" + r.PathValue("name"), scope == "hub" || scope == "system"
+	}
+	userWrite := func(fn func(r *http.Request, ref string) error) http.HandlerFunc {
+		return ui(func(w http.ResponseWriter, r *http.Request) {
+			ref, ok := wikiRef(r)
+			if !ok {
+				writeError(w, http.StatusNotFound, "no such wiki")
+				return
+			}
+			if err := fn(r, ref); err != nil {
+				writeSystemError(w, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+	mux.HandleFunc("PUT /api/ui/wiki/{scope}/{name}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
+		var req struct {
+			Text string `json:"text"`
+		}
+		if err := decode(r, &req); err != nil {
+			return err
+		}
+		return s.sys.WriteDocument(ref, r.PathValue("id"), req.Text)
+	}))
+	mux.HandleFunc("DELETE /api/ui/wiki/{scope}/{name}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
+		return s.sys.RemoveDocument(ref, r.PathValue("id"))
+	}))
+	mux.HandleFunc("PUT /api/ui/wiki/{scope}/{name}/key/{id}", userWrite(func(r *http.Request, ref string) error {
+		var req struct {
+			Key bool `json:"key"`
+		}
+		if err := decode(r, &req); err != nil {
+			return err
+		}
+		return s.sys.SetKey(ref, r.PathValue("id"), req.Key)
+	}))
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))
@@ -146,12 +187,18 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		}
 		return nil, sys.SetSystemInfo(node, p)
 	})
-	handle("POST /api/node/map/features", func(r *http.Request, node string) (any, error) {
+	handle("POST /api/node/wiki", func(r *http.Request, node string) (any, error) {
 		var req api.ChangeRequest
 		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		return sys.ChangeFeatures(node, req.Writes)
+		return sys.ChangeWiki(node, req.Hub, req.Writes)
+	})
+	handle("GET /api/node/wiki/docs/{id}", func(r *http.Request, node string) (any, error) {
+		return sys.GetDocument(node, r.PathValue("id"))
+	})
+	handle("GET /api/node/wiki/search", func(r *http.Request, node string) (any, error) {
+		return sys.SearchWiki(node, r.URL.Query().Get("q"))
 	})
 	handle("POST /api/node/map/tests", func(r *http.Request, node string) (any, error) {
 		var req api.RunRequest
@@ -205,12 +252,6 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 	})
 	handle("GET /api/node/systems/{name}", func(r *http.Request, node string) (any, error) {
 		return sys.GetSystem(node, r.PathValue("name"))
-	})
-	handle("GET /api/node/systems/{name}/features/{id}", func(r *http.Request, node string) (any, error) {
-		return sys.GetFeature(node, r.PathValue("name"), r.PathValue("id"))
-	})
-	handle("GET /api/node/features", func(r *http.Request, node string) (any, error) {
-		return sys.SearchFeatures(node, r.URL.Query().Get("q"))
 	})
 
 	handle("GET /api/node/vocabulary/{hub}", func(r *http.Request, node string) (any, error) {

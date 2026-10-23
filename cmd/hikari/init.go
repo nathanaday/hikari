@@ -135,7 +135,7 @@ func writeProject(dir, name string) (bool, error) {
 		}
 	}
 	st := store.Store{Root: filepath.Join(dir, "store")}
-	if err := st.Prepare(nil); err != nil {
+	if err := st.Prepare(nil, nil); err != nil {
 		return false, err
 	}
 	if _, err := st.WriteIgnore(); err != nil {

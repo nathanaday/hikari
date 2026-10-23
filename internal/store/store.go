@@ -20,9 +20,9 @@ const (
 	Deliverables = "deliverables"
 )
 
-// Features is the directory of a system's feature wiki, in the system's
-// directory and in each release.
-const Features = "features"
+// Wiki is the directory of a wiki, in a system's directory, in a hub's
+// directory, and in each release.
+const Wiki = "wiki"
 
 // Store is a store on the host.
 type Store struct {
@@ -41,8 +41,13 @@ func (s Store) SystemDir(system string) string { return filepath.Join(s.Root, "s
 
 func (s Store) MapFile(system string) string { return filepath.Join(s.SystemDir(system), "map.yaml") }
 
-// FeaturesDir is the feature wiki of a system: one document per feature.
-func (s Store) FeaturesDir(system string) string { return filepath.Join(s.SystemDir(system), Features) }
+// SystemWiki is the wiki of a system.
+func (s Store) SystemWiki(system string) string { return filepath.Join(s.SystemDir(system), Wiki) }
+
+func (s Store) HubDir(hub string) string { return filepath.Join(s.Root, "hubs", hub) }
+
+// HubWiki is the wiki of a hub.
+func (s Store) HubWiki(hub string) string { return filepath.Join(s.HubDir(hub), Wiki) }
 
 func (s Store) Staging(system string) string { return filepath.Join(s.SystemDir(system), "staging") }
 
@@ -65,10 +70,13 @@ func (s Store) ReleaseDir(system, deliverable, version string) string {
 
 // Prepare creates the directories of the store that do not exist (rule L1)
 // and writes its README once.
-func (s Store) Prepare(systems []string) error {
+func (s Store) Prepare(systems, hubs []string) error {
 	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents), s.Shared(Deliverables)}
 	for _, sys := range systems {
-		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys), s.FeaturesDir(sys))
+		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys), s.SystemWiki(sys))
+	}
+	for _, hub := range hubs {
+		dirs = append(dirs, s.HubWiki(hub))
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -111,16 +119,20 @@ this file once; you can change it.
       deliverables/<name>/      what a release must contain and how to make it; you write them
         deliverable.yaml        the description, the layout rules, and the cloud targets
         SKILL.md                the skill that tells the owner how to make the product
+    hubs/<hub>/
+      wiki/<id>.md              the hub wiki: stories, rules, and principles that its orchestrator
+                                writes through hikari, and your plans and notes
     systems/<system>/
-      map.yaml                  the public map of the system; hikari writes it from the feature wiki
-      features/<id>.md          the feature wiki: one document per feature; its owner changes it through hikari
+      map.yaml                  the public map of the system; hikari writes it from the wiki
+      wiki/<id>.md              the system wiki: features, principles, and rules that its owner
+                                writes through hikari, and your plans and notes
       staging/<deliverable>/    where the owner builds the product of its next release
       releases/<deliverable>/<x.y.z>/   published releases, which never change
         release.yaml            the manifest; hikari writes it
         SHA256SUMS              the digest of every file of the product
         product/                the files the owner staged
         map.yaml                the public map at release time
-        features/               the feature wiki at release time
+        wiki/                   the features, principles, and rules at release time
       releases/<deliverable>/latest     the newest release of that deliverable
 
 In a project repository, git ignores staging/ and releases/: products
