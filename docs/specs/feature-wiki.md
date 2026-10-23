@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run of the shop on 2026-10-22: both owners built their wikis from nothing in one indexing turn each, at about $0.12 per owner; every document passed the rules; lead read a document through `get_feature` and as a file under `/hikari/public/readonly/systems/inventory/features/` and found the same text; a host edit of `inventory/stock.py` made the notice name the stale features, and the owner re-ran the tests and marked the map current. The rename and the release copy are covered by the package tests. Approved with the three changes below. One change made during the build: a modify clears `interfaces` or `related` with an empty list, not with `null`, because JSON gives a tool no way to tell `null` from an absent field.
 
+The system graphs spec (`docs/specs/system-graphs.md`) later added the code-owned property `created` (rules W10, W11, Q7), between `related` and `updated`.
+
 The tests and health spec (`docs/specs/test-health.md`) later changed S19 and S21 (a feature's test files come from its touching tests), replaced the notes of E4 with rewrites of the private documents, and replaced the `tests` and `health` placeholder of Q1.
 
 Sources: `docs/brainstorm/feature-wiki.md` (round 1) and `feature-wiki-answers.md`. This spec replaces the `features` part of section 5 of `docs/specs/system-maps.md` (the map's feature entries, rules S1 to S3), its owner tools `upsert_features` and `remove_feature`, and rule D7 (the skill as one file). `layout.yaml`, `test.yaml`, their rules P1 to P6, health (S8 to S12), and the map state (S13 to S15) stay as they are until the testing phase (`docs/brainstorm/next-phase.md`).

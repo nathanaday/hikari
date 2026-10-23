@@ -421,6 +421,33 @@ TUI: the terminal keeps its scrollback, and output to a pipe stays plain
 text. Each run keeps its records in one folder, `.hikari/runs/<run-id>/`, and
 writes `messages.jsonl` only when the run has a message.
 
+## The map draws its own canvas
+
+The Map view is a force graph in the style of Obsidian's graph. `d3-force`
+lays it out and `d3-zoom` pans and zooms, but the view draws every frame on a
+2D canvas itself. The reason is the move from the topology into a system: the
+camera, the fading nodes, the features that spread out of the system, and
+the lens colors all change under one clock. A complete graph library owns its
+draw loop and its camera, and a transition between two of its graphs fights
+it. The graphs are small, tens of nodes and at most a few hundred, so a 2D
+canvas is fast enough and WebGL would add weight for nothing.
+
+Both maps live on one canvas, so no frame is ever empty. The engine knows
+nodes and edges, not systems or features; the view tells it how two graphs
+relate, and it opens one out of a node of the other or folds it back. The
+simulation stops when the layout settles, so an idle map costs nothing.
+
+A lens is a function from what a node stands for to how it is drawn. The
+graphs and the lenses are plain functions with unit tests, and the canvas
+only draws what they return. Each lens answers one question with the fewest
+colors that answer it, and a node a lens says nothing about stays neutral,
+so color always means something. The status dots elsewhere in the UI use the
+activity colors, so that one color means one thing everywhere.
+
+A feature's age is the time its document was created, which the server
+records. Its last edit would make a reworded feature look new. A document
+from before the record existed has no known age and shows as the oldest.
+
 ## Known limitations
 
 - Agents can still send messages to each other without end, for example by

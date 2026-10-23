@@ -146,6 +146,8 @@ An orchestrator reads the public maps of the systems in the hubs it orchestrates
 
 The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test map. It also shows each hub's vocabulary and the shared area, with each deliverable's rules and holders.
 
+The Map view draws the topology as a force graph: each system, the repository its code is in, and the deliverables it holds, with dashed edges where one system reads another's releases or uses its interfaces. Lenses color the systems: Activity (cyan while the owner works, muted cyan while it waits), Tests (red for a failing feature, yellow for a pending one, green when they pass), and Git (magenta for uncommitted changes). Click a system and the camera moves into it, and the system opens into its feature map: one node per feature, joined by the links of the wiki, colored by Tests or by Age (newer features are brighter). Click a feature to read its document beside the graph. Back returns to the topology.
+
 ### Each agent's container
 
 Compose owns each agent's environment: its image or Dockerfile, its variables, env files, and secrets, its volumes, its ports, and anything else compose offers. hikari owns the boundaries. It writes an override file for each run that gives every agent its mounts, its token, its own network, and the hikari binary, and runs `docker compose` with both files.
@@ -236,6 +238,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/sysmap`: the map and the private documents, their rules, health, and feature state
 - `internal/featurewiki`: the feature documents, their links, and the change that writes them
 - `internal/testmap`: the test map, JUnit reports, recorded runs, and the health of each feature
+- `web/src/components/graph-engine.ts`: the canvas of the Map view: layout, drawing, input, and transitions
 - `internal/vocab`: the hub vocabulary format
 - `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation and scoped commits

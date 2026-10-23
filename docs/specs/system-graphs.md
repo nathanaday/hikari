@@ -1,6 +1,15 @@
 # Spec: system graphs
 
-Status: draft, for approval.
+Status: built. Checked in a browser on 2026-10-22, against the shop demo, with headless Chrome driven by Playwright, because the Chrome extension was not connected. Both maps were checked under every lens. A host edit turned inventory and its repository magenta under Git and yellow under Tests. A working owner pulsed cyan and an idle one was muted cyan. A feature that inventory added was the brightest under Age, and the three documents from before `created` were the dimmest. A recorded failing run turned inventory and the three features its test touches red. The transition was recorded both ways as a GIF. Back and forward, a direct link, the keyboard, reduced motion, and a 390-pixel screen were also checked.
+
+Changes made during the build:
+
+1. **History entries between the maps.** The UI replaced its history entry on every view change, so back left the app. A move between the two maps now adds an entry (U17). Other views behave as before.
+2. **Keyboard selection is not a click.** Tab selects a system without opening it; Enter opens it (U29).
+3. **A system has a panel too.** Selected with the keyboard, a system opens a small panel with its summary and links to its features and its page, beside the repository and deliverable panels of change 2.
+4. **The panel takes its own column.** On a wide screen the panel sits beside the canvas, which shrinks and keeps its view centered, so the panel never hides a node. On a narrow screen it is a sheet over the bottom of the canvas (U40b).
+5. **Nodes have a white base.** A faint fill under the age lens let edges show through a node.
+6. **Two more color tokens.** `--lens-outline` for the outline of a neutral node, and `--graph-edge`, `--graph-label`, and `--graph-selected` for the canvas (U46).
 
 Sources: `docs/brainstorm/system-graphs.md` (round 1) and `system-graphs-answers.md`. Every question was agreed. D2: an idle agent is waiting. D5: ahead and behind against the remote is held for its own design (`docs/brainstorm/next-phase.md`).
 
