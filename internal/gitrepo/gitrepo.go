@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,12 +39,12 @@ func AuthorEmail(agent string) string {
 func (r *Repo) Prepare(branch string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	status, err := r.git("status", "--porcelain")
+	status, err := r.git("status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return "", err
 	}
 	if status != "" {
-		return "", fmt.Errorf("%s has uncommitted changes; commit or stash them before hikari starts", r.Path)
+		return "", fmt.Errorf("%s has uncommitted changes; commit or stash them before hikari starts: %s", r.Path, changedList(lines(status)))
 	}
 	if _, err := r.git("rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
 		return "", fmt.Errorf("%s has no commits", r.Path)
@@ -65,24 +67,59 @@ func (r *Repo) Head() (string, error) {
 	return r.git("rev-parse", "HEAD")
 }
 
+// maxListed is the number of changed paths that a refusal names.
+const maxListed = 10
+
+// changedList names the paths of `git status --porcelain` lines, at most
+// maxListed of them.
+func changedList(status []string) string {
+	var paths []string
+	for _, l := range status {
+		if len(l) > 3 {
+			paths = append(paths, l[3:])
+		}
+	}
+	if len(paths) > maxListed {
+		return strings.Join(paths[:maxListed], ", ") + fmt.Sprintf(", and %d more", len(paths)-maxListed)
+	}
+	return strings.Join(paths, ", ")
+}
+
 // Commit stages and commits every change inside scope, and nothing outside
 // it, with agent as the author. It fails if branch is not checked out. It
 // returns the new commit, or "" when the scope has no changes.
 func (r *Repo) Commit(branch, scope, agent, message string) (string, error) {
+	return r.CommitPaths(branch, []string{pathspec(scope)}, agent, message)
+}
+
+// CommitPaths is Commit for several paths, relative to the repo. A path
+// that neither exists nor is tracked is skipped.
+func (r *Repo) CommitPaths(branch string, paths []string, agent, message string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current, err := r.git("symbolic-ref", "--short", "--quiet", "HEAD")
 	if err != nil || current != branch {
 		return "", fmt.Errorf("branch %q is not checked out in %s (HEAD is %q); hikari commits only to %q", branch, r.Path, current, branch)
 	}
-	spec := pathspec(scope)
-	if _, err := r.git("add", "--all", "--", spec); err != nil {
-		return "", err
+	var specs []string
+	for _, p := range paths {
+		if _, err := os.Lstat(filepath.Join(r.Path, filepath.FromSlash(p))); err == nil {
+			specs = append(specs, p)
+		} else if tracked, _ := r.git("ls-files", "--", p); tracked != "" {
+			specs = append(specs, p)
+		}
 	}
-	if _, err := r.git("diff", "--cached", "--quiet", "--", spec); err == nil {
+	if len(specs) == 0 {
 		return "", nil
 	}
-	if _, err := r.git("commit", "--quiet", "--no-verify", "--author", Author(agent), "-m", message, "--", spec); err != nil {
+	if _, err := r.git(append([]string{"add", "--all", "--"}, specs...)...); err != nil {
+		return "", err
+	}
+	if _, err := r.git(append([]string{"diff", "--cached", "--quiet", "--"}, specs...)...); err == nil {
+		return "", nil
+	}
+	args := append([]string{"commit", "--quiet", "--no-verify", "--author", Author(agent), "-m", message, "--"}, specs...)
+	if _, err := r.git(args...); err != nil {
 		return "", err
 	}
 	return r.git("rev-parse", "HEAD")
@@ -150,11 +187,24 @@ func (r *Repo) CountAuthored(since, agent string) (int, error) {
 }
 
 // IsIgnored reports whether git ignores path, which is relative to the repo.
+// The path need not exist; a path that ends in a slash is a directory.
 func (r *Repo) IsIgnored(path string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, err := r.git("check-ignore", "--quiet", path)
 	return err == nil
+}
+
+// CountOn returns the number of commits between since and HEAD that
+// change any of paths, by any author.
+func (r *Repo) CountOn(since string, paths ...string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, err := r.git(append([]string{"rev-list", "--count", since + "..HEAD", "--"}, paths...)...)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(out)
 }
 
 func pathspec(scope string) string {

@@ -58,8 +58,57 @@ var shop = map[string]string{
 func TestPrepareRefusesUncommittedChanges(t *testing.T) {
 	r := newRepo(t, shop)
 	write(t, r.Path, "services/orders/new.py", "x\n")
-	if _, err := r.Prepare("hikari/work"); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
-		t.Fatalf("Prepare with an untracked file = %v", err)
+	if _, err := r.Prepare("hikari/work"); err == nil || !strings.Contains(err.Error(), "uncommitted changes") || !strings.Contains(err.Error(), "services/orders/new.py") {
+		t.Fatalf("PR10 Prepare with an untracked file = %v", err)
+	}
+	for i := range 12 {
+		write(t, r.Path, "more/f"+string(rune('a'+i)), "x\n")
+	}
+	if _, err := r.Prepare("hikari/work"); err == nil || !strings.Contains(err.Error(), "and 3 more") {
+		t.Errorf("PR10 names at most ten paths: %v", err)
+	}
+}
+
+func TestCommitPaths(t *testing.T) {
+	r := newRepo(t, map[string]string{"store/systems/a/map.yaml": "v1\n", "store/shared/policies/p.md": "p\n", "other.txt": "o\n"})
+	r.Prepare("hikari")
+	write(t, r.Path, "store/systems/a/map.yaml", "v2\n")
+	write(t, r.Path, "store/systems/a/features/x.md", "x\n")
+	write(t, r.Path, "store/shared/policies/p.md", "p2\n")
+	write(t, r.Path, "other.txt", "o2\n")
+	commit, err := r.CommitPaths("hikari", []string{"store/systems/a/map.yaml", "store/systems/a/features", "store/shared/vocabulary/h.yaml"}, "a", "a: change")
+	if err != nil || commit == "" {
+		t.Fatalf("CommitPaths = %q, %v", commit, err)
+	}
+	files := run(t, r.Path, "show", "--name-only", "--format=", "HEAD")
+	if files != "store/systems/a/features/x.md\nstore/systems/a/map.yaml" {
+		t.Errorf("committed %q; the policy and other.txt must stay, the missing vocabulary is skipped", files)
+	}
+	if got := run(t, r.Path, "status", "--porcelain"); got != "M other.txt\n M store/shared/policies/p.md" {
+		t.Errorf("status = %q", got)
+	}
+	// A removed file is a change of a tracked path.
+	os.RemoveAll(filepath.Join(r.Path, "store/systems/a/features"))
+	if commit, err := r.CommitPaths("hikari", []string{"store/systems/a/features"}, "a", "a: remove"); err != nil || commit == "" {
+		t.Errorf("a removal = %q, %v", commit, err)
+	}
+	if commit, err := r.CommitPaths("hikari", []string{"store/systems/a/features", "nope"}, "a", "a: nothing"); err != nil || commit != "" {
+		t.Errorf("nothing to commit = %q, %v", commit, err)
+	}
+	if n, err := r.CountOn(run(t, r.Path, "rev-parse", "main"), "store/systems/a"); err != nil || n != 2 {
+		t.Errorf("CountOn = %d, %v", n, err)
+	}
+}
+
+func TestIsIgnoredPathsThatDoNotExist(t *testing.T) {
+	r := newRepo(t, map[string]string{".gitignore": ".env\n.hikari/\n"})
+	for _, p := range []string{".env", ".hikari/", ".hikari/runs/x"} {
+		if !r.IsIgnored(p) {
+			t.Errorf("%s is not ignored", p)
+		}
+	}
+	if r.IsIgnored("compose.yaml") || r.IsIgnored("store/") {
+		t.Error("compose.yaml and store/ are not ignored")
 	}
 }
 
