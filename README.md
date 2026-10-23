@@ -182,6 +182,8 @@ The tester reads the releases of every system in the hub. It writes `plan.md` in
 
 A hub with a tester gets a Tests tab: each story with its E2E health and its support, the gaps, the plan, and the release set. A gap counts only when you approve it there; a gap whose text changes needs a new approval. The tester and the hub's orchestrator read the same view with `get_test_plan`. The tester's tests reach libraries, binaries, and data where its container mounts the releases. Services run beside them in an environment.
 
+Some stories can only be checked on real hardware. The tester writes such a check as a bench procedure in its plan: what to set up, what to do, and what proves a pass. You run it and record pass or fail on the Tests tab, with a note. A result counts for the stories it touches, like an E2E result, until the release set or the procedure changes.
+
 #### Environments
 
 A deliverable can make a container image: its `deliverable.yaml` names the Dockerfile in the owner's scope, and hikari builds the image when the owner publishes, from the commit that the map describes. The release records the image's tag and id; the image stays in your Docker.

@@ -233,6 +233,16 @@ approves it, and an approval holds a digest of the gap's text, so the
 tester cannot close a hard story by calling it a gap, nor change a gap after
 the user approved it.
 
+## Bench results
+
+Not every story can be checked by a machine: a model on an NPU, or a relay
+on a real output, needs hardware that the test system does not have. A gap
+says so; a bench procedure does better when the user has the hardware. The
+tester writes the steps, the user runs them and records the result, and the
+result counts like a test result: the same digest of the lock that makes a
+test result pending makes a bench result pending, and so does a change of
+the procedure, because a result of other steps says nothing of these.
+
 ## Environments run on the host
 
 A tester's container cannot start containers: the Docker socket would give

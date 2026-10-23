@@ -1,6 +1,6 @@
 # Spec: bench results
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-23 of the sensors example: the tester replaced its gap for the edge's hardware watchdog with a bench procedure of eleven steps and four pass conditions, which touches the story `edge-retries-until-cloud-accepts`. A result recorded through the UI endpoint was committed as the user (`user: record edge-watchdog as pass in #main`), was current, and made the story `passing`. A new pin making a result pending is covered by the tests. No change to the spec was needed.
 
 Sources: `docs/brainstorm/e2e.md` (round 1, question C7) and `e2e-answers.md`. This is the fifth and last step of the E2E work.
 
