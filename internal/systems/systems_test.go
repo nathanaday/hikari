@@ -208,7 +208,7 @@ func TestNewPreparesReposAndMaps(t *testing.T) {
 		t.Errorf("new map: %+v, %v", v, err)
 	}
 	if p := f.m.SystemView("orders").Private; p.Tests.Suites["all"].Command != "python3 -m unittest" {
-		t.Errorf("the test plan must start with the topology's test command: %+v", p.Tests)
+		t.Errorf("the test map must start with the topology's test command: %+v", p.Tests)
 	}
 }
 

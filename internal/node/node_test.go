@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/testmap"
 )
 
 func TestSystemPromptStatesRolePerHub(t *testing.T) {
@@ -62,7 +64,8 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		"/hikari/public/export/map.yaml, from them",
 		"/hikari/public/export/features/",
 		"mcp__hikari__change_features",
-		"/hikari/private/test.yaml, which you edit directly",
+		"/hikari/private/tests.yaml, the test map",
+		"mcp__hikari__record_test_run for each run",
 		"Releases follow your deliverables",
 		"You hold no deliverable, so you cannot publish a release",
 		"/hikari/public/readonly/shared holds what every agent",
@@ -70,7 +73,7 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		"mcp__hikari__get_vocabulary",
 		`Commits go to the branch "hikari/work".`,
 		"no trailers such as Co-Authored-By",
-		"as your test plan says",
+		"run the suites that touch the affected features",
 		"tell your orchestrator what you need",
 	} {
 		if !strings.Contains(p, want) {
@@ -115,7 +118,7 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 
 func TestIndexingPrompt(t *testing.T) {
 	build := indexingPrompt(owner, api.TurnContext{MapState: "unbuilt"})
-	for _, want := range []string{"not built yet", "Load the hikari-system skill", "Build procedure", "set_system_info", "change_features", "hikari-feature-survey", "layout.yaml", "test.yaml", "record_test_results", "mark_map_current", "Send no messages"} {
+	for _, want := range []string{"not built yet", "Load the hikari-system skill", "Build procedure", "set_system_info", "change_features", "hikari-feature-survey", "layout.yaml", "tests.yaml", "/hikari/private/reports/<suite>.xml", "record_test_run", "hikari-test-survey", "mark_map_current", "Send no messages"} {
 		if !strings.Contains(build, want) {
 			t.Errorf("D8: build prompt lacks %q", want)
 		}
@@ -124,8 +127,10 @@ func TestIndexingPrompt(t *testing.T) {
 		StaleFeatures:       []sysmap.StaleFeature{{ID: "create-order", Paths: []string{"create.py", "tests/test_create.py"}}},
 		UndescribedFeatures: []string{"cancel-order"},
 		UnmappedPaths:       []string{"README.md"},
+		FailingFeatures:     []api.FailingFeature{{ID: "create-order", Tests: []string{"t > a"}}},
+		PendingFeatures:     []string{"cancel-order"},
 	})
-	for _, want := range []string{"- create-order: create.py, tests/test_create.py\n", "since the last mark_map_current: cancel-order.", "belong to no feature:\n- README.md\n", "Keep true procedure"} {
+	for _, want := range []string{"- create-order: create.py, tests/test_create.py\n", "since the last mark_map_current: cancel-order.", "belong to no feature:\n- README.md\n", "Failing features, with their failing tests:\n- create-order: t > a\n", "Pending features, whose tests have not run since their code changed: cancel-order.", "Keep true procedure", "record_test_run"} {
 		if !strings.Contains(update, want) {
 			t.Errorf("D8: update prompt lacks %q:\n%s", want, update)
 		}
@@ -150,10 +155,12 @@ func TestTurnNotices(t *testing.T) {
 
 func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
-		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "change_features", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/features.md", "references/layout.md", "references/tests.md"},
+		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_features", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/features.md", "references/layout.md", "references/tests.md"},
 		"skills/hikari-system/references/features.md":               {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## What a feature is", "## How to link", "create", "modify", "rename", "remove"},
 		"skills/hikari-system/references/layout.md":                 {"P2", "P3", "code:"},
-		"skills/hikari-system/references/tests.md":                  {"P4", "covers", "gaps"},
+		"skills/hikari-system/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
+		"skills/hikari-system/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
+		"agents/hikari-test-survey.md":                              {"name: hikari-test-survey", "tools: Read, Grep, Glob", "keys", "gaps"},
 		"skills/hikari-system/references/examples/reserve-stock.md": {"---\nid: reserve-stock\n", "## Purpose", "[[release-stock]]"},
 		"agents/hikari-feature-survey.md":                           {"name: hikari-feature-survey", "tools: Read, Grep, Glob", "candidates", "evidence"},
 		"agents/hikari-feature-review.md":                           {"name: hikari-feature-review", "tools: Read, Grep, Glob", "findings", "change_features"},
@@ -168,12 +175,31 @@ func TestBuiltinSkills(t *testing.T) {
 			}
 		}
 	}
-	// Every example parses as a feature document.
+	// Every markdown example parses as a feature document, and the test
+	// map example is valid against them.
 	examples, _ := fs.ReadDir(builtin, "skills/hikari-system/references/examples")
-	if len(examples) != 3 {
-		t.Errorf("want three examples, got %d", len(examples))
+	ids := map[string]bool{}
+	for _, e := range examples {
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		ids[strings.TrimSuffix(e.Name(), ".md")] = true
+	}
+	if len(ids) != 3 {
+		t.Errorf("want three feature examples, got %d", len(ids))
+	}
+	data, _ := builtin.ReadFile("skills/hikari-system/references/examples/tests.yaml")
+	tm, err := testmap.Parse(data)
+	if err == nil {
+		err = tm.Validate(map[string]bool{"reserve-stock": true, "check-availability": true, "restock-sku": true})
+	}
+	if err != nil {
+		t.Errorf("examples/tests.yaml: %v", err)
 	}
 	for _, e := range examples {
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
 		data, _ := builtin.ReadFile("skills/hikari-system/references/examples/" + e.Name())
 		d, err := featurewiki.Parse(string(data))
 		if err != nil || d.ID+".md" != e.Name() {
@@ -225,7 +251,7 @@ func TestSharedAreaSync(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-system", "references", "features.md")); err != nil {
 		t.Errorf("H11: the skill package is installed with its references: %v", err)
 	}
-	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md"} {
+	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md", "hikari-test-survey.md"} {
 		if _, err := os.Stat(filepath.Join(s.agentsDir(), a)); err != nil {
 			t.Errorf("H11: the agent %s is installed: %v", a, err)
 		}
@@ -282,6 +308,25 @@ func TestSharedAreaForNonOwners(t *testing.T) {
 	}
 }
 
+func TestHealthNotice(t *testing.T) {
+	var failing []api.FailingFeature
+	for i := range 22 {
+		failing = append(failing, api.FailingFeature{ID: fmt.Sprintf("f%02d", i), Tests: []string{"a", "b", "c", "d", "e", "f", "g"}})
+	}
+	got := turnNotices(owner, api.TurnContext{MapState: "current", FailingFeatures: failing, PendingFeatures: []string{"p1", "p2"}})
+	for _, want := range []string{"Failing features: f00 (a, b, c, d, e, and 2 more); ", "f19 (", "; and 2 more.", "Pending features: p1, p2.", "Run the suites that touch them, call record_test_run for each run"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("D10: notice lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "f20 (") {
+		t.Errorf("D10: at most 20 features:\n%s", got)
+	}
+	if got := turnNotices(owner, api.TurnContext{MapState: "current"}); got != "" {
+		t.Errorf("D10: no notice when every feature is passing or untested: %q", got)
+	}
+}
+
 func TestTurnNoticesReportPrivateErrors(t *testing.T) {
 	got := turnNotices(owner, api.TurnContext{MapState: "current", PrivateErrors: []string{`P3: layout.yaml: path "x.py" does not exist in the scope`}})
 	if !strings.Contains(got, "Your private documents have problems: P3:") {
@@ -293,7 +338,7 @@ func TestGrantsPrompt(t *testing.T) {
 	consumer := owner
 	consumer.Releases = []string{"inventory"}
 	p := systemPrompt(consumer)
-	for _, want := range []string{"## Releases you can use", "- inventory: /hikari/public/readonly/systems/inventory/releases", "name its system and version in your test plan"} {
+	for _, want := range []string{"## Releases you can use", "- inventory: /hikari/public/readonly/systems/inventory/releases", "name its system and version in the description of the suite in tests.yaml"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("P10: prompt lacks %q", want)
 		}

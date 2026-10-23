@@ -22,12 +22,12 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Your features are documents in /hikari/public/export/features/, one markdown file per feature with links between the features that work together. You read them as files and change them only with mcp__hikari__change_features. hikari writes the public map, /hikari/public/export/map.yaml, from them and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/test.yaml, which you edit directly, are yours alone. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, how to link, and how to keep them true.
+	b.WriteString(`- Your features are documents in /hikari/public/export/features/, one markdown file per feature with links between the features that work together. You read them as files and change them only with mcp__hikari__change_features. hikari writes the public map, /hikari/public/export/map.yaml, from them and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, how to link, and how to keep them true.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
 - For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
-	b.WriteString("- After a change, run the tests of the affected features as your test plan says, record the results, update the documents, and call mark_map_current.\n")
+	b.WriteString("- After a change, run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
 	b.WriteString("- If a task needs a change outside your system, tell your orchestrator what you need and why. Do not work around it.\n")
 	return b.String()
 }
@@ -71,15 +71,17 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	if tc.MapState == mapStale {
 		b.WriteString("Your system documents are stale: the code changed since they were last marked current.\n\n")
 		b.WriteString(staleLists(tc))
-		b.WriteString("\nLoad the hikari-system skill and follow its Keep true procedure: update the stale features, place the unmapped paths, run the tests of the affected features and record the results, then call mark_map_current.\n")
+		b.WriteString(healthLists(tc))
+		b.WriteString("\nLoad the hikari-system skill and follow its Keep true procedure: update the stale features, place the unmapped paths, run the suites that touch the affected features and call record_test_run for each run, then call mark_map_current.\n")
 	} else {
 		b.WriteString(`Your system documents are not built yet. Load the hikari-system skill and follow its Build procedure:
 
 1. Read the code in your scope to learn what the system does, and write the parts of layout.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
 2. Describe the system with set_system_info, then write one feature document for each feature with change_features, linked to the features it works with.
-3. Write the code map of each feature in /hikari/private/layout.yaml and the test plan in /hikari/private/test.yaml.
-4. Run the tests as your test plan says, and call record_test_results for each feature that has tests.
-5. Call mark_map_current.
+3. Write the code map of each feature in /hikari/private/layout.yaml.
+4. Write the suites of /hikari/private/tests.yaml, each with a command that writes a JUnit XML report to /hikari/private/reports/<suite>.xml. Run each suite and call record_test_run for it.
+5. Map the unmapped tests that get_my_system lists to the features they touch, in tests.yaml; send the hikari-test-survey agent when there are many.
+6. Call mark_map_current.
 `)
 	}
 	b.WriteString("\nUse the names in your hubs' vocabularies where they exist. Send no messages in this turn.\n")
@@ -106,6 +108,61 @@ func staleLists(tc api.TurnContext) string {
 		}
 	}
 	return b.String()
+}
+
+// Limits of the health notice (rule D10).
+const (
+	maxNoticeFeatures = 20
+	maxNoticeTests    = 5
+)
+
+// healthLists renders the failing features with their failing tests and
+// the pending features, as lists.
+func healthLists(tc api.TurnContext) string {
+	var b strings.Builder
+	if len(tc.FailingFeatures) > 0 {
+		b.WriteString("Failing features, with their failing tests:\n")
+		for _, f := range tc.FailingFeatures {
+			fmt.Fprintf(&b, "- %s: %s\n", f.ID, capped(f.Tests, maxNoticeTests))
+		}
+	}
+	if len(tc.PendingFeatures) > 0 {
+		fmt.Fprintf(&b, "Pending features, whose tests have not run since their code changed: %s.\n", capped(tc.PendingFeatures, maxNoticeFeatures))
+	}
+	return b.String()
+}
+
+// healthSummary renders the failing and pending features in one sentence,
+// for a notice (rule D10).
+func healthSummary(tc api.TurnContext) string {
+	var parts []string
+	if n := len(tc.FailingFeatures); n > 0 {
+		shown := tc.FailingFeatures[:min(n, maxNoticeFeatures)]
+		items := make([]string, len(shown))
+		for i, f := range shown {
+			items[i] = fmt.Sprintf("%s (%s)", f.ID, capped(f.Tests, maxNoticeTests))
+		}
+		text := "Failing features: " + strings.Join(items, "; ")
+		if n > len(shown) {
+			text += fmt.Sprintf("; and %d more", n-len(shown))
+		}
+		parts = append(parts, text+".")
+	}
+	if len(tc.PendingFeatures) > 0 {
+		parts = append(parts, "Pending features: "+capped(tc.PendingFeatures, maxNoticeFeatures)+".")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ") + " Run the suites that touch them, call record_test_run for each run, and fix the code or the test map."
+}
+
+// capped joins at most n items and counts the others.
+func capped(items []string, n int) string {
+	if len(items) <= n {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s, and %d more", strings.Join(items[:n], ", "), len(items)-n)
 }
 
 // staleSummary renders the same lists in one sentence, for a notice.
@@ -137,6 +194,9 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 			notes = append(notes, "Your system documents are stale. "+staleSummary(tc)+" Before you end this turn, follow the Keep true procedure of the hikari-system skill and call mark_map_current.")
 		case mapUnbuilt:
 			notes = append(notes, "Your system documents are not built yet. Before you end this turn, load the hikari-system skill, follow its Build procedure, and call mark_map_current.")
+		}
+		if h := healthSummary(tc); h != "" {
+			notes = append(notes, h)
 		}
 		if len(tc.PrivateErrors) > 0 {
 			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
@@ -190,7 +250,7 @@ func grantsPrompt(self api.Self) string {
 	}
 	b.WriteString("\nEach release is releases/<deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and map.yaml (the system's public map at release time). releases/<deliverable>/latest is the newest release of that deliverable. Read the product's docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
 	if self.System != nil {
-		b.WriteString(" When your tests use a release, name its system and version in your test plan, under the feature's covers or gaps.")
+		b.WriteString(" When your tests use a release, name its system and version in the description of the suite in tests.yaml that runs them.")
 	}
 	b.WriteString("\n")
 	return b.String()

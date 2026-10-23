@@ -39,7 +39,7 @@ type Store struct {
 // scope on the host, where its private documents live. Open writes an
 // unbuilt map and empty private documents for those that do not exist, and
 // reports whether it created the map. testCommand, when set, becomes the
-// first suite of a new test plan.
+// suite all of a new test map.
 func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 	s := &Store{root: root, path: mapPath, name: name}
 	note, err := preparePrivate(root, testCommand)
