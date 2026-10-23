@@ -867,6 +867,9 @@ func TestTestHealth(t *testing.T) {
 	if hit.Feature.Health != testmap.Failing {
 		t.Errorf("E13: orchestrators see the health: %+v", hit.Feature)
 	}
+	if hit.Feature.Created.IsZero() || !strings.Contains(string(public), "created: ") {
+		t.Errorf("Q7: the map entry carries created: %+v", hit.Feature)
+	}
 
 	// Results and reports stay out of commits (rule L13).
 	write(t, f.repo, "services/orders/.hikari/private/reports/stray.xml", "<x/>")

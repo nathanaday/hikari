@@ -243,7 +243,7 @@ func Apply(w Wiki, writes []Write, c Check, now time.Time) (Wiki, Result, error)
 				return nil, res, fmt.Errorf("%s: W4: the body has a ## Notes section, which belongs to the user", where)
 			}
 			next[wr.ID] = &Document{
-				ID: wr.ID, Name: wr.Name, Description: wr.Description,
+				ID: wr.ID, Name: wr.Name, Description: wr.Description, Created: now.UTC(),
 				Interfaces: slices.Clone(wr.Interfaces), Related: slices.Clone(wr.Related), Body: *wr.Body,
 			}
 			touch(wr.ID)

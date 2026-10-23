@@ -69,6 +69,8 @@ type Feature struct {
 	// undescribed, stale, or current. The view computes it.
 	State   string   `yaml:"state,omitempty" json:"state"`
 	Related []string `yaml:"related,omitempty" json:"related,omitempty"`
+	// Created is when the feature's document was created (rule Q7).
+	Created time.Time `yaml:"created,omitempty" json:"created,omitzero"`
 }
 
 // Tests counts the touching tests of a feature (rule Q5): passed and
@@ -141,6 +143,7 @@ type FeatureEntry struct {
 	Description string
 	Interfaces  []string
 	Related     []string
+	Created     time.Time
 	Tests       Tests
 	Health      string
 }
@@ -151,7 +154,7 @@ func (m *Map) Project(entries []FeatureEntry) {
 	for _, e := range entries {
 		out = append(out, Feature{
 			ID: e.ID, Name: e.Name, Description: e.Description,
-			Interfaces: slices.Clone(e.Interfaces), Related: slices.Clone(e.Related), Tests: e.Tests, Health: e.Health,
+			Interfaces: slices.Clone(e.Interfaces), Related: slices.Clone(e.Related), Created: e.Created, Tests: e.Tests, Health: e.Health,
 		})
 	}
 	slices.SortFunc(out, func(a, b Feature) int { return strings.Compare(a.ID, b.ID) })

@@ -200,7 +200,7 @@ func (m *Manager) project(o *owner) error {
 		tests, health := sysmap.TestsOf(rep.Features[id])
 		entries = append(entries, sysmap.FeatureEntry{
 			ID: id, Name: d.Name, Description: d.Description, Interfaces: d.Interfaces, Related: neighbors[id],
-			Tests: tests, Health: health,
+			Created: d.Created, Tests: tests, Health: health,
 		})
 	}
 	err := o.store.Update(func(mp *sysmap.Map) error { mp.Project(entries); return nil })

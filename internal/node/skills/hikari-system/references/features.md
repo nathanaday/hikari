@@ -11,6 +11,7 @@ name: Reserve stock
 description: Hold a quantity of a SKU for an order when enough is available.
 interfaces: [Stock.reserve]
 related: ["[[check-availability]]"]
+created: 2026-10-22T05:57:04Z
 updated: 2026-10-22T05:57:04Z
 described_commit: c69dd499311b21c5210c0ae3e984060aa0ba051a
 described_at: 2026-10-22T05:57:09Z
@@ -28,6 +29,7 @@ An order must not promise stock that another order already holds. A reservation 
 | `description` | you | one sentence, at most 200 characters |
 | `interfaces` | you | optional; names from the system's `provides` or `consumes` |
 | `related` | you | optional; neighbors that the body does not link, given as ids in a write |
+| `created` | hikari | the create write; a rename keeps it |
 | `updated` | hikari | the last write of the document |
 | `described_commit`, `described_at` | hikari | set by `mark_map_current` |
 
@@ -43,7 +45,7 @@ hikari refuses a change that breaks one of these and names the write and the rul
 - **W2.** `name` is present. `description` is one sentence on one line, at most 200 characters.
 - **W3.** Each name in `interfaces` is in your `provides` or `consumes`. Call `set_system_info` first.
 - **W4.** The body has a `## Purpose` section with text. A write never gives a `## Notes` section.
-- **W5.** `updated`, `described_commit`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
+- **W5.** `created`, `updated`, `described_commit`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
 - **W9.** A change has at most 100 writes.
 - **K1.** A link is `[[id]]` or `[[id|text]]`. A link to a heading, `[[id#heading]]`, is refused.
 - **K2.** Every link resolves to a feature of your system, counting the features that the same change creates. A document does not link itself.

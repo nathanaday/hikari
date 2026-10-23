@@ -25,6 +25,9 @@ type Document struct {
 	Interfaces  []string
 	// Related holds the ids that the related property links.
 	Related []string
+	// Created is the time of the create write. A document from before the
+	// property existed has none.
+	Created time.Time
 	// Updated is the time of the last write of the document.
 	Updated time.Time
 	// DescribedCommit and DescribedAt say which commit the document
@@ -44,10 +47,10 @@ type Property struct {
 }
 
 // The properties that code knows, in the order they are written.
-var known = []string{"id", "name", "description", "interfaces", "related", "updated", "described_commit", "described_at"}
+var known = []string{"id", "name", "description", "interfaces", "related", "created", "updated", "described_commit", "described_at"}
 
 // Owned are the properties that code owns; a write may not give them.
-var Owned = []string{"updated", "described_commit", "described_at"}
+var Owned = []string{"created", "updated", "described_commit", "described_at"}
 
 const timeLayout = "2006-01-02T15:04:05Z"
 
@@ -102,6 +105,8 @@ func Parse(text string) (*Document, error) {
 					d.Related = append(d.Related, id)
 				}
 			}
+		case "created":
+			d.Created, err = stamp(val)
 		case "updated":
 			d.Updated, err = stamp(val)
 		case "described_commit":
@@ -209,6 +214,9 @@ func (d *Document) Render() string {
 			links[i] = "[[" + id + "]]"
 		}
 		add("related", flow(links))
+	}
+	if !d.Created.IsZero() {
+		add("created", str(formatTime(d.Created)))
 	}
 	add("updated", str(formatTime(d.Updated)))
 	add("described_commit", str(d.DescribedCommit))

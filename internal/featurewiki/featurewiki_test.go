@@ -74,6 +74,30 @@ func TestParseAndRender(t *testing.T) {
 	}
 }
 
+func TestCreated(t *testing.T) {
+	d, _ := Parse(reserveDoc)
+	if !d.Created.IsZero() || strings.Contains(d.Render(), "created:") {
+		t.Errorf("W11: a document with no created keeps none:\n%s", d.Render())
+	}
+	w := small()
+	if !w["reserve-stock"].Created.Equal(now) {
+		t.Fatalf("W10: create sets created: %v", w["reserve-stock"].Created)
+	}
+	text := w["reserve-stock"].Render()
+	if !strings.Contains(text, "\ncreated: 2026-10-22T09:30:00Z\nupdated: 2026-10-22T09:30:00Z\n") || strings.Index(text, "interfaces:") > strings.Index(text, "created:") {
+		t.Errorf("W10: header order:\n%s", text)
+	}
+	back, err := Parse(text)
+	if err != nil || !back.Created.Equal(now) {
+		t.Errorf("W10: round trip: %v %v", err, back)
+	}
+	later := now.Add(time.Hour)
+	next, _, err := Apply(w, []Write{{Op: "modify", ID: "reserve-stock", Body: body("Holds stock.")}}, Check{}, later)
+	if err != nil || !next["reserve-stock"].Created.Equal(now) || !next["reserve-stock"].Updated.Equal(later) {
+		t.Errorf("W10: a modify keeps created: %v", err)
+	}
+}
+
 func TestParseRefusals(t *testing.T) {
 	for name, text := range map[string]string{
 		"no header":    "## Purpose\n",
@@ -221,6 +245,9 @@ func TestRenameRewritesLinks(t *testing.T) {
 	}
 	if !next["reserve-stock"].Updated.Equal(later) || !next["check-availability"].Updated.Equal(now) {
 		t.Error("E2: only documents whose links changed get a new updated")
+	}
+	if !next["free-stock"].Created.Equal(now) {
+		t.Errorf("W10: a rename keeps created: %v", next["free-stock"].Created)
 	}
 	if res.Renamed["release-stock"] != "free-stock" || !slices.Equal(res.Written, []string{"free-stock", "reserve-stock"}) {
 		t.Errorf("result: %+v", res)
