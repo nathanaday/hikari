@@ -150,3 +150,32 @@ scenarios:
 		t.Errorf("ST5: a second stop = %v", err)
 	}
 }
+
+func TestEnvironmentThatFailsSaysWhy(t *testing.T) {
+	needImage(t, "hikari-agent")
+	f := newTesterFixture(t)
+	f.describeOrders(t)
+	f.story(t)
+	write(t, f.repo, "e2e/.hikari/private/layout.yaml", "version: 1\nparts: [{path: tests, description: Tests.}]\nfeatures: {}\n")
+	write(t, f.repo, "e2e/plan.md", "---\ncomponents:\n  sick: {image: hikari-agent}\nscenarios:\n  smoke: {stories: [order-items]}\n---\n")
+	write(t, f.repo, "e2e/environment.yaml", `services:
+  sick:
+    image: hikari-agent
+    command: [sh, -c, "echo starting up; sleep 120"]
+    healthcheck: {test: [CMD, sh, -c, "echo the port is closed; exit 3"], interval: 1s, retries: 2}
+`)
+	st, err := f.m.StartEnvironment(context.Background(), "e2e", "smoke")
+	t.Cleanup(func() { f.m.StopEnvironments(context.Background()) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State != "failed" || !strings.Contains(st.Reason, "the health check of test-e2e-eng-sick-1 exited 3: the port is closed") {
+		t.Errorf("a failed start says why: %+v", st)
+	}
+	if log, _ := os.ReadFile(filepath.Join(f.repo, "e2e", ".hikari", "private", "environment", "logs", "sick.log")); !strings.Contains(string(log), "starting up") {
+		t.Errorf("LG1: the log of a failed start is kept: %q", log)
+	}
+	if out, _ := exec.Command("docker", "ps", "-aq", "--filter", "label=hikari.environment=test-e2e-eng").Output(); len(strings.TrimSpace(string(out))) > 0 {
+		t.Errorf("a failed start leaves containers: %s", out)
+	}
+}

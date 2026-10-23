@@ -116,7 +116,14 @@ func Start(ctx context.Context, spec Spec, onChange func()) *Env {
 	out, err := e.compose(ctx, args...).CombinedOutput()
 	e.refresh(context.Background())
 	if err != nil {
-		e.fail("docker compose up: " + lastLines(string(out), 12))
+		// The tester cannot see Docker, so it gets what Docker saw before
+		// the containers go: each service's log, and the output of each
+		// failed health check.
+		reason := "docker compose up: " + lastLines(string(out), 12)
+		if health := e.snapshot(context.Background()); health != "" {
+			reason += "\n" + health
+		}
+		e.fail(reason)
 		return e
 	}
 	if spec.Tester != "" {
@@ -242,6 +249,44 @@ func (e *Env) refresh(ctx context.Context) {
 	e.mu.Lock()
 	e.status.Services = services
 	e.mu.Unlock()
+}
+
+// snapshot writes each service's log as it is, and returns the last output
+// of each health check that does not pass.
+func (e *Env) snapshot(ctx context.Context) string {
+	os.RemoveAll(e.spec.LogDir)
+	os.MkdirAll(e.spec.LogDir, 0o755)
+	for name := range e.spec.Replicas {
+		if out, err := e.compose(ctx, "logs", "--no-color", "--timestamps", name).CombinedOutput(); err == nil {
+			os.WriteFile(filepath.Join(e.spec.LogDir, name+".log"), out, 0o644)
+		}
+	}
+	out, err := e.compose(ctx, "ps", "--all", "--format", "{{.Name}}\t{{.Health}}").Output()
+	if err != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name, health, _ := strings.Cut(line, "\t")
+		if name == "" || health == "" || health == "healthy" {
+			continue
+		}
+		raw, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{json .State.Health}}", name).Output()
+		if err != nil {
+			continue
+		}
+		var h struct {
+			Log []struct {
+				ExitCode int    `json:"ExitCode"`
+				Output   string `json:"Output"`
+			} `json:"Log"`
+		}
+		if json.Unmarshal(raw, &h) == nil && len(h.Log) > 0 {
+			last := h.Log[len(h.Log)-1]
+			fmt.Fprintf(&b, "the health check of %s exited %d: %s\n", name, last.ExitCode, strings.TrimSpace(lastLines(last.Output, 5)))
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // startLogs follows each service's log into its file (rule LG1).
