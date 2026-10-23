@@ -22,6 +22,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/console"
+	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
@@ -155,6 +156,10 @@ func up(ctx context.Context, args []string) error {
 		return errShown
 	}
 	step = con.Step("Preparing the repos and the store")
+	if topo, err = prepareProject(ctx, topo); err != nil {
+		return fail(step, err)
+	}
+	project.Topo = topo
 	sys, err := systems.New(topo)
 	if err != nil {
 		return fail(step, err)
@@ -243,6 +248,42 @@ func up(ctx context.Context, args []string) error {
 	}
 	con.Println("  " + con.Dim("The run's log and messages are in "+runDir))
 	return nil
+}
+
+// prepareProject prepares the project repository before every other repo
+// (rule PR8), and reads the topology again when the checkout of the project
+// branch changed HEAD (rule PR9).
+func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Topology, error) {
+	p := topo.Project
+	if p == nil {
+		return topo, nil
+	}
+	repo := gitrepo.Open(p.Path)
+	var missing []string
+	for _, path := range []string{".env", ".hikari/"} {
+		if !repo.IsIgnored(path) {
+			missing = append(missing, path)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("the project repository %s must ignore %s; add these lines to its .gitignore: %s", p.Path, strings.Join(missing, " and "), strings.Join(missing, ", "))
+	}
+	before, _ := repo.Head()
+	after, err := repo.Prepare(p.Branch)
+	if err != nil {
+		return nil, fmt.Errorf("the project repository: %w", err)
+	}
+	if after == before {
+		return topo, nil
+	}
+	again, err := topology.Load(ctx, topo.File)
+	if err != nil {
+		return nil, fmt.Errorf("the compose file on the project branch %s: %w", p.Branch, err)
+	}
+	if again.Project == nil || again.Project.Branch != p.Branch {
+		return nil, fmt.Errorf("the compose file on the project branch %s names another project branch, or none; make the branches agree", p.Branch)
+	}
+	return again, nil
 }
 
 // describe counts the agents, owners, and sidecars of a topology.
