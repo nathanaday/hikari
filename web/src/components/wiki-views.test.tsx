@@ -50,3 +50,34 @@ describe('NewDocument', () => {
     expect(html).not.toContain('>feature<')
   })
 })
+
+describe('HubTests', () => {
+  it('shows the stories with their health, the gaps, the plan, and the release set (UT1)', async () => {
+    const { HubTests } = await import('@/components/hub-tests')
+    const html = renderToStaticMarkup(
+      <HubTests
+        show={() => {}}
+        plan={{
+          hub: 'main',
+          tester: 'vote-e2e',
+          plan: {
+            components: { tally: { release: 'tally/python-library' }, machine: { simulates: 'a voting machine' } },
+            actors: { operator: { runs: 'tests', count: 1 } },
+            scenarios: { smoke: { stories: ['ballots-decide-winner'], actors: { operator: 1 } } },
+            gaps: null,
+          },
+          body: '## The test system\n\nThe libraries, installed from their releases.',
+          lock: { version: 1, releases: [{ system: 'tally', deliverable: 'python-library', version: '0.1.0', digest: 'sha256:0123456789abcdef0123' }] },
+          warnings: ['the key story "x" has no test and no gap'],
+          gaps: [{ id: 'real-machine', what: 'Ballots from a real machine', why: 'no machine', touches: ['[[accept-ballot]]'], approved: false }],
+          stories: [
+            { id: 'ballots-decide-winner', kind: 'story', name: 'Raw ballots to a winner', key: true, health: 'failing', passed: 0, failed: 1, pending: 0, support: 'passing', suspects: ['ballots'], gaps: ['real-machine'] },
+          ],
+        }}
+      />,
+    )
+    for (const want of ['vote-e2e proves', 'Raw ballots to a winner', 'failing', 'suspects: ballots', 'gap proposed: Ballots from a real machine', 'Approve', 'release tally/python-library', 'a voting machine', '1 operator', 'tally/python-library', '0.1.0', 'has no test and no gap', 'The test system']) {
+      expect(html).toContain(want)
+    }
+  })
+})

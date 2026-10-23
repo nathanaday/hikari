@@ -125,3 +125,8 @@ async function request(url: string, method: string, body?: unknown): Promise<str
 export const writeDoc = (ref: string, id: string, text: string) => request(docURL(ref, 'docs', id), 'PUT', { text })
 export const removeDoc = (ref: string, id: string) => request(docURL(ref, 'docs', id), 'DELETE')
 export const setKey = (ref: string, id: string, key: boolean) => request(docURL(ref, 'key', id), 'PUT', { key })
+
+// approveGap approves or withdraws the approval of a gap of a hub's plan
+// (rule GA1 of the tester spec).
+export const approveGap = (hub: string, gap: string, approved: boolean) =>
+  request(`/api/ui/e2e/${hub}/gaps/${encodeURIComponent(gap)}`, 'PUT', { approved })

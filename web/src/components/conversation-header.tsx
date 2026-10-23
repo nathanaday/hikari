@@ -108,7 +108,9 @@ export function ConversationHeader({ state, show, onMention }: Props) {
     const hub = state.hubs.find((h) => h.name === v.name)!
     const vocab = state.vocabularies.find((x) => x.hub === hub.name)
     const entries = (vocab?.terms.length ?? 0) + (vocab?.interfaces.length ?? 0)
-    const docs = state.wikis.find((w) => w.ref === `hub:${hub.name}`)?.documents.length ?? 0
+    const hubWiki = state.wikis.find((w) => w.ref === `hub:${hub.name}`)
+    const docs = hubWiki?.documents.length ?? 0
+    const tests = hubWiki?.tests
     const tab = v.tab ?? 'messages'
     const tabButton = (t: HubTab, label: string) => (
       <button
@@ -155,6 +157,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           {tabButton('messages', 'Messages')}
           {tabButton('vocabulary', entries ? `Vocabulary (${entries})` : 'Vocabulary')}
           {tabButton('wiki', docs ? `Wiki (${docs})` : 'Wiki')}
+          {tests && tabButton('tests', 'Tests')}
         </div>
       </>
     )

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
+import { HubTests } from '@/components/hub-tests'
 import { HubWiki } from '@/components/hub-wiki'
 import { MapView } from '@/components/map-view'
 import { MessageList } from '@/components/message-list'
@@ -38,6 +39,8 @@ export default function App() {
     main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} system={v.name} deliverable={v.deliverable} version={v.version} />
   } else if (v.kind === 'shared') {
     main = <SharedView />
+  } else if (v.kind === 'hub' && v.tab === 'tests' && state.wikis.find((w) => w.ref === `hub:${v.name}`)?.tests) {
+    main = <HubTests plan={state.wikis.find((w) => w.ref === `hub:${v.name}`)!.tests!} show={show} />
   } else if (v.kind === 'hub' && v.tab === 'wiki') {
     main = <HubWiki hub={state.hubs.find((h) => h.name === v.name)!} wiki={state.wikis.find((w) => w.ref === `hub:${v.name}`)} show={show} />
   } else if (v.kind === 'hub' && v.tab === 'vocabulary') {

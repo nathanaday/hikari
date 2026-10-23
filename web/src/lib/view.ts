@@ -1,6 +1,6 @@
 import type { Message } from './types'
 
-export type HubTab = 'messages' | 'vocabulary' | 'wiki'
+export type HubTab = 'messages' | 'vocabulary' | 'wiki' | 'tests'
 
 export type View =
   | { kind: 'all' }
@@ -47,7 +47,7 @@ export function parseHash(hash: string): View {
   if (hubMap) return hubMap[2] ? { kind: 'map', hub: hubMap[1], doc: decodeURIComponent(hubMap[2]) } : { kind: 'map', hub: hubMap[1] }
   const release = hash.match(/^#\/system\/([\w-]+)\/release\/([\w-]+)\/([0-9A-Za-z.-]+)$/)
   if (release) return { kind: 'release', name: release[1], deliverable: release[2], version: release[3] }
-  const hub = hash.match(/^#\/hub\/([\w-]+)\/(vocabulary|wiki)$/)
+  const hub = hash.match(/^#\/hub\/([\w-]+)\/(vocabulary|wiki|tests)$/)
   if (hub) return { kind: 'hub', name: hub[1], tab: hub[2] as HubTab }
   const m = hash.match(/^#\/(hub|dm|system)\/([\w-]+)$/)
   return m ? { kind: m[1] as 'hub' | 'dm' | 'system', name: m[2] } : allView

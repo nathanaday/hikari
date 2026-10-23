@@ -224,6 +224,47 @@ export type WikiView = {
   documents: WikiDoc[]
   problems?: string[]
   warnings?: string[]
+  // tests is the E2E test plan of a hub that has a tester.
+  tests?: TestPlan
+}
+
+export type Component = { release?: string; image?: string; fixture?: boolean; simulates?: string; substitutes?: string; note?: string }
+export type Actor = { runs: string; count: number; note?: string }
+export type Scenario = { stories: string[]; actors: Record<string, number> | null; minutes?: number }
+export type Gap = { id: string; what: string; why: string; touches: string[]; approved: boolean }
+export type LockedRelease = { system: string; deliverable: string; version: string; digest: string }
+
+export type StoryHealth = {
+  id: string
+  kind: DocKind
+  name?: string
+  key?: boolean
+  health: Health
+  passed: number
+  failed: number
+  pending: number
+  support?: Health
+  suspects?: string[]
+  gaps?: string[]
+}
+
+// TestPlan is the plan of a tested hub as hikari reads it (rule PL7 of the
+// tester spec).
+export type TestPlan = {
+  hub: string
+  tester: string
+  plan: {
+    components: Record<string, Component> | null
+    actors: Record<string, Actor> | null
+    scenarios: Record<string, Scenario> | null
+    gaps: Record<string, Omit<Gap, 'id' | 'approved'>> | null
+  }
+  body?: string
+  lock: { version: number; releases: LockedRelease[] | null }
+  problems?: string[]
+  warnings?: string[]
+  gaps: Gap[]
+  stories: StoryHealth[]
 }
 
 export type Snapshot = {
