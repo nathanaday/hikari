@@ -36,6 +36,7 @@ const usage = `hikari runs Claude Code agents in containers that talk to each ot
 
 Usage:
   hikari up [flags] <compose.yaml>    start the server, the web UI, and the compose project
+  hikari init [flags] <dir>           make a new project repository
   hikari version                      print the version
 
 Internal commands (hikari starts these; you do not run them):
@@ -55,6 +56,8 @@ func main() {
 	switch os.Args[1] {
 	case "up":
 		err = up(ctx, os.Args[2:])
+	case "init":
+		err = initProject(os.Args[2:])
 	case "node":
 		err = runNode(ctx)
 	case "mcp":
