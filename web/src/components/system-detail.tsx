@@ -98,10 +98,16 @@ function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: strin
 
 function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
   const layout = priv.layout.features?.[f.id]
-  const plan = priv.tests.features?.[f.id]
+  const link = `[[${f.id}]]`
+  const keys = Object.entries(priv.tests.tests ?? {})
+    .filter(([, links]) => links?.includes(link))
+    .map(([key]) => key)
+    .sort()
+  const gaps = priv.tests.gaps?.[f.id] ?? undefined
+  const pending = f.tests.pending ? ` · ${f.tests.pending} pending` : ''
   const tests = f.tests.ran
-    ? `${f.tests.passed} passed · ${f.tests.failed} failed · ${ago(f.tests.ran)}`
-    : plan?.tests?.length
+    ? `${f.tests.passed} passed · ${f.tests.failed} failed${pending} · ${ago(f.tests.ran)}`
+    : keys.length
       ? 'no results yet'
       : 'no tests'
   return (
@@ -138,26 +144,15 @@ function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
             ))}
           </div>
         ) : null}
-        {(layout || plan) && (
+        {(layout || keys.length > 0 || gaps) && (
           <div className="mt-1 space-y-1.5 border-l-2 pl-3" data-testid="feature-private">
             <div className="text-xs text-muted-foreground">
               <PrivateLabel />
             </div>
             <Paths label="code" paths={layout?.code ?? undefined} />
             {layout?.notes && <p className="text-xs text-muted-foreground">{layout.notes}</p>}
-            {plan?.covers && <p className="text-sm">Tests cover: {plan.covers}</p>}
-            {plan?.tests?.map((t, i) => (
-              <div key={i} className="flex flex-wrap items-baseline gap-1.5">
-                <span className="text-xs text-muted-foreground">{t.suite}</span>
-                {t.files?.map((p) => (
-                  <code key={p} className="rounded bg-neutral-100 px-1 py-0.5 text-xs">
-                    {p}
-                  </code>
-                ))}
-                {t.command && <code className="text-xs text-muted-foreground">{t.command}</code>}
-              </div>
-            ))}
-            <List label="Not tested" items={plan?.gaps} />
+            <Paths label="tests" paths={keys.length ? keys : undefined} />
+            <List label="Not tested" items={gaps} />
           </div>
         )}
       </div>

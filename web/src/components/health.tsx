@@ -6,7 +6,7 @@ import type { Health, MapState } from '@/lib/types'
 const healthDot: Record<Health, string> = {
   passing: 'bg-emerald-500',
   failing: 'bg-red-500',
-  stale: 'bg-amber-500',
+  pending: 'bg-amber-500',
   untested: 'border border-neutral-300 bg-white',
 }
 

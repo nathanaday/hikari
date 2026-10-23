@@ -62,7 +62,7 @@ export type Agent = {
 
 export type Interface = { name: string; kind: string; description?: string }
 
-export type Health = 'passing' | 'failing' | 'stale' | 'untested'
+export type Health = 'passing' | 'failing' | 'pending' | 'untested'
 
 export type MapState = 'unbuilt' | 'current' | 'stale'
 
@@ -74,7 +74,7 @@ export type Feature = {
   name: string
   description?: string
   interfaces?: string[]
-  tests: { passed: number; failed: number; ran?: string; content_hash?: string }
+  tests: { passed: number; failed: number; pending: number; ran?: string }
   health: Health
   state?: FeatureState
   related?: string[]
@@ -83,7 +83,7 @@ export type Feature = {
 export type Flag = { interface: string; problem: string }
 
 // Private holds the owner's private documents: where each feature lives in
-// the code, and how it is tested.
+// the code, and which features each test touches.
 export type Private = {
   layout: {
     version: number
@@ -93,7 +93,9 @@ export type Private = {
   tests: {
     version: number
     suites: Record<string, { command: string; description?: string }>
-    features: Record<string, { covers?: string; tests: { suite: string; files?: string[]; command?: string }[] | null; gaps?: string[] }>
+    // tests maps each key of the test map to its links, "[[feature-id]]".
+    tests: Record<string, string[] | null>
+    gaps?: Record<string, string[] | null>
   }
 }
 

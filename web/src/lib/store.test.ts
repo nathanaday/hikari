@@ -88,7 +88,7 @@ const systemView = (owner: string, state: 'unbuilt' | 'current' = 'unbuilt'): Sy
   system: { name: owner, interfaces: { provides: [], consumes: [] }, described_state: {} },
   features: [],
   state,
-  private: { layout: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, features: {} } },
+  private: { layout: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, tests: {} } },
   releases: [],
   owner,
   repo: 'shop',
