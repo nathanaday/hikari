@@ -51,7 +51,11 @@ func (t *Topology) validateServices() []error {
 	}
 	guarded := []string{t.Store}
 	for _, name := range sortedKeys(t.Repos) {
-		guarded = append(guarded, t.Repos[name].Path)
+		if name == ProjectRepo {
+			guarded = append(guarded, t.projectGuarded()...)
+		} else {
+			guarded = append(guarded, t.Repos[name].Path)
+		}
 	}
 	for i, p := range guarded {
 		guarded[i] = realPath(p)
@@ -119,6 +123,19 @@ func (t *Topology) validateServices() []error {
 		}
 	}
 	return errs
+}
+
+// projectGuarded returns the parts of the project repository that no
+// service can bind mount (rule PR7): its .git and the scopes of its
+// systems. The store is guarded for every topology.
+func (t *Topology) projectGuarded() []string {
+	out := []string{filepath.Join(t.Project.Path, ".git")}
+	for _, name := range t.Owners() {
+		if s := t.Agents[name].System; s.Repo == ProjectRepo {
+			out = append(out, filepath.Join(t.Project.Path, s.Scope))
+		}
+	}
+	return out
 }
 
 // scopeVolume reports whether a mount of type kind at target is allowed

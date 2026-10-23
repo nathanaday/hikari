@@ -25,6 +25,10 @@ import (
 // every hub and is driven from the web UI instead of a container.
 const User = "user"
 
+// ProjectRepo is the reserved repo name of the project repository: the git
+// repository that holds the compose file, when x-hikari.project is set.
+const ProjectRepo = "project"
+
 type Agent struct {
 	Description  string  `yaml:"description"`
 	Instructions string  `yaml:"instructions"`
@@ -96,8 +100,13 @@ type Topology struct {
 	Name string
 	// Store is the directory of the shared store. It is absolute; the
 	// default is store/ next to the compose file.
-	Store    string
-	Repos    map[string]Repo
+	Store string
+	// Repos holds every repo, the project repository included under
+	// ProjectRepo.
+	Repos map[string]Repo
+	// Project is the project repository, or nil when the topology does not
+	// set x-hikari.project.
+	Project  *Repo
 	Agents   map[string]Agent
 	Hubs     map[string]Hub
 	Services map[string]Service
@@ -123,9 +132,14 @@ type composeFile struct {
 }
 
 type hikariKeys struct {
-	Store string          `yaml:"store"`
-	Repos map[string]Repo `yaml:"repos"`
-	Hubs  map[string]Hub  `yaml:"hubs"`
+	Store   string          `yaml:"store"`
+	Project *projectKeys    `yaml:"project"`
+	Repos   map[string]Repo `yaml:"repos"`
+	Hubs    map[string]Hub  `yaml:"hubs"`
+}
+
+type projectKeys struct {
+	Branch string `yaml:"branch"`
 }
 
 type serviceKeys struct {
@@ -225,6 +239,15 @@ func Parse(data []byte, dir string) (*Topology, error) {
 		fail("x-hikari: %v", err)
 	}
 	t.Store, t.Repos, t.Hubs = keys.Store, keys.Repos, keys.Hubs
+	if t.Repos == nil {
+		t.Repos = map[string]Repo{}
+	}
+	if _, ok := t.Repos[ProjectRepo]; ok {
+		fail("x-hikari.repos: the repo name %q is reserved for the project repository; rename the repo", ProjectRepo)
+	}
+	if keys.Project != nil {
+		t.Project = &Repo{Path: dir, Branch: keys.Project.Branch}
+	}
 
 	for _, name := range sortedKeys(f.Services) {
 		node := f.Services[name]
@@ -316,6 +339,10 @@ func (t *Topology) normalize() {
 	for name, r := range t.Repos {
 		r.Path = resolvePath(r.Path, t.Dir)
 		t.Repos[name] = r
+	}
+	if t.Project != nil {
+		t.Project.Path = resolvePath(t.Project.Path, t.Dir)
+		t.Repos[ProjectRepo] = *t.Project
 	}
 	for name, a := range t.Agents {
 		if a.System != nil {
@@ -421,6 +448,10 @@ func (t *Topology) validateRepos() []error {
 	}
 	for _, name := range sortedKeys(t.Repos) {
 		r := t.Repos[name]
+		if name == ProjectRepo {
+			errs = append(errs, t.validateProject()...)
+			continue
+		}
 		if !validName.MatchString(name) {
 			errs = append(errs, fmt.Errorf("invalid repo name %q: use lowercase letters, digits, and dashes", name))
 		}
@@ -437,6 +468,36 @@ func (t *Topology) validateRepos() []error {
 		}
 	}
 	return errs
+}
+
+// validateProject checks the project repository (rules PR1 to PR3).
+func (t *Topology) validateProject() []error {
+	var errs []error
+	p := t.Project
+	if _, err := os.Stat(filepath.Join(p.Path, ".git")); err != nil {
+		errs = append(errs, fmt.Errorf("x-hikari.project: the directory of the compose file, %s, is not the top directory of a git repository", p.Path))
+	}
+	if !validBranchName(p.Branch) {
+		errs = append(errs, fmt.Errorf("x-hikari.project: %q is not a valid branch name", p.Branch))
+	}
+	store, root := realPath(t.Store), realPath(p.Path)
+	if store == root || !within(store, root) {
+		errs = append(errs, fmt.Errorf("x-hikari.project: the store %s must be a directory inside the project repository %s", t.Store, p.Path))
+	}
+	return errs
+}
+
+// StoreInProject returns the store's path relative to the project
+// repository, with slashes, or "" when there is no project repository.
+func (t *Topology) StoreInProject() string {
+	if t.Project == nil {
+		return ""
+	}
+	rel, err := filepath.Rel(realPath(t.Project.Path), realPath(t.Store))
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 func validBranchName(b string) bool {
@@ -481,8 +542,17 @@ func (t *Topology) validateSystems() []error {
 		}
 		repo, ok := t.Repos[s.Repo]
 		if !ok {
-			fail(name, "system references unknown repo %q", s.Repo)
+			if s.Repo == ProjectRepo {
+				fail(name, "the system is in repo %q, which needs x-hikari.project", ProjectRepo)
+			} else {
+				fail(name, "system references unknown repo %q", s.Repo)
+			}
 			continue
+		}
+		if s.Repo == ProjectRepo {
+			if store := t.StoreInProject(); s.Scope == "" || (store != "" && overlaps(filepath.FromSlash(store), s.Scope)) {
+				fail(name, "a system in the project repository needs a scope that does not overlap the store")
+			}
 		}
 		if s.Scope != "" {
 			if !filepath.IsLocal(s.Scope) {

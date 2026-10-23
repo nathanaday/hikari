@@ -413,3 +413,70 @@ WARN[0000] plain warning
 		t.Errorf("composeMessages = %q", got)
 	}
 }
+
+// projectTopology is a topology in a project repository at dir, with a
+// tester system in e2e and the given extra hikari keys.
+func projectTopology(extra, services string) string {
+	return compose(`
+  project: {branch: hikari}`+extra+`
+  hubs:
+    h: {orchestrator: lead, members: [tester]}`, `
+  lead: {x-hikari: {}}
+`+services)
+}
+
+const projectTester = "  tester: {x-hikari: {system: {repo: project, scope: e2e}}}\n"
+
+func TestProject(t *testing.T) {
+	dir := fakeRepo(t, "e2e", "config")
+	topo, err := Parse([]byte(projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/config, target: /c}], x-hikari: {serves: tester}}\n")), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topo.Project == nil || topo.Project.Path != dir || topo.Project.Branch != "hikari" {
+		t.Fatalf("PR1 project = %+v", topo.Project)
+	}
+	if r := topo.Repos[ProjectRepo]; r.Path != dir || r.Branch != "hikari" {
+		t.Errorf("the project is not among the repos: %+v", topo.Repos)
+	}
+	if got := topo.StoreInProject(); got != "store" {
+		t.Errorf("StoreInProject() = %q", got)
+	}
+
+	// PR6: the project repository need not hold a system.
+	if _, err := Parse([]byte(projectTopology("", "  tester: {x-hikari: {}}\n")), dir); err != nil {
+		t.Errorf("PR6: %v", err)
+	}
+	// Without the key there is no project, and the store is anywhere.
+	plain, err := Parse([]byte(tree), dir)
+	if err != nil || plain.Project != nil || plain.StoreInProject() != "" {
+		t.Errorf("no project key: %+v, %v", plain.Project, err)
+	}
+}
+
+func TestProjectErrors(t *testing.T) {
+	dir := fakeRepo(t, "e2e", "store/x")
+	outside := t.TempDir()
+	cases := map[string]struct{ src, dir, want string }{
+		"PR1 bad branch":       {strings.Replace(projectTopology("", projectTester), "branch: hikari", "branch: a..b", 1), dir, `"a..b" is not a valid branch name`},
+		"PR1 unknown field":    {strings.Replace(projectTopology("", projectTester), "{branch: hikari}", "{branch: hikari, path: x}", 1), dir, "field path not found"},
+		"PR2 not a repo":       {projectTopology("", projectTester), outside, "is not the top directory of a git repository"},
+		"PR3 store outside":    {projectTopology("\n  store: "+outside, projectTester), dir, "must be a directory inside the project repository"},
+		"PR3 store is the top": {projectTopology("\n  store: .", projectTester), dir, "must be a directory inside the project repository"},
+		"PR4 reserved name":    {projectTopology("\n  repos: {project: {path: "+dir+", branch: x}}", projectTester), dir, `"project" is reserved`},
+		"PR4 no project key":   {strings.Replace(projectTopology("", projectTester), "  project: {branch: hikari}", "  store: s", 1), dir, "which needs x-hikari.project"},
+		"PR5 whole repo":       {projectTopology("", "  tester: {x-hikari: {system: {repo: project, scope: .}}}\n"), dir, "needs a scope that does not overlap the store"},
+		"PR5 in the store":     {projectTopology("", "  tester: {x-hikari: {system: {repo: project, scope: store/x}}}\n"), dir, "needs a scope that does not overlap the store"},
+		"PR7 scope":            {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/e2e, target: /e}], x-hikari: {serves: tester}}\n"), dir, "hikari mounts the repos and the store itself"},
+		"PR7 git":              {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/.git, target: /g}], x-hikari: {serves: tester}}\n"), dir, "overlaps"},
+		"PR7 whole project":    {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+", target: /p}], x-hikari: {serves: tester}}\n"), dir, "overlaps"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(c.src), c.dir)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
