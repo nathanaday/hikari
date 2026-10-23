@@ -59,7 +59,7 @@ gaps: {wiki: [one]}`, ""},
 		{"bare id", "version: 1\ntests: {a: [wiki]}", `is not a link`},
 		{"text", "version: 1\ntests: {a: ['[[wiki|Wiki]]']}", "no |text or #heading"},
 		{"heading", "version: 1\ntests: {a: ['[[wiki#x]]']}", "no |text or #heading"},
-		{"unknown feature", "version: 1\ntests: {a: ['[[gone]]']}", `links [[gone]], which is not a feature`},
+		{"unknown feature", "version: 1\ntests: {a: ['[[gone]]']}", `links [[gone]], which is no document a test can link`},
 		{"gap feature", "version: 1\ngaps: {gone: [x]}", `X4: tests.yaml: gaps: "gone"`},
 		{"empty gap", "version: 1\ngaps: {wiki: ['']}", "X4: tests.yaml: gaps of \"wiki\": a gap is empty"},
 	}

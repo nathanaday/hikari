@@ -209,6 +209,30 @@ stay on the host between runs, like the map in the store. A rename in the
 wiki follows into the test map, the code map, and the recorded hashes, so
 that a rename never makes results pending or leaves a private file invalid.
 
+## A tester proves the stories
+
+The orchestrator decides what a hub's systems must do together, in the
+hub's stories, rules, and principles. Another agent, the tester, proves it,
+because the agent that sets the bar should not also write the check: when
+one agent writes both and a test fails, it can change either one. The tester
+is an ordinary owner whose scope is the E2E scaffold, so it keeps the
+boundary that every owner keeps: it never sees another system's code, and
+tests only what the systems release.
+
+Its test map links the hub's documents as an owner's links its features, so
+a story's health comes from one test map, one results file, and one health
+computation. The "code" of a story is the release lock: a result counts
+while the test and the lock are unchanged, so a new pin makes every E2E
+result pending through the hashing that already decides when a unit test
+result counts. The tester pins with a tool, so that it never types a digest.
+
+The tester's plan lives in its scope, because it describes the scaffold, and
+hikari serves it to the orchestrator and the user, who cannot read the
+scope. A plan names what it cannot test. A gap counts only when the user
+approves it, and an approval holds a digest of the gap's text, so the
+tester cannot close a hard story by calling it a gap, nor change a gap after
+the user approved it.
+
 ## Orchestrators see what they orchestrate
 
 An orchestrator reads only the systems of the direct members of its hubs. In

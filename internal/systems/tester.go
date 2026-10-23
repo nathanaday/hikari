@@ -17,7 +17,7 @@ import (
 
 // testedKinds are the kinds of a hub's documents that a tester's tests
 // link (rule TT1 of the tester spec).
-var testedKinds = []string{wiki.Story, wiki.Rule}
+var testedKinds = []string{wiki.Story, wiki.Rule, wiki.Principle}
 
 // storyIDs returns the stories and rules of the hub that o tests, or nil
 // when o is no tester.

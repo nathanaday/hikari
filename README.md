@@ -165,6 +165,23 @@ Plans and notes are yours. Write them in Obsidian, where the store is one vault,
 
 `get_document` and `search_wiki` read any document of the wikis an agent can read, with the documents that link it. A hub's story or rule shows its support: the health of the features it links.
 
+### E2E tests
+
+A hub can have a tester: an owner whose scope is the E2E scaffold of the hub, and who proves the hub's stories, rules, and principles against the releases of its systems.
+
+```yaml
+  vote-e2e:
+    build: {context: ., dockerfile: python.Dockerfile}
+    x-hikari:
+      description: Proves the stories of #main against the releases of its systems.
+      system: {repo: project, scope: e2e/main}
+      tests: main            # the tester of #main; it must be a member of the hub
+```
+
+The tester reads the releases of every system in the hub. It writes `plan.md` in its scope: the components of the test system (pinned releases, images, fixtures, simulators, and what each stands in for), the actors that drive it, the scenarios, and the gaps it cannot test. It pins the release set it tests with `pin_releases`, which writes `releases.lock` with each release's digest. Its `tests.yaml` links tests to the stories, rules, and principles of the hub, and each of them gets health from those tests, as a feature does from unit tests: a new pin makes every result pending until the tests run again, and a failing story names the systems whose features it links. hikari tells the tester when a release newer than its pin appears. The `hikari-tester` skill teaches it the plan and the procedures.
+
+A hub with a tester gets a Tests tab: each story with its E2E health and its support, the gaps, the plan, and the release set. A gap counts only when you approve it there; a gap whose text changes needs a new approval. The tester and the hub's orchestrator read the same view with `get_test_plan`. In this step, the tester's tests run in its own container against libraries, binaries, and data from the releases; services that must run beside them are planned.
+
 The Map view draws the topology as a force graph: each hub, each system, the repository its code is in, and the deliverables it holds, with dashed edges where one system reads another's releases or uses its interfaces. Lenses color the systems: Activity (cyan while the owner works, muted cyan while it waits), Tests (red for a failing feature, yellow for a pending one, green when they pass), and Git (magenta for uncommitted changes). Click a system or a hub and the camera moves into it, and it opens into its wiki map: one node per document, shaped by kind, with smaller nodes for the documents of other wikis that it links or that link it. The wiki lenses are Kind, Tests (a feature's health, a story's support), and Age. Click a document to read it beside the graph, with the documents that link it, and to edit it; the New button writes a document. Each hub page has a Wiki tab that lists its documents, key stories first. Back returns to the topology.
 
 ### Each agent's container

@@ -373,6 +373,8 @@ func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 		case w.scope == "hub" && (doc.Kind == wiki.Story || doc.Kind == wiki.Rule):
 			doc.Support = support(d, health)
 			doc.Health = e2eHealth[id]
+		case w.scope == "hub" && doc.Kind == wiki.Principle:
+			doc.Health = e2eHealth[id]
 		}
 		v.Documents = append(v.Documents, doc)
 	}

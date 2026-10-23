@@ -1,6 +1,11 @@
 # Spec: the tester, the plan, and the release lock
 
-Status: draft.
+Status: built, except environments, which are the fourth step. Checked in live runs on 2026-10-22 and 23 in the vote project: a tester, `vote-e2e`, with the owners `tally` and `ballots`. On its first turn, with no release published, the tester wrote a plan that named the blocker and claimed no gap. After both owners published `python-library` 0.1.0, it pinned both, wrote 7 tests that walk the key story and check the principle, and recorded them: the story `ballots-decide-winner` became `passing` from E2E results. It added a gap for a real voting machine when asked; the gap was approved through the UI and committed as the user. When tally published 0.1.1, the tester's turn context named the newer release.
+
+Changes made during the build:
+
+1. **Tests can link principles too** (TT1, EH2). In the live run, the tester checked the principle `ballots-decide-validity` in the same tests as the story, and could not link it. A principle that a test can check is worth E2E health.
+2. **The test map says what a link may name.** Its refusal said "not a feature", which misled the tester; it now names a feature of the wiki, or for a tester a story, rule, or principle of its hub.
 
 Sources: `docs/brainstorm/e2e.md` (round 1, sections A, B, C, D, and G) and `e2e-answers.md`. This is the third step of the E2E work, after the project repository and the wikis. Environments for services are the fourth step, and bench results the fifth.
 
@@ -52,7 +57,7 @@ From round 1 and its answers:
 
 ## 2. The tester's test map
 
-- **TT1.** A key of the tester's `tests.yaml` can link the stories and rules of the tested hub's wiki, besides the features of its own wiki. Any other link is a problem of the test map, as today.
+- **TT1.** A key of the tester's `tests.yaml` can link the stories, rules, and principles of the tested hub's wiki, besides the features of its own wiki. Any other link is a problem of the test map, as today.
 - **TT2.** A rename or a remove of a story or a rule in the hub wiki follows into the tester's test map and results, as a rename of a feature does in an owner's.
 - **TT3.** The code of a story or a rule, for the hashes of a run, is `releases.lock`. A result of a test that links one counts while the test's file and the lock are unchanged since the run (decision 3).
 

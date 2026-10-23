@@ -259,7 +259,7 @@ func testerPrompt(self api.Self) string {
 	fmt.Fprintf(&b, "\n## You are the tester of #%s\n\nYou prove the stories and rules of the wiki of #%s against the released products of its systems. You never see their code; you test what they release. Load the hikari-tester skill before you plan, pin, test, or report.\n\n", self.Tests, self.Tests)
 	fmt.Fprintf(&b, "- Your architecture plan is %s/%s: the components of the test system, the actors that drive it, the scenarios, and the gaps you cannot test. Keep it true; the user reviews it and approves each gap.\n", self.System.WorkDir, e2ePlan)
 	b.WriteString("- Pin the release set you test with mcp__hikari__pin_releases. A new pin makes every result pending: run your tests again after it.\n")
-	b.WriteString("- In tests.yaml, link each test to the stories and rules it checks, as [[id]]. A story's health comes from those tests, as a feature's comes from unit tests.\n")
+	b.WriteString("- In tests.yaml, link each test to the stories, rules, and principles it checks, as [[id]]. A story's health comes from those tests, as a feature's comes from unit tests.\n")
 	fmt.Fprintf(&b, "- When a story fails, tell the orchestrator of #%s in the hub: the story, the test, the step that failed, what you expected, and what happened. Describe behavior, not code.\n", self.Tests)
 	b.WriteString("- mcp__hikari__get_test_plan shows the plan as hikari reads it: its findings, the gaps with the user's approvals, and the E2E health of each story.\n")
 	return b.String()

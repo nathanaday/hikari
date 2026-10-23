@@ -120,7 +120,7 @@ func (m Map) Validate(features map[string]bool) error {
 			if err != nil {
 				fail("X3", "key %q: %v", key, err)
 			} else if !features[id] {
-				fail("X3", "key %q links %s, which is not a feature of the wiki", key, link)
+				fail("X3", "key %q links %s, which is no document a test can link: a feature of your wiki, or for a tester a story, rule, or principle of its hub", key, link)
 			}
 		}
 	}

@@ -57,7 +57,7 @@ hikari reads the plan and warns about a release you did not pin, a story or link
 
 ## Tests that link stories
 
-In `tests.yaml`, a key links the stories and rules its tests check, as it would link features:
+In `tests.yaml`, a key links the stories, rules, and principles its tests check, as it would link features:
 
 ```yaml
 version: 1
@@ -67,7 +67,7 @@ tests:
   tests/test_vote.py: ["[[ballots-decide-winner]]", "[[ballots-decide-validity]]"]
 ```
 
-A story's health comes from the tests that link it: `failing` when one failed, `pending` when one has not run since the lock or the test changed, `untested` when none links it, and otherwise `passing`.
+A story's health, or a rule's or a principle's, comes from the tests that link it: `failing` when one failed, `pending` when one has not run since the lock or the test changed, `untested` when none links it, and otherwise `passing`.
 
 ## Start
 
