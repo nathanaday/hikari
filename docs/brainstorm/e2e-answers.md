@@ -28,3 +28,11 @@ Four steps, each with its own spec, built in order (I1):
 4. Bench results.
 
 Each spec is written when the step before it is built, so that it starts from what the build learned.
+
+The user's note of 2026-10-22, during the first step, added the hub and system wikis as a step of their own, before the tester: principles, features, rules, and stories, and a place for the user's plans, roadmaps, and notes. The steps are now:
+
+1. The project repository: `docs/specs/project-repo.md`.
+2. The hub and system wikis: `docs/specs/wikis.md`.
+3. The tester, the plan, and the lock.
+4. Environments.
+5. Bench results.

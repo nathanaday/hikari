@@ -2,7 +2,9 @@
 
 Status: draft.
 
-Sources: `docs/brainstorm/e2e.md` (round 1, section B) and `e2e-answers.md`, and the user's note of 2026-10-22: "the hub-level and system-level feature wikis ... contain principles, features, business rules, that connect the fabric of the entire ecosystem together, and also serve as a place for the user to store future plans, roadmaps, and notes." This is the second step of the E2E work. The tester, the plan, and the lock follow in the third step; environments in the fourth; bench results in the fifth.
+Sources: `docs/brainstorm/e2e.md` (round 1, section B) and `e2e-answers.md`, and the user's note of 2026-10-22: "the hub-level and system-level feature wikis ... contain principles, features, business rules, that connect the fabric of the entire ecosystem together, and also serve as a place for the user to store future plans, roadmaps, and notes." The note adds a step to the E2E work, before the tester: this is now the second step. The tester, the plan, and the lock follow in the third step; environments in the fourth; bench results in the fifth.
+
+A review of the draft against the code found that hand edits, renames across wikis, concurrent changes, and authorship needed exact rules. Sections 3, 4, and 9 hold them, and decision 8 onward.
 
 ## Summary
 
@@ -27,9 +29,12 @@ From round 1 and its answers:
 2. **Plans and notes are yours.** Agents never write them. A file in a wiki with no `kind` is a note, so a page you drop into the folder in Obsidian is valid as it is.
 3. **No `system/id` link form.** Ids are already unique across every system (W1). This spec extends the rule to hub documents, so `[[id]]` resolves everywhere, in hikari and in Obsidian, which resolves a link by file name.
 4. **An owner reads the whole wiki of each hub it is in,** not only the stories that link its features (decision 7 asked for less). A hub's principles and rules apply to every member, so a member must read them, and a hub document holds no code. The stories that link a feature are listed on the feature, so the owner finds them at once.
-5. **A hand edit is checked more loosely than a tool write.** A tool write must resolve every link and keep every id unique. A hand edit that breaks a link or repeats an id is kept, with a warning, because a wiki that refuses your note is a worse place to write than one that warns.
-6. **hikari commits your wiki edits with your git identity.** Plans and notes are knowledge, not configuration, so they need no deliberate review commit as a policy does. Your files in `store/shared/` stay yours to commit.
+5. **A hand edit is checked more loosely than a tool write, and file by file.** A tool write must resolve every link and keep every id unique, but only for the documents it writes. A hand edit that breaks a link or repeats an id is kept, with a warning. A hand edit that breaks a document's header or a rule that every write keeps affects only that document: hikari keeps its last valid version and shows the problem. A wiki that refuses your note is a worse place to write than one that warns.
+6. **hikari commits your wiki edits with your git identity.** Plans and notes are knowledge, not configuration, so they need no deliberate review commit as a policy does. Your files in `store/shared/` stay yours to commit. Every tool change is committed when it is made, so an uncommitted change in a wiki is always yours.
 7. **The map's feature list holds features only.** Principles, rules, and stories have no code and no unit tests in this step. Their health is planted for the E2E step.
+8. **You can write any document by hand,** in Obsidian or in the UI, as B4 agreed for stories. An agent kind that you write must keep the rules of its kind. A user document stays yours: agents never change one.
+9. **One lock for every wiki.** A change to one wiki reads the ids of the others and can rewrite their links, so hikari applies one wiki change at a time.
+10. **A link names a document by its last path segment.** Obsidian writes `[[systems/orders/wiki/reserve-stock]]` when two files have one name, as a release copy does. hikari reads that link as `[[reserve-stock]]`, so a link that Obsidian completed still works.
 
 ## Terms
 
@@ -97,20 +102,25 @@ An operator must learn of a growing hotspot before it becomes a fire. ...
   - W3: only a feature may name `interfaces`.
   - W4: every agent kind needs a `## Purpose` with text.
   - `described_commit` and `described_at` exist only in a system wiki. `mark_map_current` sets them on every agent document of the system.
-- **D2.** A user document needs only `kind` (or none). `name`, `description`, and every other property are optional. Its name is its file name without `.md`; a name may hold any character except `[ ] # | ^ /`, and may not start with a dot. A name that another document of the store has, compared without case, is a warning.
+- **D2.** A user document needs only `kind` (or none). `name`, `description`, and every other property are optional; an `id` property is ignored. Its name is its file name without `.md`. A name holds at most 200 bytes, does not start or end with a space or start with a dot, and holds none of the characters that Obsidian refuses: `* " \ / < > : | ? # ^ [ ]`. A name that another document of the store has, compared without case, is a warning.
+- **D4.** A file with no property header is a note. A file whose header does not parse, and an agent document that breaks one of W1 to W4, is a problem of that file only: hikari keeps the file's last valid version when it has one, leaves the file out when it does not, and lists the problem in the wiki's warnings. A subfolder of a wiki is not part of it.
+- **D5.** A hand edit can change a document's kind. A feature that becomes a note leaves the map; its owner removes its entry from `layout.yaml`. A note that gets an agent kind becomes an agent document of its wiki and must keep the rules of D1.
 - **D3.** The order of the known properties is `id`, `kind`, `name`, `description`, `interfaces`, `related`, `key`, `status`, `created`, `updated`, `described_commit`, `described_at`. hikari writes them in that order and keeps your other properties after them.
 
 ## 4. Links
 
-- **N1.** A link is `[[id]]` or `[[id|text]]`, as today. `[[id#heading]]` is refused in an agent document and a warning in a user document.
+- **N1.** A link is `[[id]]` or `[[id|text]]`, as today. A target with slashes names the document of its last segment, and a target that ends in `.md` names the document without it (decision 10). `[[id#heading]]` is refused in an agent document and a warning in a user document.
+- **N1a.** The wikis of the store are the wikis of the topology's systems and hubs. Release copies and the folders of systems or hubs that are no longer in the topology are not.
+- **N1b.** A link resolves by exact name. When two documents have the name, which only user documents can (D2), it resolves to the one in the linking document's wiki, else in the hub wikis, else in the system wikis, in name order.
 - **N2.** A tool write may link only agent documents that its wiki can link:
   - a system wiki: its own documents, and the documents of each hub wiki whose hub the system's owner is a member of;
   - a hub wiki: its own documents, the documents of each system whose owner is a direct member of the hub, and the documents of each hub wiki whose orchestrator is a member of the hub (a child hub) or whose members include the hub's orchestrator (a parent hub).
 - **N3.** A user document may link any document of the store. A link that resolves to nothing is a warning.
-- **N4.** A hand edit that leaves an agent document with a link that N2 does not allow is kept, with a warning on the wiki.
-- **N5.** A rename of an agent document rewrites every link to it in every wiki of the store, user documents included. A remove rewrites them to the redirect, or to plain text, in every wiki.
+- **N4.** A hand edit that leaves an agent document with a link that N2 does not allow is kept, with a warning on the wiki. A tool write checks N2 and W1's uniqueness only for the documents it writes, so a warning that a hand edit left does not block the next change.
+- **N5.** A rename of an agent document rewrites every link to it in every wiki of the store, user documents included. A remove rewrites them to the redirect, or to plain text, in every wiki. hikari rewrites the file as it is on disk: an agent document that parses is written again from its parsed form; a user document, and a file that does not parse, get the link text replaced and nothing else.
+- **N5a.** A change that would write an agent document whose file on disk does not parse is refused, and names the document: the user's edit of it comes first.
 - **N6.** Backlinks are computed for every document from the links of every wiki.
-- **N7.** The neighbors of a feature in the map's `related` stay features of the same system.
+- **N7.** The neighbors of a feature in the map's `related` stay features of the same system. The warning "no neighbor" counts the agent documents of the same wiki.
 
 ## 5. Who reads what
 
@@ -122,50 +132,58 @@ An operator must learn of a growing hotspot before it becomes a fire. ...
 ## 6. Health and support
 
 - **H1.** A feature's health is computed as today. The map's `features` list holds only features.
-- **H2.** The support of a story or a rule in a hub wiki is the health of the features it links, summed as the topology map sums a system: `failing` when one is failing, else `pending` when one is pending, else `passing` when one is passing, else `untested`. A story that links no feature has no support.
+- **H2.** The support of a story or a rule in a hub wiki is the health of the features it links, in any system, summed as the topology map sums a system: `failing` when one is failing, else `pending` when one is pending, else `passing` when one is passing, else `untested`. A story that links no feature has no support.
 - **H3.** In this step, a story and a rule have no health of their own. Step 3 adds it from E2E results.
 
 ## 7. Tools
 
 - **T1.** `change_wiki(writes)` replaces `change_features` for owners. A create gives `kind`: `feature`, `principle`, or `rule`. The other ops are as today. hikari writes the map from the wiki after each change.
 - **T2.** `change_hub_wiki(hub, writes)` is for the orchestrator of the hub. A create gives `kind`: `story`, `rule`, or `principle`.
-- **T3.** A tool write that gives `kind` `plan` or `note`, or that modifies, renames, or removes a user document, is refused: user documents are yours.
-- **T4.** `get_document(id)` replaces `get_feature` and is open to every agent. It returns the document as it is on disk, its wiki, its kind, its backlinks, and, for a feature, its health and state, or, for a story or a rule, its support. It refuses a document outside the agent's readable wikis.
+- **T3.** A tool write that gives `kind` `plan` or `note`, or that modifies, renames, or removes a user document, is refused: user documents are yours. The tools have no `key` field, so no tool can set it.
+- **T4.** `get_document(id)` replaces `get_feature` and is open to every agent. It returns the document as it is on disk, its wiki, its kind, its backlinks in the agent's readable wikis, and, for a feature, its health and state, or, for a story or a rule of a hub, its support. For a document outside the agent's readable wikis, it says which wiki holds it and that the agent should ask its orchestrator.
 - **T5.** `search_wiki(query)` replaces `search_features` and is open to every agent. It searches the readable wikis and returns each hit's wiki, id, kind, name, and description.
 - **T6.** `get_my_system` lists the warnings of the system wiki, as it lists the feature warnings today.
 
 ## 8. Notices
 
-- **E1.** Before each turn, an agent learns which documents of its readable wikis changed since its last turn, by someone other than itself: `<notice>The wiki of #shop changed: hotspot-opens-incident (story), roadmap (plan).</notice>`. Changes to the wikis of an orchestrator's visible systems are left out, because owners change them often and the map shows them.
+- **E1.** Before each turn, an agent learns which documents of its readable wikis changed since its last turn, by someone other than itself. hikari keeps, for each agent and each readable wiki, the text of each document as of the agent's last turn, and updates it for the documents that the agent's own changes write: `<notice>The wiki of #shop changed: hotspot-opens-incident (story), roadmap (plan).</notice>`. Changes to the wikis of an orchestrator's visible systems are left out, because owners change them often and the map shows them.
 - **E2.** The prompts say that plans and notes are the user's: read them for context, and act on a plan only when the user asks for it.
 
 ## 9. The project repository
 
 This section changes the rules PR14 to PR17 of `docs/specs/project-repo.md`.
 
-- **C1.** The agent paths of an owner are `systems/<owner>/map.yaml` and the agent documents of `systems/<owner>/wiki/`. The agent paths of a hub's orchestrator are `shared/vocabulary/<hub>.yaml` and the agent documents of `hubs/<hub>/wiki/`.
-- **C2.** After a change, hikari commits the files that the change wrote, with the map for an owner, and the files of other wikis that a rename or a remove rewrote. The message is `<agent>: change the wiki: <writes>` or `<orchestrator>: change the #<hub> wiki: <writes>`.
-- **C3.** At stop, hikari commits the changed agent documents of each wiki with the wiki's author, and the changed user documents of every wiki with your git identity: `user: wiki edits left when hikari stopped`.
-- **C4.** A change that you make in the UI (section 10) is committed at once with your git identity: `user: <write, change the notes of, mark key, remove> <id> in <wiki>`.
+- **C1.** Before a tool change of a wiki, hikari commits your uncommitted edits of that wiki with your git identity: `user: wiki edits before <agent>'s change`. So an agent's commit never holds your edit.
+- **C2.** After a change, hikari commits the files that the change wrote or deleted, with the map for an owner, and the files of other wikis that a rename or a remove rewrote. The author is the agent. The message is `<agent>: change the wiki: <writes>` or `<orchestrator>: change the #<hub> wiki: <writes>`.
+- **C3.** At stop, hikari commits each owner's `map.yaml` as the owner, and every other change in the wikis with your git identity: `user: wiki edits left when hikari stopped`. Every tool change is already committed, so what is left is yours.
+- **C4.** A change that you make in the UI (section 10) is committed at once with your git identity: `user: <write, remove, mark key, unmark key> <id> in <wiki>`.
+- **C5.** When `hikari up` finds the project branch checked out and the only uncommitted changes in the wiki folders, it commits them with your git identity before it checks that the repository is clean. On another branch, it refuses as before.
+- **C6.** When git has no identity, a commit with your identity fails. The server logs it, and the change stays uncommitted.
 
 ## 10. The UI
 
 The snapshot carries every wiki: for each document its id, kind, name, description, links, `key`, `status`, and, for a feature, its health, for a story or a rule, its support. A change to a wiki is sent as an event.
 
-- **U1.** The topology map draws a node for each hub, with the shape of a hexagon, joined to each member that owns a system. A hub node opens into the hub's wiki map, as a system opens into its feature map.
-- **U2.** A system's map becomes its wiki map: one node per document of every kind. A hub's wiki map has one node per document of the hub, and one smaller node for each document of another wiki that it links, labeled with that wiki. An edge joins two documents that link each other.
+- **U1.** The topology map draws a node for each hub, with the shape of a hexagon, joined to each member that owns a system and to each child hub. A hub node opens into the hub's wiki map, as a system opens into its feature map. The lenses of the topology map leave a hub node neutral.
+- **U2.** A system's map becomes its wiki map: one node per document of every kind. A hub's wiki map has one node per document of the hub. Both maps add one smaller node for each document of another wiki that links a document of the map or that a document of the map links, labeled with that wiki. An edge joins two documents when either links the other.
 - **U3.** Each kind has a shape: a feature and a story a circle, a principle a diamond, a rule a square, a plan and a note a small circle with a dashed outline.
-- **U4.** The wiki maps have three lenses: Kind (a color for each kind), Tests (a feature's health, a story's or a rule's support), and Age.
+- **U4.** The wiki maps have three lenses: Kind (a color for each kind), Tests (a feature's health, a story's or a rule's support), and Age. A document with no `created`, such as a user document, has the oldest age.
 - **U5.** The document panel shows any document: its kind, its wiki, its key or status, its health or support, the body, and its backlinks. A link in the body or in the backlinks selects that document, and opens its wiki when it is in another.
-- **U6.** On a wiki map, you can create a plan or a note, edit or remove one of your documents, edit the `## Notes` section of an agent document, and mark a story key. The editor is a text area with the document's markdown.
+- **U6.** On a wiki map, you can create a document of any kind that the wiki holds, edit any document, remove a user document, and mark or unmark a story key. The editor is a text area with the document's markdown.
 - **U7.** A hub's page gets a Wiki tab beside Messages and Vocabulary, which lists its documents by kind, key stories first, and opens each one on the map.
-- **U8.** The server refuses a UI write that would change an agent document other than its `## Notes` or its `key`, and a user document whose name breaks D2.
+- **U8.** The server checks a UI write as a hand edit that must be valid: an agent document must keep the rules of D1, including N2 and uniqueness, and a user document's name must keep D2. It refuses a write that does not, with the problems. You cannot remove an agent document in the UI; ask its author.
 
 ## 11. Skills and prompts
 
 - **S1.** The `hikari-system` skill teaches the kinds of a system wiki: when a behavior is a feature, when a choice is a principle, when a statement is a rule. `references/features.md` becomes `references/wiki.md`.
 - **S2.** A new built-in skill, `hikari-hub`, is installed for orchestrators. It teaches how to write stories, rules, and principles, how to link them to the features of the hub's systems, and what a key story is.
 - **S3.** The owner prompt names the hub wikis it reads. The orchestrator prompt names the hub wiki, its tool, and the child hub wikis it reads.
+- **S4.** `hikari-hub` is a reserved name, like `hikari-system`: a shared skill of that name is skipped, and a deliverable of that name is refused.
+
+## 11a. Limits
+
+- The store README is written only when it is missing, so an existing store keeps its old README.
+- hikari compares names as they are on disk. macOS stores a name in one Unicode form, and a link typed in another form does not resolve.
 
 ## 12. Out of scope
 
