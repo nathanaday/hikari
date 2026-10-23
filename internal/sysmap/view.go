@@ -4,6 +4,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/nathanaday/hikari/internal/testmap"
 )
 
 // View is the public view of a map: the map with current health and state.
@@ -22,26 +24,31 @@ type StaleFeature struct {
 
 // OwnerView is what the owner sees of its own system: the public view, the
 // paths that changed since the described commit and the features they
-// belong to, the warnings of the wiki, and the problems of the map file, the
-// wiki, and the private documents.
+// belong to, the failing, pending, and unmapped tests, the warnings of the
+// wiki and the test map, and the problems of the map file, the wiki, and the
+// private documents.
 type OwnerView struct {
 	View                `yaml:",inline"`
-	Changed             []string       `yaml:"changed,omitempty" json:"changed,omitempty"`
-	StaleFeatures       []StaleFeature `yaml:"stale_features,omitempty" json:"stale_features,omitempty"`
-	UndescribedFeatures []string       `yaml:"undescribed_features,omitempty" json:"undescribed_features,omitempty"`
-	UnmappedPaths       []string       `yaml:"unmapped_paths,omitempty" json:"unmapped_paths,omitempty"`
-	Warnings            []string       `yaml:"warnings,omitempty" json:"warnings,omitempty"`
-	Error               string         `yaml:"error,omitempty" json:"error,omitempty"`
-	PrivateErrors       []string       `yaml:"private_errors,omitempty" json:"private_errors,omitempty"`
+	Changed             []string               `yaml:"changed,omitempty" json:"changed,omitempty"`
+	StaleFeatures       []StaleFeature         `yaml:"stale_features,omitempty" json:"stale_features,omitempty"`
+	UndescribedFeatures []string               `yaml:"undescribed_features,omitempty" json:"undescribed_features,omitempty"`
+	UnmappedPaths       []string               `yaml:"unmapped_paths,omitempty" json:"unmapped_paths,omitempty"`
+	FailingTests        []testmap.FailingTest  `yaml:"failing_tests,omitempty" json:"failing_tests,omitempty"`
+	PendingFeatures     []string               `yaml:"pending_features,omitempty" json:"pending_features,omitempty"`
+	UnmappedTests       []testmap.UnmappedFile `yaml:"unmapped_tests,omitempty" json:"unmapped_tests,omitempty"`
+	StaleKeys           []string               `yaml:"stale_keys,omitempty" json:"stale_keys,omitempty"`
+	Warnings            []string               `yaml:"warnings,omitempty" json:"warnings,omitempty"`
+	Error               string                 `yaml:"error,omitempty" json:"error,omitempty"`
+	PrivateErrors       []string               `yaml:"private_errors,omitempty" json:"private_errors,omitempty"`
 }
 
-// NewView computes the public view of m. hash returns the current content
-// hash of a feature's files, and states holds the state of each feature.
-func NewView(m *Map, priv Private, changed []string, hash func(id string) string, states map[string]string) View {
+// NewView computes the public view of m. health holds the health of each
+// feature, and states its state.
+func NewView(m *Map, changed []string, health map[string]testmap.FeatureHealth, states map[string]string) View {
 	m = m.Clone()
 	for i := range m.Features {
 		f := &m.Features[i]
-		f.Health = Health(*f, priv.Tested(f.ID), hash(f.ID))
+		f.Tests, f.Health = TestsOf(health[f.ID])
 		f.State = states[f.ID]
 	}
 	if m.Features == nil {
@@ -68,17 +75,33 @@ type States struct {
 	Unmapped    []string
 }
 
+// TestsOf returns the map's counts and health from a feature's health.
+func TestsOf(h testmap.FeatureHealth) (Tests, string) {
+	health := h.Health
+	if health == "" {
+		health = testmap.Untested
+	}
+	return Tests{Passed: h.Passed, Failed: h.Failed, Pending: h.Pending, Ran: h.Ran}, health
+}
+
 // FeatureStates computes the state of each feature in ids from the paths
-// that changed since the described commit. described reports whether the
-// feature's document has a described commit, and priv gives each feature's
-// code paths and test files.
-func FeatureStates(ids []string, described func(id string) bool, priv Private, changed []string) States {
+// that changed since the described commit (rules S19 to S21). described
+// reports whether the feature's document has a described commit, paths
+// gives each feature's code paths and test files, and testFiles holds the
+// test file of every recorded test.
+func FeatureStates(ids []string, described func(id string) bool, paths func(id string) []string, testFiles map[string]bool, changed []string) States {
 	st := States{ByID: map[string]string{}}
 	mapped := map[string]bool{}
+	for _, p := range changed {
+		if testFiles[path.Clean(p)] {
+			mapped[p] = true
+		}
+	}
 	for _, id := range ids {
 		var hits []string
+		own := paths(id)
 		for _, p := range changed {
-			if slices.ContainsFunc(priv.Paths(id), func(q string) bool { return under(p, q) }) {
+			if slices.ContainsFunc(own, func(q string) bool { return under(p, q) }) {
 				hits = append(hits, p)
 				mapped[p] = true
 			}

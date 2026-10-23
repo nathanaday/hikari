@@ -133,6 +133,17 @@ func TestResultsRoundTrip(t *testing.T) {
 	if err != nil || !back.Runs["unit"].Ran.Equal(now) || back.Runs["unit"].Tests[1].Message != "no" || back.Runs["unit"].Code["wiki"] != "c1" {
 		t.Fatalf("back %+v, %v", back, err)
 	}
+	if !back.FollowChange(map[string]string{"wiki": "vault"}, nil) || back.Runs["unit"].Code["vault"] != "c1" || back.Runs["unit"].Code["wiki"] != "" {
+		t.Fatalf("rename: %+v", back.Runs["unit"].Code)
+	}
+	back.Runs["unit"].Code["other"] = "o1"
+	if !back.FollowChange(map[string]string{"vault": "other", "other": "vault"}, nil) || back.Runs["unit"].Code["other"] != "c1" || back.Runs["unit"].Code["vault"] != "o1" {
+		t.Fatalf("swap: %+v", back.Runs["unit"].Code)
+	}
+	delete(back.Runs["unit"].Code, "other")
+	if !back.FollowChange(nil, []string{"vault"}) || len(back.Runs["unit"].Code) != 0 || back.FollowChange(nil, []string{"vault"}) {
+		t.Fatalf("remove: %+v", back.Runs["unit"].Code)
+	}
 	os.WriteFile(path, []byte("version: 9\n"), 0o644)
 	if bad, err := LoadResults(path); err == nil || len(bad.Runs) != 0 {
 		t.Fatalf("invalid file: %+v, %v", bad, err)

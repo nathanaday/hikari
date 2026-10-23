@@ -1,13 +1,13 @@
 // Package sysmap holds the documents of one system. The map (map.yaml) is
 // the public surface of the system: its purpose, its interfaces, and its
 // features with their test health. It holds no paths into the code. The
-// private documents (private/layout.yaml and private/test.yaml) hold where
-// each feature lives in the code and how it is tested; only the owner and
-// the user read them.
+// private documents (private/layout.yaml and private/tests.yaml) hold where
+// each feature lives in the code and which tests touch it; only the owner
+// and the user read them.
 //
-// The owner is the only author of all three. It changes the map through the
-// server, which checks each change and writes the file. It edits the private
-// documents directly; the server reads and checks them.
+// The owner changes the map through the server, which checks each change
+// and writes the file. It edits the private documents directly; the server
+// reads and checks them.
 package sysmap
 
 import (
@@ -23,7 +23,7 @@ import (
 // <scope>/.hikari/private. The map lives in the store.
 const Dir = ".hikari"
 
-const version = 3
+const version = 4
 
 type Map struct {
 	Version  int       `yaml:"version" json:"version"`
@@ -71,15 +71,14 @@ type Feature struct {
 	Related []string `yaml:"related,omitempty" json:"related,omitempty"`
 }
 
-// Tests holds the last recorded results of a feature's tests. The test plan
-// itself is private.
+// Tests counts the touching tests of a feature (rule Q5): passed and
+// failed count current results; pending counts results that are not
+// current, and skipped tests. The tests themselves are private.
 type Tests struct {
-	Passed int       `yaml:"passed,omitempty" json:"passed"`
-	Failed int       `yaml:"failed,omitempty" json:"failed"`
-	Ran    time.Time `yaml:"ran,omitempty" json:"ran,omitzero"`
-	// ContentHash is the hash of the feature's code and test files when the
-	// results were recorded.
-	ContentHash string `yaml:"content_hash,omitempty" json:"content_hash,omitempty"`
+	Passed  int       `yaml:"passed,omitempty" json:"passed"`
+	Failed  int       `yaml:"failed,omitempty" json:"failed"`
+	Pending int       `yaml:"pending,omitempty" json:"pending"`
+	Ran     time.Time `yaml:"ran,omitempty" json:"ran,omitzero"`
 }
 
 // New returns the map of a system that its owner has not described yet.
@@ -142,57 +141,21 @@ type FeatureEntry struct {
 	Description string
 	Interfaces  []string
 	Related     []string
+	Tests       Tests
+	Health      string
 }
 
-// Project replaces the features with entries, in id order, and keeps the
-// test results recorded for each id. renamed maps old ids to new ones, so
-// that results follow a rename.
-func (m *Map) Project(entries []FeatureEntry, renamed map[string]string) {
-	tests := map[string]Tests{}
-	for _, f := range m.Features {
-		tests[f.ID] = f.Tests
-	}
-	for old, to := range renamed {
-		if t, ok := tests[old]; ok {
-			tests[to] = t
-		}
-	}
+// Project replaces the features with entries, in id order.
+func (m *Map) Project(entries []FeatureEntry) {
 	out := make([]Feature, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, Feature{
 			ID: e.ID, Name: e.Name, Description: e.Description,
-			Interfaces: slices.Clone(e.Interfaces), Related: slices.Clone(e.Related), Tests: tests[e.ID],
+			Interfaces: slices.Clone(e.Interfaces), Related: slices.Clone(e.Related), Tests: e.Tests, Health: e.Health,
 		})
 	}
 	slices.SortFunc(out, func(a, b Feature) int { return strings.Compare(a.ID, b.ID) })
 	m.Features = out
-}
-
-type TestResult struct {
-	Feature string `json:"feature"`
-	Passed  int    `json:"passed"`
-	Failed  int    `json:"failed"`
-}
-
-// RecordTests stores results with the time and the content hash of each
-// feature's files. hash returns that hash for a feature id.
-func (m *Map) RecordTests(results []TestResult, now time.Time, hash func(id string) (string, error)) error {
-	for _, r := range results {
-		i := m.index(r.Feature)
-		if i < 0 {
-			return fmt.Errorf("no feature %q", r.Feature)
-		}
-		if r.Passed < 0 || r.Failed < 0 {
-			return fmt.Errorf("feature %q: test counts cannot be negative", r.Feature)
-		}
-		h, err := hash(r.Feature)
-		if err != nil {
-			return err
-		}
-		f := &m.Features[i]
-		f.Tests = Tests{Passed: r.Passed, Failed: r.Failed, Ran: now.UTC(), ContentHash: h}
-	}
-	return nil
 }
 
 // MarkCurrent records commit as the code that the map describes.
@@ -264,33 +227,10 @@ func Validate(m *Map) error {
 	return errors.Join(errs...)
 }
 
-// Health values.
-const (
-	Untested = "untested"
-	Stale    = "stale"
-	Failing  = "failing"
-	Passing  = "passing"
-)
-
-// Health computes the health of f (rules S8 to S12). tested reports whether
-// the test plan lists tests for the feature, and currentHash is the current
-// hash of its code and test files.
-func Health(f Feature, tested bool, currentHash string) string {
-	switch {
-	case !tested || f.Tests.Ran.IsZero():
-		return Untested
-	case f.Tests.ContentHash != currentHash:
-		return Stale
-	case f.Tests.Failed > 0:
-		return Failing
-	default:
-		return Passing
-	}
-}
-
 // Map states.
 const (
 	Unbuilt = "unbuilt"
+	Stale   = "stale"
 	Current = "current"
 )
 

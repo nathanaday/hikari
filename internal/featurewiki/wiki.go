@@ -203,6 +203,8 @@ type Result struct {
 	Renamed map[string]string `json:"renamed,omitempty"`
 	// Removed lists the removed ids.
 	Removed []string `json:"removed,omitempty"`
+	// Redirects maps each removed id that has a redirect to it.
+	Redirects map[string]string `json:"redirects,omitempty"`
 	// Written lists the ids whose documents the change wrote.
 	Written []string `json:"written,omitempty"`
 }
@@ -310,6 +312,11 @@ func Apply(w Wiki, writes []Write, c Check, now time.Time) (Wiki, Result, error)
 				}
 			}
 			res.Renamed[wr.ID] = wr.To
+			for old, to := range res.Redirects {
+				if to == wr.ID {
+					res.Redirects[old] = wr.To
+				}
+			}
 			res.Applied = append(res.Applied, fmt.Sprintf("renamed %s to %s", wr.ID, wr.To))
 		case "remove":
 			if next[wr.ID] == nil {
@@ -326,6 +333,12 @@ func Apply(w Wiki, writes []Write, c Check, now time.Time) (Wiki, Result, error)
 				}
 			}
 			res.Removed = append(res.Removed, wr.ID)
+			if wr.Redirect != "" {
+				if res.Redirects == nil {
+					res.Redirects = map[string]string{}
+				}
+				res.Redirects[wr.ID] = wr.Redirect
+			}
 			res.Applied = append(res.Applied, "removed "+wr.ID)
 		default:
 			return nil, res, fmt.Errorf("%s: unknown op %q; use create, modify, rename, or remove", where, wr.Op)

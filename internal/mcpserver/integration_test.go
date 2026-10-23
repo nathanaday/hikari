@@ -110,14 +110,15 @@ services:
 	if out, isErr := call(t, orders, "change_features", map[string]any{"writes": []map[string]any{{"op": "create", "id": "x", "name": "X", "description": "X.", "code": []string{"create.py"}}}}); !isErr || !strings.Contains(out, `"code"`) {
 		t.Errorf("the wiki must not take code paths: %q", out)
 	}
-	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); !isErr || !strings.Contains(out, "lists no tests") {
-		t.Errorf("results before the test plan: %q", out)
+	if out, isErr := call(t, orders, "record_test_run", map[string]any{"suite": "unit"}); !isErr || !strings.Contains(out, `no suite "unit"`) {
+		t.Errorf("a run before the test map has the suite: %q", out)
 	}
 	// The owner writes its private documents directly, as the skill says.
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "layout.yaml"), []byte("version: 1\nparts: [{path: create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [create.py]}\n  validate-order: {code: [create.py]}\n"), 0o644)
-	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "test.yaml"), []byte("version: 1\nsuites:\n  unit: {command: python3 -m unittest}\nfeatures:\n  create-order:\n    covers: Orders are created.\n    tests: [{suite: unit, files: [tests/test_create.py]}]\n"), 0o644)
-	if out, isErr := call(t, orders, "record_test_results", map[string]any{"results": []map[string]any{{"feature": "create-order", "passed": 2, "failed": 0}}}); isErr {
-		t.Fatalf("record_test_results: %s", out)
+	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "tests.yaml"), []byte("version: 1\nsuites:\n  unit: {command: python3 -m pytest}\ntests:\n  tests/test_create.py: [\"[[create-order]]\"]\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "reports", "unit.xml"), []byte(`<testsuite><testcase classname="tests.test_create.T" name="test_a" file="tests/test_create.py"/><testcase classname="tests.test_create.T" name="test_b" file="tests/test_create.py"/><testcase classname="tests.other.T" name="test_c"/></testsuite>`), 0o644)
+	if out, isErr := call(t, orders, "record_test_run", map[string]any{"suite": "unit"}); isErr || !strings.Contains(out, "Recorded suite unit: 3 passed, 0 failed, 0 skipped. 1 test(s) touch no feature yet") || !strings.Contains(out, "create-order: was pending, now passing") {
+		t.Fatalf("record_test_run: %s", out)
 	}
 	if out, isErr := call(t, orders, "mark_map_current", nil); isErr || !strings.Contains(out, "The map now describes commit") {
 		t.Fatalf("mark_map_current: %s", out)

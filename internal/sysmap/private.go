@@ -11,16 +11,23 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/nathanaday/hikari/internal/testmap"
 	"gopkg.in/yaml.v3"
 )
 
 // The private documents live in <scope>/.hikari/private. The owner edits
-// them directly.
+// layout.yaml and tests.yaml directly. The server writes results.yaml, and
+// runs write their reports into reports/.
 const (
 	PrivateDir = "private"
 	LayoutFile = "layout.yaml"
-	TestFile   = "test.yaml"
+	// OldTestFile is the test plan of earlier versions, which the server
+	// deletes (rule O8).
+	OldTestFile = "test.yaml"
 )
+
+// gitignore keeps the results and the reports out of commits (rule L13).
+const gitignore = testmap.ReportsDir + "/\n" + testmap.ResultsFile + "\n"
 
 const privateVersion = 1
 
@@ -42,56 +49,33 @@ type FeatureLayout struct {
 	Notes string   `yaml:"notes,omitempty" json:"notes,omitempty"`
 }
 
-// TestPlan says how each feature is tested: the suites that run tests, and
-// for each feature what its tests cover, which tests those are, and what
-// they leave out.
-type TestPlan struct {
-	Version  int                     `yaml:"version" json:"version"`
-	Suites   map[string]Suite        `yaml:"suites" json:"suites"`
-	Features map[string]FeatureTests `yaml:"features" json:"features"`
-}
-
-type Suite struct {
-	Command     string `yaml:"command" json:"command"`
-	Description string `yaml:"description,omitempty" json:"description,omitempty"`
-}
-
-type FeatureTests struct {
-	Covers string      `yaml:"covers,omitempty" json:"covers,omitempty"`
-	Tests  []TestEntry `yaml:"tests" json:"tests"`
-	Gaps   []string    `yaml:"gaps,omitempty" json:"gaps,omitempty"`
-}
-
-// TestEntry is one group of tests of a feature: the suite that runs them,
-// their files, and optionally a command that runs only them.
-type TestEntry struct {
-	Suite   string   `yaml:"suite" json:"suite"`
-	Files   []string `yaml:"files,omitempty" json:"files,omitempty"`
-	Command string   `yaml:"command,omitempty" json:"command,omitempty"`
-}
-
+// Private is the owner's code map and test map.
 type Private struct {
-	Layout Layout   `json:"layout"`
-	Tests  TestPlan `json:"tests"`
+	Layout Layout      `json:"layout"`
+	Tests  testmap.Map `json:"tests"`
 }
 
 func privatePath(root, file string) string {
 	return filepath.Join(root, Dir, PrivateDir, file)
 }
 
-// writePrivateSkeletons creates the private documents that do not exist yet.
-// testCommand, when set, becomes the first suite of the test plan.
-func writePrivateSkeletons(root, testCommand string) error {
-	if err := os.MkdirAll(filepath.Join(root, Dir, PrivateDir), 0o755); err != nil {
-		return err
+// preparePrivate creates the private documents that do not exist yet, the
+// reports directory, and the ignore file, and deletes an old test plan.
+// testCommand, when set, becomes the suite all of a new test map. It
+// returns a note when it deleted the old test plan.
+func preparePrivate(root, testCommand string) (string, error) {
+	if err := os.MkdirAll(privatePath(root, testmap.ReportsDir), 0o755); err != nil {
+		return "", err
 	}
-	tests := TestPlan{Version: privateVersion, Suites: map[string]Suite{}, Features: map[string]FeatureTests{}}
-	if testCommand != "" {
-		tests.Suites["all"] = Suite{Command: testCommand, Description: "Runs every test of the system."}
+	ignore := privatePath(root, ".gitignore")
+	if data, err := os.ReadFile(ignore); err != nil || string(data) != gitignore {
+		if err := os.WriteFile(ignore, []byte(gitignore), 0o644); err != nil {
+			return "", err
+		}
 	}
 	docs := map[string]any{
-		LayoutFile: Layout{Version: privateVersion, Parts: []Part{}, Features: map[string]FeatureLayout{}},
-		TestFile:   tests,
+		LayoutFile:      Layout{Version: privateVersion, Parts: []Part{}, Features: map[string]FeatureLayout{}},
+		testmap.MapFile: testmap.Empty(testCommand),
 	}
 	for file, doc := range docs {
 		path := privatePath(root, file)
@@ -100,13 +84,20 @@ func writePrivateSkeletons(root, testCommand string) error {
 		}
 		data, err := marshalYAML(doc)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if err := os.WriteFile(path, data, 0o644); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	old := privatePath(root, OldTestFile)
+	if _, err := os.Stat(old); err != nil {
+		return "", nil
+	}
+	if err := os.Remove(old); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("deleted %s: the test plan of an earlier hikari; the owner writes %s again", old, testmap.MapFile), nil
 }
 
 // LoadPrivate reads the private documents of the scope root. A missing
@@ -114,37 +105,44 @@ func writePrivateSkeletons(root, testCommand string) error {
 func LoadPrivate(root string) (Private, error) {
 	p := Private{
 		Layout: Layout{Version: privateVersion, Features: map[string]FeatureLayout{}},
-		Tests:  TestPlan{Version: privateVersion, Suites: map[string]Suite{}, Features: map[string]FeatureTests{}},
+		Tests:  testmap.Empty(""),
 	}
 	var errs []error
-	for file, doc := range map[string]any{LayoutFile: &p.Layout, TestFile: &p.Tests} {
-		data, err := os.ReadFile(privatePath(root, file))
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		} else if err != nil {
-			errs = append(errs, err)
-			continue
-		}
+	if data, err := readPrivate(root, LayoutFile); err != nil {
+		errs = append(errs, err)
+	} else if data != nil {
 		dec := yaml.NewDecoder(bytes.NewReader(data))
 		dec.KnownFields(true)
-		if err := dec.Decode(doc); err != nil && !errors.Is(err, io.EOF) {
-			errs = append(errs, fmt.Errorf("P1: %s/%s: %w", PrivateDir, file, err))
+		if err := dec.Decode(&p.Layout); err != nil && !errors.Is(err, io.EOF) {
+			errs = append(errs, fmt.Errorf("P1: %s/%s: %w", PrivateDir, LayoutFile, err))
 		}
+	}
+	if data, err := readPrivate(root, testmap.MapFile); err != nil {
+		errs = append(errs, err)
+	} else if data != nil {
+		tm, err := testmap.Parse(data)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		p.Tests = tm
 	}
 	if p.Layout.Features == nil {
 		p.Layout.Features = map[string]FeatureLayout{}
 	}
-	if p.Tests.Suites == nil {
-		p.Tests.Suites = map[string]Suite{}
-	}
-	if p.Tests.Features == nil {
-		p.Tests.Features = map[string]FeatureTests{}
-	}
 	return p, errors.Join(errs...)
 }
 
-// Validate checks the rules P1 to P4 against the features of the map. exists
-// reports whether a path relative to the scope exists.
+func readPrivate(root, file string) ([]byte, error) {
+	data, err := os.ReadFile(privatePath(root, file))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return data, err
+}
+
+// Validate checks the rules P1 to P3 of the code map and X1 to X4 of the
+// test map against the features of the map. exists reports whether a path
+// relative to the scope exists.
 func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) error {
 	var errs []error
 	fail := func(rule, format string, args ...any) {
@@ -152,9 +150,6 @@ func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) err
 	}
 	if p.Layout.Version != privateVersion {
 		fail("P1", "%s: version must be %d", LayoutFile, privateVersion)
-	}
-	if p.Tests.Version != privateVersion {
-		fail("P1", "%s: version must be %d", TestFile, privateVersion)
 	}
 	checkPath := func(where, path string) {
 		if !filepath.IsLocal(filepath.Clean(path)) {
@@ -174,40 +169,12 @@ func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) err
 			checkPath(fmt.Sprintf("%s feature %q", LayoutFile, id), path)
 		}
 	}
-	for _, name := range sortedKeys(p.Tests.Suites) {
-		if p.Tests.Suites[name].Command == "" {
-			fail("P4", "%s: suite %q has no command", TestFile, name)
-		}
-	}
-	for _, id := range sortedKeys(p.Tests.Features) {
-		if !ids[id] {
-			fail("P2", "%s: %q is not a feature of the map", TestFile, id)
-		}
-		for _, t := range p.Tests.Features[id].Tests {
-			if _, ok := p.Tests.Suites[t.Suite]; !ok {
-				fail("P4", "%s feature %q: suite %q is not defined under suites", TestFile, id, t.Suite)
-			}
-			for _, path := range t.Files {
-				checkPath(fmt.Sprintf("%s feature %q", TestFile, id), path)
-			}
-		}
-	}
-	return errors.Join(errs...)
+	return errors.Join(append(errs, p.Tests.Validate(ids))...)
 }
 
-// Tested reports whether the test plan lists tests for the feature.
-func (p Private) Tested(id string) bool {
-	return len(p.Tests.Features[id].Tests) > 0
-}
-
-// Paths returns the code and test files of a feature, which its content
-// hash covers.
-func (p Private) Paths(id string) []string {
-	paths := slices.Clone(p.Layout.Features[id].Code)
-	for _, t := range p.Tests.Features[id].Tests {
-		paths = append(paths, t.Files...)
-	}
-	return paths
+// Code returns the code paths of a feature.
+func (p Private) Code(id string) []string {
+	return slices.Clone(p.Layout.Features[id].Code)
 }
 
 func sortedKeys[V any](m map[string]V) []string {

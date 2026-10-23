@@ -21,6 +21,7 @@ import (
 	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
+	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
 )
@@ -372,7 +373,7 @@ services:
 	}
 
 	systemsList, err := lead.ListSystems(ctx)
-	if err != nil || len(systemsList) != 1 || systemsList[0].Features[sysmap.Untested] != 1 {
+	if err != nil || len(systemsList) != 1 || systemsList[0].Features[testmap.Untested] != 1 {
 		t.Errorf("lead list = %+v, %v", systemsList, err)
 	}
 	if _, err := orders.ListSystems(ctx); err == nil || !strings.Contains(err.Error(), "only orchestrators") {

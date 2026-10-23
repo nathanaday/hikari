@@ -245,9 +245,19 @@ func TestRemoveRedirectsOrUnlinks(t *testing.T) {
 	if !slices.Equal(res.Removed, []string{"release-stock"}) {
 		t.Errorf("result: %+v", res)
 	}
-	next, _, err = Apply(w, []Write{{Op: "remove", ID: "release-stock", Redirect: "check-availability"}}, Check{}, now)
+	next, res, err = Apply(w, []Write{{Op: "remove", ID: "release-stock", Redirect: "check-availability"}}, Check{}, now)
 	if err != nil || !strings.Contains(next["reserve-stock"].Body, "[[check-availability|releasing]]") {
 		t.Errorf("K4: a redirect keeps the text: %v\n%s", err, next["reserve-stock"].Body)
+	}
+	if res.Redirects["release-stock"] != "check-availability" {
+		t.Errorf("the result names the redirect: %+v", res.Redirects)
+	}
+	_, res, err = Apply(w, []Write{
+		{Op: "remove", ID: "release-stock", Redirect: "check-availability"},
+		{Op: "rename", ID: "check-availability", To: "see-stock"},
+	}, Check{}, now)
+	if err != nil || res.Redirects["release-stock"] != "see-stock" {
+		t.Errorf("a redirect follows a later rename: %v %+v", err, res.Redirects)
 	}
 	// A related entry to a removed feature goes, or follows the redirect.
 	next, _, err = Apply(w, []Write{{Op: "remove", ID: "reserve-stock", Redirect: "release-stock"}}, Check{}, now)

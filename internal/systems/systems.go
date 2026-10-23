@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -52,6 +54,8 @@ type owner struct {
 	// projectErr is the problem of the last projection of the wiki into
 	// the map, when a hand edit of the wiki broke a rule of the map.
 	projectErr string
+	// runs serializes the recording of test runs.
+	runs sync.Mutex
 }
 
 type Manager struct {
@@ -107,9 +111,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		if repo.IsIgnored(privatePath) {
 			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", s.Repo, privatePath, name))
 		}
-		if note := maps.Note(); note != "" {
-			m.warnings = append(m.warnings, note)
-		}
+		m.warnings = append(m.warnings, maps.Notes()...)
 		wiki, err := featurewiki.Open(m.store.FeaturesDir(name))
 		if err != nil {
 			return nil, fmt.Errorf("agent %q: %w", name, err)
@@ -118,7 +120,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 	}
 	for _, name := range topo.Owners() {
 		o := m.owners[name]
-		if err := m.project(o, nil); err != nil {
+		if err := m.project(o); err != nil {
 			m.warnings = append(m.warnings, fmt.Sprintf("agent %q: the map does not match the feature wiki: %v", name, err))
 		}
 	}
@@ -185,17 +187,23 @@ func (m *Manager) checkAgents() error {
 	return errors.Join(errs...)
 }
 
-// project writes the features of o's wiki into its map (rule Q1). renamed
-// maps old ids to new ones, so that test results follow a rename.
-func (m *Manager) project(o *owner, renamed map[string]string) error {
+// project writes the features of o's wiki into its map, with the health of
+// each feature (rules Q1 and Q6).
+func (m *Manager) project(o *owner) error {
 	w := o.wiki.Wiki()
 	neighbors := w.Neighbors()
+	priv, _ := o.store.Private()
+	rep, _ := m.testReport(o, priv, w.IDs())
 	entries := make([]sysmap.FeatureEntry, 0, len(w))
 	for _, id := range w.IDs() {
 		d := w[id]
-		entries = append(entries, sysmap.FeatureEntry{ID: id, Name: d.Name, Description: d.Description, Interfaces: d.Interfaces, Related: neighbors[id]})
+		tests, health := sysmap.TestsOf(rep.Features[id])
+		entries = append(entries, sysmap.FeatureEntry{
+			ID: id, Name: d.Name, Description: d.Description, Interfaces: d.Interfaces, Related: neighbors[id],
+			Tests: tests, Health: health,
+		})
 	}
-	err := o.store.Update(func(mp *sysmap.Map) error { mp.Project(entries, renamed); return nil })
+	err := o.store.Update(func(mp *sysmap.Map) error { mp.Project(entries); return nil })
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if err != nil {
@@ -204,6 +212,22 @@ func (m *Manager) project(o *owner, renamed map[string]string) error {
 		o.projectErr = ""
 	}
 	return err
+}
+
+// testReport computes the health of the features ids of o from its test
+// map and its results. The string is the problem of the results file.
+func (m *Manager) testReport(o *owner, priv sysmap.Private, ids []string) (testmap.Report, string) {
+	results, err := testmap.LoadResults(o.store.PrivatePath(testmap.ResultsFile))
+	problem := ""
+	if err != nil {
+		problem = err.Error()
+	}
+	root := o.store.Root()
+	hashes := testmap.Hashes{
+		File: func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h },
+		Code: func(id string) string { h, _ := sysmap.ContentHash(root, priv.Code(id)); return h },
+	}
+	return testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.store), results, ids, hashes), problem
 }
 
 // wikiCheck is what the wiki rules need from o's system: its interfaces,
@@ -228,9 +252,9 @@ func (m *Manager) wikiCheck(o *owner) featurewiki.Check {
 	return featurewiki.Check{Interfaces: ifaces, Taken: taken, Exists: o.store.Exists}
 }
 
-// ChangeFeatures applies one change to agent's feature wiki and writes the
-// map from it. The result notes the private documents that still name a
-// renamed or removed id (rule E4).
+// ChangeFeatures applies one change to agent's feature wiki, follows it in
+// the private documents, and writes the map from it. The result notes what
+// the owner must still fix by hand (rules E7 to E10).
 func (m *Manager) ChangeFeatures(agent string, writes []featurewiki.Write) (api.ChangeResult, error) {
 	o, err := m.owner(agent)
 	if err != nil {
@@ -241,23 +265,27 @@ func (m *Manager) ChangeFeatures(agent string, writes []featurewiki.Write) (api.
 		return api.ChangeResult{}, err
 	}
 	out := api.ChangeResult{Result: res}
-	if err := m.project(o, res.Renamed); err != nil {
-		out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
+	removed := map[string]string{}
+	for _, id := range res.Removed {
+		removed[id] = res.Redirects[id]
 	}
+	out.Notes = sysmap.RewriteIDs(o.store.Root(), res.Renamed, removed)
+	o.runs.Lock()
+	resultsPath := o.store.PrivatePath(testmap.ResultsFile)
+	if results, err := testmap.LoadResults(resultsPath); err == nil && results.FollowChange(res.Renamed, res.Removed) {
+		if err := testmap.SaveResults(resultsPath, results); err != nil {
+			out.Notes = append(out.Notes, "the test results could not follow the change: "+err.Error())
+		}
+	}
+	o.runs.Unlock()
 	priv, _ := o.store.Private()
-	var gone []string
-	for old := range res.Renamed {
-		gone = append(gone, old)
-	}
-	gone = append(gone, res.Removed...)
-	slices.Sort(gone)
-	for _, id := range gone {
+	for _, id := range slices.Sorted(maps.Keys(removed)) {
 		if _, ok := priv.Layout.Features[id]; ok {
-			out.Notes = append(out.Notes, fmt.Sprintf("%s still names %q; update it (P2)", sysmap.LayoutFile, id))
+			out.Notes = append(out.Notes, fmt.Sprintf("%s still names the removed feature %q; move its code to another feature or delete the entry (P2)", sysmap.LayoutFile, id))
 		}
-		if _, ok := priv.Tests.Features[id]; ok {
-			out.Notes = append(out.Notes, fmt.Sprintf("%s still names %q; update it (P2)", sysmap.TestFile, id))
-		}
+	}
+	if err := m.project(o); err != nil {
+		out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
 	}
 	m.changed(Change{System: agent})
 	return out, nil
@@ -389,7 +417,10 @@ func (m *Manager) peers(system string) []string {
 // ctx ends.
 func (m *Manager) Watch(ctx context.Context) {
 	for _, o := range m.owners {
-		go o.store.Watch(ctx, time.Second, func() { m.changed(Change{System: o.name}) })
+		go o.store.Watch(ctx, time.Second, func() {
+			m.project(o)
+			m.changed(Change{System: o.name})
+		})
 		go m.watchWiki(ctx, o)
 	}
 }
@@ -408,7 +439,7 @@ func (m *Manager) watchWiki(ctx context.Context, o *owner) {
 				continue
 			}
 			if o.wiki.Error() == "" {
-				m.project(o, nil)
+				m.project(o)
 			}
 			m.changed(Change{System: o.name})
 		}
@@ -495,19 +526,20 @@ func (m *Manager) view(o *owner) sysmap.View {
 func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 	mp := o.store.Map()
 	priv, _ := o.store.Private()
-	hash := func(id string) string {
-		h, _ := sysmap.ContentHash(o.store.Root(), priv.Paths(id))
-		return h
-	}
 	changed := m.changedPaths(o, mp)
 	w := o.wiki.Wiki()
 	ids := make([]string, len(mp.Features))
 	for i, f := range mp.Features {
 		ids[i] = f.ID
 	}
+	rep, resultsProblem := m.testReport(o, priv, ids)
 	described := func(id string) bool { return w[id] != nil && w[id].DescribedCommit != "" }
-	st := sysmap.FeatureStates(ids, described, priv, changed)
+	paths := func(id string) []string { return append(priv.Code(id), rep.Features[id].Files...) }
+	st := sysmap.FeatureStates(ids, described, paths, rep.TestFiles, changed)
 	warnings := w.Warnings(featurewiki.Check{Exists: o.store.Exists})
+	if resultsProblem != "" {
+		warnings = append(warnings, resultsProblem)
+	}
 	for _, id := range ids {
 		if len(priv.Layout.Features[id].Code) == 0 {
 			warnings = append(warnings, fmt.Sprintf("feature %q has no code entry in %s; add one so that hikari can tell when its code changes", id, sysmap.LayoutFile))
@@ -523,11 +555,15 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 		}
 	}
 	return sysmap.OwnerView{
-		View:                sysmap.NewView(mp, priv, changed, hash, st.ByID),
+		View:                sysmap.NewView(mp, changed, rep.Features, st.ByID),
 		Changed:             changed,
 		StaleFeatures:       st.Stale,
 		UndescribedFeatures: st.Undescribed,
 		UnmappedPaths:       st.Unmapped,
+		FailingTests:        rep.Failing,
+		PendingFeatures:     rep.Pending(),
+		UnmappedTests:       rep.Unmapped,
+		StaleKeys:           rep.StaleKeys,
 		Warnings:            warnings,
 		Error:               strings.Join(problems, "; "),
 		PrivateErrors:       o.store.PrivateErrors(mp),
@@ -568,24 +604,85 @@ func (m *Manager) SetSystemInfo(agent string, p sysmap.SystemPatch) error {
 	return m.update(agent, func(_ *owner, mp *sysmap.Map) error { mp.ApplySystem(p); return nil })
 }
 
-// RecordTests stores test results. The private documents must be valid, and
-// the test plan must list tests for each feature.
-func (m *Manager) RecordTests(agent string, results []sysmap.TestResult) error {
-	return m.update(agent, func(o *owner, mp *sysmap.Map) error {
-		if err := checkPrivate(o, mp); err != nil {
-			return err
+// RecordRun records the report of one run of a suite (rules J1 to J8): it
+// reads the report, keeps the result of each test with the hashes it
+// depends on, deletes the report, and writes the map with the new health.
+func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
+	o, err := m.owner(agent)
+	if err != nil {
+		return api.RunResult{}, err
+	}
+	o.runs.Lock()
+	defer o.runs.Unlock()
+	if err := checkPrivate(o, o.store.Map()); err != nil {
+		return api.RunResult{}, err
+	}
+	priv, _ := o.store.Private()
+	if _, ok := priv.Tests.Suites[suite]; !ok {
+		return api.RunResult{}, fmt.Errorf("%w: %s has no suite %q; its suites are %s", ErrNotFound, testmap.MapFile, suite, list(slices.Sorted(maps.Keys(priv.Tests.Suites))))
+	}
+	rel := path.Join(testmap.ReportsDir, suite+".xml")
+	report := o.store.PrivatePath(filepath.FromSlash(rel))
+	where := path.Join(api.PrivateDir, rel)
+	info, err := os.Stat(report)
+	if err != nil {
+		return api.RunResult{}, fmt.Errorf("J2: no report at %s; make the command of suite %q write a JUnit XML report there, then run it again (the hikari-system skill's references/tests.md lists the flags of each runner)", where, suite)
+	}
+	if info.Size() > testmap.MaxReportBytes {
+		return api.RunResult{}, fmt.Errorf("J6: the report %s has %d bytes; at most %d", where, info.Size(), testmap.MaxReportBytes)
+	}
+	data, err := os.ReadFile(report)
+	if err != nil {
+		return api.RunResult{}, err
+	}
+	cases, err := testmap.ParseReport(data, api.WorkDir(o.scope), o.store)
+	if err != nil {
+		return api.RunResult{}, fmt.Errorf("J2: %s: %w", where, err)
+	}
+	ids := o.wiki.Wiki().IDs()
+	before, _ := m.testReport(o, priv, ids)
+	root := o.store.Root()
+	code := map[string]string{}
+	for _, id := range ids {
+		code[id], _ = sysmap.ContentHash(root, priv.Code(id))
+	}
+	run := testmap.NewRun(cases, m.now(), code, func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h })
+	resultsPath := o.store.PrivatePath(testmap.ResultsFile)
+	results, _ := testmap.LoadResults(resultsPath)
+	results.Runs[suite] = run
+	if err := testmap.SaveResults(resultsPath, results); err != nil {
+		return api.RunResult{}, err
+	}
+	if err := os.Remove(report); err != nil {
+		return api.RunResult{}, err
+	}
+	if err := m.project(o); err != nil {
+		return api.RunResult{}, err
+	}
+	after, _ := m.testReport(o, priv, ids)
+	out := api.RunResult{Suite: suite}
+	matcher := testmap.NewMatcher(priv.Tests, o.store)
+	for _, c := range cases {
+		switch c.Outcome {
+		case testmap.Passed:
+			out.Passed++
+		case testmap.Failed:
+			out.Failed++
+		case testmap.Skipped:
+			out.Skipped++
 		}
-		priv, err := o.store.Private()
-		if err != nil {
-			return err
+		if _, ok := matcher.Key(c.ID, c.File); !ok {
+			out.Unmapped++
 		}
-		for _, r := range results {
-			if !priv.Tested(r.Feature) {
-				return fmt.Errorf("%s/%s/%s lists no tests for feature %q; add them before you record results", sysmap.Dir, sysmap.PrivateDir, sysmap.TestFile, r.Feature)
-			}
+	}
+	for _, id := range ids {
+		from, to := before.Features[id].Health, after.Features[id].Health
+		if from != to {
+			out.Changed = append(out.Changed, api.HealthChange{Feature: id, From: from, To: to})
 		}
-		return mp.RecordTests(results, m.now(), o.store.FeatureHash)
-	})
+	}
+	m.changed(Change{System: agent})
+	return out, nil
 }
 
 // MarkCurrent commits the pending changes in agent's scope, then records the
@@ -667,6 +764,7 @@ func (m *Manager) TurnContext(agent string) api.TurnContext {
 		v := m.ownerView(o)
 		tc.MapState, tc.PrivateErrors = v.State, v.PrivateErrors
 		tc.StaleFeatures, tc.UndescribedFeatures, tc.UnmappedPaths = v.StaleFeatures, v.UndescribedFeatures, v.UnmappedPaths
+		tc.FailingFeatures, tc.PendingFeatures = failingFeatures(v.FailingTests), v.PendingFeatures
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -678,6 +776,21 @@ func (m *Manager) TurnContext(agent string) api.TurnContext {
 		}
 	}
 	return tc
+}
+
+// failingFeatures groups failing tests by the features they touch.
+func failingFeatures(tests []testmap.FailingTest) []api.FailingFeature {
+	byID := map[string][]string{}
+	for _, t := range tests {
+		for _, id := range t.Features {
+			byID[id] = append(byID[id], t.ID)
+		}
+	}
+	var out []api.FailingFeature
+	for _, id := range slices.Sorted(maps.Keys(byID)) {
+		out = append(out, api.FailingFeature{ID: id, Tests: byID[id]})
+	}
+	return out
 }
 
 // visible returns the systems that agent may read as an orchestrator.

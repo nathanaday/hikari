@@ -53,8 +53,39 @@ type TurnContext struct {
 	StaleFeatures       []sysmap.StaleFeature `json:"stale_features,omitempty"`
 	UndescribedFeatures []string              `json:"undescribed_features,omitempty"`
 	UnmappedPaths       []string              `json:"unmapped_paths,omitempty"`
+	FailingFeatures     []FailingFeature      `json:"failing_features,omitempty"`
+	PendingFeatures     []string              `json:"pending_features,omitempty"`
 	PrivateErrors       []string              `json:"private_errors,omitempty"`
 	VocabularyChanged   []string              `json:"vocabulary_changed,omitempty"`
+}
+
+// FailingFeature is a failing feature with the ids of its failing tests.
+type FailingFeature struct {
+	ID    string   `json:"id"`
+	Tests []string `json:"tests"`
+}
+
+// RunRequest asks the server to record the report of one run of a suite.
+type RunRequest struct {
+	Suite string `json:"suite"`
+}
+
+// RunResult summarizes a recorded run: the outcomes of its tests, the
+// tests that no key of the test map covers, and each feature whose health
+// changed.
+type RunResult struct {
+	Suite    string         `json:"suite"`
+	Passed   int            `json:"passed"`
+	Failed   int            `json:"failed"`
+	Skipped  int            `json:"skipped"`
+	Unmapped int            `json:"unmapped"`
+	Changed  []HealthChange `json:"changed,omitempty"`
+}
+
+type HealthChange struct {
+	Feature string `json:"feature"`
+	From    string `json:"from"`
+	To      string `json:"to"`
 }
 
 // ChangeRequest is one change to an owner's feature wiki.
@@ -155,8 +186,11 @@ func (c *Client) ChangeFeatures(ctx context.Context, writes []featurewiki.Write)
 	return out, err
 }
 
-func (c *Client) RecordTests(ctx context.Context, results []sysmap.TestResult) error {
-	return c.do(ctx, http.MethodPost, "/api/node/map/tests", results, nil)
+// RecordRun records the report of one run of a suite.
+func (c *Client) RecordRun(ctx context.Context, suite string) (RunResult, error) {
+	var out RunResult
+	err := c.do(ctx, http.MethodPost, "/api/node/map/tests", RunRequest{Suite: suite}, &out)
+	return out, err
 }
 
 func (c *Client) MarkMapCurrent(ctx context.Context) (string, error) {

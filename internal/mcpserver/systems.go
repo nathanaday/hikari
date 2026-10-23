@@ -73,14 +73,8 @@ type idArgs struct {
 	ID string `json:"id" jsonschema:"the feature id"`
 }
 
-type testResultArg struct {
-	Feature string `json:"feature" jsonschema:"the feature id"`
-	Passed  int    `json:"passed" jsonschema:"the number of passed tests of the feature"`
-	Failed  int    `json:"failed" jsonschema:"the number of failed tests of the feature"`
-}
-
-type testResultsArgs struct {
-	Results []testResultArg `json:"results" jsonschema:"one entry for each feature whose tests ran"`
+type runArgs struct {
+	Suite string `json:"suite" jsonschema:"the name of the suite in tests.yaml whose run wrote its report"`
 }
 
 type checkArgs struct {
@@ -101,7 +95,7 @@ type commitArgs struct {
 func addOwnerTools(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_my_system",
-		Description: "Read your system map as others see it, with the health and state of each feature, plus what only you see: the state of the map, the stale features with their changed paths, the changed paths that belong to no feature, warnings about the feature wiki, and problems in your private documents.",
+		Description: "Read your system map as others see it, with the health and state of each feature, plus what only you see: the state of the map, the stale features with their changed paths, the changed paths that belong to no feature, the failing tests and the features they touch, the pending features, the tests that no key of tests.yaml covers, the keys that match no test, warnings, and problems in your private documents.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		v, err := c.MyMap(ctx)
 		if err != nil {
@@ -157,17 +151,22 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "record_test_results",
-		Description: "Record the results of the tests that you ran, for each feature. The feature's tests must be in your test plan. hikari stores the time and a hash of the feature's code and test files, and computes its health.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a testResultsArgs) (*mcp.CallToolResult, any, error) {
-		results := make([]sysmap.TestResult, len(a.Results))
-		for i, r := range a.Results {
-			results[i] = sysmap.TestResult{Feature: r.Feature, Passed: r.Passed, Failed: r.Failed}
-		}
-		if err := c.RecordTests(ctx, results); err != nil {
+		Name:        "record_test_run",
+		Description: "Record one run of a suite of your tests.yaml. Run the suite's command first: it writes a JUnit XML report to /hikari/private/reports/<suite>.xml. hikari reads the report, keeps the result of each test, deletes the report, and computes the health of each feature from the tests that touch it.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a runArgs) (*mcp.CallToolResult, any, error) {
+		res, err := c.RecordRun(ctx, a.Suite)
+		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Recorded test results for %d feature(s).", len(results))), nil, nil
+		var b strings.Builder
+		fmt.Fprintf(&b, "Recorded suite %s: %d passed, %d failed, %d skipped.", res.Suite, res.Passed, res.Failed, res.Skipped)
+		if res.Unmapped > 0 {
+			fmt.Fprintf(&b, " %d test(s) touch no feature yet; get_my_system lists them under unmapped_tests, and you map them in tests.yaml.", res.Unmapped)
+		}
+		for _, ch := range res.Changed {
+			fmt.Fprintf(&b, "\n%s: was %s, now %s", ch.Feature, ch.From, ch.To)
+		}
+		return text(b.String()), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

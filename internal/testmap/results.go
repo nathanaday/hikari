@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,29 @@ func NewRun(cases []Case, now time.Time, code map[string]string, hashFile func(r
 		}
 	}
 	return r
+}
+
+// FollowChange renames the code hashes of renamed features in every run,
+// and drops those of removed features, so that a rename keeps results
+// current. It reports whether anything changed.
+func (r Results) FollowChange(renamed map[string]string, removed []string) bool {
+	changed := false
+	for suite, run := range r.Runs {
+		code := map[string]string{}
+		for id, h := range run.Code {
+			switch to, ok := renamed[id]; {
+			case ok:
+				code[to], changed = h, true
+			case slices.Contains(removed, id):
+				changed = true
+			default:
+				code[id] = h
+			}
+		}
+		run.Code = code
+		r.Runs[suite] = run
+	}
+	return changed
 }
 
 // LoadResults reads the results file. A missing file is no results. An

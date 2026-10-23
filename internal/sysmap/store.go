@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nathanaday/hikari/internal/testmap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,7 +32,7 @@ type Store struct {
 	size        int64
 	loadErr     string
 	privateSeen string
-	note        string
+	notes       []string
 }
 
 // Open loads the map of the system name from mapPath. root is the system's
@@ -41,8 +42,12 @@ type Store struct {
 // first suite of a new test plan.
 func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 	s := &Store{root: root, path: mapPath, name: name}
-	if err := writePrivateSkeletons(root, testCommand); err != nil {
+	note, err := preparePrivate(root, testCommand)
+	if err != nil {
 		return nil, false, err
+	}
+	if note != "" {
+		s.notes = append(s.notes, note)
 	}
 	s.privateSeen = s.privateStamp()
 	if _, err := os.Stat(s.path); errors.Is(err, fs.ErrNotExist) {
@@ -54,7 +59,7 @@ func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 		if err := os.Remove(s.path); err != nil {
 			return nil, false, err
 		}
-		s.note = fmt.Sprintf("deleted %s: it is a version %d map, and this hikari writes version %d; the owner describes the system again", s.path, v, version)
+		s.notes = append(s.notes, fmt.Sprintf("deleted %s: it is a version %d map, and this hikari writes version %d; the owner describes the system again", s.path, v, version))
 		s.m = New(name)
 		return s, true, s.save(s.m)
 	}
@@ -66,8 +71,8 @@ func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 	return s, false, nil
 }
 
-// Note returns what Open did to a map file from an earlier version, or "".
-func (s *Store) Note() string { return s.note }
+// Notes returns what Open did to files from an earlier version.
+func (s *Store) Notes() []string { return s.notes }
 
 // fileVersion reads only the version of a map file.
 func fileVersion(path string) (int, error) {
@@ -106,7 +111,8 @@ func (s *Store) Error() string {
 }
 
 // Update applies fn to a copy of the map, checks the result, and writes it.
-// The file never holds an invalid map.
+// The file never holds an invalid map. The health in the file is what the
+// caller sets.
 func (s *Store) Update(fn func(*Map) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,11 +122,6 @@ func (s *Store) Update(fn func(*Map) error) error {
 	}
 	if err := s.check(next); err != nil {
 		return err
-	}
-	priv, _ := s.Private()
-	for i := range next.Features {
-		f := &next.Features[i]
-		f.Health = Health(*f, priv.Tested(f.ID), s.hashOrEmpty(priv.Paths(f.ID)))
 	}
 	if err := s.save(next); err != nil {
 		return err
@@ -194,16 +195,6 @@ func (s *Store) PrivateErrors(m *Map) []string {
 	return strings.Split(err.Error(), "\n")
 }
 
-// FeatureHash returns the current content hash of a feature's files, as the
-// private documents list them.
-func (s *Store) FeatureHash(id string) (string, error) {
-	p, err := s.Private()
-	if err != nil {
-		return "", err
-	}
-	return ContentHash(s.root, p.Paths(id))
-}
-
 func (s *Store) exists(rel string) bool {
 	_, err := os.Stat(filepath.Join(s.root, rel))
 	return err == nil
@@ -212,20 +203,30 @@ func (s *Store) exists(rel string) bool {
 // Exists reports whether a path relative to the scope exists.
 func (s *Store) Exists(rel string) bool { return s.exists(rel) }
 
+// IsFile reports whether a path relative to the scope is a file.
+func (s *Store) IsFile(rel string) bool {
+	info, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(rel)))
+	return err == nil && info.Mode().IsRegular()
+}
+
+// IsDir reports whether a path relative to the scope is a directory.
+func (s *Store) IsDir(rel string) bool {
+	info, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(rel)))
+	return err == nil && info.IsDir()
+}
+
+// PrivatePath returns the host path of a file in the private directory.
+func (s *Store) PrivatePath(file string) string { return privatePath(s.root, file) }
+
 // privateStamp identifies the current version of the private documents.
 func (s *Store) privateStamp() string {
 	var b strings.Builder
-	for _, file := range []string{LayoutFile, TestFile} {
+	for _, file := range []string{LayoutFile, testmap.MapFile} {
 		if info, err := os.Stat(privatePath(s.root, file)); err == nil {
 			fmt.Fprintf(&b, "%s:%d:%d;", file, info.ModTime().UnixNano(), info.Size())
 		}
 	}
 	return b.String()
-}
-
-func (s *Store) hashOrEmpty(paths []string) string {
-	h, _ := ContentHash(s.root, paths)
-	return h
 }
 
 func (s *Store) check(m *Map) error {

@@ -3,6 +3,7 @@ package systems
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/nathanaday/hikari/internal/featurewiki"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
 )
@@ -129,14 +131,37 @@ parts: [{path: create.py, description: Order creation.}]
 features:
   create-order: {code: [create.py]}
 `)
-	write(t, f.repo, "services/orders/.hikari/private/test.yaml", `version: 1
+	write(t, f.repo, "services/orders/.hikari/private/tests.yaml", `version: 1
 suites:
-  unit: {command: python3 -m unittest}
-features:
-  create-order:
-    covers: Orders are stored.
-    tests: [{suite: unit, files: [tests/test_create.py]}]
+  unit: {command: python3 -m pytest}
+tests:
+  tests/test_create.py: ["[[create-order]]"]
 `)
+}
+
+// runOrders writes a JUnit report of orders' suite unit, with one test in
+// tests/test_create.py for each outcome, and records it.
+func (f *fixture) runOrders(t *testing.T, outcomes ...string) api.RunResult {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString(`<testsuites><testsuite name="pytest">`)
+	for i, o := range outcomes {
+		fmt.Fprintf(&b, `<testcase classname="tests.test_create.CreateTest" name="test_%d" file="tests/test_create.py">`, i)
+		switch o {
+		case testmap.Failed:
+			b.WriteString(`<failure message="AssertionError: no order stored"/>`)
+		case testmap.Skipped:
+			b.WriteString(`<skipped/>`)
+		}
+		b.WriteString(`</testcase>`)
+	}
+	b.WriteString(`</testsuite></testsuites>`)
+	write(t, f.repo, "services/orders/.hikari/private/reports/unit.xml", b.String())
+	res, err := f.m.RecordRun("orders", "unit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
 }
 
 // body makes a document body with the given Purpose.
@@ -168,7 +193,7 @@ func TestNewPreparesReposAndMaps(t *testing.T) {
 		}
 	}
 	for _, scope := range []string{"services/orders", "services/inventory"} {
-		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "private", "test.yaml")); err != nil {
+		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "private", "tests.yaml")); err != nil {
 			t.Errorf("L5: no private documents in %s: %v", scope, err)
 		}
 		if _, err := os.Stat(filepath.Join(f.repo, scope, ".hikari", "map.yaml")); err == nil {
@@ -226,14 +251,21 @@ func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	f.describeOrders(t)
 	_, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
 	must(t, err)
-	if err := f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "untested-thing", Passed: 1}}); err == nil || !strings.Contains(err.Error(), "lists no tests for feature") {
-		t.Errorf("results for a feature outside the plan: %v", err)
+	if _, err := f.m.RecordRun("orders", "e2e"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "its suites are unit") {
+		t.Errorf("J2: a suite that the test map lacks: %v", err)
+	}
+	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "no report at /hikari/private/reports/unit.xml") {
+		t.Errorf("J2: no report: %v", err)
+	}
+	write(t, f.repo, "services/orders/.hikari/private/reports/unit.xml", "<testsuites/>")
+	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "no test case") {
+		t.Errorf("J2: an empty report: %v", err)
 	}
 	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [create.py]}\n")
 	if _, err := f.m.MarkCurrent("orders"); err == nil || !strings.Contains(err.Error(), "P2") {
 		t.Errorf("mark current with invalid documents: %v", err)
 	}
-	if err := f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 1}}); err == nil || !strings.Contains(err.Error(), "P2") {
+	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "P2") {
 		t.Errorf("record with invalid documents: %v", err)
 	}
 	if v, _ := f.m.OwnView("orders"); len(v.PrivateErrors) != 1 {
@@ -250,7 +282,13 @@ func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 func TestOwnerWorkflow(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	must(t, f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 3}}))
+	run := f.runOrders(t, testmap.Passed, testmap.Passed, testmap.Passed)
+	if run.Passed != 3 || run.Unmapped != 0 || len(run.Changed) != 1 || run.Changed[0] != (api.HealthChange{Feature: "create-order", From: testmap.Pending, To: testmap.Passing}) {
+		t.Errorf("J1: %+v", run)
+	}
+	if _, err := os.Stat(filepath.Join(f.repo, "services/orders/.hikari/private/reports/unit.xml")); err == nil {
+		t.Error("J1: the report is deleted once read")
+	}
 
 	write(t, f.repo, "services/orders/cancel.py", "def cancel(): pass\n")
 	commit, err := f.m.MarkCurrent("orders")
@@ -261,7 +299,7 @@ func TestOwnerWorkflow(t *testing.T) {
 		t.Errorf("MarkCurrent commit: %q", got)
 	}
 	v, _ := f.m.OwnView("orders")
-	if v.State != sysmap.Current || v.System.DescribedState.Commit != commit || v.Features[0].Health != sysmap.Passing {
+	if v.State != sysmap.Current || v.System.DescribedState.Commit != commit || v.Features[0].Health != testmap.Passing || v.Features[0].Tests.Passed != 3 {
 		t.Errorf("after MarkCurrent: state %s, commit %s, health %s", v.State, v.System.DescribedState.Commit, v.Features[0].Health)
 	}
 
@@ -284,8 +322,11 @@ func TestOwnerWorkflow(t *testing.T) {
 	if !slices.Equal(tc.UnmappedPaths, []string{"README.md"}) {
 		t.Errorf("S21: unmapped paths: %v", tc.UnmappedPaths)
 	}
-	if v, _ := f.m.OwnView("orders"); v.Features[0].Health != sysmap.Stale || v.Features[0].State != sysmap.Stale {
-		t.Errorf("S9, S20 after an edit: health %s, state %s", v.Features[0].Health, v.Features[0].State)
+	if v, _ := f.m.OwnView("orders"); v.Features[0].Health != testmap.Pending || v.Features[0].State != sysmap.Stale || !slices.Equal(v.PendingFeatures, []string{"create-order"}) {
+		t.Errorf("S26, S20 after an edit: health %s, state %s, pending %v", v.Features[0].Health, v.Features[0].State, v.PendingFeatures)
+	}
+	if tc.PendingFeatures == nil || tc.PendingFeatures[0] != "create-order" {
+		t.Errorf("P20: pending features in the turn context: %+v", tc)
 	}
 
 	// The automatic commit takes the edit and the map file.
@@ -522,7 +563,7 @@ func TestPublishRelease(t *testing.T) {
 	}
 
 	f.describeOrders(t)
-	must(t, f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 1}}))
+	f.runOrders(t, testmap.Passed)
 	if _, err := f.m.MarkCurrent("orders"); err != nil {
 		t.Fatal(err)
 	}
@@ -659,18 +700,22 @@ func TestChangeFeatures(t *testing.T) {
 		t.Errorf("W1 across systems: %v", err)
 	}
 
-	// A rename keeps test results, rewrites links, and notes the private documents.
-	must(t, f.m.RecordTests("orders", []sysmap.TestResult{{Feature: "create-order", Passed: 3}}))
+	// A rename keeps test results and rewrites links in the wiki and the
+	// private documents.
+	f.runOrders(t, testmap.Passed, testmap.Passed, testmap.Passed)
 	res, err = f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ = f.m.OwnView("orders")
-	if len(v.Features) != 2 || v.Features[1].ID != "place-order" || v.Features[1].Tests.Passed != 3 || !slices.Equal(v.Features[0].Related, []string{"place-order"}) {
-		t.Errorf("E5, K4 after a rename: %+v", v.Features)
+	if len(v.Features) != 2 || v.Features[1].ID != "place-order" || v.Features[1].Tests.Passed != 3 || v.Features[1].Health != testmap.Passing || !slices.Equal(v.Features[0].Related, []string{"place-order"}) {
+		t.Errorf("E5, E7, K4 after a rename: %+v", v.Features)
 	}
-	if len(res.Notes) != 2 || !strings.Contains(res.Notes[0], "layout.yaml still names") || !strings.Contains(res.Notes[1], "test.yaml still names") {
-		t.Errorf("E4: notes = %v", res.Notes)
+	if len(res.Notes) != 0 || len(v.PrivateErrors) != 0 {
+		t.Errorf("E7: a rename leaves nothing to fix: notes %v, errors %v", res.Notes, v.PrivateErrors)
+	}
+	if priv, _ := sysmap.LoadPrivate(filepath.Join(f.repo, "services/orders")); priv.Tests.Tests["tests/test_create.py"][0] != "[[place-order]]" || priv.Layout.Features["place-order"].Code == nil {
+		t.Errorf("E7: private documents after a rename: %+v", priv)
 	}
 	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err == nil {
 		t.Error("K4: the old file is gone")
@@ -684,12 +729,21 @@ func TestChangeFeatures(t *testing.T) {
 		t.Errorf("Q3: the document as on disk: %v", err)
 	}
 
-	// A remove drops the feature and its results.
-	if _, err := f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "remove", ID: "place-order"}}); err != nil {
+	// A remove drops the feature; its tests become unmapped, and the code
+	// map is left to the owner.
+	res, err = f.m.ChangeFeatures("orders", []featurewiki.Write{{Op: "remove", ID: "place-order"}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := f.m.OwnView("orders"); len(v.Features) != 1 || len(v.Features[0].Related) != 0 {
+	v, _ = f.m.OwnView("orders")
+	if len(v.Features) != 1 || len(v.Features[0].Related) != 0 {
 		t.Errorf("after a remove: %+v", v.Features)
+	}
+	if len(v.UnmappedTests) != 1 || len(v.UnmappedTests[0].Tests) != 3 {
+		t.Errorf("E8: the removed feature's tests are unmapped: %+v", v.UnmappedTests)
+	}
+	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `layout.yaml still names the removed feature "place-order"`) {
+		t.Errorf("E10: notes %v", res.Notes)
 	}
 	if _, err := f.m.ChangeFeatures("eng-lead", nil); !errors.Is(err, ErrForbidden) {
 		t.Errorf("only owners change features: %v", err)
@@ -723,7 +777,7 @@ func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
 	if !o.wiki.Reload() {
 		t.Fatal("the edit was not seen")
 	}
-	must(t, f.m.project(o, nil))
+	must(t, f.m.project(o))
 	if v, _ := f.m.OwnView("orders"); v.Features[0].Description != "Stores a new order for a customer." || v.Error != "" {
 		t.Errorf("W8: %+v", v)
 	}
@@ -731,7 +785,7 @@ func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
 	// cannot follow; the owner view says so.
 	os.WriteFile(path, []byte(strings.Replace(edited, "interfaces: [", "interfaces: [GET /nope, ", 1)), 0o644)
 	o.wiki.Reload()
-	if err := f.m.project(o, nil); err == nil {
+	if err := f.m.project(o); err == nil {
 		t.Fatal("S2 must refuse the projection")
 	}
 	if v, _ := f.m.OwnView("orders"); !strings.Contains(v.Error, "S2") {
@@ -769,5 +823,63 @@ func TestSharedAgentPrefixIsRefused(t *testing.T) {
 	topo, _ := topology.Parse([]byte(testTopology), f.dir)
 	if _, err := New(topo); err == nil || !strings.Contains(err.Error(), "reserved") {
 		t.Errorf("T17: %v", err)
+	}
+}
+
+func TestTestHealth(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	run := f.runOrders(t, testmap.Passed, testmap.Failed, testmap.Skipped)
+	if run.Passed != 1 || run.Failed != 1 || run.Skipped != 1 {
+		t.Errorf("J1: %+v", run)
+	}
+	v, _ := f.m.OwnView("orders")
+	if v.Features[0].Health != testmap.Failing || v.Features[0].Tests != (sysmap.Tests{Passed: 1, Failed: 1, Pending: 1, Ran: v.Features[0].Tests.Ran}) {
+		t.Errorf("S25, Q5: %+v", v.Features[0])
+	}
+	if len(v.FailingTests) != 1 || v.FailingTests[0].ID != "tests.test_create.CreateTest > test_1" || v.FailingTests[0].Message != "AssertionError: no order stored" {
+		t.Errorf("E12: failing tests %+v", v.FailingTests)
+	}
+	tc := f.m.TurnContext("orders")
+	if len(tc.FailingFeatures) != 1 || tc.FailingFeatures[0].ID != "create-order" || tc.FailingFeatures[0].Tests[0] != "tests.test_create.CreateTest > test_1" {
+		t.Errorf("P20: %+v", tc.FailingFeatures)
+	}
+	public, _ := os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	if !strings.Contains(string(public), "health: failing") || !strings.Contains(string(public), "pending: 1") {
+		t.Errorf("Q6: the map file holds the new health:\n%s", public)
+	}
+	for _, leak := range []string{"test_create", "AssertionError", "content_hash"} {
+		if strings.Contains(string(public), leak) {
+			t.Errorf("Q5: the map holds %q:\n%s", leak, public)
+		}
+	}
+	hit, _ := f.m.GetFeature("eng-lead", "orders", "create-order")
+	if hit.Feature.Health != testmap.Failing {
+		t.Errorf("E13: orchestrators see the health: %+v", hit.Feature)
+	}
+
+	// Results and reports stay out of commits (rule L13).
+	write(t, f.repo, "services/orders/.hikari/private/reports/stray.xml", "<x/>")
+	if _, err := f.m.Commit("orders", ""); err != nil {
+		t.Fatal(err)
+	}
+	if files := git(t, f.repo, "show", "--name-only", "--format=", "HEAD"); strings.Contains(files, "results.yaml") || strings.Contains(files, "reports/") || !strings.Contains(files, ".hikari/private/.gitignore") {
+		t.Errorf("L13: committed files:\n%s", files)
+	}
+
+	// A test that no key covers is unmapped, and a key that matches no test
+	// is stale and makes its features pending.
+	write(t, f.repo, "services/orders/.hikari/private/tests.yaml", `version: 1
+suites:
+  unit: {command: python3 -m pytest}
+tests:
+  tests/test_gone.py: ["[[create-order]]"]
+`)
+	v, _ = f.m.OwnView("orders")
+	if len(v.UnmappedTests) != 1 || v.UnmappedTests[0].File != "tests/test_create.py" || len(v.UnmappedTests[0].Tests) != 3 {
+		t.Errorf("C1: unmapped %+v", v.UnmappedTests)
+	}
+	if !slices.Equal(v.StaleKeys, []string{"tests/test_gone.py"}) || v.Features[0].Health != testmap.Pending {
+		t.Errorf("S30: stale keys %v, health %s", v.StaleKeys, v.Features[0].Health)
 	}
 }

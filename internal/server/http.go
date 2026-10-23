@@ -154,11 +154,11 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		return sys.ChangeFeatures(node, req.Writes)
 	})
 	handle("POST /api/node/map/tests", func(r *http.Request, node string) (any, error) {
-		var results []sysmap.TestResult
-		if err := decode(r, &results); err != nil {
+		var req api.RunRequest
+		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		return nil, sys.RecordTests(node, results)
+		return sys.RecordRun(node, req.Suite)
 	})
 	handle("POST /api/node/map/current", func(r *http.Request, node string) (any, error) {
 		commit, err := sys.MarkCurrent(node)
