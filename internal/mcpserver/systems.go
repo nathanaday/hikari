@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/e2e"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -249,6 +250,57 @@ type searchArgs struct {
 
 type documentArgs struct {
 	ID string `json:"id" jsonschema:"the document id, as it appears in a [[link]]"`
+}
+
+type pinArgs struct {
+	Releases []pinArg `json:"releases" jsonschema:"every release of the release set; the lock is replaced by this list"`
+}
+
+type pinArg struct {
+	System      string `json:"system" jsonschema:"the system that published the release"`
+	Deliverable string `json:"deliverable" jsonschema:"the deliverable of the release"`
+	Version     string `json:"version" jsonschema:"the version to test"`
+}
+
+type testPlanArgs struct {
+	Hub string `json:"hub" jsonschema:"the hub whose test plan to read, without the #"`
+}
+
+// addTesterTools adds the tools of a tester (rule LK1 of the tester spec).
+func addTesterTools(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "pin_releases",
+		Description: "Pin the release set that your E2E tests test: hikari writes releases.lock in your scope with each release and its digest, replacing the lock. A change of the lock makes every E2E result pending, so run your tests again after it.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a pinArgs) (*mcp.CallToolResult, any, error) {
+		pins := make([]e2e.LockedRelease, len(a.Releases))
+		for i, p := range a.Releases {
+			pins[i] = e2e.LockedRelease{System: p.System, Deliverable: p.Deliverable, Version: p.Version}
+		}
+		lock, err := c.PinReleases(ctx, pins)
+		if err != nil {
+			return nil, nil, err
+		}
+		var names []string
+		for _, r := range lock.Releases {
+			names = append(names, fmt.Sprintf("%s/%s %s", r.System, r.Deliverable, r.Version))
+		}
+		return text("Pinned " + strings.Join(names, ", ") + " in " + e2e.LockFile + "."), nil, nil
+	})
+}
+
+// addTestPlanReader adds get_test_plan, for a tester and an orchestrator of
+// a tested hub (rule PL7).
+func addTestPlanReader(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_test_plan",
+		Description: "Read the E2E test plan of a hub: the plan's components, actors, scenarios, and gaps with the user's approvals, what hikari found wrong in it, the pinned release set, and the E2E health of each story and rule, with the suspects of a failing one.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a testPlanArgs) (*mcp.CallToolResult, any, error) {
+		out, err := c.GetTestPlan(ctx, hubName(a.Hub))
+		if err != nil {
+			return nil, nil, err
+		}
+		return yamlResult(out)
+	})
 }
 
 // addWikiReaders adds the tools that read the wikis, for every agent

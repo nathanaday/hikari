@@ -56,6 +56,9 @@ func orchestratorPrompt(self api.Self) string {
 The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the owner makes it (SKILL.md). When a system announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the hub agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the owner what is missing. You cannot change deliverables or who holds them; ask the user.
 `, api.SharedDir)
 	}
+	for _, hub := range slices.Sorted(maps.Keys(self.Testers)) {
+		fmt.Fprintf(&b, "\n%s is the tester of #%s: it proves the hub's stories and rules against the releases of its systems, and each story gets health from its tests. mcp__hikari__get_test_plan shows its plan, the gaps that the user approved, and the health of each story, with the systems a failing story suspects.\n", self.Testers[hub], hub)
+	}
 	fmt.Fprintf(&b, "\n## Your hub wikis\n\nYou keep the wiki of %s: the stories, rules, and principles that say what the hub's systems must do together. Change it only with mcp__hikari__change_hub_wiki, and link each story to the features of the systems that carry it out. Before you write or change a hub wiki, load the hikari-hub skill. A story that the user marked key is part of the integration test that matters most to the user.\n", strings.Join(hubs, ", "))
 	fmt.Fprintf(&b, "\n## Your vocabularies\n\nYou keep the vocabulary of %s: the names that everyone in the hub uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.", strings.Join(hubs, ", "))
 	if len(self.VisibleSystems) > 0 {
@@ -69,6 +72,10 @@ The map and the releases of each of your systems are in /hikari/public/readonly/
 // takes messages (rule D8).
 func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	var b strings.Builder
+	if self.Tests != "" && tc.MapState != mapStale {
+		fmt.Fprintf(&b, "You are the tester of #%s, and your documents are not built yet. Load the hikari-tester skill and follow its Start procedure: read the wiki of #%s and the releases you can read, write %s/%s, pin the releases with pin_releases, describe your scaffold with set_system_info, and call mark_map_current. Then post the plan's summary in #%s and ask the user to review it.\n", self.Tests, self.Tests, self.System.WorkDir, e2ePlan, self.Tests)
+		return b.String()
+	}
 	if tc.MapState == mapStale {
 		b.WriteString("Your system documents are stale: the code changed since they were last marked current.\n\n")
 		b.WriteString(staleLists(tc))
@@ -202,6 +209,9 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		if len(tc.PrivateErrors) > 0 {
 			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
 		}
+		if len(tc.NewerReleases) > 0 {
+			notes = append(notes, "Newer releases: "+strings.Join(tc.NewerReleases, "; ")+". Follow the Keep true procedure of the hikari-tester skill: pin them, run your tests, and update the plan.")
+		}
 	}
 	for _, w := range tc.WikiChanged {
 		items := make([]string, len(w.Docs))
@@ -233,6 +243,25 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		fmt.Fprintf(&b, "<notice>%s</notice>\n", n)
 	}
 	b.WriteString("\n")
+	return b.String()
+}
+
+// e2ePlan is the plan's file name in a tester's scope.
+const e2ePlan = "plan.md"
+
+// testerPrompt tells a tester what it tests and how (rule SK2 of the tester
+// spec).
+func testerPrompt(self api.Self) string {
+	if self.Tests == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n## You are the tester of #%s\n\nYou prove the stories and rules of the wiki of #%s against the released products of its systems. You never see their code; you test what they release. Load the hikari-tester skill before you plan, pin, test, or report.\n\n", self.Tests, self.Tests)
+	fmt.Fprintf(&b, "- Your architecture plan is %s/%s: the components of the test system, the actors that drive it, the scenarios, and the gaps you cannot test. Keep it true; the user reviews it and approves each gap.\n", self.System.WorkDir, e2ePlan)
+	b.WriteString("- Pin the release set you test with mcp__hikari__pin_releases. A new pin makes every result pending: run your tests again after it.\n")
+	b.WriteString("- In tests.yaml, link each test to the stories and rules it checks, as [[id]]. A story's health comes from those tests, as a feature's comes from unit tests.\n")
+	fmt.Fprintf(&b, "- When a story fails, tell the orchestrator of #%s in the hub: the story, the test, the step that failed, what you expected, and what happened. Describe behavior, not code.\n", self.Tests)
+	b.WriteString("- mcp__hikari__get_test_plan shows the plan as hikari reads it: its findings, the gaps with the user's approvals, and the E2E health of each story.\n")
 	return b.String()
 }
 

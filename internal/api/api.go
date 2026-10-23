@@ -60,6 +60,10 @@ type Self struct {
 	VisibleSystems []string `json:"visible_systems,omitempty"`
 	// HubWikis lists the hubs whose wikis the agent reads.
 	HubWikis []string `json:"hub_wikis,omitempty"`
+	// Tests is the hub that a tester tests.
+	Tests string `json:"tests,omitempty"`
+	// Testers maps each hub that an orchestrator orchestrates to its tester.
+	Testers map[string]string `json:"testers,omitempty"`
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that an owner publishes.
@@ -85,10 +89,11 @@ type DeliverableInfo struct {
 const (
 	SystemSkill = "hikari-system"
 	HubSkill    = "hikari-hub"
+	TesterSkill = "hikari-tester"
 )
 
 // BuiltinSkills are hikari's own skills.
-var BuiltinSkills = []string{SystemSkill, HubSkill}
+var BuiltinSkills = []string{SystemSkill, HubSkill, TesterSkill}
 
 // AgentPrefix starts the name of each of hikari's own agents. No shared
 // agent may use it.

@@ -317,7 +317,7 @@ func (m *Manager) testReport(o *owner, priv sysmap.Private, ids []string) (testm
 	root := o.store.Root()
 	hashes := testmap.Hashes{
 		File: func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h },
-		Code: func(id string) string { h, _ := sysmap.ContentHash(root, priv.Code(id)); return h },
+		Code: m.codeHash(o, priv),
 	}
 	return testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.store), results, ids, hashes), problem
 }
@@ -651,7 +651,7 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 	for i, f := range mp.Features {
 		ids[i] = f.ID
 	}
-	rep, resultsProblem := m.testReport(o, priv, ids)
+	rep, resultsProblem := m.testReport(o, priv, append(slices.Clone(ids), m.storyIDs(o)...))
 	described := func(id string) bool { return w[id] != nil && w[id].DescribedCommit != "" }
 	paths := func(id string) []string { return append(priv.Code(id), rep.Features[id].Files...) }
 	st := sysmap.FeatureStates(ids, described, paths, rep.TestFiles, changed)
@@ -691,7 +691,7 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 		StaleKeys:           rep.StaleKeys,
 		Warnings:            warnings,
 		Error:               strings.Join(problems, "; "),
-		PrivateErrors:       o.store.PrivateErrors(mp),
+		PrivateErrors:       m.privateErrors(o, mp),
 	}
 }
 
@@ -704,10 +704,16 @@ func (m *Manager) OwnView(agent string) (sysmap.OwnerView, error) {
 	return m.ownerView(o), nil
 }
 
+// privateErrors returns the problems of o's private documents: the code
+// map and the test map, and a tester's plan and lock.
+func (m *Manager) privateErrors(o *owner, mp *sysmap.Map) []string {
+	return append(o.store.PrivateErrors(mp, m.storyIDs(o)...), m.testerProblems(o)...)
+}
+
 // checkPrivate returns an error that lists the problems of o's private
 // documents, if there are any.
-func checkPrivate(o *owner, mp *sysmap.Map) error {
-	if errs := o.store.PrivateErrors(mp); len(errs) > 0 {
+func (m *Manager) checkPrivate(o *owner, mp *sysmap.Map) error {
+	if errs := m.privateErrors(o, mp); len(errs) > 0 {
 		return fmt.Errorf("fix your private documents in %s/%s first:\n%s", sysmap.Dir, sysmap.PrivateDir, strings.Join(errs, "\n"))
 	}
 	return nil
@@ -755,7 +761,7 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	}
 	o.runs.Lock()
 	defer o.runs.Unlock()
-	if err := checkPrivate(o, o.store.Map()); err != nil {
+	if err := m.checkPrivate(o, o.store.Map()); err != nil {
 		return api.RunResult{}, err
 	}
 	priv, _ := o.store.Private()
@@ -780,12 +786,13 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	if err != nil {
 		return api.RunResult{}, fmt.Errorf("J2: %s: %w", where, err)
 	}
-	ids := o.wiki.Wiki().Features()
+	ids := append(o.wiki.Wiki().Features(), m.storyIDs(o)...)
 	before, _ := m.testReport(o, priv, ids)
 	root := o.store.Root()
 	code := map[string]string{}
+	hashCode := m.codeHash(o, priv)
 	for _, id := range ids {
-		code[id], _ = sysmap.ContentHash(root, priv.Code(id))
+		code[id] = hashCode(id)
 	}
 	run := testmap.NewRun(cases, m.now(), code, func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h })
 	resultsPath := o.store.PrivatePath(testmap.ResultsFile)
@@ -833,7 +840,7 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := checkPrivate(o, o.store.Map()); err != nil {
+	if err := m.checkPrivate(o, o.store.Map()); err != nil {
 		return "", err
 	}
 	if _, err := o.repo.Commit(o.branch, o.scope, agent, agent+": changes described by the system map"); err != nil {
@@ -913,6 +920,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Ma
 func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
+		tc.NewerReleases = m.newerReleases(o)
 		v := m.ownerView(o)
 		tc.MapState, tc.PrivateErrors = v.State, v.PrivateErrors
 		tc.StaleFeatures, tc.UndescribedFeatures, tc.UnmappedPaths = v.StaleFeatures, v.UndescribedFeatures, v.UnmappedPaths

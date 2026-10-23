@@ -201,6 +201,7 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 	b.WriteString(wikisPrompt(self))
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
+		b.WriteString(testerPrompt(self))
 	}
 	if len(self.Orchestrates) > 0 {
 		b.WriteString(orchestratorPrompt(self))

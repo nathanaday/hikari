@@ -183,11 +183,12 @@ func (s *Store) Private() (Private, error) {
 }
 
 // PrivateErrors returns the problems of the private documents, checked
-// against the features of m.
-func (s *Store) PrivateErrors(m *Map) []string {
+// against the features of m. The test map may also link the ids in extra,
+// as a tester's links the stories of its hub.
+func (s *Store) PrivateErrors(m *Map, extra ...string) []string {
 	p, err := s.Private()
 	if err == nil {
-		err = p.Validate(m.IDs(), s.exists)
+		err = p.Validate(m.IDs(), extra, s.exists)
 	}
 	if err == nil {
 		return nil

@@ -230,6 +230,11 @@ func (m *Manager) ChangeWiki(agent, hub string, writes []wiki.Write) (api.Change
 			}
 		}
 	}
+	if tester := m.topo.Tester(w.name); w.scope == "hub" && tester != "" && (len(res.Renamed) > 0 || len(removed) > 0) {
+		// TT2: the tester's test map follows the hub's stories.
+		out.Notes = append(out.Notes, m.followFeatureChange(m.owners[tester], res, removed)...)
+		changed = append(changed, m.wikis[api.SystemWikiRef(tester)])
+	}
 	verb := "change the wiki"
 	if w.scope == "system" {
 		o := m.owners[agent]
@@ -340,6 +345,15 @@ func hash(text string) string {
 // wikiView returns one wiki for the UI.
 func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 	v := api.WikiView{Ref: w.ref, Scope: w.scope, Name: w.name, Documents: []api.WikiDoc{}, Problems: w.store.Problems()}
+	e2eHealth := map[string]string{}
+	if w.scope == "hub" {
+		v.Tests = m.testPlan(w.name, health)
+		if v.Tests != nil {
+			for _, sh := range v.Tests.Stories {
+				e2eHealth[sh.ID] = sh.Health
+			}
+		}
+	}
 	docs := w.store.Wiki()
 	c := m.check(w)
 	v.Warnings = docs.Warnings(c)
@@ -358,6 +372,7 @@ func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 			doc.Health = health[id]
 		case w.scope == "hub" && (doc.Kind == wiki.Story || doc.Kind == wiki.Rule):
 			doc.Support = support(d, health)
+			doc.Health = e2eHealth[id]
 		}
 		v.Documents = append(v.Documents, doc)
 	}
@@ -437,6 +452,13 @@ func (m *Manager) hit(w *wikiOf, id string, d *wiki.Document, health map[string]
 		}
 	case w.scope == "hub" && (h.Kind == wiki.Story || h.Kind == wiki.Rule):
 		h.Support = support(d, health)
+		if p := m.testPlan(w.name, health); p != nil {
+			for _, sh := range p.Stories {
+				if sh.ID == id {
+					h.Health = sh.Health
+				}
+			}
+		}
 	}
 	return h
 }

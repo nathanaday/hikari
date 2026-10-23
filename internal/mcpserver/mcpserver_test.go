@@ -54,9 +54,11 @@ func TestToolsByRole(t *testing.T) {
 		self api.Self
 		want []string
 	}{
-		"member":       {api.Self{Name: "writer"}, sorted(everyone)},
-		"owner":        {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
-		"orchestrator": {api.Self{Name: "lead", Orchestrates: []string{"eng"}}, sorted(everyone, orchestrator)},
+		"member":               {api.Self{Name: "writer"}, sorted(everyone)},
+		"owner":                {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
+		"orchestrator":         {api.Self{Name: "lead", Orchestrates: []string{"eng"}}, sorted(everyone, orchestrator)},
+		"tester":               {api.Self{Name: "e2e", System: &api.SelfSystem{}, Tests: "eng"}, sorted(everyone, ownerOnly, []string{"get_test_plan", "pin_releases"})},
+		"lead of a tested hub": {api.Self{Name: "lead", Orchestrates: []string{"eng"}, Testers: map[string]string{"eng": "e2e"}}, sorted(everyone, orchestrator, []string{"get_test_plan"})},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -141,9 +141,10 @@ func readPrivate(root, file string) ([]byte, error) {
 }
 
 // Validate checks the rules P1 to P3 of the code map and X1 to X4 of the
-// test map against the features of the map. exists reports whether a path
-// relative to the scope exists.
-func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) error {
+// test map against the features of the map. The test map may also link
+// the ids of extra. exists reports whether a path relative to the scope
+// exists.
+func (p Private) Validate(ids map[string]bool, extra []string, exists func(rel string) bool) error {
 	var errs []error
 	fail := func(rule, format string, args ...any) {
 		errs = append(errs, fmt.Errorf(rule+": "+format, args...))
@@ -169,7 +170,11 @@ func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) err
 			checkPath(fmt.Sprintf("%s feature %q", LayoutFile, id), path)
 		}
 	}
-	return errors.Join(append(errs, p.Tests.Validate(ids))...)
+	links := maps.Clone(ids)
+	for _, id := range extra {
+		links[id] = true
+	}
+	return errors.Join(append(errs, p.Tests.Validate(links))...)
 }
 
 // Code returns the code paths of a feature.

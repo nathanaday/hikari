@@ -47,6 +47,9 @@ func builtinSkills(self api.Self) []string {
 	if self.System != nil {
 		out = append(out, api.SystemSkill)
 	}
+	if self.Tests != "" {
+		out = append(out, api.TesterSkill)
+	}
 	if len(self.Orchestrates) > 0 {
 		out = append(out, api.HubSkill)
 	}

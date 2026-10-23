@@ -112,7 +112,7 @@ func TestPrivateRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Validate(m.IDs(), exists); err != nil {
+	if err := p.Validate(m.IDs(), nil, exists); err != nil {
 		t.Fatalf("valid documents: %v", err)
 	}
 	if got := strings.Join(p.Code("create-order"), ","); got != "orders/create.py" || len(p.Code("ghost")) != 0 {
@@ -141,7 +141,7 @@ func TestPrivateRules(t *testing.T) {
 			writeFile(t, root, ".hikari/private/tests.yaml", c.tests)
 			p, err := LoadPrivate(root)
 			if err == nil {
-				err = p.Validate(m.IDs(), exists)
+				err = p.Validate(m.IDs(), nil, exists)
 			}
 			if err == nil || !strings.Contains(err.Error(), c.rule+":") {
 				t.Errorf("error = %v, want rule %s", err, c.rule)

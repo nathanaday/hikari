@@ -388,6 +388,15 @@ func (s *Server) Self(node string) api.Self {
 	self.System, self.Orchestrates = s.sys.Self(node)
 	self.VisibleSystems = s.topo.VisibleSystems(node)
 	self.HubWikis = s.topo.ReadableHubWikis(node)
+	self.Tests = s.topo.Agents[node].Tests
+	for _, hub := range s.topo.OrchestratedHubs(node) {
+		if tester := s.topo.Tester(hub); tester != "" {
+			if self.Testers == nil {
+				self.Testers = map[string]string{}
+			}
+			self.Testers[hub] = tester
+		}
+	}
 	self.Releases = s.topo.ReadableReleases(node)
 	self.Deliverables = s.sys.Deliverables(node)
 	for _, hub := range s.topo.OrchestratedHubs(node) {

@@ -7,6 +7,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/nathanaday/hikari/internal/e2e"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -71,6 +72,9 @@ type TurnContext struct {
 	// WikiChanged lists the documents of the agent's readable wikis that
 	// someone else changed since its last turn (rule E1).
 	WikiChanged []WikiChange `json:"wiki_changed,omitempty"`
+	// NewerReleases names the pinned releases of a tester that have a
+	// newer version (rule LK3 of the tester spec).
+	NewerReleases []string `json:"newer_releases,omitempty"`
 }
 
 // WikiChange names the changed documents of one wiki. Wiki is its label:
@@ -162,6 +166,45 @@ type WikiView struct {
 	// the rest.
 	Problems []string `json:"problems,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
+	// Tests is the test plan of a hub that has a tester.
+	Tests *TestPlan `json:"tests,omitempty"`
+}
+
+// TestPlan is the plan of a tested hub, with what hikari found in it, the
+// release set, the gaps with their approvals, and the E2E health of each
+// story and rule (rule PL7 of the tester spec).
+type TestPlan struct {
+	Hub      string        `yaml:"hub" json:"hub"`
+	Tester   string        `yaml:"tester" json:"tester"`
+	Plan     e2e.Plan      `yaml:"plan" json:"plan"`
+	Body     string        `yaml:"body,omitempty" json:"body,omitempty"`
+	Lock     e2e.Lock      `yaml:"lock" json:"lock"`
+	Problems []string      `yaml:"problems,omitempty" json:"problems,omitempty"`
+	Warnings []string      `yaml:"warnings,omitempty" json:"warnings,omitempty"`
+	Gaps     []GapView     `yaml:"gaps" json:"gaps"`
+	Stories  []StoryHealth `yaml:"stories" json:"stories"`
+}
+
+// GapView is a gap of the plan with the user's approval.
+type GapView struct {
+	ID       string `yaml:"id" json:"id"`
+	e2e.Gap  `yaml:",inline"`
+	Approved bool `yaml:"approved" json:"approved"`
+}
+
+// StoryHealth is the E2E health of one story or rule (rules EH1 to EH4).
+type StoryHealth struct {
+	ID       string   `yaml:"id" json:"id"`
+	Kind     string   `yaml:"kind" json:"kind"`
+	Name     string   `yaml:"name,omitempty" json:"name,omitempty"`
+	Key      bool     `yaml:"key,omitempty" json:"key,omitempty"`
+	Health   string   `yaml:"health" json:"health"`
+	Passed   int      `yaml:"passed,omitempty" json:"passed"`
+	Failed   int      `yaml:"failed,omitempty" json:"failed"`
+	Pending  int      `yaml:"pending,omitempty" json:"pending"`
+	Support  string   `yaml:"support,omitempty" json:"support,omitempty"`
+	Suspects []string `yaml:"suspects,omitempty" json:"suspects,omitempty"`
+	Gaps     []string `yaml:"gaps,omitempty" json:"gaps,omitempty"`
 }
 
 // DocRef names a document in a wiki.
@@ -336,6 +379,20 @@ func (c *Client) ListSystems(ctx context.Context) ([]SystemSummary, error) {
 func (c *Client) GetSystem(ctx context.Context, name string) (OrchestratorSystem, error) {
 	var out OrchestratorSystem
 	err := c.do(ctx, http.MethodGet, "/api/node/systems/"+url.PathEscape(name), nil, &out)
+	return out, err
+}
+
+// PinReleases writes the tester's release lock.
+func (c *Client) PinReleases(ctx context.Context, pins []e2e.LockedRelease) (e2e.Lock, error) {
+	var out e2e.Lock
+	err := c.do(ctx, http.MethodPost, "/api/node/e2e/lock", pins, &out)
+	return out, err
+}
+
+// GetTestPlan returns the test plan of a hub.
+func (c *Client) GetTestPlan(ctx context.Context, hub string) (TestPlan, error) {
+	var out TestPlan
+	err := c.do(ctx, http.MethodGet, "/api/node/e2e/plans/"+url.PathEscape(hub), nil, &out)
 	return out, err
 }
 

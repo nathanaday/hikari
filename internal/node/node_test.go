@@ -429,3 +429,37 @@ func TestHubSkillAndWikiPrompts(t *testing.T) {
 		}
 	}
 }
+
+func TestTesterPrompts(t *testing.T) {
+	tester := api.Self{Name: "e2e", Tests: "main", HubWikis: []string{"main"}, System: &api.SelfSystem{Repo: "project", Branch: "hikari", Scope: "e2e/main", WorkDir: "/workspace/e2e/main"}}
+	if got := builtinSkills(tester); !slices.Equal(got, []string{api.SystemSkill, api.TesterSkill}) {
+		t.Errorf("SK1: a tester gets %v", got)
+	}
+	p := systemPrompt(tester)
+	for _, want := range []string{"## You are the tester of #main", "/workspace/e2e/main/plan.md", "mcp__hikari__pin_releases", "Load the hikari-tester skill", "Describe behavior, not code"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("SK2: tester prompt lacks %q", want)
+		}
+	}
+	start := indexingPrompt(tester, api.TurnContext{MapState: "unbuilt"})
+	if !strings.Contains(start, "Start procedure") || strings.Contains(start, "Build procedure") {
+		t.Errorf("SK2: the first turn = %q", start)
+	}
+	n := turnNotices(tester, api.TurnContext{NewerReleases: []string{"tally/python-library 0.2.0 is newer than your pinned 0.1.0"}})
+	if !strings.Contains(n, "Newer releases: tally/python-library 0.2.0") {
+		t.Errorf("LK3 notice = %q", n)
+	}
+	lead := systemPrompt(api.Self{Name: "lead", Orchestrates: []string{"main"}, Testers: map[string]string{"main": "e2e"}})
+	if !strings.Contains(lead, "e2e is the tester of #main") || !strings.Contains(lead, "get_test_plan") {
+		t.Errorf("SK3: the orchestrator prompt lacks the tester")
+	}
+	data, err := builtin.ReadFile("skills/hikari-tester/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"name: hikari-tester", "## Start", "## Test", "## Report", "## Keep true", "pin_releases", "plan.md", "gaps"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("SK1: the skill lacks %q", want)
+		}
+	}
+}
