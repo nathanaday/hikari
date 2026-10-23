@@ -39,6 +39,17 @@ type Manifest struct {
 	Product      ProductInfo   `yaml:"product" json:"product"`
 	Map          string        `yaml:"map" json:"map"`
 	Certificates []Certificate `yaml:"certificates" json:"certificates"`
+	// Image is the image of an image release (rule IM3 of the
+	// environments spec).
+	Image *ImageInfo `yaml:"image,omitempty" json:"image,omitempty"`
+}
+
+// ImageInfo names the image that hikari built for a release: its tag in
+// the host's Docker, its id, and its platform.
+type ImageInfo struct {
+	Tag      string `yaml:"tag" json:"tag"`
+	ID       string `yaml:"id" json:"id"`
+	Platform string `yaml:"platform" json:"platform"`
 }
 
 // ProductInfo summarizes the product of a release.
@@ -79,6 +90,9 @@ type PublishInput struct {
 	// Hikari is the version of the server.
 	Hikari string
 	Now    time.Time
+	// BuildImage builds the image of an image deliverable, after every
+	// other check passed (rule IM2 of the environments spec).
+	BuildImage func(ImageSpec) (ImageInfo, error)
 }
 
 // ProductCheck is what Check reports about a staged product that meets
@@ -223,6 +237,17 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 	if len(errs) > 0 {
 		return Manifest{}, errors.Join(errs...)
 	}
+	var image *ImageInfo
+	if d.Image != nil {
+		if in.BuildImage == nil {
+			return Manifest{}, fmt.Errorf("deliverable %q makes an image, and this hikari cannot build one", in.Deliverable)
+		}
+		info, err := in.BuildImage(*d.Image)
+		if err != nil {
+			return Manifest{}, fmt.Errorf("IM2: the image of %s %s did not build: %w", in.Deliverable, in.Version, err)
+		}
+		image = &info
+	}
 
 	dest := s.ReleaseDir(in.System, in.Deliverable, in.Version)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -270,7 +295,7 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		},
-		Map: "map.yaml", Certificates: certs,
+		Map: "map.yaml", Certificates: certs, Image: image,
 	}
 	data, err := yaml.Marshal(m)
 	if err != nil {

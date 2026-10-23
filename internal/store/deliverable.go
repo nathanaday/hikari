@@ -31,7 +31,29 @@ type Deliverable struct {
 	Description string   `yaml:"description" json:"description"`
 	Layout      Layout   `yaml:"layout,omitempty" json:"layout"`
 	Targets     []Target `yaml:"targets,omitempty" json:"targets"`
+	// Image makes the deliverable an image deliverable: hikari builds a
+	// container image when it publishes (rule IM1 of the environments
+	// spec).
+	Image *ImageSpec `yaml:"image,omitempty" json:"image,omitempty"`
 }
+
+// ImageSpec says how hikari builds the image of a release: the Dockerfile
+// and the build context, relative to the owner's scope, and the platform.
+type ImageSpec struct {
+	Dockerfile string `yaml:"dockerfile" json:"dockerfile"`
+	Context    string `yaml:"context,omitempty" json:"context,omitempty"`
+	Platform   string `yaml:"platform,omitempty" json:"platform,omitempty"`
+}
+
+// ContextDir returns the build context, "." by default.
+func (i ImageSpec) ContextDir() string {
+	if i.Context == "" {
+		return "."
+	}
+	return i.Context
+}
+
+var validPlatform = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9_]+(/[a-z0-9]+)?$`)
 
 // Layout holds the rules on the files of a product: glob patterns that must
 // match, that alone may match, and that must not match.
@@ -164,6 +186,16 @@ func (d Deliverable) check(name string) []error {
 			if !doublestar.ValidatePattern(p) || p == "" {
 				fail("layout.%s pattern %q is not a valid glob", list, p)
 			}
+		}
+	}
+	if im := d.Image; im != nil {
+		for field, p := range map[string]string{"dockerfile": im.Dockerfile, "context": im.ContextDir()} {
+			if p == "" || !filepath.IsLocal(filepath.Clean(p)) && filepath.Clean(p) != "." {
+				fail("image.%s %q must be a relative path inside the owner's scope", field, p)
+			}
+		}
+		if im.Platform != "" && !validPlatform.MatchString(im.Platform) {
+			fail("image.platform %q must be <os>/<arch>, such as linux/arm64", im.Platform)
 		}
 	}
 	seen := map[string]bool{}

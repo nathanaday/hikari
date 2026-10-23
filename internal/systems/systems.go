@@ -21,6 +21,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/images"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/testmap"
@@ -239,6 +240,9 @@ func describeWrites(writes []wiki.Write) string {
 	return strings.Join(parts, ", ")
 }
 
+// imageBuildTimeout bounds the build of one image release.
+const imageBuildTimeout = 15 * time.Minute
+
 // Store returns the shared store.
 func (m *Manager) Store() store.Store { return m.store }
 
@@ -379,6 +383,9 @@ func (m *Manager) CheckRelease(agent, deliverable string) (store.ProductCheck, e
 	check, err := m.store.Check(agent, deliverable)
 	if err != nil {
 		problems = append(problems, err.Error())
+	}
+	if d, err := m.store.LoadDeliverable(deliverable); err == nil && d.Image != nil && !o.store.IsFile(filepath.ToSlash(filepath.Clean(d.Image.Dockerfile))) {
+		problems = append(problems, fmt.Sprintf("IM4: the deliverable builds an image from %s, which is not a file of your scope", d.Image.Dockerfile))
 	}
 	if len(problems) > 0 {
 		return store.ProductCheck{}, errors.New(strings.Join(problems, "\n"))
@@ -907,6 +914,14 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Ma
 		System: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommit: v.System.DescribedState.Commit, Map: public,
 		Wiki: o.wiki.Files(releaseKinds...), Hubs: hubs, Hikari: version.Version, Now: m.now(),
+		BuildImage: func(spec store.ImageSpec) (store.ImageInfo, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), imageBuildTimeout)
+			defer cancel()
+			return images.Build(ctx, images.BuildInput{
+				RepoPath: o.repo.Path, Commit: v.System.DescribedState.Commit, Scope: filepath.ToSlash(o.scope), Spec: spec,
+				Tag: images.Tag(m.topo.Name, agent, req.Deliverable, req.Version),
+			})
+		},
 	})
 	if err != nil {
 		return store.Manifest{}, nil, err
