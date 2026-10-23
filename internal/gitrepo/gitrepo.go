@@ -33,13 +33,21 @@ func AuthorEmail(agent string) string {
 	return agent + "@hikari.invalid"
 }
 
+// runtimeFiles excludes the files that hikari keeps out of commits in each
+// scope: test results and reports. The ignore file that does so is on the
+// hikari branch, so on another branch they would look like changes.
+var runtimeFiles = []string{
+	":(exclude,glob)**/.hikari/private/results.yaml",
+	":(exclude,glob)**/.hikari/private/reports/**",
+}
+
 // Prepare checks that the repo has no uncommitted changes, creates branch
 // from HEAD if it does not exist, and checks it out. It returns the commit
 // at HEAD after the checkout.
 func (r *Repo) Prepare(branch string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	status, err := r.git("status", "--porcelain", "--untracked-files=all")
+	status, err := r.git(append([]string{"status", "--porcelain", "--untracked-files=all", "--", "."}, runtimeFiles...)...)
 	if err != nil {
 		return "", err
 	}

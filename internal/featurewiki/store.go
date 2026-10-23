@@ -103,7 +103,7 @@ func (s *Store) SetDescribed(commit string, now time.Time) error {
 	defer s.mu.Unlock()
 	next := s.w.Clone()
 	for _, d := range next {
-		d.DescribedCommit, d.DescribedAt = commit, now.UTC()
+		d.DescribedCommit, d.DescribedAt = commit, now.UTC().Truncate(time.Second)
 		if err := s.write(d); err != nil {
 			return err
 		}

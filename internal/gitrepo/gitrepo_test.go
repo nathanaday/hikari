@@ -69,6 +69,19 @@ func TestPrepareRefusesUncommittedChanges(t *testing.T) {
 	}
 }
 
+func TestPrepareIgnoresResultsOnAnotherBranch(t *testing.T) {
+	r := newRepo(t, shop)
+	write(t, r.Path, "services/orders/.hikari/private/results.yaml", "version: 1\n")
+	write(t, r.Path, "services/orders/.hikari/private/reports/unit.xml", "<testsuites/>\n")
+	if _, err := r.Prepare("hikari/work"); err != nil {
+		t.Errorf("results and reports are not changes: %v", err)
+	}
+	write(t, r.Path, "services/orders/.hikari/private/tests.yaml", "version: 1\n")
+	if _, err := r.Prepare("hikari/work"); err == nil {
+		t.Error("the test map is a change")
+	}
+}
+
 func TestCommitPaths(t *testing.T) {
 	r := newRepo(t, map[string]string{"store/systems/a/map.yaml": "v1\n", "store/shared/policies/p.md": "p\n", "other.txt": "o\n"})
 	r.Prepare("hikari")

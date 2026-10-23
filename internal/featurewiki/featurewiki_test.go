@@ -371,3 +371,14 @@ func TestStoreWritesReloadsAndKeepsTheLastValidWiki(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestTimesKeepWholeSeconds(t *testing.T) {
+	now := time.Date(2026, 10, 23, 5, 35, 10, 972045000, time.UTC)
+	w, _, err := Apply(Wiki{}, []Write{{Op: "create", ID: "a", Name: "A", Description: "Does a.", Body: body("Does a.")}}, Check{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := w["a"]; d.Created.Nanosecond() != 0 || d.Updated.Nanosecond() != 0 {
+		t.Errorf("created %v, updated %v: a reload would change them", d.Created, d.Updated)
+	}
+}

@@ -213,6 +213,9 @@ type Result struct {
 // It returns the new wiki, or an error that names each write and rule that
 // failed, in which case w is unchanged.
 func Apply(w Wiki, writes []Write, c Check, now time.Time) (Wiki, Result, error) {
+	// A document keeps whole seconds, so the wiki in memory does too, and
+	// a reload changes nothing.
+	now = now.UTC().Truncate(time.Second)
 	var res Result
 	if len(writes) == 0 {
 		return nil, res, errors.New("the change has no writes")
