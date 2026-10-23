@@ -233,6 +233,28 @@ approves it, and an approval holds a digest of the gap's text, so the
 tester cannot close a hard story by calling it a gap, nor change a gap after
 the user approved it.
 
+## Environments run on the host
+
+A tester's container cannot start containers: the Docker socket would give
+it the host. So the tester describes its services in a compose file, and
+hikari runs it, as hikari runs the topology: it reads the file, refuses what
+would cross a boundary, writes an override with the network and the mounts,
+and starts the project. The tester's container then joins the environment's
+network, so the tests reach each service by name and nothing else.
+
+A release is either mounted into a container or is an image; hikari knows no
+other kinds of product. An owner cannot run Docker either, so hikari builds
+an image release on the host, from the commit that the map describes, and
+the build context never enters the release. The image stays in the host's
+Docker: an archive of every version in the store would cost more than a
+rebuild from the commit.
+
+`start_environment` waits until the services are healthy, instead of
+returning at once and waking the tester later: hikari has no sender for such
+a message, and a start takes seconds to minutes. No variable of the host
+reaches an environment, so an environment never holds a credential; a test
+against a real cloud service is planted.
+
 ## Orchestrators see what they orchestrate
 
 An orchestrator reads only the systems of the direct members of its hubs. In

@@ -1,6 +1,13 @@
 # Spec: environments
 
-Status: draft.
+Status: built, except the P3 slice (decision 11), which waits for the user. Checked in live runs on 2026-10-23 of the sensors example: four owners published their releases, and hikari built the cloud's image, `hikari/sensors-cloud-http-service:0.1.0`. The tester pinned the four releases and wrote `plan.md`, `environment.yaml` with the cloud's image, the edge's tarball in Debian, the console in nginx, the thresholds mounted into the cloud, and Mailpit in place of the mail service, and a smoke and a load scenario. The load scenario started five edges. When the console's health check failed, the reason named it, and the tester fixed the check itself. Its suite passed against the running services, 12 of 12, and all seven stories, rules, and principles of `#main` became `passing`. It proposed the hardware watchdog as a gap. hikari stopped the environment at shutdown and left no container.
+
+Changes made during the build:
+
+1. **A result that YAML cannot render never crashes the MCP server.** The status's times had a tag that `yaml.v3` does not know, and every environment tool closed the connection. The tags are fixed, and a rendering failure is now an error of the call.
+2. **A failed start says why** (ST2, LG1). The tester cannot see Docker, so before hikari removes the containers of a failed start, it keeps each service's log and adds the output of each failing health check to the reason. Found when the tester could not diagnose its console.
+3. **`start_environment` refuses only on the environment's findings** (ST1). A plan's warnings, such as a key story with no test yet, are normal before the tests exist, so they no longer block a start.
+4. **The example sends readings over HTTP and mails over SMTP** (EX1). MQTT would need a client library in every system; Mailpit still stands in for a cloud service, and the shape of the test system is the same.
 
 Sources: `docs/brainstorm/e2e.md` (round 1, sections E, F, and I) and `e2e-answers.md`. This is the fourth step of the E2E work, after the project repository, the wikis, and the tester.
 
@@ -114,11 +121,11 @@ services:
 ## 7. The example
 
 - **EX1.** `examples/sensors` is a project repository with four systems, a lead, and a tester, small enough to build in seconds:
-  - `edge`: a Go binary that reads readings and sends each one over MQTT, released as a tarball (`linux-tarball`) and run from a mount in a Debian image;
-  - `cloud`: an HTTP API that reads readings from MQTT, stores them, and opens an incident when a reading is over its threshold, released as an image (`http-service`) that hikari builds;
+  - `edge`: a Go binary that replays readings and posts each one to the cloud over HTTP, released as a tarball (`linux-tarball`) and run from a mount in a Debian image;
+  - `cloud`: an HTTP API that stores readings, opens an incident when a reading is over its threshold, and mails the operator over SMTP, released as an image (`http-service`) that hikari builds;
   - `console`: a web page that shows the incidents, released as a static build (`static-site`) and served by nginx;
   - `thresholds`: a data release of the threshold of each sensor (`data-files`) that the cloud loads.
-- **EX2.** Its plan uses Mosquitto as a substitute for a cloud MQTT broker, a sensor simulator that replays fixture files, five edges in parallel, and names a gap: the hardware watchdog of a real edge device. Its key story is "A reading over its threshold opens an incident that the console shows."
+- **EX2.** Its plan uses Mailpit as a substitute for a cloud mail service, fixture files that the edges replay in place of sensors, five edges in parallel, and names a gap: the hardware watchdog of a real edge device. Its key story is "A reading over its threshold opens an incident that the console shows."
 - **EX3.** `make example-sensors` makes the example's repository in `.hikari/demo/sensors`, as `make demo-repo` does for the shop.
 
 ## 8. Out of scope
