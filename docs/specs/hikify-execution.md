@@ -1,6 +1,16 @@
 # Spec: hikify execution
 
-Status: draft.
+Status: built, except the onboarding of P3 (decision 7), which waits for the user. Checked in a live run on 2026-10-23 on the onboard example, after the user approved the plan of the design run. The session did the restructure steps S1 to S3 with hikari stopped. It made `accounts` from the server's copy of the rules with its history, created its bare remote and pushed `main` with the user's approval, and cloned it with `hikari sync`. It installed the images, the two deliverables, the drafts, and the target topology, and moved the two rule features into the library's wiki. `hikari check` passed, and every tree was clean. After `hikari up`, the user's post in `#main` started the lead, which sent each step only after the release it needed was announced. accounts released `python-library` 1.0.0, then server and cli moved to it, deleted their copies, and released `python-program` 1.0.0, cli with 11 tests where it had 3. The tester ran the server release in its environment, drove the sign-up page in Chromium and the cli release against it, and all six documents of `#main` passed, the three key stories included. The session filled the ledger: accounts 5, server 1, cli 11, and main-e2e 7 tests passed, with no row missing or dropped. It pushed the hikari branches with the user's approval. A clone of the project passed `hikari sync` and `hikari check`, and its `hikari up` connected all five agents.
+
+Changes made during the build:
+
+1. **A tester's environment override is written to its private `environment/` folder.** hikari wrote `.environment.override.yaml`, which holds this machine's paths, into the tester's scope, where the tester's commit picked it up. The session found it during verification. The folder is already out of git (LG2), and a Docker test now checks that the scope stays clean.
+2. **Decision 1 held in the run.** The plan put the restructure commits on each repository's hikari branch, the agents found them there at start, and no merge was needed before `hikari up`.
+
+Observed, not changed:
+
+- **In a headless run, the user follows the agents.** A headless session turn cannot wait for the agents, so in the live run the user read the messages and brought the session back when the lead reported the last step. In an interactive session, the session follows the run as EX3 says.
+- **The orchestrator answers posts before the plan starts.** The tester's first post woke the lead, which asked the owners to publish before the user started the plan. The owners refused, rightly, because the release that they needed did not exist yet. The plan then ran in order.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, sections G, H, and I3) and `onboarding-answers.md`. This is the last of four steps of the onboarding work, after linked repositories, containerize, and hikify design.
 
