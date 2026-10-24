@@ -70,7 +70,7 @@ USER agent
 ## The test command
 
 - It runs from `/workspace/<scope>`, which is `/workspace` for a whole repository.
-- It writes JUnit XML to `/hikari/private/reports/<suite>.xml`. Common forms:
+- It writes JUnit XML to `/hikari/private/reports/all.xml`: hikari makes the command the suite `all`, and reads the report of a suite from `<suite>.xml`. Common forms:
   - pytest: `-o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml`
   - Go: `go test -v ./... 2>&1 | go-junit-report > /hikari/private/reports/all.xml` (install `go-junit-report` with `go install` in the Dockerfile)
   - Vitest: `--reporter=default --reporter=junit --outputFile=/hikari/private/reports/all.xml`

@@ -1,6 +1,13 @@
 # Spec: containerize
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-23 of the onboard example: a headless Claude Code session in the project ran the skill with the two `file://` URLs and the user's approvals in the request. It linked and cloned both repositories, surveyed them with two subagents, and added `__pycache__/` and `.pytest_cache/` to each repository's `.gitignore`, the only change to their files. It wrote a Dockerfile and a system for each, left out `tests/browser` with the reason, and built each image and ran each test command once. `hikari check` passed. After `hikari up`, both owners mapped their code and recorded their suites (server 5 of 5, cli 3 of 3). The server's owner recorded the browser page as a gap of its test map. The session then wrote `onboarding/baseline.md` with every test and set the stage to `containerize: done`. Every commit of the session has the user's identity, and nothing was pushed.
+
+Changes made during the build:
+
+1. **A linked repo that no system uses yet is a warning** (topology). The session links the repositories in step 2 and writes their systems in step 5, but the topology refused a repo that no system used, so `hikari sync` failed. Found in the live run. A path repo that no system uses is still an error.
+2. **The starter compose file sets `image: hikari-agent` on the lead only.** The anchor that every agent merges set it, so an owner that builds its own image would tag it `hikari-agent` and overwrite the base image. Found in the live run.
+3. **The skill proves each image before the run** (CZ7). The session built each image and ran its test command once against the clone, on its own initiative. That finds a broken Dockerfile in seconds instead of in an owner's first turn, so step 6 now requires it.
+4. **The test command writes `all.xml`.** hikari makes the system's `test` command the suite `all`, and reads its report from `all.xml`. The skill said `<suite>.xml`, the session named the report `unit.xml`, and the owner had to correct it. Found in the live run.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, questions A1, A2, A4, C1 to C3, and I2) and `onboarding-answers.md`. This is the second of four steps of the onboarding work, after linked repositories.
 
@@ -89,7 +96,7 @@ The skill's procedure, in order. Where you gave an answer in your request, the s
   - a named volume, mounted inside the scope, for each directory of dependencies, such as `node_modules`;
   - a `description`, and `instructions` drawn from the repository's `CLAUDE.md`, with no secret and no path outside the repository.
 - **CZ6.** **The hub.** Write a `lead` and one hub, `main`, whose members are the owners.
-- **CZ7.** **Check.** Run `hikari check`, and fix each finding. Show you the systems, the suites that cannot run with the reason, and the ignore lines. Commit.
+- **CZ7.** **Check.** Run `hikari check`, and fix each finding. Build each image, and run its test command once against the clone. Show you the systems, the suites that cannot run with the reason, and the ignore lines. Commit.
 - **CZ8.** **Run.** Ask you to start `hikari up compose.yaml`. Wait with `hikari status`, until each owner's map is described and each owner has recorded a run of its suites. A suite that fails is a finding of the baseline, not a reason to change code.
 - **CZ9.** **Baseline.** Write `onboarding/baseline.md` (OB2), and record in `state.md` that containerize is done, with the date. Commit.
 - **CZ10.** **Never.** The skill never edits a file in a clone, except the ignore lines of CZ4. It never pushes, and never creates a remote repository.
