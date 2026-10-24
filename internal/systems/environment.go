@@ -161,7 +161,8 @@ func (m *Manager) StartEnvironment(ctx context.Context, agent, scenario string) 
 	spec := environments.Spec{
 		Project: m.environmentProject(hub), Network: m.environmentProject(hub),
 		Dir: o.store.Root(), File: filepath.Join(o.store.Root(), e2e.EnvironmentFile), Override: override,
-		Replicas: replicas, Scenario: scenario,
+		OverrideFile: o.store.PrivatePath(filepath.Join(sysmap.EnvironmentDir, "override.yaml")),
+		Replicas:     replicas, Scenario: scenario,
 		Tester:       environments.Container(ctx, m.topo.Name, agent),
 		LogDir:       o.store.PrivatePath(filepath.Join(sysmap.EnvironmentDir, "logs")),
 		LogsShown:    path.Join(api.PrivateDir, sysmap.EnvironmentDir, "logs"),

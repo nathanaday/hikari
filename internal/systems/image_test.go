@@ -124,6 +124,10 @@ scenarios:
 	if _, err := f.m.StartEnvironment(ctx, "e2e", "smoke"); err == nil || !strings.Contains(err.Error(), "runs") {
 		t.Errorf("ST1: a second start = %v", err)
 	}
+	// The override holds this machine's paths, so git never sees it.
+	if out := git(t, f.repo, "status", "--porcelain", "--untracked-files=all", "--", "e2e"); strings.Contains(out, "override") {
+		t.Errorf("the override is in the scope's versioned files:\n%s", out)
+	}
 	p, _ := f.m.GetTestPlan("eng-lead", "eng")
 	if p.Environment == nil || p.Environment.State != "running" {
 		t.Errorf("UE2: the plan's environment = %+v", p.Environment)

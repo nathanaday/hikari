@@ -62,12 +62,15 @@ type Spec struct {
 	// Project is the environment project's name; Network its network.
 	Project string
 	Network string
-	// Dir holds environment.yaml and the override.
-	Dir      string
-	File     string
-	Override []byte
-	Replicas map[string]int
-	Scenario string
+	// Dir holds environment.yaml. OverrideFile is where hikari writes
+	// Override: outside the scope's versioned files, because it holds this
+	// machine's paths.
+	Dir          string
+	File         string
+	Override     []byte
+	OverrideFile string
+	Replicas     map[string]int
+	Scenario     string
 	// Tester is the tester's container, or "" when it does not run.
 	Tester string
 	// LogDir receives one log file per service (rule LG1); LogsShown is
@@ -96,8 +99,11 @@ type Env struct {
 func Start(ctx context.Context, spec Spec, onChange func()) *Env {
 	e := &Env{spec: spec, onChange: onChange}
 	e.status = Status{State: Starting, Scenario: spec.Scenario, Started: time.Now().UTC(), Logs: spec.LogsShown}
-	override := filepath.Join(spec.Dir, ".environment.override.yaml")
-	if err := os.WriteFile(override, spec.Override, 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(spec.OverrideFile), 0o755); err != nil {
+		e.fail(err.Error())
+		return e
+	}
+	if err := os.WriteFile(spec.OverrideFile, spec.Override, 0o644); err != nil {
 		e.fail(err.Error())
 		return e
 	}
@@ -153,7 +159,7 @@ func Start(ctx context.Context, spec Spec, onChange func()) *Env {
 // (rule CR1).
 func (e *Env) compose(ctx context.Context, args ...string) *exec.Cmd {
 	base := []string{"compose", "-p", e.spec.Project, "--project-directory", e.spec.Dir,
-		"--env-file", os.DevNull, "-f", e.spec.File, "-f", filepath.Join(e.spec.Dir, ".environment.override.yaml")}
+		"--env-file", os.DevNull, "-f", e.spec.File, "-f", e.spec.OverrideFile}
 	cmd := exec.CommandContext(ctx, "docker", append(base, args...)...)
 	var env []string
 	for _, kv := range os.Environ() {
