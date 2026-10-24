@@ -118,6 +118,7 @@ func initProject(args []string) error {
 	}
 	fmt.Printf("Next:\n  cp %s %s    and set a credential\n  hikari up %s\n",
 		filepath.Join(dir, ".env.example"), filepath.Join(dir, ".env"), filepath.Join(dir, "compose.yaml"))
+	fmt.Printf("\nTo bring existing repositories into the project, open Claude Code in %s and run /containerize-repo.\n", dir)
 	return nil
 }
 
