@@ -241,6 +241,14 @@ func (r *Repo) IsIgnored(path string) bool {
 	return err == nil
 }
 
+// Show returns the content of path, relative to the repo, at ref.
+func (r *Repo) Show(ref, path string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, err := r.git("show", ref+":"+path)
+	return []byte(out), err
+}
+
 // Tracked reports whether git tracks path, which is relative to the repo.
 func (r *Repo) Tracked(path string) bool {
 	r.mu.Lock()
@@ -293,9 +301,9 @@ func (r *Repo) git(args ...string) (string, error) {
 		msg := strings.TrimSpace(stderr.String())
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && msg == "" {
-			return strings.TrimSpace(stdout.String()), fmt.Errorf("git %s: exit status %d", args[0], exit.ExitCode())
+			return strings.TrimRight(stdout.String(), " \t\r\n"), fmt.Errorf("git %s: exit status %d", args[0], exit.ExitCode())
 		}
 		return "", fmt.Errorf("git %s: %s", args[0], msg)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return strings.TrimRight(stdout.String(), " \t\r\n"), nil
 }
