@@ -343,6 +343,15 @@ It keeps its progress in `onboarding/state.md`, so a new session continues where
 
 `hikari status compose.yaml` shows what the files say of each system: the commit that its map describes, its features by health, and the last run of each suite. With `-tests`, it lists each test with its outcome. It reads files only, so it works while hikari runs and when it does not.
 
+`hikify` starts where containerize ends, and refactors the project into isolated systems with you. Run `/hikify` in the same project. It works in stages, and keeps each one in `onboarding/`:
+
+1. **Analysis.** A subagent reads each repository with its owner's map and the baseline. The session then writes a synthesis of the duplicated code, the boundaries it proposes, and the candidate E2E tests, and asks you its questions. A difference in behavior between two copies of code is always your decision.
+2. **Target topology.** It drafts `compose.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft compose.target.yaml` checks a target whose new repositories and scopes do not exist yet. With you, it drafts the stories, rules, and principles of each hub, and you pick the key stories.
+3. **Change plan.** It writes plan documents for each hub and system, and a ledger that says where each baseline test goes.
+4. **Review.** Fresh reviewer subagents look for what would break, in rounds, until a round finds only minor problems. After four rounds with serious findings, the session stops and asks you.
+5. **Execution.** After you approve, the session makes the new repositories, moves code with its history, and installs the drafts and the target topology. You create each new remote. Then you start hikari, and ask the orchestrator to carry out the plan: it sends each step to its owner when the releases it needs exist. The session follows the run from files.
+6. **Verification.** The session checks that every baseline test is kept, moved to the tester, or dropped with your approval, and that the key stories pass. Then it clones the project into a temporary folder, syncs, checks, and starts it, as a teammate would.
+
 To try it, run `make example-onboard`. It writes two small repositories as local remotes, and an empty project in `.hikari/demo/onboard/project`.
 
 ### Work on the UI

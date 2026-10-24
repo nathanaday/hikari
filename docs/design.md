@@ -397,6 +397,20 @@ your approval. Without it, every machine commits the products again.
 progress without a server API, and the baseline is the same text that a
 person reads.
 
+Hikify designs before it changes anything. The design stays in
+`onboarding/` and `compose.target.yaml` until you approve it, because the
+target's new hubs and systems have no wiki in the store yet. A difference
+in behavior between two copies of code is always your question: the skill
+never picks one. Fresh reviewers check the plan in rounds, and a reviewer
+told to find faults always finds a minor one, so a round of minor findings
+ends the review, and four rounds of serious ones stop for your judgment.
+
+The restructure commits go on each repository's hikari branch, as yours.
+That branch is the one the agents work on and the one you review and
+merge, so a separate branch would only delay the agents. A new repository
+reaches `repos/` only by a clone from its remote, so that every clone,
+yours or a teammate's, has the same origin.
+
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its
