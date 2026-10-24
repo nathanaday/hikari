@@ -904,6 +904,36 @@ tests:
 	}
 }
 
+// A fresh clone has no results file: the map keeps the health that another
+// machine recorded, and the owner is told to run its tests (rule SY10).
+func TestHealthWithoutLocalResults(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	f.runOrders(t, testmap.Passed)
+	o := f.m.owners["orders"]
+	if tc := f.m.TurnContext("orders"); tc.NoLocalResults {
+		t.Fatal("this machine has results")
+	}
+	if err := os.Remove(o.store.PrivatePath(testmap.ResultsFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.m.project(o); err != nil {
+		t.Fatal(err)
+	}
+	public, _ := os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	if !strings.Contains(string(public), "health: passing") || !strings.Contains(string(public), "passed: 1") {
+		t.Errorf("SY10 the map keeps the recorded health:\n%s", public)
+	}
+	if tc := f.m.TurnContext("orders"); !tc.NoLocalResults {
+		t.Error("SY10 the owner is told that this machine has no results")
+	}
+	f.runOrders(t, testmap.Failed)
+	public, _ = os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	if !strings.Contains(string(public), "health: failing") || f.m.TurnContext("orders").NoLocalResults {
+		t.Errorf("SY10 a run on this machine decides again:\n%s", public)
+	}
+}
+
 func TestDirtyScopes(t *testing.T) {
 	f := newFixture(t)
 	git(t, f.repo, "add", "--all")

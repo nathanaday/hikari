@@ -96,6 +96,32 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	return b.String()
 }
 
+// restorePrompt asks an owner to rebuild on this machine what a fresh
+// clone of the project lacks (rules SY10 and SY11 of the linked
+// repositories spec).
+func restorePrompt(tc api.TurnContext) string {
+	var b strings.Builder
+	b.WriteString("This machine has a fresh clone of the project, so it lacks what git does not version.\n\n")
+	b.WriteString(restoreSteps(tc))
+	if len(tc.MissingReleases) == 0 {
+		b.WriteString("\nSend no messages in this turn.\n")
+	}
+	return b.String()
+}
+
+func restoreSteps(tc api.TurnContext) string {
+	var b strings.Builder
+	if len(tc.UnrestoredPins) > 0 {
+		b.WriteString("- Your lock pins releases that this machine does not have yet: " + strings.Join(tc.UnrestoredPins, "; ") + ". Their owners publish them again and send you a message. Then pin them again with pin_releases, and run your tests.\n")
+	} else if tc.NoLocalResults {
+		b.WriteString("- Your map shows the health that another machine recorded, and this machine has no results of your tests. Run each suite of tests.yaml and call record_test_run for it.\n")
+	}
+	if len(tc.MissingReleases) > 0 {
+		b.WriteString("- A tester pins releases of yours that this machine does not have: " + strings.Join(tc.MissingReleases, "; ") + ". Publish each one again with publish_release: at the same version when your code has not changed since that release, else at a new version. Then send each tester a direct message that names the releases you published.\n")
+	}
+	return b.String()
+}
+
 // staleLists renders the stale features with their changed paths, the
 // undescribed features, and the unmapped paths, as lists.
 func staleLists(tc api.TurnContext) string {
@@ -208,6 +234,9 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		}
 		if len(tc.PrivateErrors) > 0 {
 			notes = append(notes, "Your private documents have problems: "+strings.Join(tc.PrivateErrors, "; ")+". Fix them in this turn.")
+		}
+		if steps := restoreSteps(tc); steps != "" {
+			notes = append(notes, "This machine lacks what git does not version:\n"+steps)
 		}
 		if len(tc.NewerReleases) > 0 {
 			notes = append(notes, "Newer releases: "+strings.Join(tc.NewerReleases, "; ")+". Follow the Keep true procedure of the hikari-tester skill: pin them, run your tests, and update the plan.")

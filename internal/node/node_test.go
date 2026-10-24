@@ -463,3 +463,25 @@ func TestTesterPrompts(t *testing.T) {
 		}
 	}
 }
+
+func TestRestorePrompt(t *testing.T) {
+	tests := restorePrompt(api.TurnContext{NoLocalResults: true})
+	for _, want := range []string{"fresh clone", "another machine recorded", "record_test_run", "Send no messages"} {
+		if !strings.Contains(tests, want) {
+			t.Errorf("SY10 restore prompt lacks %q:\n%s", want, tests)
+		}
+	}
+	releases := restorePrompt(api.TurnContext{MissingReleases: []string{"python-library 0.1.0 (pinned by shop-e2e)"}})
+	for _, want := range []string{"python-library 0.1.0 (pinned by shop-e2e)", "publish_release", "at a new version", "direct message"} {
+		if !strings.Contains(releases, want) {
+			t.Errorf("SY11 restore prompt lacks %q:\n%s", want, releases)
+		}
+	}
+	if strings.Contains(releases, "Send no messages") {
+		t.Error("SY11 an owner that publishes again tells the tester")
+	}
+	tester := turnNotices(owner, api.TurnContext{MapState: "current", NoLocalResults: true, UnrestoredPins: []string{"orders/python-library 0.1.0"}})
+	if !strings.Contains(tester, "orders/python-library 0.1.0") || !strings.Contains(tester, "pin_releases") || strings.Contains(tester, "Run each suite") {
+		t.Errorf("SY11 a tester waits for its pins first:\n%s", tester)
+	}
+}

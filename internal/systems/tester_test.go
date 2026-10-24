@@ -252,3 +252,28 @@ func TestBenchResults(t *testing.T) {
 		t.Errorf("BR2: after a new pin = %s", got)
 	}
 }
+
+// A fresh clone has no releases: the owner is told to publish what the
+// tester pins, and the tester waits for them (rule SY11).
+func TestMissingReleasesOnAClone(t *testing.T) {
+	f := newTesterFixture(t)
+	f.publishOrders(t, "1.0.0")
+	if _, err := f.m.PinReleases("e2e", []e2e.LockedRelease{{System: "orders", Deliverable: "python-library", Version: "1.0.0"}}); err != nil {
+		t.Fatal(err)
+	}
+	if tc := f.m.TurnContext("orders"); len(tc.MissingReleases) != 0 || len(f.m.TurnContext("e2e").UnrestoredPins) != 0 {
+		t.Fatalf("this machine has the release: %+v", tc)
+	}
+	if err := os.RemoveAll(filepath.Join(f.dir, "store/systems/orders/releases")); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.m.TurnContext("orders").MissingReleases; !slices.Equal(got, []string{"python-library 1.0.0 (pinned by e2e)"}) {
+		t.Errorf("SY11 owner: %v", got)
+	}
+	if got := f.m.TurnContext("e2e").UnrestoredPins; !slices.Equal(got, []string{"orders/python-library 1.0.0"}) {
+		t.Errorf("SY11 tester: %v", got)
+	}
+	if got := f.m.TurnContext("inventory").MissingReleases; len(got) != 0 {
+		t.Errorf("SY11 another owner: %v", got)
+	}
+}

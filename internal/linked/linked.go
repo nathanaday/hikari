@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -32,7 +33,7 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 	var out []Finding
 	fail := func(format string, args ...any) { out = append(out, Finding{Text: fmt.Sprintf(format, args...)}) }
 	for _, name := range topo.Missing {
-		fail("the linked repo %s is not cloned; run: hikari sync %s", name, topo.File)
+		fail("the linked repo %s is not cloned; run: hikari sync %s", name, Shown(topo.File))
 	}
 	if p := topo.Project; p != nil {
 		repo := gitrepo.Open(p.Path)
@@ -83,6 +84,17 @@ func Uncommitted(topo *topology.Topology, name string) []string {
 		return nil
 	}
 	return changed
+}
+
+// Shown returns path relative to the working directory when it is inside
+// it, for a command that a person copies.
+func Shown(path string) string {
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, path); err == nil && filepath.IsLocal(rel) {
+			return rel
+		}
+	}
+	return path
 }
 
 func label(topo *topology.Topology, name string) string {

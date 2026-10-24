@@ -47,6 +47,9 @@ func Run(ctx context.Context, c *api.Client) error {
 		} else if tc.MapState == mapUnbuilt || tc.MapState == mapStale {
 			log.Printf("indexing: the system map is %s", tc.MapState)
 			d.turn(ctx, api.StateIndexing, "indexing the system: the map is "+tc.MapState, indexingPrompt(self, tc))
+		} else if (tc.NoLocalResults && len(tc.UnrestoredPins) == 0) || len(tc.MissingReleases) > 0 {
+			log.Printf("restoring: this machine lacks the system's results or releases")
+			d.turn(ctx, api.StateIndexing, "restoring the system on this machine", restorePrompt(tc))
 		}
 	}
 	report(ctx, c, api.Status{State: api.StateIdle})

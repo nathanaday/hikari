@@ -303,7 +303,7 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 		return nil, fmt.Errorf("the compose file on the project branch %s names another project branch, or none; make the branches agree", p.Branch)
 	}
 	if len(again.Missing) > 0 {
-		return nil, fmt.Errorf("the compose file on the project branch %s links repos that are not cloned (%s); run hikari sync %s", p.Branch, strings.Join(again.Missing, ", "), topo.File)
+		return nil, fmt.Errorf("the compose file on the project branch %s links repos that are not cloned (%s); run hikari sync %s", p.Branch, strings.Join(again.Missing, ", "), linked.Shown(topo.File))
 	}
 	return again, nil
 }

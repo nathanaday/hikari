@@ -76,6 +76,15 @@ type TurnContext struct {
 	// NewerReleases names the pinned releases of a tester that have a
 	// newer version (rule LK3 of the tester spec).
 	NewerReleases []string `json:"newer_releases,omitempty"`
+	// NoLocalResults says that the map records test runs that this machine
+	// has no results of (rule SY10 of the linked repositories spec).
+	NoLocalResults bool `json:"no_local_results,omitempty"`
+	// MissingReleases names the owner's releases that a tester pins and
+	// this machine does not have (rule SY11).
+	MissingReleases []string `json:"missing_releases,omitempty"`
+	// UnrestoredPins names the releases that a tester's lock pins and this
+	// machine does not have yet (rule SY11).
+	UnrestoredPins []string `json:"unrestored_pins,omitempty"`
 }
 
 // WikiChange names the changed documents of one wiki. Wiki is its label:

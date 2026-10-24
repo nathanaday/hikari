@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"maps"
 	"os"
@@ -294,10 +295,22 @@ func (m *Manager) project(o *owner) error {
 	neighbors := w.Neighbors()
 	priv, _ := o.store.Private()
 	rep, _ := m.testReport(o, priv, w.Features())
+	// With no results file, this machine has run no tests, which is no
+	// evidence: the map keeps the health that another machine recorded
+	// (rule SY10 of the linked repositories spec).
+	recorded := map[string]sysmap.Feature{}
+	if m.noLocalResults(o) {
+		for _, f := range o.store.Map().Features {
+			recorded[f.ID] = f
+		}
+	}
 	entries := make([]sysmap.FeatureEntry, 0, len(w))
 	for _, id := range w.Features() {
 		d := w[id]
 		tests, health := sysmap.TestsOf(rep.Features[id])
+		if f, ok := recorded[id]; ok && !f.Tests.Ran.IsZero() {
+			tests, health = f.Tests, f.Health
+		}
 		entries = append(entries, sysmap.FeatureEntry{
 			ID: id, Name: d.Name, Description: d.Description, Interfaces: d.Interfaces, Related: neighbors[id],
 			Created: d.Created, Tests: tests, Health: health,
@@ -312,6 +325,50 @@ func (m *Manager) project(o *owner) error {
 		o.projectErr = ""
 	}
 	return err
+}
+
+// noLocalResults reports whether o's map records test runs, but this
+// machine has no results file: a fresh clone of the project.
+func (m *Manager) noLocalResults(o *owner) bool {
+	if _, err := os.Stat(o.store.PrivatePath(testmap.ResultsFile)); !errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return slices.ContainsFunc(o.store.Map().Features, func(f sysmap.Feature) bool { return !f.Tests.Ran.IsZero() })
+}
+
+// missingReleases names the releases of agent that a tester pins and this
+// machine does not have (rule SY11).
+func (m *Manager) missingReleases(agent string) []string {
+	var out []string
+	for _, name := range m.topo.Owners() {
+		t, ok := m.owners[name]
+		if !ok || m.topo.Agents[name].Tests == "" {
+			continue
+		}
+		_, _, lock, _ := m.testerDocs(t)
+		for _, r := range lock.Releases {
+			if r.System != agent {
+				continue
+			}
+			if _, ok := m.release(r.System, r.Deliverable, r.Version); !ok {
+				out = append(out, fmt.Sprintf("%s %s (pinned by %s)", r.Deliverable, r.Version, name))
+			}
+		}
+	}
+	return out
+}
+
+// unrestoredPins names the releases that a tester's lock pins and this
+// machine does not have.
+func (m *Manager) unrestoredPins(o *owner) []string {
+	_, _, lock, _ := m.testerDocs(o)
+	var out []string
+	for _, r := range lock.Releases {
+		if _, ok := m.release(r.System, r.Deliverable, r.Version); !ok {
+			out = append(out, fmt.Sprintf("%s/%s %s", r.System, r.Deliverable, r.Version))
+		}
+	}
+	return out
 }
 
 // testReport computes the health of the features ids of o from its test
@@ -940,6 +997,10 @@ func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
 		tc.NewerReleases = m.newerReleases(o)
+		tc.NoLocalResults, tc.MissingReleases = m.noLocalResults(o), m.missingReleases(agent)
+		if m.topo.Agents[agent].Tests != "" {
+			tc.UnrestoredPins = m.unrestoredPins(o)
+		}
 		v := m.ownerView(o)
 		tc.MapState, tc.PrivateErrors = v.State, v.PrivateErrors
 		tc.StaleFeatures, tc.UndescribedFeatures, tc.UnmappedPaths = v.StaleFeatures, v.UndescribedFeatures, v.UnmappedPaths
