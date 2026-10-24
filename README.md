@@ -291,6 +291,33 @@ The key `x-hikari.project: {branch: hikari}` makes the compose file's directory 
 - A system's code can live in the project repository too: `system: {repo: project, scope: app}`. The scope cannot overlap the store.
 - The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each scope.
 
+#### Linked repositories and teammates
+
+A repo can be linked by its remote URL instead of a path. hikari keeps its clone in `repos/<name>` in the project repository, which git ignores:
+
+```yaml
+x-hikari:
+  project: {branch: "${HIKARI_BRANCH:-hikari}"}
+  repos:
+    p3-cloud: {url: https://github.com/you/p3-cloud.git}   # its branch is the project branch
+    tools: {path: ~/code/tools, branch: hikari}             # a path repo, on this machine only
+```
+
+Three commands work on the whole project:
+
+- `hikari sync compose.yaml` clones each missing linked repo. Where the remote has your branch and you do not, it makes your branch from the remote's. It reports how each branch compares with the remote, and each map whose commit is missing because a teammate did not push it. It never merges, rebases, resets, or checks out.
+- `hikari check compose.yaml` runs every check of `hikari up`, and starts nothing. `hikari up` refuses a missing clone, and names `hikari sync`.
+- `hikari push compose.yaml` pushes your branch of each linked repo, then of the project repository. It never forces. When a push is refused, it does not push the project repository, whose maps describe the linked repos' commits.
+
+`HIKARI_BRANCH` in `.env` gives each person their own branch, so that two people's agents never commit to one branch. A teammate starts like this:
+
+1. Run `git clone <project-url> myproject`.
+2. Run `hikari sync -from hikari-alex myproject/compose.yaml`. This makes your branch in each repo from `hikari-alex`, a teammate's branch.
+3. Copy `.env.example` to `.env`. Set a credential, and set `HIKARI_BRANCH` to your own branch, for example `hikari-bob`.
+4. Run `hikari check myproject/compose.yaml`, then `hikari up myproject/compose.yaml`.
+
+A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the teammate's machine recorded. On its first turn, each owner runs its suites again, and publishes again each release that a tester pins. Then it tells the tester, which pins the releases again.
+
 The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
 
 Each turn of an agent appears in the timeline as a card, after the message that woke it. While the agent works, the card shows its steps live: what it reads, edits, runs, and writes, each with its duration. Click a tool call to see its input and output. When the turn ends, the card folds into one line, such as `26s · 14 tool calls · 3 files changed · $0.18`, which opens again on click.
@@ -325,12 +352,14 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/server`: message routing, the log, the HTTP API, and the web UI
 - `internal/systems`: repos, system maps, vocabularies, and who may read and change them
 - `internal/sysmap`: the map and the private documents, their rules, health, and feature state
-- `internal/featurewiki`: the feature documents, their links, and the change that writes them
+- `internal/wiki`: the documents of a wiki, their kinds, links, and the change that writes them
 - `internal/testmap`: the test map, JUnit reports, recorded runs, and the health of each feature
 - `web/src/components/graph-engine.ts`: the canvas of the Map view: layout, drawing, input, and transitions
 - `internal/vocab`: the hub vocabulary format
 - `internal/store`: the store layout, deliverables, and releases
-- `internal/gitrepo`: branch preparation and scoped commits
+- `internal/gitrepo`: branch preparation, scoped commits, and the remote operations of sync and push
+- `internal/linked`: the checks of a start, and `hikari sync` and `hikari push` across the project's repos
+- `internal/e2e`, `internal/environments`, `internal/images`: the tester's plan and lock, its environments, and image releases
 - `internal/node`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent
 - `internal/launcher`: writes the override file and runs the compose project

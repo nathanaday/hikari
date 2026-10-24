@@ -321,6 +321,34 @@ In a project repository, a compose service may bind mount a config
 directory next to the compose file. The guard covers only what hikari
 mounts itself: the store, `.git`, and the scopes of the systems in it.
 
+## Linked repositories make a project portable
+
+A repo named by a local path means nothing on a teammate's machine. So a
+repo can be named by its remote URL, and its clone always sits in
+`repos/<name>` in the project repository, which git ignores. One layout
+for every clone means one checkout procedure for every teammate, and no
+nested git history.
+
+`hikari sync` does the network work, and `hikari up` does none: `up`
+refuses a missing clone instead of cloning, so a start never surprises
+you. `sync` clones, fetches, and makes a local branch only where none
+exists. It never merges, rebases, or resets, because those decisions are
+yours. `hikari push` never forces, and it pushes the project repository
+last: a map records the commit that it describes, and a teammate must
+never get a map whose commit is not on the remote.
+
+Each person's agents commit to their own branch. The branch comes from
+compose interpolation, `${HIKARI_BRANCH:-hikari}`, and `.env` sets it for
+each machine. hikari reads no `.env` of its own; compose already reads it.
+
+A fresh clone lacks what git does not version: test results and releases.
+A missing results file is no evidence, so the map keeps the health that
+the teammate's machine recorded, instead of dropping every feature to
+pending and committing the drop. The owner's first turn runs its suites
+again, and publishes again each release that a tester pins. Then the
+owner tells the tester, which pins again. A rebuild can change a
+release's digest, so a pin is never carried across machines silently.
+
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its
@@ -578,9 +606,11 @@ from before the record existed has no known age and shows as the oldest.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.
 - The first indexing turn of an owner reads its whole system.
-- No agent sees another system's code. A system can test against another
-  system's published releases when the topology grants them, but an E2E
-  test agent that runs tests across systems is open work.
+- No agent sees another system's code. A system tests against another
+  system's published releases when the topology grants them, and a hub's
+  tester runs E2E tests against the releases of the hub's systems.
+- Teammates' branches are merged by people with git. hikari pushes and
+  syncs, but it never merges.
 - Release grants change only when a container starts, and there are no
   schema grants yet: a system that owns a contract publishes it in its
   releases.

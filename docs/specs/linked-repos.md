@@ -1,6 +1,13 @@
 # Spec: linked repositories
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-23 with a project from `hikari init` and two linked repos, `greet` and `hello`, on local bare remotes. `hikari check` named both missing clones, and `hikari sync` cloned them. Alex's run committed the owners' maps on `hikari`, and `hikari push` pushed both repos, then the project. Bob cloned the project, ran `hikari sync -from hikari` with `HIKARI_BRANCH=hikari-bob`, and his run started on `hikari-bob` from Alex's maps. A third clone found that a fresh clone dropped every health to pending and committed the drop; after the fix (change 2), Carol's owners took a restore turn of 7 to 10 seconds, ran their suites, and the maps changed only by the time of the run. `hikari up` on a clone that was not synced refused to start and started no container.
+
+Changes made during the build:
+
+1. **The first line of `git status` keeps its leading space.** The git helper trimmed the output on both sides, so the status line of a modified file lost the first letter of its path, and the refusal of PR10 named `gitignore` for `.gitignore`. It now trims the end only. Found in the tests.
+2. **A fresh clone keeps the recorded health, and owners restore what git does not version** (SY10, SY11). Found in the live run: Bob's clone had no test results, so every feature became pending, and hikari committed the drop to his branch. A merge of that branch would have erased Alex's health. B6 also assumed that owners publish again on their first turns, but nothing told them to.
+3. **A commit the user copies names the compose file as typed.** The instruction `run: hikari sync <file>` names the file relative to the working directory when it is inside it.
+4. **Observed for the containerize step:** the sample repos had no `.gitignore`, so the owners committed `__pycache__` files, and each machine commits them again. Containerize must report a repo that does not ignore its build products.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, questions A3 and B1 to B6) and `onboarding-answers.md`. This is the first of four steps of the onboarding work.
 
@@ -82,6 +89,8 @@ For the project repository, and then for each linked repository, `sync` does the
 - **SY7.** **Path repositories.** For each path repository, `sync` warns that a teammate's clone cannot get it, and does nothing else.
 - **SY8.** `sync` exits with status 1 when a repository could not be cloned, has another origin, or a map's commit is missing. Being behind or ahead is not a failure.
 - **SY9.** `sync` needs no `.env`. Compose warns about unset variables, and `sync` shows the warnings.
+- **SY10.** **Test results.** An owner whose map records test runs, but whose scope has no results file, has run no tests on this machine. The map keeps the recorded tests and health of each feature until a run on this machine records results. The owner's first turn runs its suites and records them, as a restore turn when nothing else starts one.
+- **SY11.** **Releases.** When a tester pins a release that this machine does not have, the owner's first turn publishes it again: at the same version when its code has not changed since, else at a new version. Then the owner sends the tester a direct message. The tester takes no restore turn while its pins are missing. The message wakes it, and it pins again and runs its tests.
 
 ## 3. `hikari check`
 
