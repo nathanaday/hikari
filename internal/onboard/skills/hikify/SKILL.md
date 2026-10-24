@@ -5,20 +5,20 @@ description: Design the refactor of a containerized hikari project with the user
 
 # Hikify: design the refactor
 
-You work for the user in their own Claude Code session, in a hikari project repository. The project is containerized: each repository runs as one hikari system, its owner has mapped it, and `onboarding/baseline.md` records every test. You design how the project becomes a set of isolated systems behind clean interfaces. The design is yours to draft and the user's to decide. Nothing in the running project changes in this skill: the design stays in `onboarding/` and `compose.target.yaml` until the user approves it, and then execution carries it out.
+You work for the user in their own Claude Code session, in a hikari project repository. The project is containerized: each repository runs as one hikari system, its owner has mapped it, and `onboarding/baseline.md` records every test. You design how the project becomes a set of isolated systems behind clean interfaces, and then you carry the design out with hikari's agents. The design is yours to draft and the user's to decide. Until the user approves it, nothing in the running project changes: the design stays in `onboarding/` and `compose.target.yaml`.
 
 Read `references/principles.md` first. Every boundary and every plan step must keep its two principles.
 
 ## Rules
 
 1. Start only when `onboarding/state.md` records `containerize: done`. Otherwise tell the user to run the containerize-repo skill first, and stop.
-2. Change no file in a clone in `repos/`, and do not change `compose.yaml` or the store. The design goes into `onboarding/` and `compose.target.yaml`.
+2. Before approval, change no file in a clone in `repos/`, and do not change `compose.yaml` or the store. The design goes into `onboarding/` and `compose.target.yaml`.
 3. Commit each change at once, with the user's git identity (a plain `git commit`), on the branch that is checked out.
-4. Put no secret in any file. Never push, and never create a remote repository.
+4. Put no secret in any file. Push or create a remote repository only with the user's approval in the conversation, for that one action.
 5. Keep `onboarding/state.md` current: the stage, the decisions the user made, and the open questions.
 6. A difference in behavior between two copies of code is always a question for the user. Never pick the behavior yourself.
 
-The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan`, `hikify: review`, `hikify: approved`. Read `state.md` at the start and continue from its stage.
+The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan`, `hikify: review`, `hikify: approved`, then `hikify: restructure`, `hikify: execute`, `hikify: verify`, and `hikify: done`. Read `state.md` at the start and continue from its stage.
 
 ## Stage 1: Analysis
 
@@ -57,7 +57,11 @@ Read `references/plan.md`.
 
 ## Approval
 
-Show the user the plan in a few lines: the steps of each hub, and the reviews' main findings with their resolutions. Name the files to read: `onboarding/topology.md`, the plans, and the ledger. When the user approves, set `status: approved` on each plan, and set the stage to `hikify: approved`. Commit, and tell the user that execution is the next step.
+Show the user the plan in a few lines: the steps of each hub, and the reviews' main findings with their resolutions. Name the files to read: `onboarding/topology.md`, the plans, and the ledger. When the user approves, set `status: approved` on each plan, and set the stage to `hikify: approved`. Commit. Then ask whether to start the restructure now.
+
+## Stages 5 to 7: Restructure, execute, verify
+
+When the user agrees to start, read `references/execute.md`, and follow it from the stage in `state.md`.
 
 ## References
 
@@ -67,4 +71,5 @@ Show the user the plan in a few lines: the steps of each hub, and the reviews' m
 - `references/topology.md`: how to draw boundaries, and the compose parts of a target.
 - `references/plan.md`: the forms of the hub plan, the system plan, and the ledger.
 - `references/review.md`: the brief for each reviewer.
+- `references/execute.md`: the restructure, the run of the plan, and the verification.
 - `references/hub-wiki.md`, `references/wiki.md`: the format and rules of wiki documents, from the agents' own skills.
