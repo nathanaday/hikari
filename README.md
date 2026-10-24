@@ -328,6 +328,8 @@ The text an agent writes at the end of a turn reaches no one; its messages are t
 
 #### Bring existing repositories in
 
+For a step-by-step guide, see [docs/guides/onboarding.md](docs/guides/onboarding.md).
+
 `hikari init` also writes host skills into the project's `.claude/skills/`: skills for your own Claude Code session, not for an agent's container. `hikari sync` writes them again, so they always match your hikari binary. git ignores them.
 
 `containerize-repo` wraps your repositories into the project, one system for each repository, with no change to their code. Open Claude Code in the project and run `/containerize-repo`, then give it the URL of each repository. The skill:
