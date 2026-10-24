@@ -31,7 +31,9 @@ func Failed(results []Result) bool {
 // remote's from. It never merges, rebases, resets, or checks out.
 func Sync(topo *topology.Topology, from string) []Result {
 	var out []Result
-	add := func(repo, text string, failed bool) { out = append(out, Result{Repo: repo, Text: text, Failed: failed}) }
+	add := func(repo, text string, failed bool) {
+		out = append(out, Result{Repo: repo, Text: text, Failed: failed})
+	}
 	if p := topo.Project; p != nil {
 		repo := gitrepo.Open(p.Path)
 		if repo.RemoteURL(gitrepo.Origin) == "" {
