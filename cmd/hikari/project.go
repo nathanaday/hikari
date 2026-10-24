@@ -28,7 +28,11 @@ func composeArg(fs *flag.FlagSet, args []string, usage string) string {
 
 // loadShown loads a topology, and shows its errors one to a line.
 func loadShown(ctx context.Context, con *console.Console, file string) (*topology.Topology, error) {
-	topo, err := topology.Load(ctx, file)
+	return showLoaded(con, topology.Load, ctx, file)
+}
+
+func showLoaded(con *console.Console, load func(context.Context, string) (*topology.Topology, error), ctx context.Context, file string) (*topology.Topology, error) {
+	topo, err := load(ctx, file)
 	if err != nil {
 		for _, line := range strings.Split(err.Error(), "\n") {
 			con.Error(line)
@@ -42,10 +46,21 @@ func loadShown(ctx context.Context, con *console.Console, file string) (*topolog
 }
 
 // check runs every check of hikari up and starts nothing (rules CK1 to
-// CK3).
+// CK3). With -draft, it checks a target topology by the topology's rules
+// only (rules DR1 to DR3 of the hikify design spec).
 func check(ctx context.Context, args []string) error {
-	file := composeArg(flag.NewFlagSet("check", flag.ExitOnError), args, "hikari check <compose.yaml>")
+	fs := flag.NewFlagSet("check", flag.ExitOnError)
+	draft := fs.Bool("draft", false, "check a target topology: repos and scopes that do not exist yet are allowed, and the running project is not checked")
+	file := composeArg(fs, args, "hikari check [flags] <compose.yaml>")
 	con := console.New(os.Stdout)
+	if *draft {
+		topo, err := showLoaded(con, topology.LoadDraft, ctx, file)
+		if err != nil {
+			return err
+		}
+		con.Println("  " + con.Green("✓") + " the draft is valid: " + describe(topo))
+		return nil
+	}
 	topo, err := loadShown(ctx, con, file)
 	if err != nil {
 		return err

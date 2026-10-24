@@ -145,6 +145,9 @@ type Topology struct {
 	Missing []string
 	// raw holds the repos as the file writes them.
 	raw map[string]Repo
+	// draft skips the checks of paths that a target topology creates later
+	// (rule DR1 of the hikify design spec).
+	draft bool
 }
 
 var (
@@ -189,7 +192,13 @@ func (a Agent) empty() bool {
 
 // Load reads a compose file through `docker compose config`, so that hikari
 // sees the file as compose will run it.
-func Load(ctx context.Context, file string) (*Topology, error) {
+func Load(ctx context.Context, file string) (*Topology, error) { return load(ctx, file, false) }
+
+// LoadDraft is Load for a target topology: repos and scopes that do not
+// exist yet are not errors (rule DR1).
+func LoadDraft(ctx context.Context, file string) (*Topology, error) { return load(ctx, file, true) }
+
+func load(ctx context.Context, file string, draft bool) (*Topology, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
 		return nil, err
@@ -214,7 +223,7 @@ func Load(ctx context.Context, file string) (*Topology, error) {
 		}
 		return nil, fmt.Errorf("docker compose config: %v", err)
 	}
-	t, err := Parse(out, filepath.Dir(abs))
+	t, err := parse(out, filepath.Dir(abs), draft)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +253,9 @@ func composeMessages(stderr string) []string {
 
 // Parse reads compose's resolved form of a compose file, the output of
 // `docker compose config`, whose relative x-hikari paths start at dir.
-func Parse(data []byte, dir string) (*Topology, error) {
+func Parse(data []byte, dir string) (*Topology, error) { return parse(data, dir, false) }
+
+func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	var f composeFile
 	if err := yaml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse compose file: %w", err)
@@ -252,7 +263,7 @@ func Parse(data []byte, dir string) (*Topology, error) {
 	if f.Name == "" && len(f.Services) == 0 && f.Hikari.Kind == 0 {
 		return nil, fmt.Errorf("compose file is empty")
 	}
-	t := Topology{Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}}
+	t := Topology{Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}, draft: draft}
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 
@@ -509,7 +520,7 @@ func (t *Topology) validateRepos() []error {
 		case r.Path == "":
 			errs = append(errs, fmt.Errorf("repo %q has neither url nor path", name))
 		default:
-			if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
+			if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil && !(t.draft && os.IsNotExist(err)) {
 				errs = append(errs, fmt.Errorf("repo %q: %s is not the top directory of a git repo", name, r.Path))
 			}
 		}
@@ -650,7 +661,15 @@ func (t *Topology) validateSystems() []error {
 				fail(name, "a system in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
 			}
 		}
-		if slices.Contains(t.Missing, s.Repo) {
+		if slices.Contains(t.Missing, s.Repo) || t.draft {
+			if s.Scope != "" && !filepath.IsLocal(s.Scope) {
+				fail(name, "scope %q must be a relative path inside the repo", s.Scope)
+			}
+			for _, p := range s.Read {
+				if p == "" || !filepath.IsLocal(p) {
+					fail(name, "read path %q must be a relative path inside the repo", p)
+				}
+			}
 			continue
 		}
 		if s.Scope != "" {

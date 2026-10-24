@@ -622,3 +622,28 @@ func TestUnusedLinkedRepoIsAWarning(t *testing.T) {
 		t.Errorf("warnings = %v", topo.Warnings)
 	}
 }
+
+func TestDraft(t *testing.T) {
+	dir := fakeRepo(t)
+	src := compose(`
+  project: {branch: hikari}
+  repos:
+    app: {url: https://example.com/app.git}
+    lib: {path: `+filepath.Join(dir, "nowhere")+`, branch: hikari}
+  hubs:
+    h: {orchestrator: lead, members: [api, util]}`, `
+  lead: {x-hikari: {}}
+  api: {x-hikari: {system: {repo: app, scope: api}}}
+  util: {x-hikari: {system: {repo: lib, scope: src, read: [proto]}}}
+`)
+	if _, err := Parse([]byte(src), dir); err == nil || !strings.Contains(err.Error(), "is not the top directory of a git repo") {
+		t.Errorf("a path repo that does not exist is an error: %v", err)
+	}
+	if _, err := parse([]byte(src), dir, true); err != nil {
+		t.Errorf("DR1 a draft names repos and scopes that do not exist yet: %v", err)
+	}
+	bad := strings.Replace(src, "scope: src", "scope: ../src", 1)
+	if _, err := parse([]byte(bad), dir, true); err == nil || !strings.Contains(err.Error(), "must be a relative path") {
+		t.Errorf("DR1 a draft keeps the other rules: %v", err)
+	}
+}
