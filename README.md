@@ -125,11 +125,13 @@ services:
         repo: shop
         scope: services/orders    # the only code orders can see or change
         read: [proto]             # optional read-only paths outside every scope
-        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml  # optional; must write a JUnit report
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml  # optional; seeds the first suite, all
       grants:
         deliverables: [python-library]  # optional; the releases this owner can publish
         releases: [inventory]     # optional; read-only access to another system's releases
 ```
+
+The `test` command seeds the owner's test map once: when the system has no `tests.yaml` yet, hikari makes the command its first suite, `all`, whose report must be `/hikari/private/reports/all.xml`. After that, the owner keeps its suites in `tests.yaml`, and a change of `test` in the compose file has no effect.
 
 When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates the branch if needed and checks it out. Each owner's container sees only its scope at `/workspace/<scope>`, with no `.git`. The agent cannot commit by itself: hikari commits the changes inside its scope, with the agent as author and you as committer, when the agent calls `commit_changes` and at the end of every turn. You review the branch and merge it.
 
