@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,11 +70,18 @@ type System struct {
 	Test  string   `yaml:"test"`
 }
 
-// Repo is a git repo on the host. Path is absolute after Parse.
+// Repo is a git repo on the host. Path is absolute after Parse. A linked
+// repo has a URL, and its path is in the clone folder (rules LR1 to LR4 of
+// the linked repositories spec).
 type Repo struct {
+	URL    string `yaml:"url"`
 	Path   string `yaml:"path"`
 	Branch string `yaml:"branch"`
 }
+
+// CloneDir is the folder of the project repository that holds the clones of
+// linked repos.
+const CloneDir = "repos"
 
 // Hub is a chat room. Its orchestrator, its members, and the user can post to
 // it, and any two of them can send direct messages to each other.
@@ -131,6 +139,11 @@ type Topology struct {
 	// Dir is the directory of the compose file. Relative paths in x-hikari
 	// start there.
 	Dir string
+	// Missing lists the linked repos whose clones do not exist yet (rule
+	// LR6).
+	Missing []string
+	// raw holds the repos as the file writes them.
+	raw map[string]Repo
 }
 
 var (
@@ -255,6 +268,7 @@ func Parse(data []byte, dir string) (*Topology, error) {
 	if t.Repos == nil {
 		t.Repos = map[string]Repo{}
 	}
+	t.raw = maps.Clone(t.Repos)
 	if _, ok := t.Repos[ProjectRepo]; ok {
 		fail("x-hikari.repos: the repo name %q is reserved for the project repository; rename the repo", ProjectRepo)
 	}
@@ -349,12 +363,21 @@ func (t *Topology) normalize() {
 		t.Store = "store"
 	}
 	t.Store = resolvePath(t.Store, t.Dir)
+	if t.Project != nil {
+		t.Project.Path = resolvePath(t.Project.Path, t.Dir)
+	}
 	for name, r := range t.Repos {
-		r.Path = resolvePath(r.Path, t.Dir)
+		if r.URL != "" && r.Path == "" && t.Project != nil {
+			r.Path = filepath.Join(t.Project.Path, CloneDir, name)
+			if r.Branch == "" {
+				r.Branch = t.Project.Branch
+			}
+		} else {
+			r.Path = resolvePath(r.Path, t.Dir)
+		}
 		t.Repos[name] = r
 	}
 	if t.Project != nil {
-		t.Project.Path = resolvePath(t.Project.Path, t.Dir)
 		t.Repos[ProjectRepo] = *t.Project
 	}
 	for name, a := range t.Agents {
@@ -468,10 +491,26 @@ func (t *Topology) validateRepos() []error {
 		if !validName.MatchString(name) {
 			errs = append(errs, fmt.Errorf("invalid repo name %q: use lowercase letters, digits, and dashes", name))
 		}
-		if r.Path == "" {
-			errs = append(errs, fmt.Errorf("repo %q has no path", name))
-		} else if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
-			errs = append(errs, fmt.Errorf("repo %q: %s is not the top directory of a git repo", name, r.Path))
+		raw := t.raw[name]
+		switch {
+		case raw.URL != "" && raw.Path != "":
+			errs = append(errs, fmt.Errorf("repo %q has both url and path; a linked repo's clone is always %s/%s", name, CloneDir, name))
+		case raw.URL != "" && t.Project == nil:
+			errs = append(errs, fmt.Errorf("repo %q has a url, which needs x-hikari.project: the clone lives in the project repository", name))
+		case raw.URL != "" && !validURL(raw.URL):
+			errs = append(errs, fmt.Errorf("repo %q: %q is not a valid url: it must not be empty, hold spaces, or start with -", name, raw.URL))
+		case raw.URL != "":
+			if _, err := os.Stat(r.Path); os.IsNotExist(err) {
+				t.Missing = append(t.Missing, name)
+			} else if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
+				errs = append(errs, fmt.Errorf("repo %q: %s exists but is not the top directory of a git repo; move it away, and run hikari sync", name, r.Path))
+			}
+		case r.Path == "":
+			errs = append(errs, fmt.Errorf("repo %q has neither url nor path", name))
+		default:
+			if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
+				errs = append(errs, fmt.Errorf("repo %q: %s is not the top directory of a git repo", name, r.Path))
+			}
 		}
 		if !validBranchName(r.Branch) {
 			errs = append(errs, fmt.Errorf("repo %q: %q is not a valid branch name", name, r.Branch))
@@ -511,6 +550,23 @@ func (t *Topology) StoreInProject() string {
 		return ""
 	}
 	return filepath.ToSlash(rel)
+}
+
+// validURL checks a linked repo's url (rule LR3). git gets it after --,
+// so the leading dash is refused only to keep the error clear.
+func validURL(u string) bool {
+	return u != "" && !strings.HasPrefix(u, "-") && !strings.ContainsFunc(u, func(r rune) bool { return r <= ' ' || r == 0x7f })
+}
+
+// Linked returns the names of the linked repos, sorted.
+func (t *Topology) Linked() []string {
+	var out []string
+	for _, name := range sortedKeys(t.Repos) {
+		if t.Repos[name].URL != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func validBranchName(b string) bool {
@@ -584,7 +640,12 @@ func (t *Topology) validateSystems() []error {
 		if s.Repo == ProjectRepo {
 			if store := t.StoreInProject(); s.Scope == "" || (store != "" && overlaps(filepath.FromSlash(store), s.Scope)) {
 				fail(name, "a system in the project repository needs a scope that does not overlap the store")
+			} else if overlaps(CloneDir, s.Scope) {
+				fail(name, "a system in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
 			}
+		}
+		if slices.Contains(t.Missing, s.Repo) {
+			continue
 		}
 		if s.Scope != "" {
 			if !filepath.IsLocal(s.Scope) {

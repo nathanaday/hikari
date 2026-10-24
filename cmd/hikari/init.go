@@ -15,11 +15,13 @@ import (
 	"github.com/nathanaday/hikari/internal/store"
 )
 
-// projectIgnore is the .gitignore of a new project repository (rule PR23).
-// The runs directory is anchored, so that the .hikari directory of each
-// scope, which holds the private documents, stays versioned.
+// projectIgnore is the .gitignore of a new project repository (rule PR23,
+// and IN1 of the linked repositories spec). The runs directory is anchored,
+// so that the .hikari directory of each scope, which holds the private
+// documents, stays versioned.
 const projectIgnore = `.env
 /.hikari/
+/repos/
 .obsidian/
 .DS_Store
 `
@@ -28,6 +30,10 @@ const envExample = `# Copy this file to .env and set one credential. Git ignores
 # Make a long-lived token with: claude setup-token
 CLAUDE_CODE_OAUTH_TOKEN=
 # ANTHROPIC_API_KEY=
+
+# When more than one person runs agents for this project, set your own
+# branch, so that your agents' commits do not mix with a teammate's.
+# HIKARI_BRANCH=hikari-<your name>
 `
 
 const starterCompose = `# The %[1]s project. Start it with: hikari up compose.yaml
@@ -38,9 +44,11 @@ const starterCompose = `# The %[1]s project. Start it with: hikari up compose.ya
 name: %[1]s
 
 x-hikari:
-  project: {branch: hikari}  # agents commit to this branch of this repository; you merge it
+  # Agents commit to this branch of this repository and of each linked repo,
+  # and you merge it. HIKARI_BRANCH in .env gives each person their own.
+  project: {branch: "${HIKARI_BRANCH:-hikari}"}
   # repos:                   # a repository that holds a system's code
-  #   app: {path: ~/code/app, branch: hikari}
+  #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync compose.yaml
   hubs:
     main:
       description: Builds the %[1]s project.

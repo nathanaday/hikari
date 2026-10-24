@@ -24,6 +24,7 @@ import (
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
+	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
 	"github.com/nathanaday/hikari/internal/server"
@@ -37,6 +38,9 @@ const usage = `hikari runs Claude Code agents in containers that talk to each ot
 Usage:
   hikari up [flags] <compose.yaml>    start the server, the web UI, and the compose project
   hikari init [flags] <dir>           make a new project repository
+  hikari sync [flags] <compose.yaml>  clone the linked repos, and make your branches from the remote
+  hikari check <compose.yaml>         run the checks of hikari up, and start nothing
+  hikari push <compose.yaml>          push your branches of the linked repos and the project
   hikari version                      print the version
 
 Internal commands (hikari starts these; you do not run them):
@@ -58,6 +62,12 @@ func main() {
 		err = up(ctx, os.Args[2:])
 	case "init":
 		err = initProject(os.Args[2:])
+	case "sync":
+		err = syncProject(ctx, os.Args[2:])
+	case "check":
+		err = check(ctx, os.Args[2:])
+	case "push":
+		err = push(ctx, os.Args[2:])
 	case "node":
 		err = runNode(ctx)
 	case "mcp":
@@ -138,17 +148,20 @@ func up(ctx context.Context, args []string) error {
 			return fail(step, fmt.Errorf("containers of project %q are running; stop them with `docker compose -p %s down`", topo.Name, topo.Name))
 		}
 	}
+	findings := linked.Check(topo, !*noLaunch)
+	if slices.ContainsFunc(findings, func(f linked.Finding) bool { return !f.Warning }) {
+		step.Fail(errors.New("the project cannot start"))
+		for _, w := range topo.Warnings {
+			con.Warn(w)
+		}
+		showFindings(con, findings)
+		return errShown
+	}
 	step.Done(fmt.Sprintf("Read %s %s", con.Bold(topo.Name), con.Dim("· "+describe(topo))))
 	for _, w := range topo.Warnings {
 		con.Warn(w)
 	}
-	if !*noLaunch {
-		for _, n := range topo.AgentNames() {
-			if !topo.Services[n].Credentials() {
-				con.Warn(fmt.Sprintf("agent %s has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set", n))
-			}
-		}
-	}
+	showFindings(con, findings)
 
 	// Listen first, so that a busy port stops hikari before it touches any
 	// repo.
@@ -264,15 +277,6 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 		return topo, nil
 	}
 	repo := gitrepo.Open(p.Path)
-	var missing []string
-	for _, path := range []string{".env", ".hikari/"} {
-		if !repo.IsIgnored(path) {
-			missing = append(missing, path)
-		}
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("the project repository %s must ignore %s; add these lines to its .gitignore: %s", p.Path, strings.Join(missing, " and "), strings.Join(missing, ", "))
-	}
 	// Your edits in the wikis while hikari was stopped are knowledge, not
 	// configuration, so hikari commits them as yours (rule C5 of the wikis
 	// spec).
@@ -297,6 +301,9 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	}
 	if again.Project == nil || again.Project.Branch != p.Branch {
 		return nil, fmt.Errorf("the compose file on the project branch %s names another project branch, or none; make the branches agree", p.Branch)
+	}
+	if len(again.Missing) > 0 {
+		return nil, fmt.Errorf("the compose file on the project branch %s links repos that are not cloned (%s); run hikari sync %s", p.Branch, strings.Join(again.Missing, ", "), topo.File)
 	}
 	return again, nil
 }

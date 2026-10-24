@@ -52,7 +52,7 @@ func TestWriteProject(t *testing.T) {
 		}
 	}
 	repo := gitrepo.Open(dir)
-	for _, p := range []string{".env", ".hikari/", ".obsidian/workspace.json", ".DS_Store"} {
+	for _, p := range []string{".env", ".hikari/", "repos/app/", ".obsidian/workspace.json", ".DS_Store"} {
 		if !repo.IsIgnored(p) {
 			t.Errorf("PR23 %s is not ignored", p)
 		}
@@ -68,6 +68,12 @@ func TestWriteProject(t *testing.T) {
 		t.Errorf("PR26 %v", err)
 	} else if topo.Name != "p3" || topo.Project == nil || topo.Project.Branch != "hikari" {
 		t.Errorf("PR26 topology = %s, %+v", topo.Name, topo.Project)
+	} else {
+		// IN2: HIKARI_BRANCH gives each person their own branch.
+		t.Setenv("HIKARI_BRANCH", "hikari-alex")
+		if topo, err := topology.Load(context.Background(), filepath.Join(dir, "compose.yaml")); err != nil || topo.Project.Branch != "hikari-alex" {
+			t.Errorf("IN2 with HIKARI_BRANCH: %+v, %v", topo.Project, err)
+		}
 	}
 
 	if _, err := writeProject(dir, "p3"); err == nil || !strings.Contains(err.Error(), "not empty") {

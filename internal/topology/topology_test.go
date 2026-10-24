@@ -530,3 +530,76 @@ func TestTester(t *testing.T) {
 		})
 	}
 }
+
+// linkedTopology is a project with the linked repo app, owned by dev.
+func linkedTopology(repo string) string {
+	return compose(`
+  project: {branch: hikari-alex}
+  repos:
+    app: `+repo+`
+  hubs:
+    h: {orchestrator: lead, members: [dev]}`, `
+  lead: {x-hikari: {}}
+  dev: {x-hikari: {system: {repo: app, scope: src}}}
+`)
+}
+
+func TestLinkedRepo(t *testing.T) {
+	dir := fakeRepo(t)
+	topo, err := Parse([]byte(linkedTopology("{url: https://example.com/app.git}")), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := topo.Repos["app"]
+	if r.Path != filepath.Join(dir, "repos", "app") || r.Branch != "hikari-alex" || r.URL != "https://example.com/app.git" {
+		t.Errorf("LR2, LR4 app = %+v", r)
+	}
+	if !slices.Equal(topo.Missing, []string{"app"}) {
+		t.Errorf("LR6 Missing = %v", topo.Missing)
+	}
+	if !slices.Equal(topo.Linked(), []string{"app"}) {
+		t.Errorf("Linked() = %v", topo.Linked())
+	}
+
+	// Once cloned, the scope is checked.
+	if err := os.MkdirAll(filepath.Join(dir, "repos", "app", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse([]byte(linkedTopology("{url: https://example.com/app.git}")), dir); err == nil || !strings.Contains(err.Error(), `scope "src" is not a directory`) {
+		t.Errorf("a cloned repo's scopes are checked: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "repos", "app", "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	topo, err = Parse([]byte(linkedTopology("{url: https://example.com/app.git, branch: own}")), dir)
+	if err != nil || len(topo.Missing) != 0 || topo.Repos["app"].Branch != "own" {
+		t.Errorf("a cloned repo with its own branch: %+v, %v", topo, err)
+	}
+}
+
+func TestLinkedRepoErrors(t *testing.T) {
+	dir := fakeRepo(t, "e2e")
+	if err := os.MkdirAll(filepath.Join(dir, "repos", "junk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	noProject := strings.Replace(linkedTopology("{url: https://example.com/app.git}"), "  project: {branch: hikari-alex}\n", "", 1)
+	cases := map[string]struct{ src, want string }{
+		"LR1 both":        {linkedTopology("{url: https://example.com/app.git, path: /x}"), "has both url and path"},
+		"LR1 neither":     {linkedTopology("{branch: hikari}"), "has neither url nor path"},
+		"LR2 no project":  {noProject, "needs x-hikari.project"},
+		"LR3 dash":        {linkedTopology(`{url: "--upload-pack=x"}`), "is not a valid url"},
+		"LR3 space":       {linkedTopology(`{url: "a b"}`), "is not a valid url"},
+		"LR4 path branch": {linkedTopology("{path: " + dir + "}"), `"" is not a valid branch name`},
+		"LR5 clone folder": {strings.Replace(linkedTopology("{url: https://example.com/app.git}"), "  lead: {x-hikari: {}}\n",
+			"  lead: {x-hikari: {}}\n  e2e: {x-hikari: {system: {repo: project, scope: repos}}}\n", 1), "does not overlap the clone folder"},
+		"not a clone": {strings.Replace(linkedTopology("{url: https://example.com/app.git}"), "app: {url", "junk: {url", 1), "exists but is not the top directory of a git repo"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(c.src), dir)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
