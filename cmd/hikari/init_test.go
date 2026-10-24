@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/linked"
+	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -52,10 +54,16 @@ func TestWriteProject(t *testing.T) {
 		}
 	}
 	repo := gitrepo.Open(dir)
-	for _, p := range []string{".env", ".hikari/", "repos/app/", ".obsidian/workspace.json", ".DS_Store"} {
+	for _, p := range []string{".env", ".hikari/", "repos/app/", ".obsidian/workspace.json", ".DS_Store", ".claude/settings.local.json", ".claude/skills/containerize-repo/SKILL.md"} {
 		if !repo.IsIgnored(p) {
 			t.Errorf("PR23 %s is not ignored", p)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude/skills/containerize-repo/SKILL.md")); err != nil {
+		t.Errorf("HS2 init writes the host skills: %v", err)
+	}
+	if repo.IsIgnored(".claude/skills/mine/SKILL.md") {
+		t.Error("decision 1: a skill of your own stays versioned")
 	}
 	if repo.IsIgnored("e2e/p3/.hikari/private/tests.yaml") {
 		t.Error("the private documents of a scope must stay versioned")
@@ -89,5 +97,23 @@ func TestWriteProjectWithoutIdentity(t *testing.T) {
 	committed, err := writeProject(dir, "p")
 	if err != nil || committed {
 		t.Errorf("PR24 without an identity = %v, %v", committed, err)
+	}
+}
+
+func TestStatusLines(t *testing.T) {
+	lines := statusLines([]linked.SystemStatus{
+		{Name: "app", Cloned: true, Commit: "0123456789abcdef", Features: 2, Health: map[string]int{"passing": 1, "failing": 1}, Results: true,
+			Suites: []linked.SuiteStatus{{Name: "unit", Counts: map[string]int{"passed": 3}, Tests: []testmap.Result{{ID: "a > one", Outcome: "passed"}}}}},
+		{Name: "web", Cloned: true},
+		{Name: "far", Cloned: false},
+	}, true)
+	got := strings.Join(lines, "\n")
+	for _, want := range []string{"app  described at 0123456789ab · 2 features: 1 passing, 1 failing", "  unit  ran ", "· 3 passed", "    passed  a > one", "web  not described", "  no test results on this machine", "far  not cloned"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("SU1 to SU3: lines lack %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "far  not cloned\n  no test") {
+		t.Error("a missing clone has no results line")
 	}
 }

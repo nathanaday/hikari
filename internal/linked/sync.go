@@ -4,16 +4,19 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
 // Result is one line of what sync or push did to a repo.
 type Result struct {
-	Repo   string
-	Text   string
-	Failed bool
+	Repo    string
+	Text    string
+	Failed  bool
+	Warning bool
 }
 
 // Failed reports whether any result failed (rules SY8 and PS4).
@@ -28,7 +31,7 @@ func Failed(results []Result) bool {
 // remote's from. It never merges, rebases, resets, or checks out.
 func Sync(topo *topology.Topology, from string) []Result {
 	var out []Result
-	add := func(repo, text string, failed bool) { out = append(out, Result{repo, text, failed}) }
+	add := func(repo, text string, failed bool) { out = append(out, Result{Repo: repo, Text: text, Failed: failed}) }
 	if p := topo.Project; p != nil {
 		repo := gitrepo.Open(p.Path)
 		if repo.RemoteURL(gitrepo.Origin) == "" {
@@ -40,6 +43,7 @@ func Sync(topo *topology.Topology, from string) []Result {
 			add(topology.ProjectRepo, text, failed)
 		}
 		out = append(out, mapFindings(topo, topology.ProjectRepo, repo)...)
+		out = append(out, writeSkills(p.Path, repo))
 	}
 	for _, name := range topo.Linked() {
 		r := topo.Repos[name]
@@ -73,6 +77,23 @@ func Sync(topo *topology.Topology, from string) []Result {
 		}
 	}
 	return out
+}
+
+// writeSkills writes the host skills into the project repository (rules
+// HS2 and HS4 of the containerize spec).
+func writeSkills(dir string, repo *gitrepo.Repo) Result {
+	skipped, err := onboard.Write(dir, repo.IsIgnored)
+	switch {
+	case err != nil:
+		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
+	case len(skipped) > 0:
+		lines := make([]string, len(skipped))
+		for i, name := range skipped {
+			lines[i] = onboard.IgnoreLine(name)
+		}
+		return Result{Repo: topology.ProjectRepo, Text: "did not write the host skills " + strings.Join(skipped, ", ") + ", because git does not ignore them; add these lines to .gitignore: " + strings.Join(lines, ", "), Warning: true}
+	}
+	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
 }
 
 // track makes branch from the remote when it is missing (rule SY4), or
@@ -119,7 +140,7 @@ func mapFindings(topo *topology.Topology, name string, repo *gitrepo.Repo) []Res
 	commits := mapCommits(topo, name)
 	for _, owner := range slices.Sorted(maps.Keys(commits)) {
 		if c := commits[owner]; !repo.HasCommit(c) {
-			out = append(out, Result{name, fmt.Sprintf("the map of %s describes commit %.12s, which this clone does not have; the teammate who ran %s may not have pushed it", owner, c, owner), true})
+			out = append(out, Result{Repo: name, Failed: true, Text: fmt.Sprintf("the map of %s describes commit %.12s, which this clone does not have; the teammate who ran %s may not have pushed it", owner, c, owner)})
 		}
 	}
 	return out

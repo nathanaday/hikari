@@ -36,12 +36,13 @@ import (
 const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
 
 Usage:
-  hikari up [flags] <compose.yaml>    start the server, the web UI, and the compose project
-  hikari init [flags] <dir>           make a new project repository
-  hikari sync [flags] <compose.yaml>  clone the linked repos, and make your branches from the remote
-  hikari check <compose.yaml>         run the checks of hikari up, and start nothing
-  hikari push <compose.yaml>          push your branches of the linked repos and the project
-  hikari version                      print the version
+  hikari up [flags] <compose.yaml>      start the server, the web UI, and the compose project
+  hikari init [flags] <dir>             make a new project repository
+  hikari sync [flags] <compose.yaml>    clone the linked repos, and make your branches from the remote
+  hikari check <compose.yaml>           run the checks of hikari up, and start nothing
+  hikari push <compose.yaml>            push your branches of the linked repos and the project
+  hikari status [flags] <compose.yaml>  show each system's map and recorded tests
+  hikari version                        print the version
 
 Internal commands (hikari starts these; you do not run them):
   hikari node   the agent driver; each container runs it
@@ -68,6 +69,8 @@ func main() {
 		err = check(ctx, os.Args[2:])
 	case "push":
 		err = push(ctx, os.Args[2:])
+	case "status":
+		err = status(ctx, os.Args[2:])
 	case "node":
 		err = runNode(ctx)
 	case "mcp":

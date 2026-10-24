@@ -103,8 +103,11 @@ func showResults(con *console.Console, results []linked.Result) error {
 	}
 	for _, r := range results {
 		mark := con.Green("✓")
-		if r.Failed {
+		switch {
+		case r.Failed:
 			mark = con.Red("✗")
+		case r.Warning:
+			mark = con.Yellow("!")
 		}
 		con.Println(fmt.Sprintf("  %s %-*s  %s", mark, width, r.Repo, r.Text))
 	}
@@ -112,4 +115,67 @@ func showResults(con *console.Console, results []linked.Result) error {
 		return errShown
 	}
 	return nil
+}
+
+// status prints what the files say of each system (rules SU1 to SU4 of
+// the containerize spec).
+func status(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	tests := fs.Bool("tests", false, "print each test of each suite, with its outcome")
+	file := composeArg(fs, args, "hikari status [flags] <compose.yaml>")
+	con := console.New(os.Stdout)
+	topo, err := loadShown(ctx, con, file)
+	if err != nil {
+		return err
+	}
+	for _, line := range statusLines(linked.Status(topo), *tests) {
+		con.Println(line)
+	}
+	return nil
+}
+
+// statusLines renders the status of each system as plain lines.
+func statusLines(systems []linked.SystemStatus, tests bool) []string {
+	var out []string
+	for _, s := range systems {
+		head := s.Name + "  "
+		switch {
+		case !s.Cloned:
+			head += "not cloned"
+		case s.Commit == "":
+			head += "not described"
+		default:
+			head += fmt.Sprintf("described at %.12s · %s", s.Commit, plural(s.Features, "feature"))
+			if parts := counts(s.Health, "passing", "failing", "pending", "untested"); parts != "" {
+				head += ": " + parts
+			}
+		}
+		out = append(out, head)
+		if s.Problem != "" {
+			out = append(out, "  problem: "+s.Problem)
+		}
+		if s.Cloned && !s.Results {
+			out = append(out, "  no test results on this machine")
+		}
+		for _, su := range s.Suites {
+			out = append(out, fmt.Sprintf("  %s  ran %s · %s", su.Name, su.Ran.Local().Format("2006-01-02 15:04"), counts(su.Counts, "passed", "failed", "skipped")))
+			if tests {
+				for _, t := range su.Tests {
+					out = append(out, fmt.Sprintf("    %-7s %s", t.Outcome, t.ID))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// counts joins the nonzero counts, in the order of keys.
+func counts(m map[string]int, keys ...string) string {
+	var parts []string
+	for _, k := range keys {
+		if n := m[k]; n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, k))
+		}
+	}
+	return strings.Join(parts, ", ")
 }

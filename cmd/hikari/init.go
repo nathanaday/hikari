@@ -12,19 +12,22 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/store"
 )
 
 // projectIgnore is the .gitignore of a new project repository (rule PR23,
-// and IN1 of the linked repositories spec). The runs directory is anchored,
-// so that the .hikari directory of each scope, which holds the private
-// documents, stays versioned.
-const projectIgnore = `.env
-/.hikari/
-/repos/
-.obsidian/
-.DS_Store
-`
+// IN1 of the linked repositories spec, and HS3 of the containerize spec).
+// The runs directory is anchored, so that the .hikari directory of each
+// scope, which holds the private documents, stays versioned.
+func projectIgnore() string {
+	lines := []string{".env", "/.hikari/", "/repos/", ".obsidian/", ".DS_Store", "/.claude/settings.local.json"}
+	for _, name := range onboard.Names() {
+		lines = append(lines, onboard.IgnoreLine(name))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
 
 const envExample = `# Copy this file to .env and set one credential. Git ignores .env.
 # Make a long-lived token with: claude setup-token
@@ -129,7 +132,7 @@ func writeProject(dir, name string) (bool, error) {
 		return false, err
 	}
 	files := map[string]string{
-		".gitignore":   projectIgnore,
+		".gitignore":   projectIgnore(),
 		".env.example": envExample,
 		"compose.yaml": fmt.Sprintf(starterCompose, name),
 	}
@@ -150,6 +153,10 @@ func writeProject(dir, name string) (bool, error) {
 		return false, err
 	}
 	if err := gitIn(dir, "init", "--quiet", "--initial-branch=main"); err != nil {
+		return false, err
+	}
+	repo := gitrepo.Open(dir)
+	if _, err := onboard.Write(dir, repo.IsIgnored); err != nil {
 		return false, err
 	}
 	if err := gitIn(dir, "config", "user.email"); err != nil {
