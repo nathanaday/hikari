@@ -51,8 +51,9 @@ Read `references/plan.md`.
 1. Send two or more fresh reviewer subagents with the brief in `references/review.md`, all in one message. Give each the round number. Each returns findings with evidence.
 2. Write the findings of round n to `onboarding/review/<n>.md`.
 3. Resolve each finding: change the design, or reject the finding with a reason. Write the resolution under each finding. Check the ledger again after any change.
-4. Commit. When a finding still stood in this round, start the next round with new reviewers. A round with no finding that stands ends the review.
-5. After four rounds with findings that still stand, stop. Show the user the open findings, and ask how to go on.
+4. Commit. When a finding of this round was a `blocks` or a `should fix` that stood, start the next round with new reviewers. They also check this round's fixes, which can bring new faults. A round whose findings that stand are all `minor` ends the review, once you have resolved them.
+5. After four rounds that each had a `blocks` or `should fix` that stood, stop. Show the user the open findings and how the counts fell, and ask how to go on.
+6. A plan states only what the user decided. When a fix needs a behavior that the user has not decided, mark it as a proposal in the plan and in `state.md`, and ask the user at approval.
 
 ## Approval
 

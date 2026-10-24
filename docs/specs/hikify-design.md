@@ -125,7 +125,8 @@ From round 1 and its answers:
   - a step whose "done when" nothing can show.
 - **RV2.** The findings of round n go to `onboarding/review/<n>.md`.
 - **RV3.** The session resolves each finding with a change to the design, or rejects it with a reason. It records the resolution beside the finding.
-- **RV4.** A round with no finding that stands ends the review. After four rounds with findings, the session stops and asks you (decision 5).
+- **RV4.** A round whose findings that stand are all minor ends the review, once the session resolves them. After four rounds that each had a finding that blocks or should be fixed, the session stops and asks you (decision 5).
+- **RV6.** A plan states only what you decided. A fix that needs a behavior you have not decided is marked as a proposal, and the session asks you at approval.
 - **RV5.** The session shows you the plan, the target topology, and the reviews. When you approve, it sets `status: approved` on the plans and the stage `hikify: approved`.
 
 ## 7. Principles
