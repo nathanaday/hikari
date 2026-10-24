@@ -2,6 +2,26 @@
 
 This document gives the reasons for the main decisions in hikari.
 
+## Hikari's principles
+
+Two principles shape every topology, and the hikify skill checks a design
+against both.
+
+Each system owns one concern. hikari isolates a library from its
+consumers, and a client from its server: each agent owns one concern
+behind clean interfaces, in a container that sees only its own code, and
+the orchestrator links the systems. An agent that owns one concern holds
+all of it in context and cannot break code it cannot see. Code copied
+between two systems drifts, and the drift is a bug that no unit test
+finds, so a library serves both instead.
+
+Each system tests only its own code, with the unit tests of its language.
+A test that needs a display, a browser, the whole application, or another
+system is an E2E test, and it belongs to the hub's tester, which runs it
+against releases. Inside one system, such a test depends on code the
+system does not own, so its failure names the wrong owner, and its tools
+weigh down the system's container.
+
 ## Hubs, not a free graph
 
 The topology is a set of hubs. Each hub has one orchestrator and zero or more
@@ -359,8 +379,10 @@ as the work goes. Hikari's own agents make the code changes later, each in
 its own scope.
 
 The binary carries these host skills and writes them into the project's
-`.claude/skills/`, ignored by git. A skill versioned in the project would
-drift from the binary that checks the topology it writes.
+`.claude/skills/`. A skill versioned in the project would drift from the
+binary that checks the topology it writes. Each skill's folder holds a
+`.gitignore` of `*`, so git ignores it without a line in the project's own
+ignore file, and a new host skill never breaks an older project.
 
 Containerize changes no code. It wraps each repository as one system, and
 the owners' first turns map the code and record the tests. That gives the
