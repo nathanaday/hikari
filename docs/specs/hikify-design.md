@@ -1,6 +1,12 @@
 # Spec: hikify design
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-23 on the containerized onboard example, in a headless Claude Code session that took the user's answers in follow-up turns. Two analysis subagents wrote their reports, and the synthesis found the copied `accounts` module and its difference. The session asked which behavior is right, among seven questions, and did not choose. With the answers, it drafted a target of an `accounts` library in a new repository, `server` and `cli` as its consumers, and a tester `main-e2e`. `hikari check -draft` passed. It gave each boundary its reason, and named two splits it decided against. To check the tester's image, it built it and ran the browser test in it. It drafted four stories, a rule, and a principle of `#main`, and set `key: true` on the three that the user picked. It wrote a hub plan of nine steps, four system plans, and a ledger that places each of the nine baseline tests once. Five review rounds found 12, 10, 7, 6, and 3 problems, all resolved, one of them blocking: the `test` key of a system seeds only a new test map, so a `PYTHONPATH` there never reached the suites. The user approved the plan after round 5.
+
+Changes made during the build:
+
+1. **A round of minor findings ends the review** (RV4). Reviewers who are told to find faults always find a minor one. The live run needed five rounds on a project of two small repositories, and its findings still stood. Now a round whose findings that stand are all minor ends the review, once the session resolves them. Four rounds with serious findings still stop for the user.
+2. **A plan states only what the user decided** (RV6). A reviewer of round 4 found that the plan gave two behaviors of cli as the user's decisions, which the session had made up while it resolved findings. Such a behavior is now a proposal until the user decides it.
+3. **The README says that a system's `test` key seeds only the first suite.** A reviewer found this in the source. Without it, a target topology that changes `test` has no effect on an existing system.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, sections D, E, and F) and `onboarding-answers.md`. This is the third of four steps of the onboarding work, after linked repositories and containerize. Execution and verification are the fourth.
 
