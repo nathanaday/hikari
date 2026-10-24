@@ -324,6 +324,25 @@ Each turn of an agent appears in the timeline as a card, after the message that 
 
 The text an agent writes at the end of a turn reaches no one; its messages are the only way to reach you or another agent. The card shows that closing note, marked when the agent sent no message during the turn. A note that asks something is highlighted, because the agent may be waiting for your answer: reply to it by message.
 
+#### Bring existing repositories in
+
+`hikari init` also writes host skills into the project's `.claude/skills/`: skills for your own Claude Code session, not for an agent's container. `hikari sync` writes them again, so they always match your hikari binary. git ignores them.
+
+`containerize-repo` wraps your repositories into the project, one system for each repository, with no change to their code. Open Claude Code in the project and run `/containerize-repo`, then give it the URL of each repository. The skill:
+
+1. links each repository and clones it with `hikari sync`;
+2. surveys each repository with a subagent: its toolchain, its tests, and the suites that cannot run in a container, such as browser tests;
+3. proposes ignore lines for build products that a repository does not ignore, and adds them only with your approval;
+4. writes an agent Dockerfile, a test command, and instructions for each system, and a lead and a hub, then runs `hikari check`;
+5. asks you to start `hikari up`, and waits until each owner has mapped its repository and recorded its tests;
+6. writes the baseline, every test with its outcome, to `onboarding/baseline.md`.
+
+It keeps its progress in `onboarding/state.md`, so a new session continues where the last one stopped.
+
+`hikari status compose.yaml` shows what the files say of each system: the commit that its map describes, its features by health, and the last run of each suite. With `-tests`, it lists each test with its outcome. It reads files only, so it works while hikari runs and when it does not.
+
+To try it, run `make example-onboard`. It writes two small repositories as local remotes, and an empty project in `.hikari/demo/onboard/project`.
+
 ### Work on the UI
 
 The UI is a Vite, React, and shadcn/ui app in `web/`. The `hikari` binary embeds the built UI. To change the UI with hot reload, start a network with `make up`, then run:

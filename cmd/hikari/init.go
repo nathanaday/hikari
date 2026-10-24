@@ -59,12 +59,12 @@ x-hikari:
       members: []            # add each owner here
 
 x-agent: &agent
-  image: hikari-agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
 
 services:
   lead:
     <<: *agent
+    image: hikari-agent      # an owner builds its own image from hikari-agent instead
     x-hikari:
       description: Leads the project. Plans from the system maps and reports to you.
 
@@ -72,9 +72,10 @@ services:
   # x-hikari.repos, or in this repository with repo: project.
   # app:
   #   <<: *agent
+  #   build: {context: ., dockerfile: app.Dockerfile}   # FROM hikari-agent, with the app's toolchain
   #   x-hikari:
   #     description: Owns the app.
-  #     system: {repo: app, scope: ., test: make test}
+  #     system: {repo: app, test: make test}           # no scope: the whole repo
 `
 
 var invalidNameChars = regexp.MustCompile(`[^a-z0-9_-]+`)

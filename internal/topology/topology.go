@@ -134,7 +134,8 @@ type Topology struct {
 
 	// File is the compose file, when the topology came from Load.
 	File string
-	// Warnings are compose's warnings about the file, from Load.
+	// Warnings are compose's warnings about the file, from Load, and
+	// hikari's own.
 	Warnings []string
 	// Dir is the directory of the compose file. Relative paths in x-hikari
 	// start there.
@@ -217,7 +218,7 @@ func Load(ctx context.Context, file string) (*Topology, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.File, t.Warnings = abs, composeMessages(stderr.String())
+	t.File, t.Warnings = abs, append(composeMessages(stderr.String()), t.Warnings...)
 	return t, nil
 }
 
@@ -515,7 +516,12 @@ func (t *Topology) validateRepos() []error {
 		if !validBranchName(r.Branch) {
 			errs = append(errs, fmt.Errorf("repo %q: %q is not a valid branch name", name, r.Branch))
 		}
-		if !used[name] {
+		switch {
+		case used[name]:
+		case r.URL != "":
+			// Onboarding links the repos before it writes their systems.
+			t.Warnings = append(t.Warnings, fmt.Sprintf("the linked repo %s is not used by any system yet", name))
+		default:
 			errs = append(errs, fmt.Errorf("repo %q is not used by any system", name))
 		}
 	}

@@ -603,3 +603,22 @@ func TestLinkedRepoErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestUnusedLinkedRepoIsAWarning(t *testing.T) {
+	dir := fakeRepo(t)
+	src := compose(`
+  project: {branch: hikari}
+  repos:
+    app: {url: https://example.com/app.git}
+  hubs:
+    h: {orchestrator: lead}`, `
+  lead: {x-hikari: {}}
+`)
+	topo, err := Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(topo.Warnings, "the linked repo app is not used by any system yet") {
+		t.Errorf("warnings = %v", topo.Warnings)
+	}
+}

@@ -349,6 +349,32 @@ again, and publishes again each release that a tester pins. Then the
 owner tells the tester, which pins again. A rebuild can change a
 release's digest, so a pin is never carried across machines silently.
 
+## Onboarding runs in your own session
+
+Turning repositories into a hikari project starts before any topology
+exists, and every hikari agent needs one. It also needs a view across all
+repositories, which no hikari agent has by design. So the onboarding
+skills run in your own Claude Code session on the host, where you decide
+as the work goes. Hikari's own agents make the code changes later, each in
+its own scope.
+
+The binary carries these host skills and writes them into the project's
+`.claude/skills/`, ignored by git. A skill versioned in the project would
+drift from the binary that checks the topology it writes.
+
+Containerize changes no code. It wraps each repository as one system, and
+the owners' first turns map the code and record the tests. That gives the
+refactor of hikify three things it would otherwise rebuild: every
+repository runs in hikari, every test has a recorded outcome, and each
+repository has a map written by the agent that owns it. A suite that
+cannot run in a container is a finding, not a change: hikify moves it to
+the tester. The one exception is an ignore line for build products, with
+your approval. Without it, every machine commits the products again.
+
+`hikari status` reads only files, so the session can watch the owners'
+progress without a server API, and the baseline is the same text that a
+person reads.
+
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its

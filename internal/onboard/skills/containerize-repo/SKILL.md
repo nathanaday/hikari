@@ -30,7 +30,7 @@ Write `onboarding/state.md` from `references/state.md`, and commit.
 
 ### 2. Link
 
-Add each repository to `x-hikari.repos` in `compose.yaml` with its `url` and no `path` or `branch`. A linked repo's clone is `repos/<name>`, and its branch is the project branch. Use the repository's own name, in lowercase letters, digits, and dashes. Then run:
+Add each repository to `x-hikari.repos` in `compose.yaml` with its `url` and no `path` or `branch`. A linked repo's clone is `repos/<name>`, and its branch is the project branch. Until step 5 writes its system, `hikari` warns that no system uses it; that is expected. Use the repository's own name, in lowercase letters, digits, and dashes. Then run:
 
 ```sh
 hikari sync compose.yaml
@@ -61,7 +61,15 @@ Then write the lead and the hub, as `references/topology.md` shows.
 
 ### 6. Check
 
-Run `hikari check compose.yaml`, and fix each finding. Show the user:
+Run `hikari check compose.yaml`, and fix each finding. Then prove each image before the owners need it. Build it, and run its test command once against the clone:
+
+```sh
+docker compose -f compose.yaml build <service>
+docker run --rm -v "$PWD/repos/<name>:/workspace" -v "$(mktemp -d):/hikari/private/reports" \
+  -w /workspace <project>-<service> sh -c '<test command>'
+```
+
+`<project>` is the compose file's `name`. Fix the Dockerfile or the test command until the run reaches the tests. A failing test is a finding, not a reason to change code. Show the user:
 
 - the systems, with the toolchain of each image;
 - the test command of each system;
