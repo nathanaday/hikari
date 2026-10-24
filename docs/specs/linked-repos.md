@@ -6,7 +6,7 @@ Changes made during the build:
 
 1. **The first line of `git status` keeps its leading space.** The git helper trimmed the output on both sides, so the status line of a modified file lost the first letter of its path, and the refusal of PR10 named `gitignore` for `.gitignore`. It now trims the end only. Found in the tests.
 2. **A fresh clone keeps the recorded health, and owners restore what git does not version** (SY10, SY11). Found in the live run: Bob's clone had no test results, so every feature became pending, and hikari committed the drop to his branch. A merge of that branch would have erased Alex's health. B6 also assumed that owners publish again on their first turns, but nothing told them to.
-3. **A commit the user copies names the compose file as typed.** The instruction `run: hikari sync <file>` names the file relative to the working directory when it is inside it.
+3. **A command that the user copies names the compose file as typed.** The instruction `run: hikari sync <file>` names the file relative to the working directory when it is inside it.
 4. **Observed for the containerize step:** the sample repos had no `.gitignore`, so the owners committed `__pycache__` files, and each machine commits them again. Containerize must report a repo that does not ignore its build products.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, questions A3 and B1 to B6) and `onboarding-answers.md`. This is the first of four steps of the onboarding work.
