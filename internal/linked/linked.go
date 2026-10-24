@@ -14,7 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
@@ -42,12 +41,6 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 		need := [][2]string{{".env", ".env"}, {".hikari/", "/.hikari/"}}
 		if len(topo.Linked()) > 0 {
 			need = append(need, [2]string{topology.CloneDir + "/", "/" + topology.CloneDir + "/"})
-		}
-		// A host skill's folder must be ignored once it exists (rule HS5).
-		for _, name := range onboard.Names() {
-			if _, err := os.Stat(filepath.Join(p.Path, filepath.FromSlash(onboard.IgnorePath(name)))); err == nil {
-				need = append(need, [2]string{onboard.IgnorePath(name), onboard.IgnoreLine(name)})
-			}
 		}
 		var lines []string
 		for _, n := range need {

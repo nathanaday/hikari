@@ -63,7 +63,7 @@ func TestWriteProject(t *testing.T) {
 		t.Errorf("HS2 init writes the host skills: %v", err)
 	}
 	if repo.IsIgnored(".claude/skills/mine/SKILL.md") {
-		t.Error("decision 1: a skill of your own stays versioned")
+		t.Error("a skill of your own stays versioned")
 	}
 	if repo.IsIgnored("e2e/p3/.hikari/private/tests.yaml") {
 		t.Error("the private documents of a scope must stay versioned")

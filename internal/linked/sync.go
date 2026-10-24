@@ -45,7 +45,7 @@ func Sync(topo *topology.Topology, from string) []Result {
 			add(topology.ProjectRepo, text, failed)
 		}
 		out = append(out, mapFindings(topo, topology.ProjectRepo, repo)...)
-		out = append(out, writeSkills(p.Path, repo))
+		out = append(out, writeSkills(p.Path))
 	}
 	for _, name := range topo.Linked() {
 		r := topo.Repos[name]
@@ -81,19 +81,11 @@ func Sync(topo *topology.Topology, from string) []Result {
 	return out
 }
 
-// writeSkills writes the host skills into the project repository (rules
-// HS2 and HS4 of the containerize spec).
-func writeSkills(dir string, repo *gitrepo.Repo) Result {
-	skipped, err := onboard.Write(dir, repo.IsIgnored)
-	switch {
-	case err != nil:
+// writeSkills writes the host skills into the project repository (rule
+// HS2 of the containerize spec).
+func writeSkills(dir string) Result {
+	if err := onboard.Write(dir); err != nil {
 		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
-	case len(skipped) > 0:
-		lines := make([]string, len(skipped))
-		for i, name := range skipped {
-			lines[i] = onboard.IgnoreLine(name)
-		}
-		return Result{Repo: topology.ProjectRepo, Text: "did not write the host skills " + strings.Join(skipped, ", ") + ", because git does not ignore them; add these lines to .gitignore: " + strings.Join(lines, ", "), Warning: true}
 	}
 	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
 }

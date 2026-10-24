@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/store"
 )
@@ -22,11 +21,7 @@ import (
 // The runs directory is anchored, so that the .hikari directory of each
 // scope, which holds the private documents, stays versioned.
 func projectIgnore() string {
-	lines := []string{".env", "/.hikari/", "/repos/", ".obsidian/", ".DS_Store", "/.claude/settings.local.json"}
-	for _, name := range onboard.Names() {
-		lines = append(lines, onboard.IgnoreLine(name))
-	}
-	return strings.Join(lines, "\n") + "\n"
+	return strings.Join([]string{".env", "/.hikari/", "/repos/", ".obsidian/", ".DS_Store", "/.claude/settings.local.json"}, "\n") + "\n"
 }
 
 const envExample = `# Copy this file to .env and set one credential. Git ignores .env.
@@ -157,8 +152,7 @@ func writeProject(dir, name string) (bool, error) {
 	if err := gitIn(dir, "init", "--quiet", "--initial-branch=main"); err != nil {
 		return false, err
 	}
-	repo := gitrepo.Open(dir)
-	if _, err := onboard.Write(dir, repo.IsIgnored); err != nil {
+	if err := onboard.Write(dir); err != nil {
 		return false, err
 	}
 	if err := gitIn(dir, "config", "user.email"); err != nil {

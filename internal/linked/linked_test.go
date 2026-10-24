@@ -80,7 +80,7 @@ services:
 }
 
 var projectFiles = map[string]string{
-	".gitignore":           ".env\n/.hikari/\n/repos/\n/.claude/skills/containerize-repo/\n",
+	".gitignore":           ".env\n/.hikari/\n/repos/\n",
 	"compose.yaml":         "# see topo()\n",
 	"store/README.md":      "store\n",
 	"store/shared/note.md": "x\n",
@@ -154,7 +154,7 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 	if f := Check(tp, false); len(f) != 1 || !strings.Contains(f[0].Text, "app is not cloned; run: hikari sync") {
 		t.Errorf("CK1 a missing clone: %+v", f)
 	}
-	want(t, Sync(tp, ""), false, "ok project: wrote the host skills containerize-repo into .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
+	want(t, Sync(tp, ""), false, "ok project: wrote the host skills containerize-repo, hikify into .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
 	tp = topo(t, alex, "hikari-alex", appURL)
 	if f := Check(tp, false); len(f) != 0 {
 		t.Errorf("CK1 after sync: %+v", f)
@@ -211,14 +211,6 @@ func TestSyncReports(t *testing.T) {
 	git(t, filepath.Join(dir, "repos/app"), "remote", "set-url", "origin", other)
 	want(t, Sync(tp, ""), true, "its origin is", "left alone")
 	git(t, filepath.Join(dir, "repos/app"), "remote", "set-url", "origin", appURL)
-
-	// HS4: without the ignore line, sync writes no skill and warns.
-	bare := clone(t, remote(t, map[string]string{".gitignore": ".env\n/.hikari/\n/repos/\n", "store/README.md": "x\n"}))
-	rs := Sync(topo(t, bare, "hikari", appURL), "")
-	want(t, rs, false, "WARN project: did not write the host skills containerize-repo", "/.claude/skills/containerize-repo/")
-	if _, err := os.Stat(filepath.Join(bare, ".claude")); err == nil {
-		t.Error("HS4 nothing is written")
-	}
 
 	// SY1: a failed clone is reported, and sync goes on.
 	gone := topo(t, clone(t, projectURL), "hikari", "file:///nowhere/app.git")
@@ -282,7 +274,7 @@ func TestCheck(t *testing.T) {
 	}
 	write(t, dir, ".gitignore", ".env\n")
 	f := Check(tp, false)
-	if len(f) != 2 || !strings.Contains(f[0].Text, "must ignore /.hikari/ and /repos/ and /.claude/skills/containerize-repo/") || !strings.Contains(f[1].Text, ".gitignore") {
+	if len(f) != 2 || !strings.Contains(f[0].Text, "must ignore /.hikari/ and /repos/") || !strings.Contains(f[1].Text, ".gitignore") {
 		t.Errorf("CK1 the ignore rules: %+v", f)
 	}
 }

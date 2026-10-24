@@ -40,7 +40,7 @@ From round 1 and its answers:
 
 - **Target topology**: `compose.target.yaml` and its explanation, `onboarding/topology.md`.
 - **Draft**: a wiki document in `onboarding/wiki/`, written for the target.
-- **Change plan**: the plan documents `hikify-plan.md` of each hub and system, in `onboarding/wiki/`.
+- **Change plan**: the plan documents `hikify-plan*.md` of each hub and system, in `onboarding/wiki/`.
 - **Step**: one unit of the change plan, with an id, an actor, what it changes, what it needs first, and when it is done.
 - **Restructure step**: a step that the session does on the host: it creates a repository, moves code between repositories, or changes the topology.
 - **Ledger**: `onboarding/verification.md`.
@@ -98,10 +98,10 @@ From round 1 and its answers:
 
 ## 5. Change plan
 
-- **PL1.** `onboarding/wiki/hubs/<hub>/hikify-plan.md` is a plan document (`kind: plan`, `status: proposed`). It holds the steps of the hub in order:
+- **PL1.** `onboarding/wiki/hubs/<hub>/hikify-plan.md` (or `hikify-plan-<hub>.md` with more than one hub, since an id is unique in the store) is a plan document (`kind: plan`, `status: proposed`). It holds the steps of the hub in order:
   - restructure steps first, then the steps of the owners and the tester;
   - for each step: its id (`S1`, `S2`, ...), the actor (`session`, or an agent of the target), what changes, what it needs first (steps or releases), and when it is done, in terms that a test or a file can show.
-- **PL2.** `onboarding/wiki/systems/<system>/hikify-plan.md` holds the steps of one system, with the same fields, for its owner.
+- **PL2.** `onboarding/wiki/systems/<system>/hikify-plan-<system>.md` holds the steps of one system, with the same fields, for its owner.
 - **PL3.** The steps follow the order of releases:
   - a library is extracted and released before its consumers move to it;
   - each consumer moves in its own step, and its suite passes against the release before its old copy is deleted;

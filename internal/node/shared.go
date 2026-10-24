@@ -215,3 +215,7 @@ func (s *sharedArea) policies() string {
 	}
 	return b.String()
 }
+
+// BuiltinFile returns one file of hikari's own skills and agents, for the
+// host skills that reuse it (decision 6 of the hikify design spec).
+func BuiltinFile(name string) ([]byte, error) { return builtin.ReadFile(name) }

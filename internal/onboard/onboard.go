@@ -10,10 +10,21 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+
+	"github.com/nathanaday/hikari/internal/node"
 )
 
 //go:embed skills
 var skills embed.FS
+
+// borrowed maps each host skill's file to the file of the agents' skills
+// that it repeats, so that both come from one source.
+var borrowed = map[string]map[string]string{
+	"hikify": {
+		"references/wiki.md":     "skills/hikari-system/references/wiki.md",
+		"references/hub-wiki.md": "skills/hikari-hub/SKILL.md",
+	},
+}
 
 // SkillsDir is the folder of a project that holds Claude Code's skills.
 const SkillsDir = ".claude/skills"
@@ -31,25 +42,18 @@ func Names() []string {
 	return out
 }
 
-// IgnorePath is the path, relative to the project, that git must ignore
-// for the host skill name.
-func IgnorePath(name string) string { return SkillsDir + "/" + name + "/" }
-
-// IgnoreLine is the .gitignore line that ignores the host skill name.
-func IgnoreLine(name string) string { return "/" + IgnorePath(name) }
+// selfIgnore is the .gitignore in each host skill's folder: git ignores
+// the folder, this file included, with no line in the project's own
+// .gitignore.
+const selfIgnore = "# hikari writes this skill; hikari sync replaces it.\n*\n"
 
 // Write writes every host skill into the project at dir, and replaces what
-// is there. It writes a skill only when ignored reports that git ignores
-// its folder, and returns the names it skipped.
-func Write(dir string, ignored func(rel string) bool) (skipped []string, err error) {
+// is there (rule HS2 of the containerize spec).
+func Write(dir string) error {
 	for _, name := range Names() {
-		if !ignored(IgnorePath(name)) {
-			skipped = append(skipped, name)
-			continue
-		}
 		dst := filepath.Join(dir, filepath.FromSlash(SkillsDir), name)
 		if err := os.RemoveAll(dst); err != nil {
-			return skipped, err
+			return err
 		}
 		root := path.Join("skills", name)
 		err := fs.WalkDir(skills, root, func(p string, d fs.DirEntry, err error) error {
@@ -68,8 +72,24 @@ func Write(dir string, ignored func(rel string) bool) (skipped []string, err err
 			return os.WriteFile(target, data, 0o644)
 		})
 		if err != nil {
-			return skipped, err
+			return err
+		}
+		for rel, src := range borrowed[name] {
+			data, err := node.BuiltinFile(src)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(dst, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(target, data, 0o644); err != nil {
+				return err
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dst, ".gitignore"), []byte(selfIgnore), 0o644); err != nil {
+			return err
 		}
 	}
-	return skipped, nil
+	return nil
 }

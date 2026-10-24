@@ -8,6 +8,7 @@ Changes made during the build:
 2. **The starter compose file sets `image: hikari-agent` on the lead only.** The anchor that every agent merges set it, so an owner that builds its own image would tag it `hikari-agent` and overwrite the base image. Found in the live run.
 3. **The skill proves each image before the run** (CZ7). The session built each image and ran its test command once against the clone, on its own initiative. That finds a broken Dockerfile in seconds instead of in an owner's first turn, so step 6 now requires it.
 4. **The test command writes `all.xml`.** hikari makes the system's `test` command the suite `all`, and reads its report from `all.xml`. The skill said `<suite>.xml`, the session named the report `unit.xml`, and the owner had to correct it. Found in the live run.
+5. **Each host skill's folder ignores itself** (HS3 to HS5). A line in the project's `.gitignore` for each skill meant that each new host skill, such as `hikify`, broke every project made before it, until you added a line. Now `hikari` writes a `.gitignore` with `*` into each skill's folder, so git ignores the folder with no line at the top, and a skill of your own in `.claude/skills/` stays versioned. Found when `hikify` was added.
 
 Sources: `docs/brainstorm/onboarding.md` (round 1, questions A1, A2, A4, C1 to C3, and I2) and `onboarding-answers.md`. This is the second of four steps of the onboarding work, after linked repositories.
 
@@ -37,7 +38,7 @@ From round 1 and its answers:
 
 ## Decisions made in this spec
 
-1. **The skills keep the names of your note: `containerize-repo` and `hikify`.** `.gitignore` names each skill's folder, so a skill of your own in `.claude/skills/` stays versioned.
+1. **The skills keep the names of your note: `containerize-repo` and `hikify`.** Only their folders are ignored, so a skill of your own in `.claude/skills/` stays versioned.
 2. **`hikari status` reads files only.** It reads each map in the store and each owner's results file, so it works while hikari runs, and when it does not. It does not compute the map's state as the server does, which needs the code maps and hashes. It shows facts: the commit that the map describes, the features with their recorded health, and the outcome of each recorded test.
 3. **You start hikari, not the skill.** `hikari up` is a long-running process with a dashboard and the UI's link, and it is yours. The skill tells you when to start it, and waits with `hikari status` until each owner is done.
 4. **The skill commits its own files at once, as you.** These are `compose.yaml`, the Dockerfiles, and `onboarding/`. The skill commits them with your git identity, on the branch that is checked out. A file left uncommitted would stop the next `hikari up`.
@@ -54,9 +55,7 @@ From round 1 and its answers:
 
 - **HS1.** The binary embeds the host skills: `containerize-repo`, and later `hikify`.
 - **HS2.** `hikari init` and `hikari sync` write each host skill into `<project>/.claude/skills/<name>/`, and replace what is there. A host skill belongs to hikari: an edit to it is lost at the next sync.
-- **HS3.** `hikari init` adds to `.gitignore` one line for each host skill, `/.claude/skills/<name>/`, and `/.claude/settings.local.json`.
-- **HS4.** `hikari sync` writes a host skill only where git ignores its folder. Otherwise it names the lines to add, and writes nothing. A project made before this step adds the lines once.
-- **HS5.** `hikari check` and `hikari up` refuse a host skill's folder that git does not ignore, and name the line to add.
+- **HS3.** Each host skill's folder holds a `.gitignore` with `*`, so that git ignores the folder, that file included. `hikari init` also ignores `/.claude/settings.local.json`.
 
 ## 2. `hikari status`
 
