@@ -69,7 +69,7 @@ example-onboard: build
 		git clone --quiet --bare .hikari/demo/onboard/src-$$r .hikari/demo/onboard/remotes/$$r.git && \
 		rm -rf .hikari/demo/onboard/src-$$r || exit 1; \
 	done
-	bin/hikari init .hikari/demo/onboard/project
+	bin/hikari init -name onboard .hikari/demo/onboard/project
 	@echo "the remotes are file://$(CURDIR)/.hikari/demo/onboard/remotes/server.git and cli.git"
 
 clean:
