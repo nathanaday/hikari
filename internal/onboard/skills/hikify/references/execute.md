@@ -34,7 +34,7 @@ When the agents have connected and finished their first turns (`hikari status` s
 The orchestrator then sends each step to its actor when the step's needs are met, and posts the state of the steps in the hub. Follow the run from files. Do not talk to an agent.
 
 - `hikari status compose.yaml` shows each system's map and recorded tests.
-- `.hikari/runs/<newest>/messages.jsonl` holds every message of the run, one JSON object to a line, with its sender, its hub or recipient, and its text. Read the newest lines to see the orchestrator's posts.
+- `.hikari/runs/<newest>/messages.jsonl` holds every message of the run, one JSON object to a line: `from`, then `hub` for a post or `to` for a direct message, then `body` and `time`. It appears with the first message. Read the newest lines to see the orchestrator's posts.
 - `git -C repos/<name> log hikari` shows each owner's commits.
 
 Check every few minutes; a step takes an owner many minutes. When the orchestrator posts that a step waits for the user or for you, do it, or tell the user what to do. When an owner reports that a step cannot be done as written, propose a change to the plan, and ask the user. With approval, change the plan documents in the store, as the user's edit, and commit.
