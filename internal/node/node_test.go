@@ -161,7 +161,7 @@ func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
 		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_wiki", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/wiki.md", "references/layout.md", "references/tests.md"},
 		"skills/hikari-system/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The hub wikis", "create", "modify", "rename", "remove"},
-		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes"},
+		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes", "## Carry out a plan", "get_test_plan"},
 		"skills/hikari-system/references/layout.md":                 {"P2", "P3", "code:"},
 		"skills/hikari-system/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
 		"skills/hikari-system/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
