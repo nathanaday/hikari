@@ -103,7 +103,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 4. **Approve the ignore lines.** When a repository does not ignore its build products, such as `__pycache__/` or `node_modules/`, the skill shows you the lines to add to its `.gitignore`. This is the only change that containerize makes in a repository. Without it, every machine commits the build products again.
 
-5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus a lead and a hub. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. The design stage moves it to the hub's tester.
+5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator and a hub. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. The design stage moves it to the hub's tester.
 
 6. **Start hikari** when the skill asks, in a terminal of your own, and leave it running:
 
@@ -185,16 +185,16 @@ Tell the session to start the restructure. hikari must be stopped.
 4. **Start the plan.** When the new systems have finished their first turns, post the message that the session gives you in the hub, in the web UI. It looks like this:
 
    ```
-   @lead Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-hub skill.
+   @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-hub skill.
    ```
 
    Agents act on a plan only when you ask.
 
-5. **Watch.** The lead posts the state of each step in the hub. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. The tester runs the E2E tests against the releases. When a step waits for you or for the session, the lead says so in the hub.
+5. **Watch.** The orchestrator posts the state of each step in the hub. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. The tester runs the E2E tests against the releases. When a step waits for you or for the session, the orchestrator says so in the hub.
 
-   If an owner reports that a step cannot be done as written, the lead tells you. The session proposes a change to the plan, and changes it only with your approval.
+   If an owner reports that a step cannot be done as written, the orchestrator tells you. The session proposes a change to the plan, and changes it only with your approval.
 
-6. When the lead reports every step done, stop hikari, and tell the session.
+6. When the orchestrator reports every step done, stop hikari, and tell the session.
 
 ## 5. Verify
 
@@ -212,7 +212,7 @@ The dry run proves that a teammate gets the same project from one clone. When ev
 
 - **Review and merge.** The agents' work and the restructure are on the hikari branch of each repository, or on your own branch when you set `HIKARI_BRANCH`. Review them and merge them into your own branches with git. hikari never merges.
 - **Keep `onboarding/`.** It records why the project has its shape: the reports, the decisions, the reviews, and the ledger.
-- **Keep working.** The project is now an ordinary hikari project. Plan new work as plan documents in the wikis, and ask the lead to carry them out.
+- **Keep working.** The project is now an ordinary hikari project. Plan new work as plan documents in the wikis, and ask the orchestrator to carry them out.
 
 ## Teammates
 

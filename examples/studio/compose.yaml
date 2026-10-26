@@ -1,4 +1,4 @@
-# One hub: lead coordinates writer and critic. You are in the hub too.
+# One hub: the orchestrator coordinates writer and critic. You are in the hub too.
 #
 #   make up COMPOSE=examples/studio/compose.yaml
 
@@ -8,7 +8,7 @@ x-hikari:
   hubs:
     studio:
       description: Writes and reviews short texts.
-      orchestrator: lead
+      orchestrator: orchestrator
       members: [writer, critic]
 
 # Every agent gets the Claude credentials from your environment, by name.
@@ -17,7 +17,7 @@ x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
 
 services:
-  lead:
+  orchestrator:
     <<: *agent
     x-hikari:
       description: Coordinator. Splits requests into tasks and reports results.

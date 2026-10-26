@@ -67,29 +67,29 @@ name: team                     # required; it names the containers, networks, an
 
 x-hikari:
   hubs:
-    product: {orchestrator: lead, members: [writer, eng-lead]}
-    eng: {orchestrator: eng-lead, members: [dev]}
+    product: {orchestrator: orchestrator, members: [writer, eng-orchestrator]}
+    eng: {orchestrator: eng-orchestrator, members: [dev]}
 
 x-agent: &agent                # a YAML anchor, so that each service repeats less
   image: hikari-agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
 
 services:
-  lead:
+  orchestrator:
     <<: *agent
-    x-hikari: {description: Product lead. Turns requests into tasks and reports the result.}
+    x-hikari: {description: Orchestrates product planning. Turns requests into tasks and reports the result.}
   writer:
     <<: *agent
     x-hikari: {description: Copywriter.}
-  eng-lead:
+  eng-orchestrator:
     <<: *agent
-    x-hikari: {description: Engineering lead.}
+    x-hikari: {description: Orchestrates engineering.}
   dev:
     <<: *agent
     x-hikari: {description: Developer., model: haiku}
 ```
 
-In this network, `eng-lead` is a member of `#product` and the orchestrator of `#eng`. It is the only path between the two hubs: `dev` cannot reach `lead` or `writer`. Each agent sees the `description` of the other participants in its hubs. The `instructions` field of an agent goes into the system prompt of that agent only.
+In this network, `eng-orchestrator` is a member of `#product` and the orchestrator of `#eng`. It is the only path between the two hubs: `dev` cannot reach `orchestrator` or `writer`. Each agent sees the `description` of the other participants in its hubs. The `instructions` field of an agent goes into the system prompt of that agent only.
 
 Every participant of a hub receives every post. A post starts a turn at once only for:
 
@@ -114,7 +114,7 @@ x-hikari:
       path: ~/code/shop          # relative paths start at the compose file
       branch: hikari/checkout-v2 # agents commit here; you merge it
   hubs:
-    shop: {orchestrator: lead, members: [orders]}
+    shop: {orchestrator: orchestrator, members: [orders]}
 
 services:
   orders:
@@ -287,7 +287,7 @@ This writes a starter `compose.yaml`, a `.gitignore`, an `.env.example`, and the
 The key `x-hikari.project: {branch: hikari}` makes the compose file's directory a project repository. Then:
 
 - The store is versioned: the maps, the wikis, the vocabularies, and your shared area. Releases and staging areas are not, and `store/.gitignore` keeps them out.
-- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `lead: define order in the #shop vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the system's next commit. At stop, hikari commits what each agent's paths still hold.
+- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the #shop vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the system's next commit. At stop, hikari commits what each agent's paths still hold.
 - hikari never commits your own files in `store/shared`: policies, skills, agents, and deliverables. Commit them yourself. Your edits in the wikis are committed with your git identity: before an agent changes the same wiki, when you make them in the UI, at stop, and at start when the project branch is checked out and only the wikis changed.
 - The project repository follows the rules of every repo: it must be clean when hikari starts, and agents commit only to the project branch, which you merge. When the checkout of the branch changes the compose file, hikari reads it again.
 - A system's code can live in the project repository too: `system: {repo: project, scope: app}`. The scope cannot overlap the store.
@@ -337,7 +337,7 @@ For a step-by-step guide, see [docs/guides/onboarding.md](docs/guides/onboarding
 1. links each repository and clones it with `hikari sync`;
 2. surveys each repository with a subagent: its toolchain, its tests, and the suites that cannot run in a container, such as browser tests;
 3. proposes ignore lines for build products that a repository does not ignore, and adds them only with your approval;
-4. writes an agent Dockerfile, a test command, and instructions for each system, and a lead and a hub, then runs `hikari check`;
+4. writes an agent Dockerfile, a test command, and instructions for each system, and an orchestrator and a hub, then runs `hikari check`;
 5. asks you to start `hikari up`, and waits until each owner has mapped its repository and recorded its tests;
 6. writes the baseline, every test with its outcome, to `onboarding/baseline.md`.
 

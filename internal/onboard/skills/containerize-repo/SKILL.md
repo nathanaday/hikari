@@ -57,7 +57,7 @@ The test command runs every suite that can run in the container, and writes one 
 
 Write `instructions` from the repository's `CLAUDE.md` and contributor docs: the conventions an agent must follow in that code. Leave out what only applies to a person's machine. Add the suites that the owner must not run, and why.
 
-Then write the lead and the hub, as `references/topology.md` shows.
+Then write the orchestrator and the hub, as `references/topology.md` shows.
 
 ### 6. Check
 

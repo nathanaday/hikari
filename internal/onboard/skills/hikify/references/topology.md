@@ -21,7 +21,7 @@ x-hikari:
   repos:
     units: {url: https://github.com/acme/units.git}   # to create, in execution
   hubs:
-    main: {orchestrator: lead, members: [units, cloud, main-e2e]}
+    main: {orchestrator: orchestrator, members: [units, cloud, main-e2e]}
 
 services:
   units:

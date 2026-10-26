@@ -55,7 +55,7 @@ An agent can own a system: a scope inside a git repo. The owner is the only
 agent that reads or changes that code. Orchestrators own no code. They plan
 from system maps, which describe what each system does, which interfaces it
 provides and consumes, and how healthy its features are. A team works the
-same way: a lead knows which features exist and who owns them, and asks the
+same way: an orchestrator knows which features exist and who owns them, and asks the
 owner whether a change is feasible. The owner decides how to make it.
 
 The full spec is `docs/specs/system-maps.md`. The rest of this section gives

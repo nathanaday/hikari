@@ -1,4 +1,4 @@
-# The sensors example: four systems, a lead, and a tester.
+# The sensors example: four systems, an orchestrator, and a tester.
 #   make example-sensors
 #   make up COMPOSE=.hikari/demo/sensors/compose.yaml
 
@@ -9,7 +9,7 @@ x-hikari:
   hubs:
     main:
       description: Builds a sensor monitoring product, from the edge to the console.
-      orchestrator: lead
+      orchestrator: orchestrator
       members: [edge, cloud, console, thresholds, sensors-e2e]
 
 x-agent: &agent
@@ -20,11 +20,11 @@ x-python: &python
   build: {context: ., dockerfile: python.Dockerfile}
 
 services:
-  lead:
+  orchestrator:
     <<: *agent
     image: hikari-agent
     x-hikari:
-      description: Leads the product. Keeps the hub's stories, rules, and principles, and plans from the system maps.
+      description: Orchestrates the product. Keeps the hub's stories, rules, and principles, and plans from the system maps.
 
   edge:
     <<: *agent

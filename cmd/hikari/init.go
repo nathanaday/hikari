@@ -50,18 +50,18 @@ x-hikari:
   hubs:
     main:
       description: Builds the %[1]s project.
-      orchestrator: lead
+      orchestrator: orchestrator
       members: []            # add each owner here
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
 
 services:
-  lead:
+  orchestrator:
     <<: *agent
     image: hikari-agent      # an owner builds its own image from hikari-agent instead
     x-hikari:
-      description: Leads the project. Plans from the system maps and reports to you.
+      description: Orchestrates the project. Plans from the system maps and reports to you.
 
   # An owner of a system. A system's code can be in a repo under
   # x-hikari.repos, or in this repository with repo: project.

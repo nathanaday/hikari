@@ -1,5 +1,5 @@
-# A shop with two systems in one repo. lead plans from the system maps and
-# never sees code. orders and inventory each own one directory of the repo.
+# A shop with two systems in one repo. The orchestrator plans from the system
+# maps and never sees code. orders and inventory each own one directory of the repo.
 # Both owners hold the python-library deliverable, defined in
 # store/shared/deliverables/python-library/, so each can publish its package
 # as a release. orders can read inventory's releases, so it can test against
@@ -19,18 +19,18 @@ x-hikari:
   hubs:
     shop:
       description: Builds the shop.
-      orchestrator: lead
+      orchestrator: orchestrator
       members: [orders, inventory]
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
 
 services:
-  lead:
+  orchestrator:
     <<: *agent
     image: hikari-agent
     x-hikari:
-      description: Product lead for the shop. Plans changes from the system maps.
+      description: Orchestrates the shop. Plans changes from the system maps.
 
   orders:
     <<: *agent
