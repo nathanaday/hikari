@@ -49,6 +49,8 @@ The web UI's Topology view shows the compose file in two tabs. Structure is a fo
 
 Each run keeps its records in `.hikari/runs/<run-id>/`: `hikari.log` with everything the containers and compose print, including each tool call of each agent, `messages.jsonl` with one JSON line for each message, when there are messages, and the run's compose override file.
 
+To have the latest `hikari` on your `PATH` everywhere, run `make install` after you pull or commit. It builds the binaries and copies `hikari` and its Linux builds to `/opt/hikari/bin`, which it adds to the system `PATH` in `/etc/paths.d/hikari`. The first run asks for `sudo` to make the directory and that entry; later runs do not. Set `HIKARI_PREFIX` to install somewhere else.
+
 To use a different network:
 
 ```sh

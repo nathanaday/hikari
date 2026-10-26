@@ -6,7 +6,7 @@ LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
 
-.PHONY: example-onboard build ui image up dev-ui test clean demo-repo example-sensors
+.PHONY: example-onboard build install ui image up dev-ui test clean demo-repo example-sensors
 
 # The Linux binaries are what hikari mounts into each agent's container.
 build: web/dist/index.html
@@ -14,6 +14,10 @@ build: web/dist/index.html
 	for arch in $(LINUX_ARCHS); do \
 		GOOS=linux GOARCH=$$arch CGO_ENABLED=0 go build -o bin/hikari-linux-$$arch ./cmd/hikari || exit 1; \
 	done
+
+# Install the binaries in /opt/hikari/bin, on the system PATH; see install.sh.
+install:
+	./install.sh
 
 ui: web/dist/index.html
 
