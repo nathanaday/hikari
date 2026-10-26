@@ -39,14 +39,14 @@
       "new": 6
     },
     {
-      "op": "+",
-      "text": "    main: {name: core, description: Builds the demo., orchestrator: lead, members: [dev]}",
-      "new": 7
-    },
-    {
       "op": "-",
       "text": "    main: {description: Builds the demo., orchestrator: lead, members: []}",
       "old": 7
+    },
+    {
+      "op": "+",
+      "text": "    main: {name: core, description: Builds the demo., orchestrator: lead, members: [dev]}",
+      "new": 7
     },
     {
       "op": " ",

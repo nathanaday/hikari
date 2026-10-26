@@ -2,9 +2,14 @@ import type { Message } from './types'
 
 export type HubTab = 'messages' | 'vocabulary' | 'wiki' | 'tests'
 
+export type TopologyTab = 'structure' | 'yaml'
+
 export type View =
   | { kind: 'all' }
   | { kind: 'shared' }
+  // topology is the compose file: its Structure tab, or its YAML tab, where
+  // line moves the editor to a line.
+  | { kind: 'topology'; tab?: TopologyTab; line?: number }
   | { kind: 'hub'; name: string; tab?: HubTab }
   | { kind: 'dm'; name: string }
   | { kind: 'system'; name: string }
@@ -18,7 +23,7 @@ export const allView: View = { kind: 'all' }
 // viewKey names a conversation for unread counts. The tabs of a hub share
 // one key.
 export function viewKey(v: View): string {
-  if (v.kind === 'all' || v.kind === 'shared') return v.kind
+  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology') return v.kind
   if (v.kind === 'map') return v.system ? `map:${v.system}` : v.hub ? `map:hub:${v.hub}` : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
@@ -27,6 +32,7 @@ export function viewKey(v: View): string {
 export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
   if (v.kind === 'shared') return '#/shared'
+  if (v.kind === 'topology') return v.tab === 'yaml' ? '#/topology/yaml' : '#/topology'
   if (v.kind === 'map') {
     const doc = v.doc ? `/${encodeURIComponent(v.doc)}` : ''
     if (v.system) return `#/map/${v.system}${doc}`
@@ -40,6 +46,8 @@ export function viewHash(v: View): string {
 
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
+  if (hash === '#/topology') return { kind: 'topology' }
+  if (hash === '#/topology/yaml') return { kind: 'topology', tab: 'yaml' }
   if (hash === '#/map') return { kind: 'map' }
   const map = hash.match(/^#\/map\/([\w-]+)(?:\/([^/]+))?$/)
   if (map) return map[2] ? { kind: 'map', system: map[1], doc: decodeURIComponent(map[2]) } : { kind: 'map', system: map[1] }

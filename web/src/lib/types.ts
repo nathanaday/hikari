@@ -295,9 +295,17 @@ export type EnvironmentStatus = {
   connected: boolean
 }
 
+export type Mode = 'editing' | 'starting' | 'running' | 'stopping'
+
 export type Snapshot = {
   version?: string
   project?: string
+  // mode says what hikari up does, and file and revision which compose
+  // file it edits (rule UP9 of the topology API spec).
+  mode?: Mode
+  file?: string
+  revision?: string
+  start_findings?: Finding[]
   me: string
   agents: Agent[]
   hubs: Hub[]
@@ -324,5 +332,85 @@ export type ServerEvent =
   | { type: 'system'; system: SystemView }
   | { type: 'vocabulary'; vocabulary: Vocabulary }
   | { type: 'wiki'; wiki: WikiView }
+  | { type: 'topology'; revision: string }
 
 export type SendRequest = { hub: string; body: string } | { to: string; body: string }
+
+// The topology API (section 6 of the topology API spec).
+
+export type Severity = 'error' | 'warning'
+
+export type Finding = {
+  severity: Severity
+  stage: 'yaml' | 'compose' | 'topology' | 'start'
+  message: string
+  path?: string
+  line?: number
+}
+
+export type TopologyProject = { id: string; name: string; store: string; repo: boolean; branch: string }
+export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
+export type TopologyHub = {
+  id: string
+  name: string
+  description: string
+  orchestrator: string
+  members: string[]
+  line: number
+  id_locked: boolean
+}
+export type TopologySystem = { repo: string; scope: string; read: string[]; test: string }
+export type TopologyAgent = {
+  id: string
+  name: string
+  description: string
+  instructions: string
+  model: string
+  system: TopologySystem | null
+  releases: string[]
+  deliverables: string[]
+  tests: string
+  e2e: { cpus: string; memory: string } | null
+  image: string
+  build: string
+  template: string
+  compose: string[]
+  line: number
+  id_locked: boolean
+}
+export type TopologySidecar = { id: string; serves: string; image: string; line: number }
+export type TopologyModel = {
+  project: TopologyProject
+  repos: TopologyRepo[]
+  hubs: TopologyHub[]
+  agents: TopologyAgent[]
+  sidecars: TopologySidecar[]
+}
+
+export type TopologyState = {
+  file: string
+  exists: boolean
+  revision: string
+  text: string
+  model: TopologyModel | null
+  findings: Finding[]
+  mode: Mode
+  commits: boolean
+}
+
+export type DiffLine = { op: ' ' | '+' | '-'; text: string; old?: number; new?: number }
+
+export type Occurrence = { key?: string; file: string; line: number; text: string; replace: string; from: string; to: string }
+
+export type Plan = {
+  revision: string
+  text: string
+  diff: DiffLine[]
+  findings: Finding[]
+  effects: string[]
+  occurrences: Occurrence[]
+  summary: string[]
+  applies_at_start: boolean
+}
+
+export type Saved = { revision: string; commit?: string; note?: string; skipped: string[] }

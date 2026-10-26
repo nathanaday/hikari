@@ -14,6 +14,7 @@ type Props = { state: State; show: (v: View) => void; onMention: (name: string) 
 
 export function ConversationHeader({ state, show, onMention }: Props) {
   const v = state.view
+  if (v.kind === 'topology') return null
   const status = (name: string) => state.agents.find((a) => a.name === name)?.status.state ?? 'idle'
 
   let body: React.ReactNode

@@ -36,12 +36,13 @@ func diffLines(before, after string) []DiffLine {
 		case i < n && j < m && a[i] == b[j]:
 			out = append(out, DiffLine{Op: " ", Text: a[i], Old: i + 1, New: j + 1})
 			i, j = i+1, j+1
-		case j < m && (i == n || lcs[i][j+1] >= lcs[i+1][j]):
-			out = append(out, DiffLine{Op: "+", Text: b[j], New: j + 1})
-			j++
-		default:
+		case i < n && (j == m || lcs[i+1][j] >= lcs[i][j+1]):
+			// A removed line comes before the line that replaces it.
 			out = append(out, DiffLine{Op: "-", Text: a[i], Old: i + 1})
 			i++
+		default:
+			out = append(out, DiffLine{Op: "+", Text: b[j], New: j + 1})
+			j++
 		}
 	}
 	return out

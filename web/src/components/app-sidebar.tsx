@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Hash, Network } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, Hash, Network } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -58,51 +58,61 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
         )}
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarMenu>
-            {item({ kind: 'all' }, 'All activity', <Activity />)}
-            {(state.systems.length > 0 || state.hubs.length > 0) && item({ kind: 'map' }, 'Map', <Network />)}
-            {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
-          </SidebarMenu>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Hubs</SidebarGroupLabel>
-          <SidebarMenu>
-            {state.hubs.map((h) => item({ kind: 'hub', name: h.name }, h.name, <Hash />))}
-          </SidebarMenu>
-        </SidebarGroup>
-        {state.systems.length > 0 && (
+        {state.mode !== 'running' ? (
+          // Without agents, the topology is the whole UI (rule YV5).
           <SidebarGroup>
-            <SidebarGroupLabel>Systems</SidebarGroupLabel>
-            <SidebarMenu>
-              {state.systems.map((sys) => {
-                const owner = state.agents.find((a) => a.name === sys.owner)
-                const busy = owner?.status.state === 'working' || owner?.status.state === 'indexing'
-                return item(
-                  { kind: 'system', name: sys.owner },
-                  sys.owner,
-                  <span className="flex size-4 items-center justify-center">
-                    <MapStateDot state={sys.state} busy={busy} error={!!sys.error} />
-                  </span>,
-                )
-              })}
-            </SidebarMenu>
+            <SidebarMenu>{item({ kind: 'topology' }, 'Topology', <FileCode2 />)}</SidebarMenu>
           </SidebarGroup>
-        )}
-        <SidebarGroup>
-          <SidebarGroupLabel>Direct messages</SidebarGroupLabel>
-          <SidebarMenu>
-            {state.agents.map((a) =>
-              item(
-                { kind: 'dm', name: a.name },
-                a.name,
-                <span className="flex size-4 items-center justify-center">
-                  <StatusDot state={a.status.state} />
-                </span>,
-              ),
+        ) : (
+          <>
+            <SidebarGroup>
+              <SidebarMenu>
+                {item({ kind: 'all' }, 'All activity', <Activity />)}
+                {(state.systems.length > 0 || state.hubs.length > 0) && item({ kind: 'map' }, 'Map', <Network />)}
+                {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
+                {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}
+              </SidebarMenu>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Hubs</SidebarGroupLabel>
+              <SidebarMenu>
+                {state.hubs.map((h) => item({ kind: 'hub', name: h.name }, h.name, <Hash />))}
+              </SidebarMenu>
+            </SidebarGroup>
+            {state.systems.length > 0 && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Systems</SidebarGroupLabel>
+                <SidebarMenu>
+                  {state.systems.map((sys) => {
+                    const owner = state.agents.find((a) => a.name === sys.owner)
+                    const busy = owner?.status.state === 'working' || owner?.status.state === 'indexing'
+                    return item(
+                      { kind: 'system', name: sys.owner },
+                      sys.owner,
+                      <span className="flex size-4 items-center justify-center">
+                        <MapStateDot state={sys.state} busy={busy} error={!!sys.error} />
+                      </span>,
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroup>
             )}
-          </SidebarMenu>
-        </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Direct messages</SidebarGroupLabel>
+              <SidebarMenu>
+                {state.agents.map((a) =>
+                  item(
+                    { kind: 'dm', name: a.name },
+                    a.name,
+                    <span className="flex size-4 items-center justify-center">
+                      <StatusDot state={a.status.state} />
+                    </span>,
+                  ),
+                )}
+              </SidebarMenu>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
     </Sidebar>
   )

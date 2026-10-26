@@ -1,6 +1,14 @@
 # Spec: the Topology view and its YAML tab
 
-Status: draft.
+Status: built. Checked in a headless Chrome on 2026-10-25 against `hikari up` in an empty directory: the Topology view opened alone in the sidebar with Create the project; create opened the YAML tab; a member `ghost` drew a red dot on line 18 and the finding "hub "main" references unknown agent "ghost"" within a second; Cmd-S opened the review with the diff, and the save committed with Start disabled; the fix enabled Start, which ran the agents and filled the sidebar; an edit on disk under an unsaved change showed "The file changed on disk while you edited it"; Stop returned to the editing state. The browser logged no errors.
+
+Changes made during the build:
+
+1. **The editing mode reads "Agents stopped".** "editing" names hikari's state, not what you see; beside Start agents, "stopped" says what Start changes.
+2. **A missing file on the first start is not a start finding.** The view's Create the project already says that the file does not exist, and the banner stayed after create. Found in the browser check.
+3. **A removed line comes before the line that replaces it**, in the server's diff and the UI's. The diff showed the new line first, which reads backward. Found in the browser check.
+4. **CodeMirror loads with the YAML tab**, in its own chunk of about 430 KB, so that the rest of the UI loads as before.
+5. **A start finding with a line opens the YAML tab at that line.**
 
 Sources: `docs/brainstorm/topology-editor.md` (F1, F3 to F5, G3), `topology-editor-answers.md`, and the built API of `topology-api.md`. This is the third of four steps of the topology editor.
 

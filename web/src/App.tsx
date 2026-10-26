@@ -10,6 +10,7 @@ import { SignIn } from '@/components/sign-in'
 import { ReleaseView } from '@/components/release-view'
 import { SharedView } from '@/components/shared-view'
 import { SystemDetail } from '@/components/system-detail'
+import { TopologyView } from '@/components/topology-view'
 import { VocabularyPanel } from '@/components/vocabulary-panel'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -60,9 +61,15 @@ export default function App() {
       <SidebarProvider>
         <AppSidebar state={state} show={show} />
         <SidebarInset className="h-svh min-w-0">
-          <ConversationHeader state={state} show={show} onMention={mention} />
-          {main}
-          {v.kind !== 'map' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+          {v.kind === 'topology' ? (
+            <TopologyView state={state} show={show} />
+          ) : (
+            <>
+              <ConversationHeader state={state} show={show} onMention={mention} />
+              {main}
+              {v.kind !== 'map' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+            </>
+          )}
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

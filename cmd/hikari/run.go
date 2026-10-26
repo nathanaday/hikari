@@ -90,8 +90,9 @@ func fail(step *console.Step, err error) []topology.Finding {
 func (r *runner) startRun() (*run, []topology.Finding) {
 	ctx, con := r.ctx, r.con
 	if _, err := os.Stat(r.file); errors.Is(err, os.ErrNotExist) {
+		// The UI's Create the project says this already.
 		con.Println("  " + con.Yellow("!") + " " + linked.Shown(r.file) + " does not exist; create it in the web UI")
-		return nil, []topology.Finding{{Severity: topology.SeverityError, Stage: topology.StageStart, Message: linked.Shown(r.file) + " does not exist"}}
+		return nil, nil
 	}
 	// Everything for the record goes to the run's log; the terminal shows
 	// what a person needs.

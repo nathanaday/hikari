@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Hub, Message, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, DeliverableInfo, Finding, Hub, Message, Mode, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -10,6 +10,12 @@ export type State = {
   version: string
   // project is the project's name.
   project: string
+  // mode, file, and revision follow hikari up and its compose file, and
+  // startFindings say why the last start failed (rule YS1).
+  mode: Mode
+  file: string
+  revision: string
+  startFindings: Finding[]
   me: string
   agents: Agent[]
   hubs: Hub[]
@@ -40,6 +46,10 @@ export function initialState(view: View): State {
     loaded: false,
     version: '',
     project: '',
+    mode: 'running',
+    file: '',
+    revision: '',
+    startFindings: [],
     me: 'user',
     agents: [],
     hubs: [],
@@ -55,8 +65,11 @@ export function initialState(view: View): State {
   }
 }
 
-// resolve returns v if it names a hub or agent of s, and All activity if not.
-function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems'>): View {
+// resolve returns v if it names a hub or agent of s, and All activity if
+// not. Without agents, only the Topology view exists (rule YV5).
+function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems' | 'mode'>): View {
+  if (v.kind === 'topology') return v
+  if (s.mode !== 'running') return { kind: 'topology' }
   if (v.kind === 'hub' && s.hubs.some((h) => h.name === v.name)) return v
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
@@ -94,6 +107,10 @@ function applyEvent(s: State, e: ServerEvent): State {
         loaded: true,
         version: e.snapshot.version ?? '',
         project: e.snapshot.project ?? '',
+        mode: e.snapshot.mode ?? 'running',
+        file: e.snapshot.file ?? '',
+        revision: e.snapshot.revision ?? '',
+        startFindings: e.snapshot.start_findings ?? [],
         me,
         agents,
         hubs,
@@ -104,7 +121,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         deliverables: e.snapshot.deliverables ?? [],
         wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
-        view: resolve(s.view, { agents, hubs, systems }),
+        view: resolve(s.view, { agents, hubs, systems, mode: e.snapshot.mode ?? 'running' }),
         unread: {},
       }
     }
@@ -132,6 +149,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, vocabularies: replaceBy(s.vocabularies, e.vocabulary, (x) => x.hub) }
     case 'wiki':
       return { ...s, wikis: replaceBy(s.wikis, e.wiki, (x) => x.ref) }
+    case 'topology':
+      return { ...s, revision: e.revision }
   }
 }
 
