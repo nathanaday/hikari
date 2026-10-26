@@ -9,6 +9,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/linked"
+	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -103,7 +104,7 @@ func syncProject(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return showResults(con, linked.Sync(topo, *from))
+	return showResults(con, linked.Sync(topo, *from, writeSkills))
 }
 
 // push pushes your branches (rules PS1 to PS5).
@@ -199,4 +200,13 @@ func counts(m map[string]int, keys ...string) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+// writeSkills writes the host skills into the project repository (rule HS2
+// of the containerize spec).
+func writeSkills(dir string) linked.Result {
+	if err := onboard.Write(dir); err != nil {
+		return linked.Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
+	}
+	return linked.Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
 }

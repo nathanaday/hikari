@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,6 +20,8 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/editor"
+	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
@@ -37,6 +40,9 @@ type Event struct {
 	Vocabulary *vocab.Vocabulary `json:"vocabulary,omitempty"`
 	Wiki       *api.WikiView     `json:"wiki,omitempty"`
 	Snapshot   *Snapshot         `json:"snapshot,omitempty"`
+	// Revision is the compose file's new revision, in a topology event
+	// (rule TA8 of the topology API spec).
+	Revision string `json:"revision,omitempty"`
 }
 
 type NodeView struct {
@@ -50,13 +56,20 @@ type Snapshot struct {
 	// Version is the version of the running hikari.
 	Version string `json:"version"`
 	// Project is the project's name (rule ID13 of the ids spec).
-	Project      string             `json:"project"`
-	Me           string             `json:"me"`
-	Agents       []NodeView         `json:"agents"`
-	Hubs         []api.HubInfo      `json:"hubs"`
-	Messages     []api.Message      `json:"messages"`
-	Systems      []api.SystemView   `json:"systems"`
-	Vocabularies []vocab.Vocabulary `json:"vocabularies"`
+	Project string `json:"project"`
+	// Mode, File, and Revision say what hikari up does and which file it
+	// edits (rule UP9 of the topology API spec). StartFindings are why
+	// the last start failed.
+	Mode          string             `json:"mode"`
+	File          string             `json:"file"`
+	Revision      string             `json:"revision"`
+	StartFindings []topology.Finding `json:"start_findings,omitempty"`
+	Me            string             `json:"me"`
+	Agents        []NodeView         `json:"agents"`
+	Hubs          []api.HubInfo      `json:"hubs"`
+	Messages      []api.Message      `json:"messages"`
+	Systems       []api.SystemView   `json:"systems"`
+	Vocabularies  []vocab.Vocabulary `json:"vocabularies"`
 	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
 	Repos        []api.RepoInfo     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
@@ -457,6 +470,13 @@ func (s *Server) Subscribe() (events <-chan Event, cancel func()) {
 	}
 }
 
+// PublishTopology tells the UI that the compose file changed on disk.
+func (s *Server) PublishTopology(revision string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publish(Event{Type: "topology", Revision: revision})
+}
+
 func (s *Server) publish(e Event) {
 	for ch := range s.subs {
 		select {
@@ -469,7 +489,11 @@ func (s *Server) publish(e Event) {
 }
 
 func (s *Server) snapshot() Snapshot {
-	snap := Snapshot{Version: version.Version, Project: s.topo.Name, Me: topology.User, Messages: slices.Clone(s.log)}
+	snap := Snapshot{Version: version.Version, Project: s.topo.Name, Mode: ModeRunning, Me: topology.User, Messages: slices.Clone(s.log)}
+	if s.topo.File != "" {
+		text, err := os.ReadFile(s.topo.File)
+		snap.File, snap.Revision = linked.Shown(s.topo.File), editor.Revision(text, err == nil)
+	}
 	if snap.Messages == nil {
 		snap.Messages = []api.Message{}
 	}

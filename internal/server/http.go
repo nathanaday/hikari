@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
-	"github.com/nathanaday/hikari/web"
 )
 
 const (
@@ -81,22 +81,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 			next(w, r)
 		}
 	}
-	// The UI posts the token from the URL that hikari printed, and gets a
-	// cookie for the later requests.
-	mux.HandleFunc("POST /api/ui/login", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Token string `json:"token"`
-		}
-		if json.NewDecoder(r.Body).Decode(&req) != nil || !equal(req.Token, uiToken) {
-			writeError(w, http.StatusUnauthorized, "the token is not valid for this run of hikari")
-			return
-		}
-		http.SetCookie(w, &http.Cookie{
-			Name: uiCookie, Value: uiToken, Path: "/",
-			HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		})
-		w.WriteHeader(http.StatusNoContent)
-	})
+	login(mux, uiToken)
 	mux.HandleFunc("GET /api/ui/session", ui(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -183,15 +168,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		s.send(w, r, topology.User)
 	}))
 
-	// The UI files hold no data, so they need no token.
-	if web.Built() {
-		mux.Handle("GET /", http.FileServerFS(web.Assets()))
-	} else {
-		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "The web UI is not built. Run `make ui`, then rebuild hikari.", http.StatusNotFound)
-		})
-	}
-
+	static(mux)
 	return mux
 }
 
@@ -403,10 +380,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(e)
-			w.Write([]byte("data: "))
-			w.Write(data)
-			w.Write([]byte("\n\n"))
+			writeEvent(w, e)
 		case <-keepalive.C:
 			w.Write([]byte(": keepalive\n\n"))
 		case <-r.Context().Done():
@@ -415,6 +389,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 }
+
+func writeEvent(w http.ResponseWriter, e Event) {
+	data, _ := json.Marshal(e)
+	w.Write([]byte("data: "))
+	w.Write(data)
+	w.Write([]byte("\n\n"))
+}
+
+func readFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
 func equal(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1

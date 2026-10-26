@@ -1,0 +1,127 @@
+{
+  "revision": "48fd609ce9ef691a68811604cd63210478ad1a680c6a3bab219bd36098f35822",
+  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  hubs:\n    main: {name: core, description: Builds the demo., orchestrator: lead, members: [dev]}\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Leads the demo.}\n  dev:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Builds it.}\n",
+  "diff": [
+    {
+      "op": " ",
+      "text": "# The demo project.",
+      "old": 1,
+      "new": 1
+    },
+    {
+      "op": " ",
+      "text": "name: demo",
+      "old": 2,
+      "new": 2
+    },
+    {
+      "op": " ",
+      "text": "",
+      "old": 3,
+      "new": 3
+    },
+    {
+      "op": " ",
+      "text": "x-hikari:",
+      "old": 4,
+      "new": 4
+    },
+    {
+      "op": " ",
+      "text": "  project: {branch: main}",
+      "old": 5,
+      "new": 5
+    },
+    {
+      "op": " ",
+      "text": "  hubs:",
+      "old": 6,
+      "new": 6
+    },
+    {
+      "op": "+",
+      "text": "    main: {name: core, description: Builds the demo., orchestrator: lead, members: [dev]}",
+      "new": 7
+    },
+    {
+      "op": "-",
+      "text": "    main: {description: Builds the demo., orchestrator: lead, members: []}",
+      "old": 7
+    },
+    {
+      "op": " ",
+      "text": "",
+      "old": 8,
+      "new": 8
+    },
+    {
+      "op": " ",
+      "text": "services:",
+      "old": 9,
+      "new": 9
+    },
+    {
+      "op": " ",
+      "text": "  lead:",
+      "old": 10,
+      "new": 10
+    },
+    {
+      "op": " ",
+      "text": "    image: hikari-agent",
+      "old": 11,
+      "new": 11
+    },
+    {
+      "op": " ",
+      "text": "    environment: [CLAUDE_CODE_OAUTH_TOKEN]",
+      "old": 12,
+      "new": 12
+    },
+    {
+      "op": " ",
+      "text": "    x-hikari: {description: Leads the demo.}",
+      "old": 13,
+      "new": 13
+    },
+    {
+      "op": "+",
+      "text": "  dev:",
+      "new": 14
+    },
+    {
+      "op": "+",
+      "text": "    image: hikari-agent",
+      "new": 15
+    },
+    {
+      "op": "+",
+      "text": "    environment: [CLAUDE_CODE_OAUTH_TOKEN]",
+      "new": 16
+    },
+    {
+      "op": "+",
+      "text": "    x-hikari: {description: Builds it.}",
+      "new": 17
+    }
+  ],
+  "findings": [
+    {
+      "severity": "warning",
+      "stage": "start",
+      "message": "agent dev has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set"
+    },
+    {
+      "severity": "warning",
+      "stage": "start",
+      "message": "agent lead has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set"
+    }
+  ],
+  "effects": [],
+  "occurrences": [],
+  "summary": [
+    "rename hub #main to #core",
+    "add agent dev in #main"
+  ],
+  "applies_at_start": false
+}

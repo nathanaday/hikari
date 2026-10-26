@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -154,7 +155,7 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 	if f := Check(tp, false); len(f) != 1 || !strings.Contains(f[0].Text, "app is not cloned; run: hikari sync") {
 		t.Errorf("CK1 a missing clone: %+v", f)
 	}
-	want(t, Sync(tp, ""), false, "ok project: wrote the host skills containerize-repo, hikify into .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
+	want(t, Sync(tp, "", skills), false, "ok project: wrote the host skills containerize-repo, hikify into .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
 	tp = topo(t, alex, "hikari-alex", appURL)
 	if f := Check(tp, false); len(f) != 0 {
 		t.Errorf("CK1 after sync: %+v", f)
@@ -172,7 +173,7 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 	// Bob starts from Alex's work (decision 6).
 	bob := clone(t, projectURL)
 	bt := topo(t, bob, "hikari-bob", appURL)
-	want(t, Sync(bt, "hikari-alex"), false, "project: made hikari-bob from origin/hikari-alex", "app: made hikari-bob from origin/hikari-alex")
+	want(t, Sync(bt, "hikari-alex", skills), false, "project: made hikari-bob from origin/hikari-alex", "app: made hikari-bob from origin/hikari-alex")
 	if a, b := git(t, filepath.Join(bob, "repos/app"), "rev-parse", "hikari-bob"), git(t, filepath.Join(alex, "repos/app"), "rev-parse", "hikari-alex"); a != b {
 		t.Error("Bob's app branch starts from Alex's")
 	}
@@ -188,8 +189,8 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	ct := topo(t, clone(t, projectURL), "hikari-alex", appURL)
-	want(t, Sync(ct, ""), true, "project: made hikari-alex from origin/hikari-alex", "the map of dev describes commit", "may not have pushed it")
-	want(t, Sync(bt, ""), false, "project: hikari-bob is not on the remote yet")
+	want(t, Sync(ct, "", skills), true, "project: made hikari-alex from origin/hikari-alex", "the map of dev describes commit", "may not have pushed it")
+	want(t, Sync(bt, "", skills), false, "project: hikari-bob is not on the remote yet")
 }
 
 func TestSyncReports(t *testing.T) {
@@ -198,23 +199,23 @@ func TestSyncReports(t *testing.T) {
 	projectURL := remote(t, projectFiles)
 	dir := clone(t, projectURL)
 	tp := topo(t, dir, "hikari", appURL)
-	Sync(tp, "")
+	Sync(tp, "", skills)
 	tp = topo(t, dir, "hikari", appURL)
 	work(t, dir, tp, "a.go")
-	want(t, Sync(tp, ""), false, "app: hikari is not on the remote yet")
+	want(t, Sync(tp, "", skills), false, "app: hikari is not on the remote yet")
 	want(t, Push(tp), false)
 	work(t, dir, tp, "b.go")
-	want(t, Sync(tp, ""), false, "app: hikari is ahead of origin/hikari by 1 commit; hikari push sends them")
+	want(t, Sync(tp, "", skills), false, "app: hikari is ahead of origin/hikari by 1 commit; hikari push sends them")
 
 	// SY2: a clone with another origin is left alone.
 	other := remote(t, map[string]string{"x": "x\n"})
 	git(t, filepath.Join(dir, "repos/app"), "remote", "set-url", "origin", other)
-	want(t, Sync(tp, ""), true, "its origin is", "left alone")
+	want(t, Sync(tp, "", skills), true, "its origin is", "left alone")
 	git(t, filepath.Join(dir, "repos/app"), "remote", "set-url", "origin", appURL)
 
 	// SY1: a failed clone is reported, and sync goes on.
 	gone := topo(t, clone(t, projectURL), "hikari", "file:///nowhere/app.git")
-	want(t, Sync(gone, ""), true, "app: clone:")
+	want(t, Sync(gone, "", skills), true, "app: clone:")
 }
 
 func TestPushRefused(t *testing.T) {
@@ -223,7 +224,7 @@ func TestPushRefused(t *testing.T) {
 	projectURL := remote(t, projectFiles)
 	alex := clone(t, projectURL)
 	tp := topo(t, alex, "hikari", appURL)
-	Sync(tp, "")
+	Sync(tp, "", skills)
 	tp = topo(t, alex, "hikari", appURL)
 	work(t, alex, tp, "a.go")
 	want(t, Push(tp), false)
@@ -249,7 +250,7 @@ func TestCheck(t *testing.T) {
 	appURL := remote(t, map[string]string{"src/main.go": "package main\n"})
 	dir := clone(t, remote(t, projectFiles))
 	tp := topo(t, dir, "hikari", appURL)
-	Sync(tp, "")
+	Sync(tp, "", skills)
 	tp = topo(t, dir, "hikari", appURL)
 	if f := Check(tp, true); len(f) != 2 || !f[0].Warning || !strings.Contains(f[0].Text, "agent dev has neither") {
 		t.Errorf("CK1 credentials are warnings: %+v", f)
@@ -287,7 +288,7 @@ func TestStatus(t *testing.T) {
 	if s := Status(tp); len(s) != 1 || s[0].Cloned {
 		t.Errorf("SU4 a missing clone: %+v", s)
 	}
-	Sync(tp, "")
+	Sync(tp, "", skills)
 	tp = topo(t, dir, "hikari", appURL)
 	if s := Status(tp)[0]; !s.Cloned || s.Commit != "" || s.Results {
 		t.Errorf("SU1 before any run: %+v", s)
@@ -309,4 +310,12 @@ runs:
 	if su.Name != "unit" || su.Counts["passed"] != 1 || su.Counts["failed"] != 1 || su.Tests[0].ID != "a > one" {
 		t.Errorf("SU2, SU3: %+v", su)
 	}
+}
+
+// skills writes the host skills as hikari sync does.
+func skills(dir string) Result {
+	if err := onboard.Write(dir); err != nil {
+		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
+	}
+	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
 }

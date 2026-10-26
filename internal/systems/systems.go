@@ -218,6 +218,17 @@ func (m *Manager) commitStore(agent, message string, paths ...string) string {
 	return ""
 }
 
+// CommitAsUser commits paths of the project repository, relative to it,
+// with the user's identity, on the project branch: the topology editor's
+// saves during a run (rule TC4 of the topology API spec). It shares the
+// repository's lock with the agents' commits.
+func (m *Manager) CommitAsUser(paths []string, message string) (string, error) {
+	if m.projectRepo == nil {
+		return "", errors.New("the topology has no project repository")
+	}
+	return m.projectRepo.CommitPaths(m.topo.Project.Branch, paths, "", message)
+}
+
 // commitOwnFiles commits the store files that hikari writes itself (rule
 // PR18).
 func (m *Manager) commitOwnFiles() {

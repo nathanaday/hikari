@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -29,7 +27,7 @@ func Failed(results []Result) bool {
 // it, and reports how each branch compares with the remote. With from set,
 // a branch that neither exists nor is on the remote starts from the
 // remote's from. It never merges, rebases, resets, or checks out.
-func Sync(topo *topology.Topology, from string) []Result {
+func Sync(topo *topology.Topology, from string, writeSkills SkillWriter) []Result {
 	var out []Result
 	add := func(repo, text string, failed bool) {
 		out = append(out, Result{Repo: repo, Text: text, Failed: failed})
@@ -45,7 +43,9 @@ func Sync(topo *topology.Topology, from string) []Result {
 			add(topology.ProjectRepo, text, failed)
 		}
 		out = append(out, mapFindings(topo, topology.ProjectRepo, repo)...)
-		out = append(out, writeSkills(p.Path))
+		if writeSkills != nil {
+			out = append(out, writeSkills(p.Path))
+		}
 	}
 	for _, name := range topo.Linked() {
 		r := topo.Repos[name]
@@ -81,14 +81,10 @@ func Sync(topo *topology.Topology, from string) []Result {
 	return out
 }
 
-// writeSkills writes the host skills into the project repository (rule
-// HS2 of the containerize spec).
-func writeSkills(dir string) Result {
-	if err := onboard.Write(dir); err != nil {
-		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
-	}
-	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
-}
+// SkillWriter writes the host skills into the project repository at dir
+// (rule HS2 of the containerize spec), and says what it wrote. The command
+// passes it, so that this package needs nothing of the agents' side.
+type SkillWriter func(dir string) Result
 
 // track makes branch from the remote when it is missing (rule SY4), or
 // says how it compares with the remote (SY5).

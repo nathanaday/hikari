@@ -662,15 +662,18 @@ func (e *editor) addAgent(op Op) error {
 	if err := e.addService(op.ID, body); err != nil {
 		return err
 	}
-	e.summary = append(e.summary, "add agent "+op.ID)
-	if op.Hubs != nil {
+	summary := "add agent " + op.ID
+	if op.Hubs != nil && len(*op.Hubs) > 0 {
 		for _, hub := range *op.Hubs {
 			e.model = ReadModel(e.text, e.dir)
 			if err := e.apply(Op{Op: "add_member", Hub: hub, Agent: op.ID}); err != nil {
 				return err
 			}
+			e.summary = e.summary[:len(e.summary)-1]
 		}
+		summary += " in #" + strings.Join(*op.Hubs, ", #")
 	}
+	e.summary = append(e.summary, summary)
 	return nil
 }
 

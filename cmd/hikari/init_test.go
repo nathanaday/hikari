@@ -10,6 +10,8 @@ import (
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/linked"
+	"github.com/nathanaday/hikari/internal/onboard"
+	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 )
@@ -39,7 +41,7 @@ func TestProjectName(t *testing.T) {
 func TestWriteProject(t *testing.T) {
 	gitEnv(t, true)
 	dir := filepath.Join(t.TempDir(), "p3")
-	committed, err := writeProject(dir, "p3")
+	committed, err := scaffold.WriteProject(dir, "p3", onboard.Write)
 	if err != nil || !committed {
 		t.Fatalf("writeProject = %v, %v", committed, err)
 	}
@@ -84,7 +86,7 @@ func TestWriteProject(t *testing.T) {
 		}
 	}
 
-	if _, err := writeProject(dir, "p3"); err == nil || !strings.Contains(err.Error(), "not empty") {
+	if _, err := scaffold.WriteProject(dir, "p3", onboard.Write); err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("PR23 a second init = %v", err)
 	}
 }
@@ -94,7 +96,7 @@ func TestWriteProjectWithoutIdentity(t *testing.T) {
 	t.Setenv("GIT_AUTHOR_EMAIL", "")
 	t.Setenv("EMAIL", "")
 	dir := filepath.Join(t.TempDir(), "p")
-	committed, err := writeProject(dir, "p")
+	committed, err := scaffold.WriteProject(dir, "p", onboard.Write)
 	if err != nil || committed {
 		t.Errorf("PR24 without an identity = %v, %v", committed, err)
 	}

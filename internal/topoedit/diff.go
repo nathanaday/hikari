@@ -53,3 +53,11 @@ func splitLines(s string) []string {
 	}
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
+
+// Diff is the line diff of a plan (rule TA3).
+func Diff(before, after string) []DiffLine {
+	if d := diffLines(before, after); d != nil {
+		return d
+	}
+	return []DiffLine{}
+}

@@ -16,17 +16,18 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/console"
+	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
 	"github.com/nathanaday/hikari/internal/node"
+	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/server"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -36,7 +37,7 @@ import (
 const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
 
 Usage:
-  hikari up [flags] <compose.yaml>      start the server, the web UI, and the compose project
+  hikari up [flags] [compose.yaml]      start the server, the web UI, and the compose project
   hikari init [flags] <dir>             make a new project repository
   hikari sync [flags] <compose.yaml>    clone the linked repos, and make your branches from the remote
   hikari check [flags] <compose.yaml>   run the checks of hikari up, and start nothing
@@ -101,11 +102,16 @@ func up(ctx context.Context, args []string) error {
 	listen := fs.String("listen", "127.0.0.1:7420", "server address")
 	noLaunch := fs.Bool("no-launch", false, "start only the server and print agent credentials, for running agents by hand")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] <compose.yaml>")
+		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] [compose.yaml]")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
-	if fs.NArg() != 1 {
+	file := "compose.yaml"
+	switch fs.NArg() {
+	case 0:
+	case 1:
+		file = fs.Arg(0)
+	default:
 		fs.Usage()
 		os.Exit(2)
 	}
@@ -113,161 +119,41 @@ func up(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid -listen: %w", err)
 	}
-
-	// Everything for the record goes to the run's log; the terminal shows
-	// what a person needs.
-	runID := time.Now().Format("20060102-150405")
-	runDir := filepath.Join(".hikari", "runs", runID)
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return err
-	}
-	logPath := filepath.Join(runDir, "hikari.log")
-	logFile, err := os.Create(logPath)
+	ed, err := editor.New(file)
 	if err != nil {
 		return err
 	}
-	defer logFile.Close()
-	log.SetOutput(logFile)
+	ed.WriteSkills = onboard.Write
+	log.SetOutput(editLog())
 	con := console.New(os.Stdout)
 	printBanner(con)
-	fail := func(step *console.Step, err error) error {
-		log.Print(err)
-		step.Fail(err)
-		return errShown
-	}
-
-	step := con.Step("Reading " + fs.Arg(0))
-	topo, err := topology.Load(ctx, fs.Arg(0))
-	if err != nil {
-		return fail(step, err)
-	}
-	project := &launcher.Project{Topo: topo}
-	if !*noLaunch {
-		running, err := project.Running(ctx)
-		if err != nil {
-			return fail(step, err)
-		}
-		if running {
-			return fail(step, fmt.Errorf("containers of project %q are running; stop them with `docker compose -p %s down`", topo.ID, topo.ID))
-		}
-	}
-	findings := linked.Check(topo, !*noLaunch)
-	if slices.ContainsFunc(findings, func(f linked.Finding) bool { return !f.Warning }) {
-		step.Fail(errors.New("the project cannot start"))
-		for _, w := range topo.Warnings {
-			con.Warn(w)
-		}
-		showFindings(con, findings)
-		return errShown
-	}
-	step.Done(fmt.Sprintf("Read %s %s", con.Bold(topo.Name), con.Dim("· "+describe(topo))))
-	for _, w := range topo.Warnings {
-		con.Warn(w)
-	}
-	showFindings(con, findings)
 
 	// Listen first, so that a busy port stops hikari before it touches any
-	// repo.
+	// repo, and so that the UI serves a broken file too (rule UP2).
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
 		log.Print(err)
 		con.Error(fmt.Sprintf("cannot listen on %s; pass another address with -listen (%v)", *listen, err))
 		return errShown
 	}
-	step = con.Step("Preparing the repos and the store")
-	if topo, err = prepareProject(ctx, topo); err != nil {
-		return fail(step, err)
-	}
-	project.Topo = topo
-	sys, err := systems.New(topo)
-	if err != nil {
-		return fail(step, err)
-	}
-	step.Done(prepared(topo))
-	for _, w := range sys.Warnings() {
-		log.Printf("warning: %s", w)
-		con.Warn(w)
-	}
-	sys.SetRun(runID)
-	sys.Watch(ctx)
-	journal := &lazyFile{path: filepath.Join(runDir, "messages.jsonl")}
-	defer journal.Close()
-	srv := server.New(topo, journal, sys)
 	uiToken := server.NewToken()
-	httpSrv := &http.Server{Handler: srv.Handler(uiToken)}
+	host := server.NewHost(uiToken, ed)
+	httpSrv := &http.Server{Handler: host.Handler()}
 	go httpSrv.Serve(ln)
 	defer httpSrv.Close()
 	url := fmt.Sprintf("http://%s/?token=%s", ln.Addr(), uiToken)
-	log.Printf("web UI: %s", url)
-	dash := newDashboard(con, srv, topo.AgentNames(), url, logPath)
+	con.Println("  Web UI  " + con.Link(url))
+	con.Println("")
+	go ed.Watch(ctx, host.TopologyChanged)
 
-	// Containers stop before the final commits, so that no agent writes
-	// during them.
-	stopContainers := func() {}
-	if *noLaunch {
-		for _, n := range topo.AgentNames() {
-			con.Println(fmt.Sprintf("  %s  HIKARI_SERVER_URL=http://%s HIKARI_TOKEN=%s", con.Bold(n), *listen, srv.IssueToken(n)))
-		}
-	} else {
-		emptyDir, err := os.MkdirTemp("", "hikari-empty-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(emptyDir)
-		stop, err := launch(ctx, con, project, srv, launcher.OverrideInput{
-			RunID:     runID,
-			ServerURL: "http://host.docker.internal:" + port,
-			EmptyDir:  emptyDir,
-		}, runDir)
-		if stop != nil {
-			defer stop()
-			stopContainers = stop
-		}
-		if err != nil {
-			if !errors.Is(err, errShown) {
-				log.Print(err)
-				con.Error(err.Error())
-			}
-			return errShown
-		}
-		step = con.Step("Waiting for the agents to connect")
-		if dash.waitConnected(ctx, time.Minute) {
-			step.Done(fmt.Sprintf("Connected %d agents", len(topo.Agents)))
-		} else if ctx.Err() == nil {
-			step.Fail(fmt.Errorf("not every agent connected within a minute; see %s", logPath))
-		}
-	}
-
-	con.SetFooter(dash.footer)
+	r := &runner{ctx: ctx, con: con, file: ed.File, listen: *listen, port: port, noLaunch: *noLaunch, url: url, host: host}
+	host.Start = r.start
+	host.Stop = func() { r.stop(false) }
+	host.Starting()
+	r.start()
 	<-ctx.Done()
 	log.Print("shutting down")
-	con.ClearFooter()
-	con.Println("")
-	sys.StopEnvironments(context.Background())
-	if !*noLaunch {
-		step = con.Step("Stopping the containers")
-		stopContainers()
-		step.Done("Stopped the containers")
-	}
-	if len(topo.Owners()) > 0 {
-		step = con.Step("Committing what the owners left")
-		for _, err := range sys.CommitAll() {
-			log.Printf("final commit: %v", err)
-			con.Error(fmt.Sprintf("final commit: %v", err))
-		}
-		summary := sys.Summary()
-		for _, line := range summary {
-			log.Print(line)
-		}
-		if len(summary) == 0 {
-			summary = []string{"No commits"}
-		}
-		step.Done(summary[0])
-		for _, line := range summary[1:] {
-			con.Println("    " + line)
-		}
-	}
-	con.Println("  " + con.Dim("The run's log and messages are in "+runDir))
+	r.stop(true)
 	return nil
 }
 

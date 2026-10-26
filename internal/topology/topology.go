@@ -225,6 +225,21 @@ func load(ctx context.Context, file string, draft bool) (*Topology, error) {
 	if err != nil {
 		return nil, err
 	}
+	return loadText(ctx, data, abs, draft)
+}
+
+// LoadText is Load for a text that is not on disk yet, as file would hold
+// it: compose reads it on stdin, with relative paths and .env from the
+// file's directory (decision 2 of the topology API spec).
+func LoadText(ctx context.Context, data []byte, file string) (*Topology, error) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return nil, err
+	}
+	return loadText(ctx, data, abs, false)
+}
+
+func loadText(ctx context.Context, data []byte, abs string, draft bool) (*Topology, error) {
 	var top map[string]yaml.Node
 	if yaml.Unmarshal(data, &top) == nil {
 		if _, ok := top["agents"]; ok {
@@ -232,7 +247,8 @@ func load(ctx context.Context, file string, draft bool) (*Topology, error) {
 		}
 	}
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", abs, "config")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", "-", "--project-directory", filepath.Dir(abs), "config")
+	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
