@@ -1,6 +1,12 @@
 # Spec: ids and names
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-25 of a two-agent project, `ids-check`, named `Ids Check`, whose hub `eng` is named `platform` and whose agents `eng-orchestrator` and `dev` are named `chief` and `builder`. A post in `#platform` that mentioned `@builder` woke `chief` and `builder`, and `builder` answered in `#platform`: "builder, in #platform." The store held `hubs/eng`, the container of `dev` listed `/hikari/public/readonly/hubs/platform`, and the containers and networks were `ids-check-dev-1` and `ids-check-agent-dev`. The sidebar showed the project's name.
+
+Changes made during the build:
+
+1. **A map takes the system's new name** (ID12). The public map records `system.name`, and hikari refused a map whose name was not its system's. The map's place in the store, keyed by id, already says which system it describes, so hikari now writes the new name into the map at start and shows a note. Agents that read `map.yaml` then see names too. Found in the tests.
+2. **An agent's compose service is found through its id.** The credential check of `hikari check` and `hikari up` looked up the service by the agent's name, and warned that a renamed agent had no credential. `ServiceOf` now looks up every agent's service. Found in the live run.
+3. **The vocabulary files are named by id.** The shared area is mounted whole, so an agent that lists `vocabulary/` sees `eng.yaml` for `#platform`. The tools take and show names; only the directory listing shows ids.
 
 Sources: `docs/brainstorm/topology-editor.md` (round 1), `topology-editor-round-2.md` (questions I1 to I6), and `topology-editor-answers.md`. This is the first of four steps of the topology editor.
 

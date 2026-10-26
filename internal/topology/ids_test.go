@@ -23,6 +23,7 @@ services:
   lead: {x-hikari: {name: chief}}
   inventory-lead: {x-hikari: {}}
   orders:
+    environment: {ANTHROPIC_API_KEY: key}
     x-hikari:
       name: intake
       system: {repo: shop, scope: orders}
@@ -83,6 +84,9 @@ func TestNames(t *testing.T) {
 	}
 	if _, ok := topo.Services["orders"]; !ok {
 		t.Errorf("services stay keyed by service key: %v", slices.Sorted(maps.Keys(topo.Services)))
+	}
+	if !topo.ServiceOf("intake").Credentials() {
+		t.Error("ServiceOf finds the service of a renamed agent by its id")
 	}
 	if got, ok := topo.AgentOfService("orders"); !ok || got != "intake" {
 		t.Errorf("AgentOfService(orders) = %q, %v", got, ok)

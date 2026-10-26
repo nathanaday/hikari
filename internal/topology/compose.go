@@ -20,6 +20,10 @@ var boundaryKeys = []string{"networks", "network_mode", "links", "external_links
 // of agent writable (rule O6).
 func PrepareName(agent string) string { return agent + "-prepare" }
 
+// ServiceOf returns the compose service of the agent named agent. Services
+// are keyed by id, and agents by name.
+func (t *Topology) ServiceOf(agent string) Service { return t.Services[t.Agents[agent].ID] }
+
 // Sidecars returns the sidecars of agent, in sorted order.
 func (t *Topology) Sidecars(agent string) []string {
 	var out []string

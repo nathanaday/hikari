@@ -76,7 +76,7 @@ type Image struct {
 // InspectAgent reads the image of an agent, pulling it when it is not on
 // this machine, and checks the image contract (rules C11 and C12).
 func (p *Project) InspectAgent(ctx context.Context, agent string) (Image, error) {
-	svc := p.Topo.Services[p.Topo.Agents[agent].ID]
+	svc := p.Topo.ServiceOf(agent)
 	if svc.Image == "" {
 		return Image{}, fmt.Errorf("agent %q has neither an image nor a build", agent)
 	}

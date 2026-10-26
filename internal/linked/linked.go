@@ -61,7 +61,7 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 	}
 	if credentials {
 		for _, n := range topo.AgentNames() {
-			if !topo.Services[n].Credentials() {
+			if !topo.ServiceOf(n).Credentials() {
 				out = append(out, Finding{Text: fmt.Sprintf("agent %s has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set", n), Warning: true})
 			}
 		}

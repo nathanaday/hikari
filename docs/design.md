@@ -22,6 +22,24 @@ against releases. Inside one system, such a test depends on code the
 system does not own, so its failure names the wrong owner, and its tools
 weigh down the system's container.
 
+## Ids and names
+
+Every agent, hub, and repo has an id and a name. The id keys what lives
+outside the compose file: store directories, vocabulary files, release
+manifests, the tester's lock, containers, networks, and clones. The name
+is what people and agents use. A rename then changes one field, and the
+store, the releases, and the pins stay as they are; a release is
+immutable, so it could not follow a rename anyway.
+
+The id is the key that the file already writes, not a generated code, so a
+compose file stays readable and every file from before names existed keeps
+its meaning. References in the file name ids, so that a rename changes one
+line and the file never holds a stale name. hikari checks the file in ids,
+so each error names the key that the file writes, and then keys the
+topology by name, so that everything agents and the UI reach works in
+names. hikari writes every mount, so a mount's source is keyed by id and its
+target by name: an agent never sees an id.
+
 ## Hubs, not a free graph
 
 The topology is a set of hubs. Each hub has one orchestrator and zero or more

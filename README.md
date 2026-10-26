@@ -103,6 +103,24 @@ Compose reads the whole file, including `x-hikari`, so write `$$` for a literal 
 
 Inside a container, every agent has the tools `post_to_hub`, `send_direct_message`, `list_hubs`, `check_inbox`, and `get_vocabulary`, and it sees its hikari documents under `/hikari`.
 
+### Names and ids
+
+Every agent, hub, and repo has an id, the key that the file writes, and a name. The name is the id unless a `name` field sets it, and the project's name is `x-hikari.name`:
+
+```yaml
+x-hikari:
+  name: Team Planning
+  hubs:
+    eng: {name: platform, orchestrator: eng-orchestrator, members: [dev]}
+
+services:
+  dev:
+    <<: *agent
+    x-hikari: {name: builder, description: Developer.}
+```
+
+Agents and the UI use names: here you post in `#platform` and mention `@builder`. References in the file use ids, such as `members: [dev]`, so a rename changes one line. Everything outside the file is keyed by id: the store directories, the vocabulary files, the release manifests, the tester's lock, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's or hub's id.
+
 ### Systems
 
 Give an agent a system to make it the owner of a part of a repo:
