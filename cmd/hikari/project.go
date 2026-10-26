@@ -34,8 +34,14 @@ func loadShown(ctx context.Context, con *console.Console, file string) (*topolog
 func showLoaded(con *console.Console, load func(context.Context, string) (*topology.Topology, error), ctx context.Context, file string) (*topology.Topology, error) {
 	topo, err := load(ctx, file)
 	if err != nil {
-		for _, line := range strings.Split(err.Error(), "\n") {
-			con.Error(line)
+		src, _ := os.ReadFile(file)
+		for _, f := range topology.Findings(err, src) {
+			for _, line := range strings.Split(f.Message, "\n") {
+				if f.Line > 0 {
+					line = fmt.Sprintf("%s:%d: %s", linked.Shown(file), f.Line, line)
+				}
+				con.Error(line)
+			}
 		}
 		return nil, errShown
 	}

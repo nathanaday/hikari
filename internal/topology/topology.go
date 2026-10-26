@@ -237,9 +237,9 @@ func load(ctx context.Context, file string, draft bool) (*Topology, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if msg := composeMessages(stderr.String()); len(msg) > 0 {
-			return nil, fmt.Errorf("docker compose config: %s", strings.Join(msg, "; "))
+			return nil, &ComposeError{fmt.Errorf("docker compose config: %s", strings.Join(msg, "; "))}
 		}
-		return nil, fmt.Errorf("docker compose config: %v", err)
+		return nil, &ComposeError{fmt.Errorf("docker compose config: %v", err)}
 	}
 	t, err := parse(out, filepath.Dir(abs), draft)
 	if err != nil {
@@ -283,16 +283,16 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	}
 	t := Topology{ID: f.Name, Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}, draft: draft}
 	var errs []error
-	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
 
 	if t.ID == "" {
-		fail("the compose file has no top-level name; hikari needs a stable project name")
+		fail("name", "the compose file has no top-level name; hikari needs a stable project name")
 	}
 	var keys hikariKeys
 	if f.Hikari.Kind == 0 {
-		fail("the compose file has no top-level x-hikari key")
+		fail("", "the compose file has no top-level x-hikari key")
 	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
-		fail("x-hikari: %v", err)
+		fail("x-hikari", "x-hikari: %v", err)
 	}
 	t.Store, t.Repos, t.Hubs = keys.Store, keys.Repos, keys.Hubs
 	if keys.Name != "" {
@@ -303,7 +303,7 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	}
 	t.raw = maps.Clone(t.Repos)
 	if _, ok := t.Repos[ProjectRepo]; ok {
-		fail("x-hikari.repos: the repo name %q is reserved for the project repository; rename the repo", ProjectRepo)
+		fail("x-hikari.repos."+ProjectRepo, "x-hikari.repos: the repo name %q is reserved for the project repository; rename the repo", ProjectRepo)
 	}
 	if keys.Project != nil {
 		t.Project = &Repo{Path: dir, Branch: keys.Project.Branch}
@@ -314,7 +314,7 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 		var sk serviceKeys
 		var raw map[string]any
 		if err := node.Decode(&sk); err != nil {
-			fail("service %q: %v", name, err)
+			fail("services."+name, "service %q: %v", name, err)
 			continue
 		}
 		node.Decode(&raw)
@@ -323,17 +323,17 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 			svc.Image = t.ID + "-" + name
 		}
 		if sk.Hikari.Kind == 0 {
-			fail("service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
+			fail("services."+name, "service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
 			continue
 		}
 		var h serviceHikari
 		if err := decodeStrict(&sk.Hikari, &h); err != nil {
-			fail("service %q: x-hikari: %v", name, err)
+			fail("services."+name+".x-hikari", "service %q: x-hikari: %v", name, err)
 			continue
 		}
 		if h.Serves != "" {
 			if !h.Agent.empty() {
-				fail("service %q is a sidecar, so its x-hikari holds only serves", name)
+				fail("services."+name+".x-hikari", "service %q is a sidecar, so its x-hikari holds only serves", name)
 			}
 			svc.Serves = h.Serves
 		} else {
@@ -566,19 +566,19 @@ func cleanRel(p string) string {
 
 func (t *Topology) validate() error {
 	var errs []error
-	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
 
 	if len(t.Agents) == 0 {
-		fail("topology has no agents")
+		fail("services", "topology has no agents")
 	}
 	if len(t.Hubs) == 0 {
-		fail("topology has no hubs")
+		fail("x-hikari.hubs", "topology has no hubs")
 	}
 	for _, name := range t.AgentNames() {
 		if name == User {
-			fail("agent name %q is reserved for the human operator", User)
+			fail("services."+name, "agent name %q is reserved for the human operator", User)
 		} else if !validName.MatchString(name) {
-			fail("invalid agent name %q: use lowercase letters, digits, and dashes", name)
+			fail("services."+name, "invalid agent name %q: use lowercase letters, digits, and dashes", name)
 		}
 	}
 
@@ -586,24 +586,28 @@ func (t *Topology) validate() error {
 	for _, name := range t.HubNames() {
 		h := t.Hubs[name]
 		if !validName.MatchString(name) {
-			fail("invalid hub name %q: use lowercase letters, digits, and dashes", name)
+			fail("x-hikari.hubs."+name, "invalid hub name %q: use lowercase letters, digits, and dashes", name)
 		}
 		if _, ok := t.Agents[name]; ok || name == User {
-			fail("hub %q has the same name as an agent", name)
+			fail("x-hikari.hubs."+name, "hub %q has the same name as an agent", name)
 		}
 		if h.Orchestrator == "" {
-			fail("hub %q has no orchestrator", name)
+			fail("x-hikari.hubs."+name, "hub %q has no orchestrator", name)
 		}
 		seen := map[string]bool{}
-		for _, a := range append([]string{h.Orchestrator}, h.Members...) {
+		for i, a := range append([]string{h.Orchestrator}, h.Members...) {
 			if a == "" {
 				continue
 			}
+			refPath := "x-hikari.hubs." + name + ".orchestrator"
+			if i > 0 {
+				refPath = fmt.Sprintf("x-hikari.hubs.%s.members[%d]", name, i-1)
+			}
 			if _, ok := t.Agents[a]; !ok {
-				fail("hub %q references unknown agent %q", name, a)
+				fail(refPath, "hub %q references unknown agent %q", name, a)
 			}
 			if seen[a] {
-				fail("hub %q lists agent %q more than once", name, a)
+				fail(refPath, "hub %q lists agent %q more than once", name, a)
 			}
 			seen[a] = true
 			inHub[a] = true
@@ -611,7 +615,7 @@ func (t *Topology) validate() error {
 	}
 	for _, name := range t.AgentNames() {
 		if !inHub[name] {
-			fail("agent %q is in no hub, so nothing can reach it", name)
+			fail("services."+name, "agent %q is in no hub, so nothing can reach it", name)
 		}
 	}
 
@@ -627,12 +631,12 @@ func (t *Topology) validate() error {
 // checked as before.
 func (t *Topology) validateNames() []error {
 	var errs []error
-	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
 	if t.Name != t.ID && (strings.TrimSpace(t.Name) == "" || len(t.Name) > 64 || strings.ContainsAny(t.Name, "\r\n")) {
-		fail("x-hikari.name: the project's name must be one line of 1 to 64 characters")
+		fail("x-hikari.name", "x-hikari.name: the project's name must be one line of 1 to 64 characters")
 	}
 
-	type entity struct{ kind, id, name string }
+	type entity struct{ kind, id, name, path string }
 	check := func(entities []entity, reserved string) {
 		ids, names := map[string]entity{}, map[string]entity{}
 		for _, e := range entities {
@@ -643,32 +647,32 @@ func (t *Topology) validateNames() []error {
 			if e.name != e.id {
 				switch {
 				case e.name == reserved:
-					fail("%s: the name %q is reserved", label, reserved)
+					fail(e.path, "%s: the name %q is reserved", label, reserved)
 				case !validName.MatchString(e.name):
-					fail("%s: invalid name %q: use lowercase letters, digits, and dashes", label, e.name)
+					fail(e.path, "%s: invalid name %q: use lowercase letters, digits, and dashes", label, e.name)
 				}
 				if other, ok := ids[e.name]; ok && other != e {
-					fail("%s is named %q, which is the id of %s %q", label, e.name, other.kind, other.id)
+					fail(e.path, "%s is named %q, which is the id of %s %q", label, e.name, other.kind, other.id)
 				}
 			}
 			if other, ok := names[e.name]; ok {
-				fail("%s %q and %s have the same name %q", other.kind, other.id, label, e.name)
+				fail(e.path, "%s %q and %s have the same name %q", other.kind, other.id, label, e.name)
 			}
 			names[e.name] = e
 		}
 	}
 	var nodes []entity
 	for _, id := range sortedKeys(t.Agents) {
-		nodes = append(nodes, entity{"agent", id, t.Agents[id].Name})
+		nodes = append(nodes, entity{"agent", id, t.Agents[id].Name, "services." + id + ".x-hikari.name"})
 	}
 	for _, id := range sortedKeys(t.Hubs) {
-		nodes = append(nodes, entity{"hub", id, t.Hubs[id].Name})
+		nodes = append(nodes, entity{"hub", id, t.Hubs[id].Name, "x-hikari.hubs." + id + ".name"})
 	}
 	check(nodes, User)
 	var repos []entity
 	for _, id := range sortedKeys(t.Repos) {
 		if id != ProjectRepo {
-			repos = append(repos, entity{"repo", id, t.Repos[id].Name})
+			repos = append(repos, entity{"repo", id, t.Repos[id].Name, "x-hikari.repos." + id + ".name"})
 		}
 	}
 	check(repos, ProjectRepo)
@@ -689,32 +693,33 @@ func (t *Topology) validateRepos() []error {
 			errs = append(errs, t.validateProject()...)
 			continue
 		}
+		path := "x-hikari.repos." + name
 		if !validName.MatchString(name) {
-			errs = append(errs, fmt.Errorf("invalid repo name %q: use lowercase letters, digits, and dashes", name))
+			errs = append(errs, at(path, "invalid repo name %q: use lowercase letters, digits, and dashes", name))
 		}
 		raw := t.raw[name]
 		switch {
 		case raw.URL != "" && raw.Path != "":
-			errs = append(errs, fmt.Errorf("repo %q has both url and path; a linked repo's clone is always %s/%s", name, CloneDir, name))
+			errs = append(errs, at(path, "repo %q has both url and path; a linked repo's clone is always %s/%s", name, CloneDir, name))
 		case raw.URL != "" && t.Project == nil:
-			errs = append(errs, fmt.Errorf("repo %q has a url, which needs x-hikari.project: the clone lives in the project repository", name))
+			errs = append(errs, at(path+".url", "repo %q has a url, which needs x-hikari.project: the clone lives in the project repository", name))
 		case raw.URL != "" && !validURL(raw.URL):
-			errs = append(errs, fmt.Errorf("repo %q: %q is not a valid url: it must not be empty, hold spaces, or start with -", name, raw.URL))
+			errs = append(errs, at(path+".url", "repo %q: %q is not a valid url: it must not be empty, hold spaces, or start with -", name, raw.URL))
 		case raw.URL != "":
 			if _, err := os.Stat(r.Path); os.IsNotExist(err) {
 				t.Missing = append(t.Missing, name)
 			} else if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
-				errs = append(errs, fmt.Errorf("repo %q: %s exists but is not the top directory of a git repo; move it away, and run hikari sync", name, r.Path))
+				errs = append(errs, at(path, "repo %q: %s exists but is not the top directory of a git repo; move it away, and run hikari sync", name, r.Path))
 			}
 		case r.Path == "":
-			errs = append(errs, fmt.Errorf("repo %q has neither url nor path", name))
+			errs = append(errs, at(path, "repo %q has neither url nor path", name))
 		default:
 			if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil && !(t.draft && os.IsNotExist(err)) {
-				errs = append(errs, fmt.Errorf("repo %q: %s is not the top directory of a git repo", name, r.Path))
+				errs = append(errs, at(path+".path", "repo %q: %s is not the top directory of a git repo", name, r.Path))
 			}
 		}
 		if !validBranchName(r.Branch) {
-			errs = append(errs, fmt.Errorf("repo %q: %q is not a valid branch name", name, r.Branch))
+			errs = append(errs, at(path+".branch", "repo %q: %q is not a valid branch name", name, r.Branch))
 		}
 		switch {
 		case used[name]:
@@ -722,7 +727,7 @@ func (t *Topology) validateRepos() []error {
 			// Onboarding links the repos before it writes their systems.
 			t.Warnings = append(t.Warnings, fmt.Sprintf("the linked repo %s is not used by any system yet", name))
 		default:
-			errs = append(errs, fmt.Errorf("repo %q is not used by any system", name))
+			errs = append(errs, at(path, "repo %q is not used by any system", name))
 		}
 	}
 	return errs
@@ -733,14 +738,14 @@ func (t *Topology) validateProject() []error {
 	var errs []error
 	p := t.Project
 	if _, err := os.Stat(filepath.Join(p.Path, ".git")); err != nil {
-		errs = append(errs, fmt.Errorf("x-hikari.project: the directory of the compose file, %s, is not the top directory of a git repository", p.Path))
+		errs = append(errs, at("x-hikari.project", "x-hikari.project: the directory of the compose file, %s, is not the top directory of a git repository", p.Path))
 	}
 	if !validBranchName(p.Branch) {
-		errs = append(errs, fmt.Errorf("x-hikari.project: %q is not a valid branch name", p.Branch))
+		errs = append(errs, at("x-hikari.project.branch", "x-hikari.project: %q is not a valid branch name", p.Branch))
 	}
 	store, root := realPath(t.Store), realPath(p.Path)
 	if store == root || !within(store, root) {
-		errs = append(errs, fmt.Errorf("x-hikari.project: the store %s must be a directory inside the project repository %s", t.Store, p.Path))
+		errs = append(errs, at("x-hikari.store", "x-hikari.project: the store %s must be a directory inside the project repository %s", t.Store, p.Path))
 	}
 	return errs
 }
@@ -784,46 +789,50 @@ func validBranchName(b string) bool {
 
 func (t *Topology) validateSystems() []error {
 	var errs []error
-	fail := func(agent, format string, args ...any) {
-		errs = append(errs, fmt.Errorf("agent %q: "+format, append([]any{agent}, args...)...))
+	fail := func(agent, key, format string, args ...any) {
+		path := "services." + agent + ".x-hikari"
+		if key != "" {
+			path += "." + key
+		}
+		errs = append(errs, at(path, "agent %q: "+format, append([]any{agent}, args...)...))
 	}
 	for _, name := range t.AgentNames() {
 		a := t.Agents[name]
 		for _, g := range a.Grants.Releases {
 			if g == name {
-				fail(name, "cannot be granted its own releases")
+				fail(name, "grants.releases", "cannot be granted its own releases")
 			} else if t.Agents[g].System == nil {
-				fail(name, "release grant %q is not a system in the topology", g)
+				fail(name, "grants.releases", "release grant %q is not a system in the topology", g)
 			}
 		}
 		seen := map[string]bool{}
 		for _, d := range a.Grants.Deliverables {
 			switch {
 			case !validName.MatchString(d):
-				fail(name, "deliverable %q is not a valid name (a-z, 0-9, -, up to 32 characters)", d)
+				fail(name, "grants.deliverables", "deliverable %q is not a valid name (a-z, 0-9, -, up to 32 characters)", d)
 			case seen[d]:
-				fail(name, "deliverable %q is granted twice", d)
+				fail(name, "grants.deliverables", "deliverable %q is granted twice", d)
 			case a.System == nil:
-				fail(name, "cannot hold the deliverable %q: only an agent with a system can hold deliverables", d)
+				fail(name, "grants.deliverables", "cannot hold the deliverable %q: only an agent with a system can hold deliverables", d)
 			}
 			seen[d] = true
 		}
 		if a.E2E != nil && a.Tests == "" {
-			fail(name, "sets e2e limits, which only a tester has")
+			fail(name, "e2e", "sets e2e limits, which only a tester has")
 		}
 		if a.Tests != "" {
 			h, ok := t.Hubs[a.Tests]
 			switch {
 			case a.System == nil:
-				fail(name, "tests #%s, but only an agent with a system can be a tester", a.Tests)
+				fail(name, "tests", "tests #%s, but only an agent with a system can be a tester", a.Tests)
 			case !ok:
-				fail(name, "tests the hub %q, which is not in the topology", a.Tests)
+				fail(name, "tests", "tests the hub %q, which is not in the topology", a.Tests)
 			case !slices.Contains(h.Members, name):
-				fail(name, "tests #%s, so it must be a member of #%s", a.Tests, a.Tests)
+				fail(name, "tests", "tests #%s, so it must be a member of #%s", a.Tests, a.Tests)
 			}
 			for _, other := range t.AgentNames() {
 				if other < name && t.Agents[other].Tests == a.Tests {
-					fail(name, "tests #%s, which %q already tests; a hub has one tester", a.Tests, other)
+					fail(name, "tests", "tests #%s, which %q already tests; a hub has one tester", a.Tests, other)
 				}
 			}
 		}
@@ -832,47 +841,47 @@ func (t *Topology) validateSystems() []error {
 			continue
 		}
 		if len(t.OrchestratedHubs(name)) > 0 {
-			fail(name, "an orchestrator cannot own a system")
+			fail(name, "system", "an orchestrator cannot own a system")
 		}
 		repo, ok := t.Repos[s.Repo]
 		if !ok {
 			if s.Repo == ProjectRepo {
-				fail(name, "the system is in repo %q, which needs x-hikari.project", ProjectRepo)
+				fail(name, "system.repo", "the system is in repo %q, which needs x-hikari.project", ProjectRepo)
 			} else {
-				fail(name, "system references unknown repo %q", s.Repo)
+				fail(name, "system.repo", "system references unknown repo %q", s.Repo)
 			}
 			continue
 		}
 		if s.Repo == ProjectRepo {
 			if store := t.StoreInProject(); s.Scope == "" || (store != "" && overlaps(filepath.FromSlash(store), s.Scope)) {
-				fail(name, "a system in the project repository needs a scope that does not overlap the store")
+				fail(name, "system.scope", "a system in the project repository needs a scope that does not overlap the store")
 			} else if overlaps(CloneDir, s.Scope) {
-				fail(name, "a system in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
+				fail(name, "system.scope", "a system in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
 			}
 		}
 		if slices.Contains(t.Missing, s.Repo) || t.draft {
 			if s.Scope != "" && !filepath.IsLocal(s.Scope) {
-				fail(name, "scope %q must be a relative path inside the repo", s.Scope)
+				fail(name, "system.scope", "scope %q must be a relative path inside the repo", s.Scope)
 			}
 			for _, p := range s.Read {
 				if p == "" || !filepath.IsLocal(p) {
-					fail(name, "read path %q must be a relative path inside the repo", p)
+					fail(name, "system.read", "read path %q must be a relative path inside the repo", p)
 				}
 			}
 			continue
 		}
 		if s.Scope != "" {
 			if !filepath.IsLocal(s.Scope) {
-				fail(name, "scope %q must be a relative path inside the repo", s.Scope)
+				fail(name, "system.scope", "scope %q must be a relative path inside the repo", s.Scope)
 			} else if !isDir(filepath.Join(repo.Path, s.Scope)) {
-				fail(name, "scope %q is not a directory in repo %q", s.Scope, s.Repo)
+				fail(name, "system.scope", "scope %q is not a directory in repo %q", s.Scope, s.Repo)
 			}
 		}
 		for _, p := range s.Read {
 			if p == "" || !filepath.IsLocal(p) {
-				fail(name, "read path %q must be a relative path inside the repo", p)
+				fail(name, "system.read", "read path %q must be a relative path inside the repo", p)
 			} else if !isDir(filepath.Join(repo.Path, p)) {
-				fail(name, "read path %q is not a directory in repo %q", p, s.Repo)
+				fail(name, "system.read", "read path %q is not a directory in repo %q", p, s.Repo)
 			}
 		}
 	}
@@ -885,7 +894,7 @@ func (t *Topology) validateSystems() []error {
 		for _, b := range owners[i+1:] {
 			sb := t.Agents[b].System
 			if sa.Repo == sb.Repo && overlaps(sa.Scope, sb.Scope) {
-				errs = append(errs, fmt.Errorf("agents %q and %q have overlapping scopes in repo %q", a, b, sa.Repo))
+				errs = append(errs, at("services."+b+".x-hikari.system.scope", "agents %q and %q have overlapping scopes in repo %q", a, b, sa.Repo))
 			}
 		}
 	}
@@ -895,7 +904,7 @@ func (t *Topology) validateSystems() []error {
 			for _, b := range owners {
 				sb := t.Agents[b].System
 				if sa.Repo == sb.Repo && p != "" && overlaps(p, sb.Scope) {
-					fail(a, "read path %q overlaps the scope of %q", p, b)
+					fail(a, "system.read", "read path %q overlaps the scope of %q", p, b)
 				}
 			}
 		}

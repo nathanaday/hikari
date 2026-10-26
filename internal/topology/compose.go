@@ -1,7 +1,6 @@
 package topology
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -50,8 +49,12 @@ func (t *Topology) NamedVolumes(service string) []Volume {
 // C10, C14, and C15).
 func (t *Topology) validateServices() []error {
 	var errs []error
-	fail := func(service, format string, args ...any) {
-		errs = append(errs, fmt.Errorf("service %q: "+format, append([]any{service}, args...)...))
+	fail := func(service, key, format string, args ...any) {
+		path := "services." + service
+		if key != "" {
+			path += "." + key
+		}
+		errs = append(errs, at(path, "service %q: "+format, append([]any{service}, args...)...))
 	}
 	guarded := []string{t.Store}
 	for _, name := range sortedKeys(t.Repos) {
@@ -70,12 +73,12 @@ func (t *Topology) validateServices() []error {
 		_, isAgent := t.Agents[name]
 		if !isAgent {
 			if _, ok := t.Agents[s.Serves]; !ok {
-				fail(name, "serves %q, which is not an agent", s.Serves)
+				fail(name, "x-hikari.serves", "serves %q, which is not an agent", s.Serves)
 			}
 		}
 		if owner, ok := strings.CutSuffix(name, "-prepare"); ok && len(t.NamedVolumes(owner)) > 0 {
 			if _, ok := t.Agents[owner]; ok {
-				fail(name, "the name is taken by the prepare service of agent %q", owner)
+				fail(name, "", "the name is taken by the prepare service of agent %q", owner)
 			}
 		}
 
@@ -85,7 +88,7 @@ func (t *Topology) validateServices() []error {
 		}
 		for _, k := range keys {
 			if s.set[k] {
-				fail(name, "sets %s, which hikari controls", k)
+				fail(name, k, "sets %s, which hikari controls", k)
 			}
 		}
 
@@ -95,11 +98,11 @@ func (t *Topology) validateServices() []error {
 			}
 			src := realPath(v.Source)
 			if filepath.Base(src) == "docker.sock" {
-				fail(name, "mounts the Docker socket %s", v.Source)
+				fail(name, "volumes", "mounts the Docker socket %s", v.Source)
 			}
 			for _, g := range guarded {
 				if within(src, g) || within(g, src) {
-					fail(name, "mounts %s, which overlaps %s; hikari mounts the repos and the store itself", v.Source, g)
+					fail(name, "volumes", "mounts %s, which overlaps %s; hikari mounts the repos and the store itself", v.Source, g)
 				}
 			}
 		}
@@ -115,14 +118,14 @@ func (t *Topology) validateServices() []error {
 			target := path.Clean(v.Target)
 			switch {
 			case under(target, api.HikariRoot):
-				fail(name, "mounts %s; hikari owns %s", v.Target, api.HikariRoot)
+				fail(name, "volumes", "mounts %s; hikari owns %s", v.Target, api.HikariRoot)
 			case under(target, api.WorkspaceRoot) && !scopeVolume(v.Type, target, scope):
-				fail(name, "mounts %s; under %s, only named volumes and tmpfs inside the agent's own scope are allowed", v.Target, api.WorkspaceRoot)
+				fail(name, "volumes", "mounts %s; under %s, only named volumes and tmpfs inside the agent's own scope are allowed", v.Target, api.WorkspaceRoot)
 			}
 		}
 		for k := range s.Environment {
 			if strings.HasPrefix(k, "HIKARI_") {
-				fail(name, "sets %s; hikari sets the HIKARI_ variables", k)
+				fail(name, "environment."+k, "sets %s; hikari sets the HIKARI_ variables", k)
 			}
 		}
 	}
