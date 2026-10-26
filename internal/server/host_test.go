@@ -115,6 +115,8 @@ func newProjectDir(t *testing.T) (string, string) {
 	file := filepath.Join(dir, "compose.yaml")
 	os.WriteFile(file, []byte(projectCompose), 0o644)
 	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".env\n/.hikari/\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "store", "hubs", "main", "wiki"), 0o755)
+	os.WriteFile(filepath.Join(dir, "store", "hubs", "main", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it in #main, with @lead.\n"), 0o644)
 	run(t, dir, "init", "--quiet", "--initial-branch=main")
 	run(t, dir, "add", "--all")
 	run(t, dir, "commit", "--quiet", "-m", "start")
@@ -155,7 +157,8 @@ func TestTopologyAPI(t *testing.T) {
 	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": ops}, &plan); code != 200 {
 		t.Fatalf("plan: %d %+v", code, plan)
 	}
-	if plan.AppliesAtStart || len(plan.Summary) != 2 || editor.HasError(plan.Findings) || !strings.Contains(plan.Text, "name: core") {
+	if plan.AppliesAtStart || len(plan.Summary) != 2 || editor.HasError(plan.Findings) || !strings.Contains(plan.Text, "name: core") ||
+		plan.Model == nil || plan.Model.Hubs[0].Name != "core" || len(plan.Occurrences) != 1 || plan.Occurrences[0].Key != "hubs/main/wiki/plan.md:5:12" {
 		t.Errorf("plan: %+v", plan)
 	}
 	added := 0

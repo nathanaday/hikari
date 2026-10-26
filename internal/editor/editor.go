@@ -167,14 +167,17 @@ func (e *Editor) commits(m *topoedit.Model) bool {
 
 // Plan is the answer of POST /api/ui/topology/plan.
 type Plan struct {
-	Revision       string                `json:"revision"`
-	Text           string                `json:"text"`
-	Diff           []topoedit.DiffLine   `json:"diff"`
-	Findings       []topology.Finding    `json:"findings"`
-	Effects        []string              `json:"effects"`
-	Occurrences    []topoedit.Occurrence `json:"occurrences"`
-	Summary        []string              `json:"summary"`
-	AppliesAtStart bool                  `json:"applies_at_start"`
+	Revision    string                `json:"revision"`
+	Text        string                `json:"text"`
+	Diff        []topoedit.DiffLine   `json:"diff"`
+	Findings    []topology.Finding    `json:"findings"`
+	Effects     []string              `json:"effects"`
+	Occurrences []topoedit.Occurrence `json:"occurrences"`
+	Summary     []string              `json:"summary"`
+	// Model is the model of the new text, which the Structure tab shows
+	// (decision 1 of the structure view spec).
+	Model          *topoedit.Model `json:"model"`
+	AppliesAtStart bool            `json:"applies_at_start"`
 }
 
 // ConflictError is a write whose revision is not the file's (rule TA2).
@@ -231,6 +234,7 @@ func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (
 		Revision: revision, Text: string(res.Text), Diff: topoedit.Diff(string(text), string(res.Text)),
 		Findings: e.Lint(ctx, res.Text), Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
 		Occurrences: topoedit.Occurrences(e.store(m), res.Renames), AppliesAtStart: e.mode() == "running",
+		Model: topoedit.ReadModel(res.Text, e.dir()),
 	}, nil
 }
 

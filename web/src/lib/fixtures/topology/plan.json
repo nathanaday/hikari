@@ -118,10 +118,88 @@
     }
   ],
   "effects": [],
-  "occurrences": [],
+  "occurrences": [
+    {
+      "key": "hubs/main/wiki/plan.md:5:12",
+      "file": "hubs/main/wiki/plan.md",
+      "line": 5,
+      "text": "Ship it in #main, with @lead.",
+      "replace": "Ship it in #core, with @lead.",
+      "from": "#main",
+      "to": "#core"
+    }
+  ],
   "summary": [
     "rename hub #main to #core",
     "add agent dev in #main"
   ],
+  "model": {
+    "project": {
+      "id": "demo",
+      "name": "demo",
+      "store": "",
+      "repo": true,
+      "branch": "main"
+    },
+    "repos": [],
+    "hubs": [
+      {
+        "id": "main",
+        "name": "core",
+        "description": "Builds the demo.",
+        "orchestrator": "lead",
+        "members": [
+          "dev"
+        ],
+        "line": 7,
+        "id_locked": true
+      }
+    ],
+    "agents": [
+      {
+        "id": "dev",
+        "name": "dev",
+        "description": "Builds it.",
+        "instructions": "",
+        "model": "",
+        "system": null,
+        "releases": [],
+        "deliverables": [],
+        "tests": "",
+        "e2e": null,
+        "image": "hikari-agent",
+        "build": "",
+        "template": "",
+        "compose": [
+          "image",
+          "environment"
+        ],
+        "line": 14,
+        "id_locked": false
+      },
+      {
+        "id": "lead",
+        "name": "lead",
+        "description": "Leads the demo.",
+        "instructions": "",
+        "model": "",
+        "system": null,
+        "releases": [],
+        "deliverables": [],
+        "tests": "",
+        "e2e": null,
+        "image": "hikari-agent",
+        "build": "",
+        "template": "",
+        "compose": [
+          "image",
+          "environment"
+        ],
+        "line": 10,
+        "id_locked": false
+      }
+    ],
+    "sidecars": []
+  },
   "applies_at_start": false
 }

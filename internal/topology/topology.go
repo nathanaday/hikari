@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -642,13 +643,19 @@ func (t *Topology) validate() error {
 	return errors.Join(errs...)
 }
 
+// validProjectName checks the project's name: one line of 1 to 64
+// characters (rule ID2 of the ids spec).
+func validProjectName(s string) bool {
+	return strings.TrimSpace(s) != "" && utf8.RuneCountInString(s) <= 64 && !strings.ContainsAny(s, "\r\n")
+}
+
 // validateNames checks the names that x-hikari sets (rules ID2 and ID4).
 // An entity without a name field has its id as its name, and the id is
 // checked as before.
 func (t *Topology) validateNames() []error {
 	var errs []error
 	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
-	if t.Name != t.ID && (strings.TrimSpace(t.Name) == "" || len(t.Name) > 64 || strings.ContainsAny(t.Name, "\r\n")) {
+	if t.Name != t.ID && !validProjectName(t.Name) {
 		fail("x-hikari.name", "x-hikari.name: the project's name must be one line of 1 to 64 characters")
 	}
 

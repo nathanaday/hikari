@@ -20,7 +20,7 @@
         "orchestrator": "lead",
         "members": [],
         "line": 7,
-        "id_locked": false
+        "id_locked": true
       }
     ],
     "agents": [

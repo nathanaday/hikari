@@ -1,0 +1,48 @@
+{
+  "name": [
+    {"value": "dev", "valid": true},
+    {"value": "eng-orchestrator", "valid": true},
+    {"value": "a1", "valid": true},
+    {"value": "abcdefghijklmnopqrstuvwxyz012345", "valid": true},
+    {"value": "abcdefghijklmnopqrstuvwxyz0123456", "valid": false},
+    {"value": "", "valid": false},
+    {"value": "Dev", "valid": false},
+    {"value": "1dev", "valid": false},
+    {"value": "-dev", "valid": false},
+    {"value": "dev_ops", "valid": false},
+    {"value": "dev ops", "valid": false},
+    {"value": "dév", "valid": false}
+  ],
+  "branch": [
+    {"value": "hikari", "valid": true},
+    {"value": "hikari/checkout-v2", "valid": true},
+    {"value": "hikari-alex.1", "valid": true},
+    {"value": "", "valid": false},
+    {"value": "-x", "valid": false},
+    {"value": "/x", "valid": false},
+    {"value": "x/", "valid": false},
+    {"value": "x.", "valid": false},
+    {"value": "x.lock", "valid": false},
+    {"value": "a..b", "valid": false},
+    {"value": "a//b", "valid": false},
+    {"value": "a b", "valid": false},
+    {"value": "a~b", "valid": false}
+  ],
+  "url": [
+    {"value": "https://github.com/you/app.git", "valid": true},
+    {"value": "git@github.com:you/app.git", "valid": true},
+    {"value": "file:///tmp/app.git", "valid": true},
+    {"value": "", "valid": false},
+    {"value": "-oProxy=x", "valid": false},
+    {"value": "https://x.com/a b", "valid": false},
+    {"value": "https://x.com/a\tb", "valid": false}
+  ],
+  "project": [
+    {"value": "Editor Live", "valid": true},
+    {"value": "p", "valid": true},
+    {"value": "", "valid": false},
+    {"value": "  ", "valid": false},
+    {"value": "two\nlines", "valid": false},
+    {"value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "valid": false}
+  ]
+}
