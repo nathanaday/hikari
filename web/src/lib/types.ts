@@ -411,6 +411,9 @@ export type Plan = {
   occurrences: Occurrence[]
   summary: string[]
   applies_at_start: boolean
+  // model is the model of the new text (decision 1 of the structure view
+  // spec).
+  model: TopologyModel | null
 }
 
 export type Saved = { revision: string; commit?: string; note?: string; skipped: string[] }

@@ -585,6 +585,14 @@ most. Lint runs the whole load of `hikari check`, with the text on
 compose's stdin: interpolation and merge keys decide the values, so no
 check can run on the source alone.
 
+The Structure tab shows the model of the plan, not a copy that the UI
+changes by itself. Each edit adds an operation, the server plans the
+operations, and the form draws the model of the planned text. The form and
+the file then never disagree, and no rule of an operation is written in
+TypeScript. The field checks that run as you type repeat the rules of
+names, branches, and urls, and the tests of both languages run one file of
+cases.
+
 ## hikari up serves the UI before it has a topology
 
 A start refuses a broken file, so a UI that existed only during a run could

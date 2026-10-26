@@ -24,7 +24,7 @@ function groupByDeliverable(releases: Manifest[]): [string, Manifest[]][] {
   return groups
 }
 
-function Section({ title, children, private: isPrivate }: { title: string; children: React.ReactNode; private?: boolean }) {
+export function Section({ title, children, private: isPrivate }: { title: string; children: React.ReactNode; private?: boolean }) {
   return (
     <section className="space-y-2">
       <h2 className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">

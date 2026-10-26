@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FileCode2 } from 'lucide-react'
 import { FindingsList } from '@/components/findings-list'
+import { StructureTab } from '@/components/structure-tab'
 import { YamlTab } from '@/components/yaml-tab'
 import { Button } from '@/components/ui/button'
 import { SidebarTrigger } from '@/components/ui/sidebar'
@@ -45,6 +46,10 @@ function useTopology(revision: string, mode: Mode) {
 export function TopologyView({ state, show }: { state: State; show: (v: View) => void }) {
   const { data, error, reload } = useTopology(state.revision, state.mode)
   const [runError, setRunError] = useState<{ message: string; findings: Finding[] } | null>(null)
+  // Unsaved work of each tab, which a switch of tabs would lose (rule SP4).
+  const [pending, setPending] = useState(0)
+  const [yamlDirty, setYamlDirty] = useState(false)
+  const [blocked, setBlocked] = useState<string | null>(null)
   const tab: TopologyTab = state.view.kind === 'topology' && state.view.tab === 'yaml' ? 'yaml' : 'structure'
 
   const start = async () => {
@@ -60,7 +65,13 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
   const tabButton = (t: TopologyTab, label: string) => (
     <button
       type="button"
-      onClick={() => show({ kind: 'topology', tab: t === 'structure' ? undefined : t })}
+      onClick={() => {
+        if (t === tab) return
+        if (tab === 'structure' && pending > 0) return setBlocked('Save or discard your changes first: the YAML tab edits the saved file.')
+        if (tab === 'yaml' && yamlDirty) return setBlocked('Save or revert your changes to the YAML first.')
+        setBlocked(null)
+        show({ kind: 'topology', tab: t === 'structure' ? undefined : t })
+      }}
       aria-pressed={tab === t}
       className={cn(
         '-mb-px border-b-2 px-1 pb-2 text-sm transition-colors',
@@ -106,16 +117,18 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {data?.exists ? (
               <>
-                The topology is <code className="text-xs">{data.file}</code>, a Docker compose file. {data.commits ? 'Each save is a commit in the project repository.' : 'Saves are not committed: the topology is not in a project repository.'}
+                The topology is <code className="text-xs">{data.file}</code>, a Docker compose file.{' '}
+                {!data.model ? '' : data.commits ? 'Each save is a commit in the project repository.' : 'Saves are not committed: the topology is not in a project repository.'}
               </>
             ) : (
               'The topology is a Docker compose file. Its x-hikari keys describe the hubs, the agents, and their systems.'
             )}
           </p>
           {data?.exists && (
-            <div className="mt-3 -mb-3 flex gap-4">
+            <div className="mt-3 -mb-3 flex items-baseline gap-4">
               {tabButton('structure', 'Structure')}
               {tabButton('yaml', 'YAML')}
+              {blocked && ((tab === 'structure' && pending > 0) || (tab === 'yaml' && yamlDirty)) && <span className="text-xs text-[var(--lens-fail)]">{blocked}</span>}
             </div>
           )}
         </div>
@@ -132,14 +145,21 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
 
       {error && <p className="px-6 py-4 text-sm text-red-600">{error}</p>}
       {data && !data.exists && <CreateProject file={data.file} onCreated={() => (reload(), show({ kind: 'topology', tab: 'yaml' }))} />}
-      {data?.exists && tab === 'yaml' && <YamlTab data={data} mode={state.mode} reload={reload} line={state.view.kind === 'topology' ? state.view.line : undefined} />}
-      {data?.exists && tab === 'structure' && (
-        <div className="flex-1 px-6 py-8 text-sm text-muted-foreground">
-          The form of the topology is not built yet.{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'topology', tab: 'yaml' })}>
-            Edit the file in the YAML tab
-          </button>
-          .
+      {data?.exists && tab === 'yaml' && (
+        <YamlTab data={data} mode={state.mode} reload={reload} line={state.view.kind === 'topology' ? state.view.line : undefined} onDirty={setYamlDirty} />
+      )}
+      {data?.exists && tab === 'structure' && data.model && (
+        <StructureTab data={data} mode={state.mode} reload={reload} show={show} select={state.view.kind === 'topology' ? state.view.select : undefined} onPending={setPending} />
+      )}
+      {data?.exists && tab === 'structure' && !data.model && (
+        <div className="flex-1 px-6 py-8 text-sm" data-testid="structure-broken">
+          <p className="font-medium">The compose file is not valid YAML, so the form cannot read it.</p>
+          <p className="mt-1 text-muted-foreground">
+            <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'topology', tab: 'yaml', line: data.findings[0]?.line })}>
+              Fix it in the YAML tab
+            </button>
+            , and the form opens again.
+          </p>
         </div>
       )}
     </div>

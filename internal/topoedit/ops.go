@@ -173,6 +173,15 @@ func (e *editor) agent(id string) (*Agent, error) {
 	return nil, fmt.Errorf("%w: no agent %q", ErrNotFound, id)
 }
 
+// agentName returns the name of the agent whose id is id, for the summary
+// that becomes a commit message.
+func (e *editor) agentName(id string) string {
+	if a, err := e.agent(id); err == nil {
+		return a.Name
+	}
+	return id
+}
+
 func (e *editor) hub(id string) (*Hub, error) {
 	for i := range e.model.Hubs {
 		if e.model.Hubs[i].ID == id {
@@ -292,7 +301,7 @@ func (e *editor) apply(op Op) error {
 		if op.URL != nil && *op.URL != r.URL && *op.URL != "" {
 			e.effects = append(e.effects, fmt.Sprintf("the repo %s has a new url; run hikari sync to clone it", r.ID))
 		}
-		e.summary = append(e.summary, "change repo "+r.ID)
+		e.summary = append(e.summary, "change repo "+r.Name)
 		return nil
 	case "remove_repo":
 		r, err := e.repo(op.ID)
@@ -307,7 +316,7 @@ func (e *editor) apply(op Op) error {
 		if r.URL != "" && exists(filepath.Join(e.dir, topology.CloneDir, r.ID)) {
 			e.effects = append(e.effects, fmt.Sprintf("leaves the clone %s/%s, which git ignores", topology.CloneDir, r.ID))
 		}
-		e.summary = append(e.summary, "remove repo "+r.ID)
+		e.summary = append(e.summary, "remove repo "+r.Name)
 		return e.deleteKey("x-hikari.repos", r.ID)
 	case "add_hub":
 		return e.addHub(op)
@@ -325,7 +334,7 @@ func (e *editor) apply(op Op) error {
 				return err
 			}
 		}
-		e.summary = append(e.summary, "change #"+h.ID)
+		e.summary = append(e.summary, "change #"+h.Name)
 		return nil
 	case "add_member":
 		h, err := e.hub(op.Hub)
@@ -335,7 +344,7 @@ func (e *editor) apply(op Op) error {
 		if h.Orchestrator == op.Agent || slices.Contains(h.Members, op.Agent) {
 			return fmt.Errorf("%q is already in #%s", op.Agent, h.ID)
 		}
-		e.summary = append(e.summary, fmt.Sprintf("add %s to #%s", op.Agent, h.ID))
+		e.summary = append(e.summary, fmt.Sprintf("add %s to #%s", e.agentName(op.Agent), h.Name))
 		return e.edit(func(d *doc) ([]byte, error) {
 			return d.appendItem(parsePath("x-hikari.hubs."+h.ID+".members"), scalar(op.Agent))
 		})
@@ -351,7 +360,7 @@ func (e *editor) apply(op Op) error {
 		if a, err := e.agent(op.Agent); err == nil && a.Tests == h.ID {
 			return fmt.Errorf("%q tests #%s, so it must stay a member; change its tests first", op.Agent, h.ID)
 		}
-		e.summary = append(e.summary, fmt.Sprintf("remove %s from #%s", op.Agent, h.ID))
+		e.summary = append(e.summary, fmt.Sprintf("remove %s from #%s", e.agentName(op.Agent), h.Name))
 		return e.edit(func(d *doc) ([]byte, error) {
 			return d.removeItem(parsePath("x-hikari.hubs."+h.ID+".members"), i)
 		})
@@ -377,7 +386,7 @@ func (e *editor) apply(op Op) error {
 				return err
 			}
 		}
-		e.summary = append(e.summary, "change "+a.ID)
+		e.summary = append(e.summary, "change "+a.Name)
 		return nil
 	case "set_system":
 		return e.setSystem(op)
@@ -390,7 +399,7 @@ func (e *editor) apply(op Op) error {
 			return fmt.Errorf("%q owns no system", a.ID)
 		}
 		e.leaves("systems/" + a.ID)
-		e.summary = append(e.summary, "clear the system of "+a.ID)
+		e.summary = append(e.summary, "clear the system of "+a.Name)
 		return e.deleteKey("services."+a.ID+".x-hikari", "system")
 	case "set_grants":
 		a, err := e.agent(op.ID)
@@ -419,7 +428,7 @@ func (e *editor) apply(op Op) error {
 				}
 			}
 		}
-		e.summary = append(e.summary, "change the grants of "+a.ID)
+		e.summary = append(e.summary, "change the grants of "+a.Name)
 		return nil
 	case "set_e2e":
 		a, err := e.agent(op.ID)
@@ -438,7 +447,7 @@ func (e *editor) apply(op Op) error {
 		if memory != "" {
 			kv = append(kv, "memory", memory)
 		}
-		e.summary = append(e.summary, "change the e2e limits of "+a.ID)
+		e.summary = append(e.summary, "change the e2e limits of "+a.Name)
 		return e.setValue(p, "e2e", mapping(kv...), false)
 	case "remove_agent":
 		return e.removeAgent(op)
@@ -453,14 +462,14 @@ func (e *editor) apply(op Op) error {
 		if image == "" {
 			return errors.New("a sidecar needs an image")
 		}
-		e.summary = append(e.summary, fmt.Sprintf("add sidecar %s of %s", op.ID, deref(op.Serves)))
+		e.summary = append(e.summary, fmt.Sprintf("add sidecar %s of %s", op.ID, e.agentName(deref(op.Serves))))
 		return e.addService(op.ID, "    image: "+mustRender(scalar(image))+"\n    x-hikari: "+mustRender(mapping("serves", deref(op.Serves)))+"\n")
 	case "set_serves":
 		s, err := e.sidecar(op.ID)
 		if err != nil {
 			return err
 		}
-		e.summary = append(e.summary, fmt.Sprintf("sidecar %s serves %s", s.ID, op.Agent))
+		e.summary = append(e.summary, fmt.Sprintf("sidecar %s serves %s", s.ID, e.agentName(op.Agent)))
 		return e.setValue("services."+s.ID+".x-hikari", "serves", scalar(op.Agent), false)
 	case "remove_sidecar":
 		s, err := e.sidecar(op.ID)
@@ -615,7 +624,7 @@ func (e *editor) removeHub(op Op) error {
 		}
 	}
 	e.leaves("hubs/" + h.ID)
-	e.summary = append(e.summary, "remove hub #"+h.ID)
+	e.summary = append(e.summary, "remove hub #"+h.Name)
 	return e.deleteKey("x-hikari.hubs", h.ID)
 }
 
@@ -680,7 +689,14 @@ func (e *editor) addAgent(op Op) error {
 			}
 			e.summary = e.summary[:len(e.summary)-1]
 		}
-		summary += " in #" + strings.Join(*op.Hubs, ", #")
+		names := make([]string, len(*op.Hubs))
+		for i, h := range *op.Hubs {
+			names[i] = h
+			if x, err := e.hub(h); err == nil {
+				names[i] = x.Name
+			}
+		}
+		summary += " in #" + strings.Join(names, ", #")
 	}
 	e.summary = append(e.summary, summary)
 	return nil
@@ -762,7 +778,7 @@ func (e *editor) setSystem(op Op) error {
 		if t := deref(op.Test); t != "" {
 			kv = append(kv, "test", t)
 		}
-		e.summary = append(e.summary, "give "+a.ID+" a system")
+		e.summary = append(e.summary, "give "+a.Name+" a system")
 		return e.setValue(p, "system", mapping(kv...), false)
 	}
 	if op.Repo != nil && *op.Repo == "" {
@@ -780,7 +796,7 @@ func (e *editor) setSystem(op Op) error {
 	if err := e.setList(p, "read", op.Read); err != nil {
 		return err
 	}
-	e.summary = append(e.summary, "change the system of "+a.ID)
+	e.summary = append(e.summary, "change the system of "+a.Name)
 	return nil
 }
 
@@ -816,7 +832,7 @@ func (e *editor) removeAgent(op Op) error {
 	if a.System != nil {
 		e.leaves("systems/" + a.ID)
 	}
-	e.summary = append(e.summary, "remove agent "+a.ID)
+	e.summary = append(e.summary, "remove agent "+a.Name)
 	return e.deleteKey("services", a.ID)
 }
 

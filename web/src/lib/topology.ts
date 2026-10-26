@@ -102,3 +102,5 @@ export const modeLabel: Record<Mode, string> = {
   running: 'running',
   stopping: 'stopping',
 }
+
+export const getOptions = () => call<{ deliverables: string[]; models: string[]; templates: string[] }>('GET', '/api/ui/topology/options')

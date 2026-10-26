@@ -9,7 +9,8 @@ export type View =
   | { kind: 'shared' }
   // topology is the compose file: its Structure tab, or its YAML tab, where
   // line moves the editor to a line.
-  | { kind: 'topology'; tab?: TopologyTab; line?: number }
+  // select is the entity that the Structure tab shows, as kind:id.
+  | { kind: 'topology'; tab?: TopologyTab; line?: number; select?: string }
   | { kind: 'hub'; name: string; tab?: HubTab }
   | { kind: 'dm'; name: string }
   | { kind: 'system'; name: string }
@@ -32,7 +33,7 @@ export function viewKey(v: View): string {
 export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
   if (v.kind === 'shared') return '#/shared'
-  if (v.kind === 'topology') return v.tab === 'yaml' ? '#/topology/yaml' : '#/topology'
+  if (v.kind === 'topology') return v.tab === 'yaml' ? '#/topology/yaml' : v.select ? `#/topology?select=${encodeURIComponent(v.select)}` : '#/topology'
   if (v.kind === 'map') {
     const doc = v.doc ? `/${encodeURIComponent(v.doc)}` : ''
     if (v.system) return `#/map/${v.system}${doc}`
@@ -47,6 +48,8 @@ export function viewHash(v: View): string {
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
   if (hash === '#/topology') return { kind: 'topology' }
+  const select = hash.match(/^#\/topology\?select=([^&]+)$/)
+  if (select) return { kind: 'topology', select: decodeURIComponent(select[1]) }
   if (hash === '#/topology/yaml') return { kind: 'topology', tab: 'yaml' }
   if (hash === '#/map') return { kind: 'map' }
   const map = hash.match(/^#\/map\/([\w-]+)(?:\/([^/]+))?$/)

@@ -1,6 +1,15 @@
 # Spec: the Structure tab
 
-Status: draft.
+Status: built. Checked in a headless Chrome on 2026-10-26 against `hikari up` on the project of the topology API's live run, while its agents ran. In one review of six changes, the tab added the hub `#ops`, added the agent `reviewer` from the template `orchestrator` into `#core` and `#ops`, changed its id to `critic`, set its model, removed it from `#core`, and renamed `#core`, whose id `main` is locked, to `#platform`. The review listed the note "Ask @app in #platform before the release." under a checkbox, and the save committed the compose file and the note as `user: add hub #ops; add agent reviewer in #core, #ops; ...`. After Stop, a pending member was saved with no "applies at the next start". A system with a scope and a read path that do not exist, and a release grant, showed four findings at line 41 and an error dot on the agent's row. A file that is not YAML showed "Fix it in the YAML tab". The browser logged no errors.
+
+Changes made during the build:
+
+1. **Summaries use names.** A commit message named hubs and agents by id, as `add agent reviewer in #main`, while you know the hub as `#core`. Each summary now uses the names of the moment. Found in the browser check.
+2. **You sit in the corner of the hub diagram.** Beside the orchestrator, your node pushed it off the center, so its line missed the members' rail. Found in the browser check.
+3. **Edit in YAML with pending changes opens their review**, because the YAML tab edits the saved file (SP4).
+4. **The tab guard's message goes when its reason does**: after a save or a discard.
+5. **A file that is not YAML shows no sentence about commits**, because whether a save commits depends on the text you save.
+6. **A finding of a key inside a flow mapping points at the mapping's line.** The checks give the path of the key, and the source writes the whole `x-hikari` of a service on one line, so its findings share that line.
 
 Sources: `docs/brainstorm/topology-editor.md` (C2, C3, D1, E3, F2, F3, G3), `topology-editor-round-2.md` (I1 to I5), and the built `topology-api.md` and `yaml-view.md`. This is the last of four steps of the topology editor.
 

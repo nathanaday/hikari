@@ -15,7 +15,7 @@ type Base = { revision: string; text: string }
 
 // YamlTab edits the compose file as text (rules YY1 to YY8): lint as you
 // type, the findings beside the editor, and a save that shows its diff.
-export function YamlTab({ data, mode, reload, line }: { data: TopologyState; mode: Mode; reload: () => void; line?: number }) {
+export function YamlTab({ data, mode, reload, line, onDirty }: { data: TopologyState; mode: Mode; reload: () => void; line?: number; onDirty: (dirty: boolean) => void }) {
   const editor = useRef<YamlEditorHandle>(null)
   // base is the saved text that the buffer started from.
   const [base, setBase] = useState<Base>({ revision: data.revision, text: data.text })
@@ -26,6 +26,7 @@ export function YamlTab({ data, mode, reload, line }: { data: TopologyState; mod
   const [review, setReview] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const dirty = buffer !== base.text
+  useEffect(() => onDirty(dirty), [dirty, onDirty])
 
   // A new revision of the file: take it, or offer it (decision 3, YY8).
   useEffect(() => {

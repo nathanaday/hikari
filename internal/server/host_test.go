@@ -195,7 +195,7 @@ func TestTopologyAPI(t *testing.T) {
 	if saved.Revision != editor.Revision(data, true) || saved.Commit == "" || string(data) != plan.Text {
 		t.Errorf("apply: %+v\n%s", saved, data)
 	}
-	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename hub #main to #core; add agent dev in #main" {
+	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename hub #main to #core; add agent dev in #core" {
 		t.Errorf("TC1, TC2: %q", got)
 	}
 	if run(t, dir, "status", "--porcelain") != "" {

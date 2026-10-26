@@ -92,6 +92,16 @@ func TestOperations(t *testing.T) {
 				t.Errorf("%+v %v", res.Renames, res.Summary)
 			}
 		}, 1},
+		{"a summary uses names", []Op{
+			{Op: "rename", Kind: "hub", ID: "eng", Name: ptr("platform")},
+			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("builder")},
+			{Op: "remove_member", Hub: "eng", Agent: "dev"},
+			{Op: "add_member", Hub: "product", Agent: "dev"},
+		}, func(t *testing.T, m *Model, res *Result) {
+			if got := strings.Join(res.Summary, "; "); got != "rename hub #eng to #platform; rename agent dev to builder; remove builder from #platform; add builder to #product" {
+				t.Errorf("%s", got)
+			}
+		}, 4},
 		{"rename back to the id removes the field", []Op{
 			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("builder")},
 			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("dev")},

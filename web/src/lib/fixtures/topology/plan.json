@@ -131,7 +131,7 @@
   ],
   "summary": [
     "rename hub #main to #core",
-    "add agent dev in #main"
+    "add agent dev in #core"
   ],
   "model": {
     "project": {
