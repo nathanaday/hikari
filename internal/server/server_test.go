@@ -615,3 +615,35 @@ func TestActivity(t *testing.T) {
 		t.Errorf("old turns must be dropped whole: %d entries, first %+v", len(list), list[0])
 	}
 }
+
+// TestRenamedNodesRouteByName checks that messages, mentions, and prompts
+// use names (rule ID12 of the ids spec).
+func TestRenamedNodesRouteByName(t *testing.T) {
+	src := strings.NewReplacer(
+		"eng: {orchestrator: lead", "eng: {name: platform, orchestrator: lead",
+		"writer: {x-hikari: {description: writes}}", "writer: {x-hikari: {name: scribe, description: writes}}",
+	).Replace(testTopology)
+	topo, err := topology.Parse([]byte(src), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys, err := systems.New(topo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(topo, nil, sys)
+	m, err := s.Send("lead", post("platform", "@scribe draft it"))
+	if err != nil || m.Hub != "platform" || !slices.Equal(m.Woke, []string{"scribe"}) {
+		t.Errorf("a post to a renamed hub wakes the renamed agent: %+v, %v", m, err)
+	}
+	if _, err := s.Send("lead", dm("writer", "hi")); err == nil {
+		t.Error("an agent's id is not an address")
+	}
+	self := s.Self("scribe")
+	if self.Name != "scribe" || len(self.Hubs) != 1 || self.Hubs[0].Name != "platform" {
+		t.Errorf("Self(scribe) = %+v", self)
+	}
+	if snap := s.snapshot(); snap.Project != "test" {
+		t.Errorf("ID13: the snapshot names the project: %q", snap.Project)
+	}
+}

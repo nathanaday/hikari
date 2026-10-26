@@ -270,3 +270,66 @@ func TestPrefixStripsControlSequences(t *testing.T) {
 		t.Errorf("log = %q", got)
 	}
 }
+
+// TestOverrideOfRenamedEntities checks that compose and the store key by
+// id, and the paths inside the container by name (rules ID9 and ID12 of the
+// ids spec).
+func TestOverrideOfRenamedEntities(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	for _, d := range []string{".git", "services/orders", "services/billing"} {
+		os.MkdirAll(filepath.Join(repo, d), 0o755)
+	}
+	src := `name: shop
+x-hikari:
+  repos: {shop: {name: store, path: shop, branch: hikari}}
+  hubs: {eng: {name: platform, orchestrator: lead, members: [orders, billing]}}
+services:
+  lead: {image: hikari-agent, x-hikari: {}}
+  orders: {image: hikari-agent, x-hikari: {name: intake, system: {repo: shop, scope: services/orders}}}
+  billing: {image: hikari-agent, x-hikari: {system: {repo: shop, scope: services/billing}, grants: {releases: [orders]}}}
+`
+	topo, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Override(topo, OverrideInput{RunID: "r1", EmptyDir: "/tmp/empty", Binaries: map[string]string{"intake": "/bin/a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f overrideFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Services["intake"]; ok {
+		t.Errorf("ID9: no service is keyed by a name:\n%s", data)
+	}
+	orders := f.Services["orders"]
+	if orders.Environment["HIKARI_TOKEN"] != "${HIKARI_TOKEN_ORDERS}" || !slices.Equal(orders.Networks, replaced{"agent-orders"}) {
+		t.Errorf("ID9: token and network by id: %+v", orders)
+	}
+	if f.Networks["agent-orders"].Name != "shop-agent-orders" {
+		t.Errorf("ID9: %+v", f.Networks)
+	}
+	targets := map[string]string{}
+	for _, m := range orders.Volumes {
+		targets[m.Target] = m.Source
+	}
+	store := filepath.Join(dir, "store")
+	if targets["/hikari/bin/hikari"] != "/bin/a" {
+		t.Errorf("the binary of intake: %v", targets)
+	}
+	if targets["/hikari/public/export"] != filepath.Join(store, "systems", "orders") {
+		t.Errorf("ID6: the owner's store directory by id: %v", targets)
+	}
+	if targets["/hikari/public/readonly/hubs/platform/wiki"] != filepath.Join(store, "hubs", "eng", "wiki") {
+		t.Errorf("ID12: the hub wiki mounts at its name from its id's directory: %v", targets)
+	}
+	billing := map[string]string{}
+	for _, m := range f.Services["billing"].Volumes {
+		billing[m.Target] = m.Source
+	}
+	if billing["/hikari/public/readonly/systems/intake/releases"] != filepath.Join(store, "systems", "orders", "releases") {
+		t.Errorf("ID12: a granted release mounts at the system's name: %v", billing)
+	}
+}

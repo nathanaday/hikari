@@ -55,7 +55,7 @@ func (m *Manager) openWikis() error {
 		}
 		m.wikis[api.SystemWikiRef(name)] = &wikiOf{
 			ref: api.SystemWikiRef(name), scope: "system", name: name, author: name,
-			dir: path.Join("systems", name, store.Wiki), store: s,
+			dir: m.store.Rel(m.store.SystemWiki(name)), store: s,
 		}
 	}
 	for _, hub := range m.topo.HubNames() {
@@ -65,7 +65,7 @@ func (m *Manager) openWikis() error {
 		}
 		m.wikis[api.HubWikiRef(hub)] = &wikiOf{
 			ref: api.HubWikiRef(hub), scope: "hub", name: hub, author: m.topo.Hubs[hub].Orchestrator,
-			dir: path.Join("hubs", hub, store.Wiki), store: s,
+			dir: m.store.Rel(m.store.HubWiki(hub)), store: s,
 		}
 	}
 	return nil
@@ -242,7 +242,7 @@ func (m *Manager) ChangeWiki(agent, hub string, writes []wiki.Write) (api.Change
 		if err := m.project(o); err != nil {
 			out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
 		}
-		files = append(files, path.Join("systems", agent, "map.yaml"))
+		files = append(files, m.mapPath(agent))
 	} else {
 		verb = fmt.Sprintf("change the #%s wiki", hub)
 	}

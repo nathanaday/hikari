@@ -14,7 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
-	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -117,7 +116,7 @@ func listed(paths []string) string {
 // branch, which hikari up checks out; otherwise from the store's files.
 func mapCommits(topo *topology.Topology, repo string) map[string]string {
 	out := map[string]string{}
-	st := store.Store{Root: topo.Store}
+	st := topo.StoreOf()
 	var project *gitrepo.Repo
 	if p := topo.Project; p != nil && topo.StoreInProject() != "" {
 		if r := gitrepo.Open(p.Path); r.HasBranch(p.Branch) {

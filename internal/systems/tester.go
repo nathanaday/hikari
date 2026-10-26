@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -74,6 +73,10 @@ func (m *Manager) testerDocs(o *owner) (e2e.Plan, string, e2e.Lock, []string) {
 	lock, err := e2e.LoadLock(filepath.Join(o.store.Root(), e2e.LockFile))
 	if err != nil {
 		problems = append(problems, err.Error())
+	}
+	// The lock names each system by id (rule ID8 of the ids spec).
+	for i, r := range lock.Releases {
+		lock.Releases[i].System = m.store.SystemName(r.System)
 	}
 	for _, r := range lock.Releases {
 		man, ok := m.release(r.System, r.Deliverable, r.Version)
@@ -144,7 +147,12 @@ func (m *Manager) PinReleases(agent string, pins []e2e.LockedRelease) (e2e.Lock,
 	if len(errs) > 0 {
 		return e2e.Lock{}, fmt.Errorf("LK1: %s", strings.Join(errs, "; "))
 	}
-	if err := os.WriteFile(filepath.Join(o.store.Root(), e2e.LockFile), lock.Render(), 0o644); err != nil {
+	disk := e2e.Lock{Version: lock.Version}
+	for _, r := range lock.Releases {
+		r.System = m.store.SystemID(r.System)
+		disk.Releases = append(disk.Releases, r)
+	}
+	if err := os.WriteFile(filepath.Join(o.store.Root(), e2e.LockFile), disk.Render(), 0o644); err != nil {
 		return e2e.Lock{}, err
 	}
 	m.changed(Change{System: agent, Wiki: api.HubWikiRef(hub)})
@@ -305,7 +313,7 @@ func (m *Manager) RecordBench(hub, id string, passed bool, note string) error {
 	if passed {
 		outcome = "pass"
 	}
-	m.commitStore("", fmt.Sprintf("user: record %s as %s in #%s", id, outcome, hub), path.Join("hubs", hub, "bench.yaml"))
+	m.commitStore("", fmt.Sprintf("user: record %s as %s in #%s", id, outcome, hub), m.store.Rel(m.benchPath(hub)))
 	m.changed(Change{Wiki: api.HubWikiRef(hub)})
 	return nil
 }
@@ -370,7 +378,7 @@ func (m *Manager) SetApproval(hub, gap string, approve bool) error {
 	if err := approvals.Save(m.approvalsPath(hub)); err != nil {
 		return err
 	}
-	m.commitStore("", fmt.Sprintf("user: %s %s in #%s", verb, gap, hub), path.Join("hubs", hub, "approvals.yaml"))
+	m.commitStore("", fmt.Sprintf("user: %s %s in #%s", verb, gap, hub), m.store.Rel(m.approvalsPath(hub)))
 	m.changed(Change{Wiki: api.HubWikiRef(hub)})
 	return nil
 }

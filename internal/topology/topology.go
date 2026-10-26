@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nathanaday/hikari/internal/store"
 )
 
 // User is the reserved name of the human operator. The user is a member of
@@ -31,6 +33,11 @@ const User = "user"
 const ProjectRepo = "project"
 
 type Agent struct {
+	// ID is the agent's service key, and Name is what people and agents
+	// call it (rules ID1 and ID4 of the ids spec). Name is the ID unless
+	// x-hikari sets it.
+	ID           string  `yaml:"-"`
+	Name         string  `yaml:"name"`
 	Description  string  `yaml:"description"`
 	Instructions string  `yaml:"instructions"`
 	Model        string  `yaml:"model"`
@@ -74,6 +81,8 @@ type System struct {
 // repo has a URL, and its path is in the clone folder (rules LR1 to LR4 of
 // the linked repositories spec).
 type Repo struct {
+	ID     string `yaml:"-"`
+	Name   string `yaml:"name"`
 	URL    string `yaml:"url"`
 	Path   string `yaml:"path"`
 	Branch string `yaml:"branch"`
@@ -86,6 +95,8 @@ const CloneDir = "repos"
 // Hub is a chat room. Its orchestrator, its members, and the user can post to
 // it, and any two of them can send direct messages to each other.
 type Hub struct {
+	ID           string   `yaml:"-"`
+	Name         string   `yaml:"name"`
 	Description  string   `yaml:"description"`
 	Orchestrator string   `yaml:"orchestrator"`
 	Members      []string `yaml:"members"`
@@ -98,7 +109,8 @@ type Service struct {
 	Image string
 	Build bool
 	User  string
-	// Serves is the agent that a sidecar serves. It is empty for an agent.
+	// Serves is the name of the agent that a sidecar serves. It is empty
+	// for an agent.
 	Serves  string
 	Volumes []Volume
 	// Environment maps each variable to its value, or to nil when the
@@ -116,8 +128,13 @@ type Volume struct {
 	ReadOnly bool   `yaml:"read_only"`
 }
 
+// Topology is keyed by name: Agents, Hubs, and Repos map each name to its
+// entity, and every reference holds a name. Services stays keyed by
+// service key, because it describes compose. Outside the file, hikari keys
+// by id: the store, compose, and the clones (rules ID6 to ID10).
 type Topology struct {
-	// Name is the compose project name.
+	// ID is the compose project name, and Name is x-hikari.name, or the ID.
+	ID   string
 	Name string
 	// Store is the directory of the shared store. It is absolute; the
 	// default is store/ next to the compose file.
@@ -162,6 +179,7 @@ type composeFile struct {
 }
 
 type hikariKeys struct {
+	Name    string          `yaml:"name"`
 	Store   string          `yaml:"store"`
 	Project *projectKeys    `yaml:"project"`
 	Repos   map[string]Repo `yaml:"repos"`
@@ -187,7 +205,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && a.Tests == "" && a.E2E == nil
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && a.Tests == "" && a.E2E == nil
 }
 
 // Load reads a compose file through `docker compose config`, so that hikari
@@ -263,11 +281,11 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	if f.Name == "" && len(f.Services) == 0 && f.Hikari.Kind == 0 {
 		return nil, fmt.Errorf("compose file is empty")
 	}
-	t := Topology{Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}, draft: draft}
+	t := Topology{ID: f.Name, Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}, draft: draft}
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 
-	if t.Name == "" {
+	if t.ID == "" {
 		fail("the compose file has no top-level name; hikari needs a stable project name")
 	}
 	var keys hikariKeys
@@ -277,6 +295,9 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 		fail("x-hikari: %v", err)
 	}
 	t.Store, t.Repos, t.Hubs = keys.Store, keys.Repos, keys.Hubs
+	if keys.Name != "" {
+		t.Name = keys.Name
+	}
 	if t.Repos == nil {
 		t.Repos = map[string]Repo{}
 	}
@@ -299,7 +320,7 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 		node.Decode(&raw)
 		svc := Service{Image: sk.Image, Build: sk.Build.Kind != 0, User: sk.User, Volumes: sk.Volumes, Environment: sk.Environment, set: setKeys(raw)}
 		if svc.Image == "" && svc.Build {
-			svc.Image = t.Name + "-" + name
+			svc.Image = t.ID + "-" + name
 		}
 		if sk.Hikari.Kind == 0 {
 			fail("service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
@@ -327,6 +348,7 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
+	t.rekey()
 	return &t, nil
 }
 
@@ -377,8 +399,13 @@ func (t *Topology) normalize() {
 	t.Store = resolvePath(t.Store, t.Dir)
 	if t.Project != nil {
 		t.Project.Path = resolvePath(t.Project.Path, t.Dir)
+		t.Project.ID, t.Project.Name = ProjectRepo, ProjectRepo
 	}
 	for name, r := range t.Repos {
+		r.ID = name
+		if r.Name == "" {
+			r.Name = name
+		}
 		if r.URL != "" && r.Path == "" && t.Project != nil {
 			r.Path = filepath.Join(t.Project.Path, CloneDir, name)
 			if r.Branch == "" {
@@ -392,7 +419,18 @@ func (t *Topology) normalize() {
 	if t.Project != nil {
 		t.Repos[ProjectRepo] = *t.Project
 	}
+	for name, h := range t.Hubs {
+		h.ID = name
+		if h.Name == "" {
+			h.Name = name
+		}
+		t.Hubs[name] = h
+	}
 	for name, a := range t.Agents {
+		a.ID = name
+		if a.Name == "" {
+			a.Name = name
+		}
 		if a.System != nil {
 			a.System.Scope = cleanRel(a.System.Scope)
 			for i, p := range a.System.Read {
@@ -401,6 +439,103 @@ func (t *Topology) normalize() {
 		}
 		t.Agents[name] = a
 	}
+}
+
+// rekey keys the checked topology by name, and resolves every reference
+// from an id to a name (decision 3 of the ids spec).
+func (t *Topology) rekey() {
+	agent := func(id string) string {
+		if a, ok := t.Agents[id]; ok {
+			return a.Name
+		}
+		return id
+	}
+	hub := func(id string) string {
+		if h, ok := t.Hubs[id]; ok {
+			return h.Name
+		}
+		return id
+	}
+	repo := func(id string) string {
+		if r, ok := t.Repos[id]; ok {
+			return r.Name
+		}
+		return id
+	}
+	agents := map[string]Agent{}
+	for _, a := range t.Agents {
+		if s := a.System; s != nil {
+			sys := *s
+			sys.Repo = repo(s.Repo)
+			a.System = &sys
+		}
+		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
+		if a.Tests != "" {
+			a.Tests = hub(a.Tests)
+		}
+		agents[a.Name] = a
+	}
+	hubs := map[string]Hub{}
+	for _, h := range t.Hubs {
+		h.Orchestrator = agent(h.Orchestrator)
+		h.Members = mapNames(h.Members, agent)
+		hubs[h.Name] = h
+	}
+	repos := map[string]Repo{}
+	for _, r := range t.Repos {
+		repos[r.Name] = r
+	}
+	for i, id := range t.Missing {
+		t.Missing[i] = repo(id)
+	}
+	for id, svc := range t.Services {
+		if svc.Serves != "" {
+			svc.Serves = agent(svc.Serves)
+			t.Services[id] = svc
+		}
+	}
+	t.Agents, t.Hubs, t.Repos = agents, hubs, repos
+}
+
+func mapNames(ids []string, name func(string) string) []string {
+	if ids == nil {
+		return nil
+	}
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = name(id)
+	}
+	return out
+}
+
+// AgentOfService returns the name of the agent whose service key is id.
+func (t *Topology) AgentOfService(id string) (string, bool) {
+	for name, a := range t.Agents {
+		if a.ID == id {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// SystemIDs and HubIDs map the name of each system and hub to its id, for
+// the store (rule ID6).
+func (t *Topology) SystemIDs() map[string]string {
+	out := map[string]string{}
+	for name, a := range t.Agents {
+		if a.System != nil {
+			out[name] = a.ID
+		}
+	}
+	return out
+}
+
+func (t *Topology) HubIDs() map[string]string {
+	out := map[string]string{}
+	for name, h := range t.Hubs {
+		out[name] = h.ID
+	}
+	return out
 }
 
 func resolvePath(p, dir string) string {
@@ -480,10 +615,64 @@ func (t *Topology) validate() error {
 		}
 	}
 
+	errs = append(errs, t.validateNames()...)
 	errs = append(errs, t.validateRepos()...)
 	errs = append(errs, t.validateSystems()...)
 	errs = append(errs, t.validateServices()...)
 	return errors.Join(errs...)
+}
+
+// validateNames checks the names that x-hikari sets (rules ID2 and ID4).
+// An entity without a name field has its id as its name, and the id is
+// checked as before.
+func (t *Topology) validateNames() []error {
+	var errs []error
+	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+	if t.Name != t.ID && (strings.TrimSpace(t.Name) == "" || len(t.Name) > 64 || strings.ContainsAny(t.Name, "\r\n")) {
+		fail("x-hikari.name: the project's name must be one line of 1 to 64 characters")
+	}
+
+	type entity struct{ kind, id, name string }
+	check := func(entities []entity, reserved string) {
+		ids, names := map[string]entity{}, map[string]entity{}
+		for _, e := range entities {
+			ids[e.id] = e
+		}
+		for _, e := range entities {
+			label := fmt.Sprintf("%s %q", e.kind, e.id)
+			if e.name != e.id {
+				switch {
+				case e.name == reserved:
+					fail("%s: the name %q is reserved", label, reserved)
+				case !validName.MatchString(e.name):
+					fail("%s: invalid name %q: use lowercase letters, digits, and dashes", label, e.name)
+				}
+				if other, ok := ids[e.name]; ok && other != e {
+					fail("%s is named %q, which is the id of %s %q", label, e.name, other.kind, other.id)
+				}
+			}
+			if other, ok := names[e.name]; ok {
+				fail("%s %q and %s have the same name %q", other.kind, other.id, label, e.name)
+			}
+			names[e.name] = e
+		}
+	}
+	var nodes []entity
+	for _, id := range sortedKeys(t.Agents) {
+		nodes = append(nodes, entity{"agent", id, t.Agents[id].Name})
+	}
+	for _, id := range sortedKeys(t.Hubs) {
+		nodes = append(nodes, entity{"hub", id, t.Hubs[id].Name})
+	}
+	check(nodes, User)
+	var repos []entity
+	for _, id := range sortedKeys(t.Repos) {
+		if id != ProjectRepo {
+			repos = append(repos, entity{"repo", id, t.Repos[id].Name})
+		}
+	}
+	check(repos, ProjectRepo)
+	return errs
 }
 
 func (t *Topology) validateRepos() []error {
@@ -922,4 +1111,10 @@ func (t *Topology) ReadableHubWikis(agent string) []string {
 		}
 	}
 	return sortedKeys(set)
+}
+
+// StoreOf returns the topology's store, which maps the names of systems
+// and hubs to their ids.
+func (t *Topology) StoreOf() store.Store {
+	return store.Store{Root: t.Store, Systems: t.SystemIDs(), Hubs: t.HubIDs()}
 }

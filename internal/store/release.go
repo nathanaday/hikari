@@ -60,6 +60,32 @@ type ProductInfo struct {
 	Digest string `yaml:"digest" json:"digest"`
 }
 
+// onDisk and inMemory turn the names of a manifest into ids and back: on
+// disk, a manifest names its system and its hubs by id (rule ID7 of the
+// ids spec).
+func (s Store) onDisk(m Manifest) Manifest {
+	m.System = s.SystemID(m.System)
+	m.Hubs = mapSlice(m.Hubs, s.HubID)
+	return m
+}
+
+func (s Store) inMemory(m Manifest) Manifest {
+	m.System = s.SystemName(m.System)
+	m.Hubs = mapSlice(m.Hubs, s.HubName)
+	return m
+}
+
+func mapSlice(in []string, f func(string) string) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, len(in))
+	for i, v := range in {
+		out[i] = f(v)
+	}
+	return out
+}
+
 // ParseManifest reads a manifest, rejecting unknown fields.
 func ParseManifest(data []byte) (Manifest, error) {
 	var m Manifest
@@ -297,7 +323,7 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 		},
 		Map: "map.yaml", Certificates: certs, Image: image,
 	}
-	data, err := yaml.Marshal(m)
+	data, err := yaml.Marshal(s.onDisk(m))
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -399,7 +425,7 @@ func (s Store) Releases(system string) ([]Manifest, error) {
 				continue
 			}
 			if m, err := ParseManifest(data); err == nil {
-				out = append(out, m)
+				out = append(out, s.inMemory(m))
 			}
 		}
 	}

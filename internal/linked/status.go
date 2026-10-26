@@ -10,7 +10,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -43,7 +42,7 @@ type SuiteStatus struct {
 // Status reads each owner's map in the store and its results file. It
 // writes nothing and needs no server.
 func Status(topo *topology.Topology) []SystemStatus {
-	st := store.Store{Root: topo.Store}
+	st := topo.StoreOf()
 	var out []SystemStatus
 	for _, owner := range topo.Owners() {
 		sys := topo.Agents[owner].System

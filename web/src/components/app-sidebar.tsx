@@ -51,6 +51,11 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             {connectionLabel[state.connection]}
           </span>
         </div>
+        {state.project && (
+          <div className="truncate text-xs text-muted-foreground" data-testid="project">
+            {state.project}
+          </div>
+        )}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

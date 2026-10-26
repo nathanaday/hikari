@@ -63,12 +63,33 @@ func Open(root, mapPath, name, testCommand string) (*Store, bool, error) {
 		s.m = New(name)
 		return s, true, s.save(s.m)
 	}
+	if err := s.adoptName(); err != nil {
+		return nil, false, fmt.Errorf("system map %s: %w", s.path, err)
+	}
 	m, err := s.read()
 	if err != nil {
 		return nil, false, fmt.Errorf("system map %s: %w", s.path, err)
 	}
 	s.m = m
 	return s, false, nil
+}
+
+// adoptName writes the system's name into a map that holds another one.
+// The map's place in the store, which is keyed by the system's id, says
+// which system it describes, so a different name is a rename (rule ID12
+// of the ids spec).
+func (s *Store) adoptName() error {
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return err
+	}
+	var m Map
+	if yaml.Unmarshal(data, &m) != nil || m.System.Name == s.name {
+		return nil
+	}
+	s.notes = append(s.notes, fmt.Sprintf("renamed the system %q to %q in %s", m.System.Name, s.name, s.path))
+	m.System.Name = s.name
+	return s.save(&m)
 }
 
 // Notes returns what Open did to files from an earlier version.

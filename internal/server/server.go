@@ -48,7 +48,9 @@ type NodeView struct {
 
 type Snapshot struct {
 	// Version is the version of the running hikari.
-	Version      string             `json:"version"`
+	Version string `json:"version"`
+	// Project is the project's name (rule ID13 of the ids spec).
+	Project      string             `json:"project"`
 	Me           string             `json:"me"`
 	Agents       []NodeView         `json:"agents"`
 	Hubs         []api.HubInfo      `json:"hubs"`
@@ -467,7 +469,7 @@ func (s *Server) publish(e Event) {
 }
 
 func (s *Server) snapshot() Snapshot {
-	snap := Snapshot{Version: version.Version, Me: topology.User, Messages: slices.Clone(s.log)}
+	snap := Snapshot{Version: version.Version, Project: s.topo.Name, Me: topology.User, Messages: slices.Clone(s.log)}
 	if snap.Messages == nil {
 		snap.Messages = []api.Message{}
 	}

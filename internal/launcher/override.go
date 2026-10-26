@@ -7,7 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -29,13 +28,15 @@ type OverrideInput struct {
 	Users map[string]string
 }
 
-// TokenVar names the variable that carries an agent's token to compose. The
-// override file refers to it, so that the token never reaches the disk.
-func TokenVar(agent string) string {
-	return "HIKARI_TOKEN_" + strings.ToUpper(strings.ReplaceAll(agent, "-", "_"))
+// TokenVar names the variable that carries the token of the agent with
+// service key id to compose. The override file refers to it, so that the
+// token never reaches the disk.
+func TokenVar(id string) string {
+	return "HIKARI_TOKEN_" + strings.ToUpper(strings.ReplaceAll(id, "-", "_"))
 }
 
-// NetworkName returns the network of an agent and its sidecars.
+// NetworkName returns the network of an agent and its sidecars, from the
+// ids of the project and the agent (rule ID9).
 func NetworkName(project, agent string) string { return project + "-agent-" + agent }
 
 // AgentMounts returns every hikari mount of an agent: its code when it owns
@@ -46,7 +47,7 @@ func AgentMounts(t *topology.Topology, agent, emptyDir string) []Mount {
 	if s := a.System; s != nil {
 		mounts = SystemMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
 	}
-	st := store.Store{Root: t.Store}
+	st := t.StoreOf()
 	return append(mounts, StoreMounts(st, agent, a.System != nil, t.VisibleSystems(agent), t.ReadableReleases(agent), t.ReadableHubWikis(agent), emptyDir)...)
 }
 
@@ -104,8 +105,9 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 	labels := map[string]string{RunLabel: in.RunID}
 	f := overrideFile{Services: map[string]overrideService{}, Networks: map[string]overrideNetwork{}}
 	for _, agent := range t.AgentNames() {
-		network := "agent-" + agent
-		f.Networks[network] = overrideNetwork{Name: NetworkName(t.Name, agent), Labels: labels}
+		id := t.Agents[agent].ID
+		network := "agent-" + id
+		f.Networks[network] = overrideNetwork{Name: NetworkName(t.ID, id), Labels: labels}
 		svc := overrideService{
 			Entrypoint: []string{api.BinaryPath, "node"},
 			Init:       true,
@@ -113,7 +115,7 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 			ExtraHosts: []string{"host.docker.internal:host-gateway"},
 			Environment: map[string]string{
 				"HIKARI_SERVER_URL":   in.ServerURL,
-				"HIKARI_TOKEN":        "${" + TokenVar(agent) + "}",
+				"HIKARI_TOKEN":        "${" + TokenVar(id) + "}",
 				"DISABLE_AUTOUPDATER": "1",
 			},
 			Labels:  labels,
@@ -125,8 +127,8 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 		for _, m := range AgentMounts(t, agent, in.EmptyDir) {
 			svc.Volumes = append(svc.Volumes, composeMount{Type: "bind", Source: escape(m.Source), Target: m.Target, ReadOnly: m.ReadOnly})
 		}
-		if volumes := t.NamedVolumes(agent); len(volumes) > 0 {
-			prepare := topology.PrepareName(agent)
+		if volumes := t.NamedVolumes(id); len(volumes) > 0 {
+			prepare := topology.PrepareName(id)
 			entry := []string{"chown", escape(in.Users[agent])}
 			var mounts []composeMount
 			for _, v := range volumes {
@@ -134,7 +136,7 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 				mounts = append(mounts, composeMount{Type: "volume", Source: v.Source, Target: v.Target})
 			}
 			f.Services[prepare] = overrideService{
-				Image:       t.Services[agent].Image,
+				Image:       t.Services[id].Image,
 				User:        "root",
 				Entrypoint:  entry,
 				NetworkMode: "none",
@@ -143,7 +145,7 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 			}
 			svc.DependsOn = map[string]dependency{prepare: {Condition: "service_completed_successfully"}}
 		}
-		f.Services[agent] = svc
+		f.Services[id] = svc
 		for _, sidecar := range t.Sidecars(agent) {
 			f.Services[sidecar] = overrideService{Networks: replaced{network}, Labels: labels}
 		}

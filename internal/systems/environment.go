@@ -83,7 +83,9 @@ func (m *Manager) tester(agent string) (*owner, string, error) {
 }
 
 // environmentProject is the compose project of a hub's environment.
-func (m *Manager) environmentProject(hub string) string { return m.topo.Name + "-e2e-" + hub }
+func (m *Manager) environmentProject(hub string) string {
+	return m.topo.ID + "-e2e-" + m.topo.Hubs[hub].ID
+}
 
 // StartEnvironment starts the environment of agent's hub for a scenario of
 // its plan, and waits until its services are healthy (rules ST1 to ST4).
@@ -163,7 +165,7 @@ func (m *Manager) StartEnvironment(ctx context.Context, agent, scenario string) 
 		Dir: o.store.Root(), File: filepath.Join(o.store.Root(), e2e.EnvironmentFile), Override: override,
 		OverrideFile: o.store.PrivatePath(filepath.Join(sysmap.EnvironmentDir, "override.yaml")),
 		Replicas:     replicas, Scenario: scenario,
-		Tester:       environments.Container(ctx, m.topo.Name, agent),
+		Tester:       environments.Container(ctx, m.topo.ID, m.topo.Agents[agent].ID),
 		LogDir:       o.store.PrivatePath(filepath.Join(sysmap.EnvironmentDir, "logs")),
 		LogsShown:    path.Join(api.PrivateDir, sysmap.EnvironmentDir, "logs"),
 		Minutes:      plan.Scenarios[scenario].Minutes,

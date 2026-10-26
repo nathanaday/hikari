@@ -297,6 +297,7 @@ export type EnvironmentStatus = {
 
 export type Snapshot = {
   version?: string
+  project?: string
   me: string
   agents: Agent[]
   hubs: Hub[]

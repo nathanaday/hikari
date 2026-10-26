@@ -148,7 +148,7 @@ func up(ctx context.Context, args []string) error {
 			return fail(step, err)
 		}
 		if running {
-			return fail(step, fmt.Errorf("containers of project %q are running; stop them with `docker compose -p %s down`", topo.Name, topo.Name))
+			return fail(step, fmt.Errorf("containers of project %q are running; stop them with `docker compose -p %s down`", topo.ID, topo.ID))
 		}
 	}
 	findings := linked.Check(topo, !*noLaunch)
@@ -377,16 +377,16 @@ func launch(ctx context.Context, con *console.Console, p *launcher.Project, srv 
 		return nil, err
 	}
 	for _, n := range topo.AgentNames() {
-		p.Env = append(p.Env, launcher.TokenVar(n)+"="+srv.IssueToken(n))
+		p.Env = append(p.Env, launcher.TokenVar(topo.Agents[n].ID)+"="+srv.IssueToken(n))
 	}
 	err := p.Watch(ctx, func(service string, code int) {
 		log.Printf("[%s] container exited with code %d", service, code)
-		if _, ok := topo.Agents[service]; ok {
+		if agent, ok := topo.AgentOfService(service); ok {
 			s := api.Status{State: api.StateExited}
 			if code != 0 && ctx.Err() == nil {
 				s.Detail = fmt.Sprintf("exit code %d", code)
 			}
-			srv.SetStatus(service, s)
+			srv.SetStatus(agent, s)
 		}
 	})
 	if err != nil {

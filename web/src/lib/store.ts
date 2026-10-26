@@ -8,6 +8,8 @@ export type State = {
   loaded: boolean
   // version is the version of the running hikari.
   version: string
+  // project is the project's name.
+  project: string
   me: string
   agents: Agent[]
   hubs: Hub[]
@@ -37,6 +39,7 @@ export function initialState(view: View): State {
     connection: 'connecting',
     loaded: false,
     version: '',
+    project: '',
     me: 'user',
     agents: [],
     hubs: [],
@@ -90,6 +93,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         ...s,
         loaded: true,
         version: e.snapshot.version ?? '',
+        project: e.snapshot.project ?? '',
         me,
         agents,
         hubs,

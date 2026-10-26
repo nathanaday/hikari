@@ -24,27 +24,70 @@ const (
 // directory, and in each release.
 const Wiki = "wiki"
 
-// Store is a store on the host.
+// Store is a store on the host. Its functions take the names of systems
+// and hubs, and its directories are keyed by their ids (rule ID6 of the
+// ids spec). Systems and Hubs map each name to its id; a name that they
+// lack is its own id.
 type Store struct {
-	Root string
+	Root    string
+	Systems map[string]string
+	Hubs    map[string]string
 }
+
+func idOf(ids map[string]string, name string) string {
+	if id, ok := ids[name]; ok {
+		return id
+	}
+	return name
+}
+
+func nameOf(ids map[string]string, id string) string {
+	for name, v := range ids {
+		if v == id {
+			return name
+		}
+	}
+	return id
+}
+
+// SystemID and HubID return the id of a system and of a hub.
+func (s Store) SystemID(system string) string { return idOf(s.Systems, system) }
+
+func (s Store) HubID(hub string) string { return idOf(s.Hubs, hub) }
+
+// SystemName and HubName return the name of the system and the hub whose
+// id is id.
+func (s Store) SystemName(id string) string { return nameOf(s.Systems, id) }
+
+func (s Store) HubName(id string) string { return nameOf(s.Hubs, id) }
 
 func (s Store) SharedDir() string { return filepath.Join(s.Root, "shared") }
 
 func (s Store) Shared(kind string) string { return filepath.Join(s.SharedDir(), kind) }
 
 func (s Store) VocabularyFile(hub string) string {
-	return filepath.Join(s.Shared(Vocabulary), hub+".yaml")
+	return filepath.Join(s.Shared(Vocabulary), s.HubID(hub)+".yaml")
 }
 
-func (s Store) SystemDir(system string) string { return filepath.Join(s.Root, "systems", system) }
+func (s Store) SystemDir(system string) string {
+	return filepath.Join(s.Root, "systems", s.SystemID(system))
+}
 
 func (s Store) MapFile(system string) string { return filepath.Join(s.SystemDir(system), "map.yaml") }
 
 // SystemWiki is the wiki of a system.
 func (s Store) SystemWiki(system string) string { return filepath.Join(s.SystemDir(system), Wiki) }
 
-func (s Store) HubDir(hub string) string { return filepath.Join(s.Root, "hubs", hub) }
+func (s Store) HubDir(hub string) string { return filepath.Join(s.Root, "hubs", s.HubID(hub)) }
+
+// Rel returns a path of the store relative to its root, with slashes.
+func (s Store) Rel(p string) string {
+	rel, err := filepath.Rel(s.Root, p)
+	if err != nil {
+		return filepath.ToSlash(p)
+	}
+	return filepath.ToSlash(rel)
+}
 
 // HubWiki is the wiki of a hub.
 func (s Store) HubWiki(hub string) string { return filepath.Join(s.HubDir(hub), Wiki) }

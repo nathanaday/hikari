@@ -36,7 +36,7 @@ type Project struct {
 }
 
 func (p *Project) compose(ctx context.Context, args ...string) *exec.Cmd {
-	base := []string{"compose", "-p", p.Topo.Name, "-f", p.Topo.File}
+	base := []string{"compose", "-p", p.Topo.ID, "-f", p.Topo.File}
 	if p.Override != "" {
 		base = append(base, "-f", p.Override)
 	}
@@ -76,7 +76,7 @@ type Image struct {
 // InspectAgent reads the image of an agent, pulling it when it is not on
 // this machine, and checks the image contract (rules C11 and C12).
 func (p *Project) InspectAgent(ctx context.Context, agent string) (Image, error) {
-	svc := p.Topo.Services[agent]
+	svc := p.Topo.Services[p.Topo.Agents[agent].ID]
 	if svc.Image == "" {
 		return Image{}, fmt.Errorf("agent %q has neither an image nor a build", agent)
 	}
