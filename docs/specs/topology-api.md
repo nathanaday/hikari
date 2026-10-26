@@ -1,6 +1,19 @@
 # Spec: the topology API and the `hikari up` loop
 
-Status: draft.
+Status: built. Checked in a live run on 2026-10-25. `hikari up` in an empty directory printed the address and waited: "compose.yaml does not exist; create it in the web UI". `create` made a project repository with its first commit. One `apply` of six operations named the project `Editor Live`, added a path repo and the owner `app` from the template `orchestrator` in `#main`, and committed `user: name the project "Editor Live"; add repo app; add agent app in #main; give app a system; 2 more`; its diff changed only the lines of the touched nodes. Start from the API started both agents. During the run, a plan of `rename hub main to core` said "applies at start" and listed the `#main` of a hand-written note; the apply committed the compose file and the note as you, through the run's lock. Stop returned to editing, the UI's `send` answered 503, and Start began a new run whose snapshot showed `#core`, while the store kept `hubs/main`. Ctrl-C stopped the containers and exited.
+
+Changes made during the build:
+
+1. **The run's server takes the node API before the agents connect.** The host passed requests to the run only once it was running, so the agents' first call got 503, and both containers exited. The host now attaches the run's server when it exists, and still shows `starting`. Found in the live run.
+2. **A directory that holds only `.hikari` counts as empty** (TA6). `hikari up` writes its log in `.hikari/` before the project exists, so `create` found the directory not empty and wrote a compose file without a project repository. Found in the live run.
+3. **A new `repos` key goes before `hubs`**, where the README writes it. Found in the live run.
+4. **Start answers `202`, and a failure later comes in the snapshot** (UP4). A start takes up to a minute, so the request ends when lint passes, and a failure of the start sequence reaches the UI as the snapshot's `start_findings` when it returns to editing.
+5. **Every load reads the file through stdin**, not only lint (decision 2), so that `hikari check`, `hikari up`, and the editor run one code path.
+6. **The model shows a text field as compose reads it.** A description or instructions show `$` for `$$`, and a form edit writes `$` as `$$`, so that compose keeps a literal dollar. A text that holds an expression shows as written. `IsExpression` marks interpolated values (TM2); the model holds each value as the source writes it, and the UI asks.
+7. **`hikari sync` and the project scaffold take the host skills writer from the command.** The server now reaches the editor, the scaffold, and `linked`, and their import of the host skills closed an import cycle with the MCP server's tests. `internal/scaffold` holds the files of `hikari init`.
+8. **A start in the same second as the last one gets a suffix**, so each run keeps its own folder (UP7). Found in the tests.
+9. **A project name that starts with a digit gets `project-`.** YAML reads `name: 002` as a number, which compose refuses. Found in the tests.
+10. **`add_agent` with hubs is one line of the commit message**, as `add agent dev in #main`.
 
 Sources: `docs/brainstorm/topology-editor.md` (round 1), `topology-editor-round-2.md`, and `topology-editor-answers.md`. This is the second of four steps of the topology editor. It builds on `entity-ids.md`.
 

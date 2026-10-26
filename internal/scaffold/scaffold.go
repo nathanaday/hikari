@@ -93,12 +93,23 @@ const linkedRepoLines = `  # repos:                   # a repository that holds 
   #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync compose.yaml
 `
 
+// Empty reports whether a directory holds nothing but hikari's own
+// .hikari folder, which hikari up writes before a project exists.
+func Empty(entries []os.DirEntry) bool {
+	for _, e := range entries {
+		if e.Name() != ".hikari" {
+			return false
+		}
+	}
+	return true
+}
+
 // WriteProject writes a new project repository in dir and commits it with
 // the user's git identity. It reports whether it made the commit.
 func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, error) {
 	entries, err := os.ReadDir(dir)
 	switch {
-	case err == nil && len(entries) > 0:
+	case err == nil && !Empty(entries):
 		return false, fmt.Errorf("%s exists and is not empty", dir)
 	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return false, err

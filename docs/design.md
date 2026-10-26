@@ -560,6 +560,41 @@ Two other options exist:
 The headless loop is predictable, and its output (stream-json) also gives
 the driver tool calls and cost for each turn.
 
+## The topology is edited as text, one node at a time
+
+The UI changes the topology through operations, such as `rename_hub` or
+`add_member`, and the server turns each operation into a change of the
+compose file's text. A plain encoder would write the whole file again: it
+drops blank lines, moves comments, and writes `<<: *agent` as
+`!!merge <<: *agent`. So each operation splices only the YAML nodes that it
+changes, and every other byte of your file stays. The server applies the
+operations, not the UI, so that the edits, the checks, and their tests live
+in one language.
+
+A plan shows what a list of operations would do before it does it: the
+diff of the file, what it leaves in the store, and the checks of the new
+text. A save names the revision it started from, because you, a host
+session, or git can change the file at the same time. In a project
+repository each save is a commit as you, because an uncommitted compose
+file would block the next start, and because the topology's history is then
+`git log compose.yaml`.
+
+The editor reads its model from the source, without the checks, so that a
+file with a broken reference opens in the form, which is where a form helps
+most. Lint runs the whole load of `hikari check`, with the text on
+compose's stdin: interpolation and merge keys decide the values, so no
+check can run on the source alone.
+
+## hikari up serves the UI before it has a topology
+
+A start refuses a broken file, so a UI that existed only during a run could
+never fix one, nor shape a project before its first start. So `hikari up`
+listens first, and waits in an editing state when the file is missing,
+broken, or fails a start check. Start and Stop in the UI move between the
+states. The server of a run is built from one topology, so each start is a
+new run, and a change of mode closes the UI's event stream: the browser
+opens it again, and its first event, a snapshot, says the mode.
+
 ## The server runs on the host
 
 The server must start containers. A server in a container needs the Docker

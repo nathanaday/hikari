@@ -293,7 +293,8 @@ func TestCreate(t *testing.T) {
 	needCompose(t)
 	gitEnv(t)
 	dir := filepath.Join(t.TempDir(), "My Project")
-	os.MkdirAll(dir, 0o755)
+	// hikari up writes its log here before the project exists.
+	os.MkdirAll(filepath.Join(dir, ".hikari"), 0o755)
 	_, c, base := hostClient(t, filepath.Join(dir, "compose.yaml"))
 	var state editor.State
 	call(t, c, "GET", base+"/api/ui/topology", nil, &state)

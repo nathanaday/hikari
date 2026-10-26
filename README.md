@@ -43,6 +43,8 @@ make up
 
 This command builds the web UI, the `hikari` binaries, and the `hikari-agent` image. Then it starts the server and the example's compose project, with one container for each agent. The terminal shows each start-up step, then keeps the web UI address, the state of each agent, and the cost so far pinned at the bottom, with one line for each message above them. Open the web UI address. It contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
 
+`hikari up` opens `compose.yaml` in the current directory when you name no file. It prints the web UI address before it reads the file. When the file is missing or has errors, or a start check fails, it does not exit: it waits with the web UI open, so that you can create the project or fix the file there, and start the agents from the UI. You can stop the agents from the UI too, change the topology, and start them again in the same process. Ctrl-C stops everything.
+
 Each run keeps its records in `.hikari/runs/<run-id>/`: `hikari.log` with everything the containers and compose print, including each tool call of each agent, `messages.jsonl` with one JSON line for each message, when there are messages, and the run's compose override file.
 
 To use a different network:

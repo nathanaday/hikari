@@ -538,8 +538,8 @@ func (e *editor) addRepo(op Op) error {
 			return fmt.Errorf("the repo id %q is taken", op.ID)
 		}
 	}
-	url, path := deref(op.URL), deref(op.Path)
-	if (url == "") == (path == "") {
+	url, local := deref(op.URL), deref(op.Path)
+	if (url == "") == (local == "") {
 		return errors.New("a repo has a url or a path, and not both")
 	}
 	kv := []any{}
@@ -547,14 +547,23 @@ func (e *editor) addRepo(op Op) error {
 		kv = append(kv, "url", url)
 		e.effects = append(e.effects, fmt.Sprintf("run hikari sync to clone %s into %s/%s", op.ID, topology.CloneDir, op.ID))
 	} else {
-		kv = append(kv, "path", path)
+		kv = append(kv, "path", local)
 	}
 	if b := deref(op.Branch); b != "" {
 		kv = append(kv, "branch", b)
 	}
 	e.summary = append(e.summary, "add repo "+op.ID)
-	if err := e.ensure("x-hikari", "repos"); err != nil {
-		return err
+	if e.model == nil || len(e.model.Repos) == 0 {
+		// The repos go before the hubs, as the README writes them.
+		empty := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
+		if err := e.edit(func(d *doc) ([]byte, error) {
+			if _, ok := d.find(path{"x-hikari", "repos"}); ok {
+				return d.text, nil
+			}
+			return d.setValueBefore(path{"x-hikari"}, "repos", empty, "hubs")
+		}); err != nil {
+			return err
+		}
 	}
 	return e.setValue("x-hikari.repos", op.ID, mapping(kv...), false)
 }

@@ -76,6 +76,14 @@ func (h *Host) setMode(mode string, run *Server, findings []topology.Finding) {
 func (h *Host) Starting() { h.setMode(ModeStarting, nil, nil) }
 func (h *Host) Stopping() { h.setMode(ModeStopping, nil, nil) }
 
+// Attach passes the node API to a run's server while it starts, so that
+// the agents can reach it before the UI moves to the running mode.
+func (h *Host) Attach(s *Server) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.run, h.handler = s, s.Handler(h.uiToken)
+}
+
 // Running hands the UI to a run's server. c commits the editor's saves
 // while it runs (rule TC4).
 func (h *Host) Running(s *Server, c editor.Committer) {
@@ -181,6 +189,9 @@ func (h *Host) events(w http.ResponseWriter, r *http.Request) {
 	h.streams[closed] = struct{}{}
 	handler, mode, findings := h.handler, h.mode, h.findings
 	h.mu.Unlock()
+	if mode != ModeRunning {
+		handler = nil
+	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	go func() {

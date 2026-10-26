@@ -345,7 +345,7 @@ func (e *Editor) Create() (Saved, error) {
 		return Saved{}, err
 	}
 	saved := Saved{Skipped: []string{}}
-	if len(entries) == 0 && filepath.Base(e.File) == "compose.yaml" {
+	if scaffold.Empty(entries) && filepath.Base(e.File) == "compose.yaml" {
 		writeSkills := e.WriteSkills
 		if writeSkills == nil {
 			writeSkills = func(string) error { return nil }

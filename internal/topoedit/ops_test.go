@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -202,6 +203,9 @@ func TestRepoAndProject(t *testing.T) {
 	)
 	if !m.Project.Repo || m.Project.Branch != "${HIKARI_BRANCH:-hikari}" || len(m.Repos) != 1 || m.Repos[0].URL != "https://example.com/app.git" {
 		t.Errorf("%+v %+v\n%s", m.Project, m.Repos, res.Text)
+	}
+	if !regexp.MustCompile(`\n  repos: \{app: \{url: '?https://example.com/app.git'?\}\}\n  hubs:\n`).Match(res.Text) {
+		t.Errorf("a new repos key goes before the hubs:\n%s", res.Text)
 	}
 	if len(res.Effects) != 1 || !strings.Contains(res.Effects[0], "hikari sync") {
 		t.Errorf("TA4: %v", res.Effects)

@@ -396,6 +396,17 @@ func (d *doc) rewriteFlow(n *yaml.Node, fn func(c *yaml.Node)) ([]byte, error) {
 // setValue sets the value of key in the mapping at p, adding the key when
 // it is missing. A new key goes first when first is set, and else last.
 func (d *doc) setValue(p path, key string, v *yaml.Node, first bool) ([]byte, error) {
+	before := ""
+	if first {
+		before = "\x00first"
+	}
+	return d.setValueBefore(p, key, v, before)
+}
+
+// setValueBefore is setValue for a new key that goes before the key
+// before, or last when the mapping lacks it. The before key "\x00first"
+// means the first key.
+func (d *doc) setValueBefore(p path, key string, v *yaml.Node, before string) ([]byte, error) {
 	m, ok := d.find(p)
 	if !ok {
 		return nil, fmt.Errorf("%s does not exist", strings.Join(p, "."))
@@ -410,11 +421,18 @@ func (d *doc) setValue(p path, key string, v *yaml.Node, first bool) ([]byte, er
 	if e, ok := d.find(append(append(path{}, p...), key)); ok {
 		return d.replaceValue(e, v)
 	}
+	at := -1 // the index of the key that the new key goes before
+	for i := 0; i+1 < len(m.value.Content); i += 2 {
+		if before == "\x00first" || m.value.Content[i].Value == before {
+			at = i
+			break
+		}
+	}
 	if isFlow(m.value) {
 		return d.rewriteFlow(m.value, func(c *yaml.Node) {
 			kv := []*yaml.Node{scalar(key), v}
-			if first {
-				c.Content = append(kv, c.Content...)
+			if at >= 0 {
+				c.Content = append(append(append([]*yaml.Node{}, c.Content[:at]...), kv...), c.Content[at:]...)
 			} else {
 				c.Content = append(c.Content, kv...)
 			}
@@ -430,14 +448,14 @@ func (d *doc) setValue(p path, key string, v *yaml.Node, first bool) ([]byte, er
 		return nil, err
 	}
 	line := strings.Repeat(" ", indent) + key + ": " + text + "\n"
-	if first {
-		// The new key goes above the comment lines over the first key,
-		// which describe that key.
-		at := keyNode.Line
-		for at > 1 && d.isComment(at-1) && d.indent(at-1) == indent {
-			at--
+	if at >= 0 {
+		// The new key goes above the comment lines over the key it
+		// precedes, which describe that key.
+		line0 := m.value.Content[at].Line
+		for line0 > 1 && d.isComment(line0-1) && d.indent(line0-1) == indent {
+			line0--
 		}
-		return d.splice(d.lines[at-1], d.lines[at-1], line), nil
+		return d.splice(d.lines[line0-1], d.lines[line0-1], line), nil
 	}
 	lastKey := m.value.Content[len(m.value.Content)-2]
 	_, end := d.entrySpan(entry{key: lastKey, value: m.value.Content[len(m.value.Content)-1]})
