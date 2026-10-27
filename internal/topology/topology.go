@@ -44,19 +44,6 @@ type Agent struct {
 	Model        string  `yaml:"model"`
 	System       *System `yaml:"system"`
 	Grants       Grants  `yaml:"grants"`
-	// Tests names the hub whose stories this owner checks: it is the hub's
-	// tester (rules TS1 to TS3 of the tester spec).
-	Tests string `yaml:"tests"`
-	// E2E limits each service of a tester's environment (rule ST7 of the
-	// environments spec).
-	E2E *E2ELimits `yaml:"e2e"`
-}
-
-// E2ELimits are the most CPUs and memory that a service of an environment
-// may use.
-type E2ELimits struct {
-	CPUs   string `yaml:"cpus"`
-	Memory string `yaml:"memory"`
 }
 
 // Grants bind an agent to parts of the store: the releases it can read,
@@ -206,7 +193,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && a.Tests == "" && a.E2E == nil
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0
 }
 
 // Load reads a compose file through `docker compose config`, so that hikari
@@ -467,12 +454,6 @@ func (t *Topology) rekey() {
 		}
 		return id
 	}
-	hub := func(id string) string {
-		if h, ok := t.Hubs[id]; ok {
-			return h.Name
-		}
-		return id
-	}
 	repo := func(id string) string {
 		if r, ok := t.Repos[id]; ok {
 			return r.Name
@@ -487,9 +468,6 @@ func (t *Topology) rekey() {
 			a.System = &sys
 		}
 		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
-		if a.Tests != "" {
-			a.Tests = hub(a.Tests)
-		}
 		agents[a.Name] = a
 	}
 	hubs := map[string]Hub{}
@@ -840,25 +818,6 @@ func (t *Topology) validateSystems() []error {
 			}
 			seen[d] = true
 		}
-		if a.E2E != nil && a.Tests == "" {
-			fail(name, "e2e", "sets e2e limits, which only a tester has")
-		}
-		if a.Tests != "" {
-			h, ok := t.Hubs[a.Tests]
-			switch {
-			case a.System == nil:
-				fail(name, "tests", "tests #%s, but only an agent with a system can be a tester", a.Tests)
-			case !ok:
-				fail(name, "tests", "tests the hub %q, which is not in the topology", a.Tests)
-			case !slices.Contains(h.Members, name):
-				fail(name, "tests", "tests #%s, so it must be a member of #%s", a.Tests, a.Tests)
-			}
-			for _, other := range t.AgentNames() {
-				if other < name && t.Agents[other].Tests == a.Tests {
-					fail(name, "tests", "tests #%s, which %q already tests; a hub has one tester", a.Tests, other)
-				}
-			}
-		}
 		s := a.System
 		if s == nil {
 			continue
@@ -1007,38 +966,8 @@ func (t *Topology) ReadableReleases(agent string) []string {
 	for _, s := range t.Agents[agent].Grants.Releases {
 		set[s] = true
 	}
-	for _, s := range t.TestedSystems(agent) {
-		set[s] = true
-	}
 	delete(set, agent)
 	return sortedKeys(set)
-}
-
-// TestedSystems returns the systems of the hub that agent tests: the
-// owners that are members of it, without agent (rule TS4).
-func (t *Topology) TestedSystems(agent string) []string {
-	hub := t.Agents[agent].Tests
-	if hub == "" {
-		return nil
-	}
-	var out []string
-	for _, m := range t.Hubs[hub].Members {
-		if m != agent && t.Agents[m].System != nil {
-			out = append(out, m)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// Tester returns the tester of hub, or "".
-func (t *Topology) Tester(hub string) string {
-	for _, name := range t.AgentNames() {
-		if t.Agents[name].Tests == hub {
-			return name
-		}
-	}
-	return ""
 }
 
 // Participants returns the orchestrator, then the other members in sorted

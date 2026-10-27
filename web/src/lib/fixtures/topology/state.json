@@ -33,8 +33,6 @@
         "system": null,
         "releases": [],
         "deliverables": [],
-        "tests": "",
-        "e2e": null,
         "image": "hikari-agent",
         "build": "",
         "template": "",

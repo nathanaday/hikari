@@ -5,7 +5,7 @@
 Each boundary of the target states one reason, of one of three kinds. Propose no boundary without one.
 
 - **Library.** Two or more consumers need the code, or their copies already differ. The library becomes its own system, and the consumers use its releases.
-- **Client and server.** They change at different rates, or a different team owns each. Each becomes a system, and they meet at an interface that the hub's tester checks.
+- **Client and server.** They change at different rates, or a different team owns each. Each becomes a system, and they meet at an interface that the hub's vocabulary names.
 - **Scope in a repository.** A repository holds two concerns, but splitting its git history is not worth the cost. Each concern becomes a system with its own `scope` in the same repository.
 
 Also name each split you considered and decided against, and why. Small code with one consumer stays where it is. A library for one consumer adds a release cycle for no gain.
@@ -21,7 +21,7 @@ x-hikari:
   repos:
     units: {url: https://github.com/acme/units.git}   # to create, in execution
   hubs:
-    main: {orchestrator: orchestrator, members: [units, cloud, main-e2e]}
+    main: {orchestrator: orchestrator, members: [units, cloud]}
 
 services:
   units:
@@ -51,20 +51,6 @@ Two systems in one repository, each with its own scope (scopes in one repository
       system: {repo: cloud, scope: api, test: ...}
       system: {repo: cloud, scope: consumer, test: ...}
 ```
-
-A tester for a hub, whose scope is in the project repository:
-
-```yaml
-  main-e2e:
-    <<: *agent
-    build: {context: ., dockerfile: e2e.Dockerfile}    # the tools of the E2E tests, such as Playwright
-    x-hikari:
-      description: Proves the stories of #main against the releases of its systems.
-      system: {repo: project, scope: e2e/main, test: ...}
-      tests: main
-```
-
-The tester must be a member of its hub. It reads the releases of every system in the hub. A hub has at most one tester. A service that the tester runs beside its tests, such as a server release, is part of its environment, which the tester writes itself.
 
 ## Deliverables
 

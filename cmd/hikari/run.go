@@ -181,7 +181,6 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 		log.Printf("warning: %s", w)
 		con.Warn(w)
 	}
-	sys.SetRun(runID)
 	runCtx, cancelWatch := context.WithCancel(ctx)
 	sys.Watch(runCtx)
 	cur.journal = &lazyFile{path: filepath.Join(runDir, "messages.jsonl")}
@@ -229,7 +228,6 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 		}
 	}
 	cur.stop = func() {
-		sys.StopEnvironments(context.Background())
 		if !r.noLaunch {
 			step := con.Step("Stopping the containers")
 			stopContainers()

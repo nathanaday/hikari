@@ -14,9 +14,9 @@
 
 For each system of the target: what it owns, and the reason for its boundary, of one of three kinds (library; client and server; scope in a repository). Then each split you considered and decided against, and why.
 
-## E2E candidates
+## Left for integration
 
-- `cloud/tests/ui/test_dashboard.py`: needs a browser. Moves to the tester of #main.
+- `cloud/tests/ui/test_dashboard.py`: needs a browser. Stays in cloud, outside every test command.
 - The edge sends a reading that the cloud stores: no test covers it. A story of #main.
 
 ## Questions

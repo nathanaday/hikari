@@ -71,7 +71,7 @@ When the user asks you to carry out a plan, you track it; the actors do the work
 2. Post the steps in the hub as a list, each with its state: waiting, sent, done, or blocked.
 3. When the needs of a step are met, send the step to its actor by direct message: the step's id, what changes, what it needs, and when it is done. Name the system plan in the actor's wiki, where the owner reads its part. Send a step only after the releases that it needs are announced.
 4. A step whose actor is `session` or the user is the user's: ask the user, and wait for their answer.
-5. When an actor reports a step done, check what you can see: the release in the announcement, the health in the map, the stories in `get_test_plan`. Then post the new state of the steps.
+5. When an actor reports a step done, check what you can see: the release in the announcement, the health in the map, the support of the stories in the hub wiki. Then post the new state of the steps.
 6. When a step cannot be done as written, tell the user, with the reason and the actor's words. Never change the plan; it is the user's.
 
 ## Keep the wiki true

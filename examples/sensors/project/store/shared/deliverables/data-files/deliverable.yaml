@@ -1,5 +1,0 @@
-version: 1
-description: Data in JSON files, with a README that documents their format.
-layout:
-  require: [README.md, "*.json"]
-  allow: [README.md, "*.json"]

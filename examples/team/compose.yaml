@@ -2,7 +2,7 @@
 # orchestrator of #eng, so it is the only path between the two hubs. You are in both.
 #
 #   #product   orchestrator ★ ── writer, eng-orchestrator
-#   #eng       eng-orchestrator ★ ── dev, tester
+#   #eng       eng-orchestrator ★ ── dev, qa
 #
 #   make up COMPOSE=examples/team/compose.yaml
 
@@ -17,7 +17,7 @@ x-hikari:
     eng:
       description: Engineering work.
       orchestrator: eng-orchestrator
-      members: [dev, tester]
+      members: [dev, qa]
 
 x-agent: &agent
   image: hikari-agent
@@ -35,16 +35,16 @@ services:
   eng-orchestrator:
     <<: *agent
     x-hikari:
-      description: Orchestrates engineering. Owns technical decisions and delegates to dev and tester.
+      description: Orchestrates engineering. Owns technical decisions and delegates to dev and qa.
       instructions: |
-        When #product asks engineering for something, split it between dev and tester in #eng.
+        When #product asks engineering for something, split it between dev and qa in #eng.
         When both reply, post one combined answer in #product.
   dev:
     <<: *agent
     x-hikari:
       description: Developer. Proposes implementation approaches.
       instructions: Answer with a short plan in plain text. Do not write files.
-  tester:
+  qa:
     <<: *agent
     x-hikari:
       description: QA engineer. Writes test plans.

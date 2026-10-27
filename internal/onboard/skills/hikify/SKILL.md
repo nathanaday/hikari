@@ -1,6 +1,6 @@
 ---
 name: hikify
-description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of isolated systems, libraries, hubs, and testers, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into systems, extract shared libraries, or plan the target topology.
+description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of isolated systems, libraries, and hubs, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into systems, extract shared libraries, or plan the target topology.
 ---
 
 # Hikify: design the refactor
@@ -23,24 +23,24 @@ The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan
 ## Stage 1: Analysis
 
 1. For each repository, send one fresh subagent with the brief in `references/analysis.md`, all in one message so that they run in parallel. Each writes `onboarding/analysis/<repo>.md`.
-2. Read the reports, and write `onboarding/analysis/synthesis.md` in the form of `references/synthesis.md`: the duplicated code with its differences, the boundaries you propose with their reasons, the E2E candidates, and the questions.
+2. Read the reports, and write `onboarding/analysis/synthesis.md` in the form of `references/synthesis.md`: the duplicated code with its differences, the boundaries you propose with their reasons, the suites left for integration, and the questions.
 3. Commit, set the stage to `hikify: topology`, and ask the user the questions in one message. Show the proposed boundaries in a few lines each. Wait for the answers. Record each answer in `state.md` under Decisions. An answer can also be in a report's `## Your answers` section.
 
 ## Stage 2: Target topology
 
 Read `references/topology.md`.
 
-1. Write `compose.target.yaml`: the whole target topology. It starts from `compose.yaml`, and adds the systems, libraries, hubs, testers, and grants of the design. Run `hikari check -draft compose.target.yaml` until it passes.
-2. Write `onboarding/topology.md`: each system, library, hub, and tester in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
+1. Write `compose.target.yaml`: the whole target topology. It starts from `compose.yaml`, and adds the systems, libraries, hubs, and grants of the design. Run `hikari check -draft compose.target.yaml` until it passes.
+2. Write `onboarding/topology.md`: each system, library, and hub in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
 3. Draft the deliverable of each new library in `onboarding/shared/deliverables/<name>/`, as `references/topology.md` shows.
-4. Draft the stories, rules, and principles of each hub with the user, in `onboarding/wiki/hubs/<hub>/<id>.md`. Follow `references/hub-wiki.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the owners' maps by their ids, which are in `store/systems/<system>/wiki/`. Propose the stories that the E2E candidates check. Ask the user which stories are key, and set `key: true` on those.
+4. Draft the stories, rules, and principles of each hub with the user, in `onboarding/wiki/hubs/<hub>/<id>.md`. Follow `references/hub-wiki.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the owners' maps by their ids, which are in `store/systems/<system>/wiki/`. Propose the stories that the suites left for integration check, and the flows across systems that no test covers. Ask the user which stories are key, and set `key: true` on those.
 5. Commit. Show the user the topology in a few lines, the diagram's file, and the stories. When the user agrees, set the stage to `hikify: plan`.
 
 ## Stage 3: Change plan
 
 Read `references/plan.md`.
 
-1. Write the hub plan, `onboarding/wiki/hubs/<hub>/hikify-plan.md`, for each hub: every step, in order. Restructure steps come first, then the steps of the owners and the tester. With more than one hub, name each `hikify-plan-<hub>.md`, because an id is unique in the whole store.
+1. Write the hub plan, `onboarding/wiki/hubs/<hub>/hikify-plan.md`, for each hub: every step, in order. Restructure steps come first, then the steps of the owners. With more than one hub, name each `hikify-plan-<hub>.md`, because an id is unique in the whole store.
 2. Write the system plan, `onboarding/wiki/systems/<system>/hikify-plan-<system>.md`, for each system that has steps: that system's steps, for its owner.
 3. Write the ledger, `onboarding/verification.md`: every test of the baseline, and every suite that containerize left out, once each, with its planned place.
 4. Check the ledger. Count the test ids in `onboarding/baseline.md` and in the ledger, and fix every id that is missing or appears twice.

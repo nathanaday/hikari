@@ -254,7 +254,7 @@ func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	f.describeOrders(t)
 	_, err := f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
 	must(t, err)
-	if _, err := f.m.RecordRun("orders", "e2e"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "its suites are unit") {
+	if _, err := f.m.RecordRun("orders", "integration"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "its suites are unit") {
 		t.Errorf("J2: a suite that the test map lacks: %v", err)
 	}
 	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "no report at /hikari/private/reports/unit.xml") {

@@ -28,8 +28,8 @@ The interfaces it provides and consumes: their names, and what crosses each one.
 ## Duplicated code
 Each piece of code that another repository also holds, with the files on both sides, and each difference in behavior between the copies. Quote the lines that differ. Do not judge which copy is right.
 
-## E2E tests
-- Tests that need a display, a browser, hardware, or the whole application, with what each needs.
+## Suites for integration
+- Suites that need a display, a browser, hardware, or the whole application, with what each needs.
 - Flows that cross repositories and that no test covers, with the steps of each.
 
 ## Run files

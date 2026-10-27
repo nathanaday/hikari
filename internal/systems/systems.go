@@ -21,9 +21,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/environments"
 	"github.com/nathanaday/hikari/internal/gitrepo"
-	"github.com/nathanaday/hikari/internal/images"
 	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/testmap"
@@ -81,8 +79,6 @@ type Manager struct {
 	projectRepo *gitrepo.Repo
 	storeRel    string
 
-	envs envs
-
 	// wikis holds every wiki by ref. wikiMu lets one wiki change run at a
 	// time, because a change reads and rewrites the other wikis (decision
 	// 9 of the wikis spec).
@@ -111,7 +107,6 @@ func New(topo *topology.Topology) (*Manager, error) {
 		seen:     map[string]map[string]int{},
 		seenDocs: map[string]map[string]map[string]string{},
 		wikis:    map[string]*wikiOf{},
-		envs:     envs{by: map[string]*environments.Env{}},
 		onChange: func(Change) {},
 	}
 	for name, r := range topo.Repos {
@@ -258,9 +253,6 @@ func describeWrites(writes []wiki.Write) string {
 	return strings.Join(parts, ", ")
 }
 
-// imageBuildTimeout bounds the build of one image release.
-const imageBuildTimeout = 15 * time.Minute
-
 // Store returns the shared store.
 func (m *Manager) Store() store.Store { return m.store }
 
@@ -349,41 +341,6 @@ func (m *Manager) noLocalResults(o *owner) bool {
 	return slices.ContainsFunc(o.store.Map().Features, func(f sysmap.Feature) bool { return !f.Tests.Ran.IsZero() })
 }
 
-// missingReleases names the releases of agent that a tester pins and this
-// machine does not have (rule SY11).
-func (m *Manager) missingReleases(agent string) []string {
-	var out []string
-	for _, name := range m.topo.Owners() {
-		t, ok := m.owners[name]
-		if !ok || m.topo.Agents[name].Tests == "" {
-			continue
-		}
-		_, _, lock, _ := m.testerDocs(t)
-		for _, r := range lock.Releases {
-			if r.System != agent {
-				continue
-			}
-			if _, ok := m.release(r.System, r.Deliverable, r.Version); !ok {
-				out = append(out, fmt.Sprintf("%s %s (pinned by %s)", r.Deliverable, r.Version, name))
-			}
-		}
-	}
-	return out
-}
-
-// unrestoredPins names the releases that a tester's lock pins and this
-// machine does not have.
-func (m *Manager) unrestoredPins(o *owner) []string {
-	_, _, lock, _ := m.testerDocs(o)
-	var out []string
-	for _, r := range lock.Releases {
-		if _, ok := m.release(r.System, r.Deliverable, r.Version); !ok {
-			out = append(out, fmt.Sprintf("%s/%s %s", r.System, r.Deliverable, r.Version))
-		}
-	}
-	return out
-}
-
 // testReport computes the health of the features ids of o from its test
 // map and its results. The string is the problem of the results file.
 func (m *Manager) testReport(o *owner, priv sysmap.Private, ids []string) (testmap.Report, string) {
@@ -395,7 +352,7 @@ func (m *Manager) testReport(o *owner, priv sysmap.Private, ids []string) (testm
 	root := o.store.Root()
 	hashes := testmap.Hashes{
 		File: func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h },
-		Code: m.codeHash(o, priv),
+		Code: func(id string) string { h, _ := sysmap.ContentHash(root, priv.Code(id)); return h },
 	}
 	return testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.store), results, ids, hashes), problem
 }
@@ -457,9 +414,6 @@ func (m *Manager) CheckRelease(agent, deliverable string) (store.ProductCheck, e
 	check, err := m.store.Check(agent, deliverable)
 	if err != nil {
 		problems = append(problems, err.Error())
-	}
-	if d, err := m.store.LoadDeliverable(deliverable); err == nil && d.Image != nil && !o.store.IsFile(filepath.ToSlash(filepath.Clean(d.Image.Dockerfile))) {
-		problems = append(problems, fmt.Sprintf("IM4: the deliverable builds an image from %s, which is not a file of your scope", d.Image.Dockerfile))
 	}
 	if len(problems) > 0 {
 		return store.ProductCheck{}, errors.New(strings.Join(problems, "\n"))
@@ -732,7 +686,7 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 	for i, f := range mp.Features {
 		ids[i] = f.ID
 	}
-	rep, resultsProblem := m.testReport(o, priv, append(slices.Clone(ids), m.storyIDs(o)...))
+	rep, resultsProblem := m.testReport(o, priv, ids)
 	described := func(id string) bool { return w[id] != nil && w[id].DescribedCommit != "" }
 	paths := func(id string) []string { return append(priv.Code(id), rep.Features[id].Files...) }
 	st := sysmap.FeatureStates(ids, described, paths, rep.TestFiles, changed)
@@ -772,7 +726,7 @@ func (m *Manager) ownerView(o *owner) sysmap.OwnerView {
 		StaleKeys:           rep.StaleKeys,
 		Warnings:            warnings,
 		Error:               strings.Join(problems, "; "),
-		PrivateErrors:       m.privateErrors(o, mp),
+		PrivateErrors:       o.store.PrivateErrors(mp),
 	}
 }
 
@@ -785,16 +739,10 @@ func (m *Manager) OwnView(agent string) (sysmap.OwnerView, error) {
 	return m.ownerView(o), nil
 }
 
-// privateErrors returns the problems of o's private documents: the code
-// map and the test map, and a tester's plan and lock.
-func (m *Manager) privateErrors(o *owner, mp *sysmap.Map) []string {
-	return append(o.store.PrivateErrors(mp, m.storyIDs(o)...), m.testerProblems(o)...)
-}
-
 // checkPrivate returns an error that lists the problems of o's private
 // documents, if there are any.
-func (m *Manager) checkPrivate(o *owner, mp *sysmap.Map) error {
-	if errs := m.privateErrors(o, mp); len(errs) > 0 {
+func checkPrivate(o *owner, mp *sysmap.Map) error {
+	if errs := o.store.PrivateErrors(mp); len(errs) > 0 {
 		return fmt.Errorf("fix your private documents in %s/%s first:\n%s", sysmap.Dir, sysmap.PrivateDir, strings.Join(errs, "\n"))
 	}
 	return nil
@@ -842,7 +790,7 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	}
 	o.runs.Lock()
 	defer o.runs.Unlock()
-	if err := m.checkPrivate(o, o.store.Map()); err != nil {
+	if err := checkPrivate(o, o.store.Map()); err != nil {
 		return api.RunResult{}, err
 	}
 	priv, _ := o.store.Private()
@@ -867,13 +815,12 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	if err != nil {
 		return api.RunResult{}, fmt.Errorf("J2: %s: %w", where, err)
 	}
-	ids := append(o.wiki.Wiki().Features(), m.storyIDs(o)...)
+	ids := o.wiki.Wiki().Features()
 	before, _ := m.testReport(o, priv, ids)
 	root := o.store.Root()
 	code := map[string]string{}
-	hashCode := m.codeHash(o, priv)
 	for _, id := range ids {
-		code[id] = hashCode(id)
+		code[id], _ = sysmap.ContentHash(root, priv.Code(id))
 	}
 	run := testmap.NewRun(cases, m.now(), code, func(rel string) string { h, _ := sysmap.ContentHash(root, []string{rel}); return h })
 	resultsPath := o.store.PrivatePath(testmap.ResultsFile)
@@ -921,7 +868,7 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := m.checkPrivate(o, o.store.Map()); err != nil {
+	if err := checkPrivate(o, o.store.Map()); err != nil {
 		return "", err
 	}
 	if _, err := o.repo.Commit(o.branch, o.scope, agent, agent+": changes described by the system map"); err != nil {
@@ -988,14 +935,6 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Ma
 		System: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommit: v.System.DescribedState.Commit, Map: public,
 		Wiki: o.wiki.Files(releaseKinds...), Hubs: hubs, Hikari: version.Version, Now: m.now(),
-		BuildImage: func(spec store.ImageSpec) (store.ImageInfo, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), imageBuildTimeout)
-			defer cancel()
-			return images.Build(ctx, images.BuildInput{
-				RepoPath: o.repo.Path, Commit: v.System.DescribedState.Commit, Scope: filepath.ToSlash(o.scope), Spec: spec,
-				Tag: images.Tag(m.topo.ID, m.topo.Agents[agent].ID, req.Deliverable, req.Version),
-			})
-		},
 	})
 	if err != nil {
 		return store.Manifest{}, nil, err
@@ -1009,11 +948,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Ma
 func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
-		tc.NewerReleases = m.newerReleases(o)
-		tc.NoLocalResults, tc.MissingReleases = m.noLocalResults(o), m.missingReleases(agent)
-		if m.topo.Agents[agent].Tests != "" {
-			tc.UnrestoredPins = m.unrestoredPins(o)
-		}
+		tc.NoLocalResults = m.noLocalResults(o)
 		v := m.ownerView(o)
 		tc.MapState, tc.PrivateErrors = v.State, v.PrivateErrors
 		tc.StaleFeatures, tc.UndescribedFeatures, tc.UnmappedPaths = v.StaleFeatures, v.UndescribedFeatures, v.UnmappedPaths

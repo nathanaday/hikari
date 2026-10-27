@@ -6,7 +6,7 @@ LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
 
-.PHONY: example-onboard build install ui image up dev-ui test clean demo-repo example-sensors
+.PHONY: example-onboard build install ui image up dev-ui test clean demo-repo
 
 # The Linux binaries are what hikari mounts into each agent's container.
 build: web/dist/index.html
@@ -50,18 +50,6 @@ demo-repo:
 	mkdir -p examples/shop/store
 	cp -R examples/shop/seed/. examples/shop/store/
 
-# Make the sensors example's project repository in .hikari/demo/sensors,
-# replacing what is there.
-example-sensors:
-	rm -rf .hikari/demo/sensors
-	mkdir -p .hikari/demo
-	cp -R examples/sensors/project .hikari/demo/sensors
-	git -C .hikari/demo/sensors init --quiet --initial-branch=main
-	git -C .hikari/demo/sensors add --all
-	git -C .hikari/demo/sensors -c user.name="hikari demo" -c user.email=demo@hikari.invalid commit --quiet -m "Start the sensors project"
-	@echo "made the sensors project in .hikari/demo/sensors; run: make up COMPOSE=.hikari/demo/sensors/compose.yaml"
-
-# Remove containers and networks left by runs that did not shut down cleanly.
 example-onboard: build
 	rm -rf .hikari/demo/onboard
 	mkdir -p .hikari/demo/onboard/remotes
@@ -76,6 +64,7 @@ example-onboard: build
 	bin/hikari init -name onboard .hikari/demo/onboard/project
 	@echo "the remotes are file://$(CURDIR)/.hikari/demo/onboard/remotes/server.git and cli.git"
 
+# Remove containers and networks left by runs that did not shut down cleanly.
 clean:
 	-docker rm -f $$(docker ps -aq --filter label=hikari.run) 2>/dev/null
 	-docker network rm $$(docker network ls -q --filter label=hikari.run) 2>/dev/null

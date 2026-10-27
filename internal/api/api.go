@@ -60,10 +60,6 @@ type Self struct {
 	VisibleSystems []string `json:"visible_systems,omitempty"`
 	// HubWikis lists the hubs whose wikis the agent reads.
 	HubWikis []string `json:"hub_wikis,omitempty"`
-	// Tests is the hub that a tester tests.
-	Tests string `json:"tests,omitempty"`
-	// Testers maps each hub that an orchestrator orchestrates to its tester.
-	Testers map[string]string `json:"testers,omitempty"`
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that an owner publishes.
@@ -89,11 +85,10 @@ type DeliverableInfo struct {
 const (
 	SystemSkill = "hikari-system"
 	HubSkill    = "hikari-hub"
-	TesterSkill = "hikari-tester"
 )
 
 // BuiltinSkills are hikari's own skills.
-var BuiltinSkills = []string{SystemSkill, HubSkill, TesterSkill}
+var BuiltinSkills = []string{SystemSkill, HubSkill}
 
 // AgentPrefix starts the name of each of hikari's own agents. No shared
 // agent may use it.
@@ -206,18 +201,6 @@ func (c *Client) PostActivity(ctx context.Context, a Activity) error {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
-	return c.doWith(c.HTTP, ctx, method, path, in, out)
-}
-
-// doLong is do for a call that may take minutes, such as the start of an
-// environment.
-func (c *Client) doLong(ctx context.Context, method, path string, in, out any) error {
-	long := *c.HTTP
-	long.Timeout = 7 * time.Minute
-	return c.doWith(&long, ctx, method, path, in, out)
-}
-
-func (c *Client) doWith(hc *http.Client, ctx context.Context, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -234,7 +217,7 @@ func (c *Client) doWith(hc *http.Client, ctx context.Context, method, path strin
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := hc.Do(req)
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}

@@ -98,14 +98,17 @@ func TestRenameAcrossWikisAndSupport(t *testing.T) {
 		t.Errorf("N5: the story and the plan follow the rename:\n%s\n%s", story, plan)
 	}
 
-	// H2: the story's support is the health of the feature it links.
+	// H2: the support of a story or a principle is the health of the
+	// features it links.
 	f.runOrders(t, testmap.Passed, testmap.Failed)
+	_, err = f.m.ChangeWiki("eng-lead", "eng", []wiki.Write{{Op: "create", ID: "orders-are-kept", Kind: wiki.Principle, Name: "Orders are kept", Description: "x.", Body: body("See [[place-order]].")}})
+	must(t, err)
 	v, _ := f.m.WikiView(api.HubWikiRef("eng"))
 	support := map[string]string{}
 	for _, d := range v.Documents {
 		support[d.ID] = d.Support
 	}
-	if support["order-items"] != "failing" || support["stock-never-negative"] != "" || support["Roadmap"] != "" {
+	if support["order-items"] != "failing" || support["orders-are-kept"] != "failing" || support["stock-never-negative"] != "" || support["Roadmap"] != "" {
 		t.Errorf("H2: support = %v", support)
 	}
 	if hit, _ := f.m.GetDocument("eng-lead", "order-items"); hit.Support != "failing" {

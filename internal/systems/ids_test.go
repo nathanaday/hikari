@@ -7,27 +7,25 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/e2e"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// renamedTopology is testerTopology with a renamed repo, hub, orchestrator,
-// and owner.
+// renamedTopology is a topology with a renamed repo, hub, orchestrator, and
+// owner.
 const renamedTopology = `
 name: test
 x-hikari:
   repos:
     shop: {name: store, path: shop, branch: hikari/work}
   hubs:
-    eng: {name: platform, orchestrator: eng-lead, members: [orders, inventory, e2e]}
+    eng: {name: platform, orchestrator: eng-lead, members: [orders, inventory]}
 services:
   eng-lead: {x-hikari: {name: chief}}
   orders: {x-hikari: {name: intake, system: {repo: shop, scope: services/orders}, grants: {deliverables: [python-library]}}}
   inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
-  e2e: {x-hikari: {system: {repo: shop, scope: e2e}, tests: eng}}
 `
 
 func read(t *testing.T, path string) string {
@@ -38,12 +36,11 @@ func read(t *testing.T, path string) string {
 }
 
 // TestRenamedEntities checks that a renamed system and hub work by name,
-// and that the store keys them by id (rules ID6 to ID8 of the ids spec).
+// and that the store keys them by id (rules ID6 and ID7 of the ids spec).
 func TestRenamedEntities(t *testing.T) {
 	f := newFixture(t)
-	write(t, f.repo, "e2e/tests/test_orders.py", "def test(): pass\n")
 	git(t, f.repo, "add", "--all")
-	git(t, f.repo, "commit", "--quiet", "-m", "e2e")
+	git(t, f.repo, "commit", "--quiet", "-m", "private documents")
 	topo, err := topology.Parse([]byte(renamedTopology), f.dir)
 	must(t, err)
 	f.m, err = New(topo)
@@ -103,17 +100,6 @@ func TestRenamedEntities(t *testing.T) {
 	}
 	if v := f.m.SystemView("intake"); len(v.Releases) != 1 || v.Releases[0].System != "intake" || v.Releases[0].Hubs[0] != "platform" {
 		t.Errorf("ID7: a manifest reads back with names: %+v", v.Releases)
-	}
-
-	lock, err := f.m.PinReleases("e2e", []e2e.LockedRelease{{System: "intake", Deliverable: "python-library", Version: "1.0.0"}})
-	if err != nil || len(lock.Releases) != 1 || lock.Releases[0].System != "intake" {
-		t.Fatalf("ID8: pin by name = %+v, %v", lock, err)
-	}
-	if got := read(t, filepath.Join(f.repo, "e2e", e2e.LockFile)); !strings.Contains(got, "system: orders") {
-		t.Errorf("ID8: the lock holds the system's id:\n%s", got)
-	}
-	if v, _ := f.m.OwnView("e2e"); len(v.PrivateErrors) != 0 {
-		t.Errorf("ID8: the lock reads back by name, so it matches the release: %v", v.PrivateErrors)
 	}
 }
 

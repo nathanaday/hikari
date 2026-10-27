@@ -47,7 +47,7 @@ Set the stage to `hikify: verify`.
 
 1. Run `hikari status -tests compose.yaml`. For each row of `onboarding/verification.md`, write the result: the test's outcome in its planned place, or `missing`.
 2. Ask the user to approve each row that is `dropped`.
-3. Check that every owner's suite passes, and that the orchestrator's last report from `get_test_plan` shows each key story passing. If the report is older than the last release, ask the user to ask the orchestrator for a new one.
+3. Check that every owner's suite passes, and that the support of each key story is passing. Ask the user to read it on the hub's Wiki tab.
 4. Run `hikari check compose.yaml`.
 5. **The dry run.** It proves that a teammate gets the same project from one clone.
    1. Ask the user to stop hikari.
@@ -59,4 +59,4 @@ Set the stage to `hikify: verify`.
 
    A failure is a finding of the verification. Fix it in the project, and run the dry run again.
 
-When every check holds, set the stage to `hikify: done`, with the date, and commit. Sum up for the user: the systems and their releases, the tests that moved to the tester, the stories with their health, and the hikari branches that wait for the user's merge.
+When every check holds, set the stage to `hikify: done`, with the date, and commit. Sum up for the user: the systems and their releases, the suites left for integration, the stories with their support, and the hikari branches that wait for the user's merge.

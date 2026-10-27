@@ -82,6 +82,4 @@ A release is a published product of one of your deliverables: the named packages
 3. Call `check_release` with the deliverable's name, and fix every problem it reports.
 4. Call `publish_release` with the deliverable's name, a semver version greater than its last release, notes that say what changed, and a certificate for each target of the deliverable.
 
-When the deliverable makes an image (its `deliverable.yaml` has an `image` section), stage its docs as the product; hikari builds the image itself when you publish, from the `Dockerfile` in your scope at the commit your map describes, so commit and mark the map current first. `check_release` checks that the Dockerfile is there.
-
 hikari writes the manifest, moves the product into `/hikari/public/export/releases/<name>/<version>/` with a copy of the map and the wiki, and announces the release in your hubs. A release never changes. `releases/<name>/latest` is the newest release of that deliverable.

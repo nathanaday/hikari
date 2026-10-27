@@ -115,7 +115,7 @@ func TestOperations(t *testing.T) {
 				t.Errorf("%+v", h)
 			}
 		}, 1},
-		{"remove a member", []Op{{Op: "remove_member", Hub: "eng", Agent: "tester"}, {Op: "add_member", Hub: "product", Agent: "tester"}}, func(t *testing.T, m *Model, _ *Result) {
+		{"remove a member", []Op{{Op: "remove_member", Hub: "eng", Agent: "qa"}, {Op: "add_member", Hub: "product", Agent: "qa"}}, func(t *testing.T, m *Model, _ *Result) {
 			if h := hubOf(m, "eng"); !slices.Equal(h.Members, []string{"dev"}) {
 				t.Errorf("%+v", h)
 			}
@@ -152,8 +152,8 @@ func TestOperations(t *testing.T) {
 				t.Errorf("TE2: %+v", a)
 			}
 		}, 5},
-		{"remove an agent", []Op{{Op: "remove_agent", ID: "tester"}}, func(t *testing.T, m *Model, _ *Result) {
-			if agentOf(m, "tester") != nil || slices.Contains(hubOf(m, "eng").Members, "tester") {
+		{"remove an agent", []Op{{Op: "remove_agent", ID: "qa"}}, func(t *testing.T, m *Model, _ *Result) {
+			if agentOf(m, "qa") != nil || slices.Contains(hubOf(m, "eng").Members, "qa") {
 				t.Errorf("TE6: %+v", m)
 			}
 		}, 8},
@@ -275,7 +275,7 @@ func TestIDLocked(t *testing.T) {
 	if !hubOf(m, "eng").IDLocked || hubOf(m, "product").IDLocked {
 		t.Errorf("TM3: %+v", m.Hubs)
 	}
-	res, err := Apply([]byte(readExample(t, "team")), []Op{{Op: "remove_member", Hub: "eng", Agent: "tester"}, {Op: "add_member", Hub: "product", Agent: "tester"},
+	res, err := Apply([]byte(readExample(t, "team")), []Op{{Op: "remove_member", Hub: "eng", Agent: "qa"}, {Op: "add_member", Hub: "product", Agent: "qa"},
 		{Op: "remove_member", Hub: "eng", Agent: "dev"}, {Op: "add_member", Hub: "product", Agent: "dev"},
 		{Op: "add_member", Hub: "product", Agent: "eng-orchestrator"}}, dir)
 	if err == nil {

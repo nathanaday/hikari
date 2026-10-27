@@ -30,7 +30,6 @@ type Op struct {
 	Description  *string `json:"description,omitempty"`
 	Instructions *string `json:"instructions,omitempty"`
 	Model        *string `json:"model,omitempty"`
-	Tests        *string `json:"tests,omitempty"`
 	Orchestrator *string `json:"orchestrator,omitempty"`
 	URL          *string `json:"url,omitempty"`
 	Path         *string `json:"path,omitempty"`
@@ -39,8 +38,6 @@ type Op struct {
 	Repo         *string `json:"repo,omitempty"`
 	Scope        *string `json:"scope,omitempty"`
 	Test         *string `json:"test,omitempty"`
-	CPUs         *string `json:"cpus,omitempty"`
-	Memory       *string `json:"memory,omitempty"`
 	Serves       *string `json:"serves,omitempty"`
 	Image        *string `json:"image,omitempty"`
 
@@ -357,9 +354,6 @@ func (e *editor) apply(op Op) error {
 		if i < 0 {
 			return fmt.Errorf("%q is not a member of #%s", op.Agent, h.ID)
 		}
-		if a, err := e.agent(op.Agent); err == nil && a.Tests == h.ID {
-			return fmt.Errorf("%q tests #%s, so it must stay a member; change its tests first", op.Agent, h.ID)
-		}
 		e.summary = append(e.summary, fmt.Sprintf("remove %s from #%s", e.agentName(op.Agent), h.Name))
 		return e.edit(func(d *doc) ([]byte, error) {
 			return d.removeItem(parsePath("x-hikari.hubs."+h.ID+".members"), i)
@@ -381,7 +375,7 @@ func (e *editor) apply(op Op) error {
 			key    string
 			v      *string
 			escape bool
-		}{{"description", op.Description, true}, {"instructions", op.Instructions, true}, {"model", op.Model, false}, {"tests", op.Tests, false}} {
+		}{{"description", op.Description, true}, {"instructions", op.Instructions, true}, {"model", op.Model, false}} {
 			if err := e.setField(p, f.key, f.v, f.escape); err != nil {
 				return err
 			}
@@ -430,25 +424,6 @@ func (e *editor) apply(op Op) error {
 		}
 		e.summary = append(e.summary, "change the grants of "+a.Name)
 		return nil
-	case "set_e2e":
-		a, err := e.agent(op.ID)
-		if err != nil {
-			return err
-		}
-		p := "services." + a.ID + ".x-hikari"
-		cpus, memory := deref(op.CPUs), deref(op.Memory)
-		if cpus == "" && memory == "" {
-			return e.deleteKey(p, "e2e")
-		}
-		kv := []any{}
-		if cpus != "" {
-			kv = append(kv, "cpus", cpus)
-		}
-		if memory != "" {
-			kv = append(kv, "memory", memory)
-		}
-		e.summary = append(e.summary, "change the e2e limits of "+a.Name)
-		return e.setValue(p, "e2e", mapping(kv...), false)
 	case "remove_agent":
 		return e.removeAgent(op)
 	case "add_sidecar":
@@ -610,9 +585,6 @@ func (e *editor) removeHub(op Op) error {
 		return err
 	}
 	for _, a := range e.model.Agents {
-		if a.Tests == h.ID {
-			return fmt.Errorf("%q tests #%s; change its tests first", a.ID, h.ID)
-		}
 		in := 0
 		for _, other := range e.model.Hubs {
 			if other.Orchestrator == a.ID || slices.Contains(other.Members, a.ID) {
@@ -967,11 +939,6 @@ func (e *editor) changeID(op Op) error {
 		}
 	case "hub":
 		parent = "x-hikari.hubs"
-		for _, a := range e.model.Agents {
-			if a.Tests == op.ID {
-				refs = append(refs, ref{"services." + a.ID + ".x-hikari", "tests", -1})
-			}
-		}
 	case "repo":
 		parent = "x-hikari.repos"
 		for _, a := range e.model.Agents {

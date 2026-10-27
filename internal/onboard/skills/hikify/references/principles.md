@@ -14,13 +14,13 @@ What it rules out:
 
 ## 2. Each system tests only its own code
 
-Each system tests its own code with the unit-test framework of its language. A test that needs a display, a browser, the whole application, or another system is an E2E test, and it belongs to the hub's tester, which runs it against the released products of the systems.
+Each system tests its own code with the unit-test framework of its language. A suite that needs a display, a browser, the whole application, or another system is left for integration: it stays in its repository, outside every test command, and `onboarding/` records it with the reason. hikari does not run such suites yet. Never move one into another system.
 
-Why: a dry run of the whole application inside one system's tests depends on code that the system does not own, so its failures name the wrong owner. It is slow, and it needs tools that the system's container should not carry. The tester runs such a test against releases, where a failure names the story that broke and the systems behind it.
+Why: a dry run of the whole application inside one system's tests depends on code that the system does not own, so its failures name the wrong owner. It is slow, and it needs tools that the system's container should not carry.
 
 What it rules out:
 
 - a system's suite that starts a browser, a display, or another system's service;
 - a test that checks a flow across systems from inside one of them.
 
-A sign: when a container needs a display to run its tests, that test is an E2E test.
+A sign: when a container needs a display to run its tests, that suite is left for integration.

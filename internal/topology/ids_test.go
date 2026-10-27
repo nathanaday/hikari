@@ -31,7 +31,6 @@ services:
   inventory:
     x-hikari:
       system: {repo: shop, scope: inventory}
-      tests: eng
   cache: {image: redis, x-hikari: {serves: orders}}
 `
 }
@@ -72,9 +71,6 @@ func TestNames(t *testing.T) {
 	}
 	if got := topo.Agents["intake"].Grants.Releases; !slices.Equal(got, []string{"inventory"}) {
 		t.Errorf("grants: %v", got)
-	}
-	if got := topo.Tester("platform"); got != "inventory" {
-		t.Errorf("Tester(platform) = %q", got)
 	}
 	if got := topo.Services["cache"].Serves; got != "intake" {
 		t.Errorf("serves resolves to the agent's name, got %q", got)

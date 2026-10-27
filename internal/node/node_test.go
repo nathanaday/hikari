@@ -161,7 +161,7 @@ func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
 		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_wiki", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/wiki.md", "references/layout.md", "references/tests.md"},
 		"skills/hikari-system/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The hub wikis", "create", "modify", "rename", "remove"},
-		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes", "## Carry out a plan", "get_test_plan"},
+		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes", "## Carry out a plan"},
 		"skills/hikari-system/references/layout.md":                 {"P2", "P3", "code:"},
 		"skills/hikari-system/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
 		"skills/hikari-system/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
@@ -430,40 +430,6 @@ func TestHubSkillAndWikiPrompts(t *testing.T) {
 	}
 }
 
-func TestTesterPrompts(t *testing.T) {
-	tester := api.Self{Name: "e2e", Tests: "main", HubWikis: []string{"main"}, System: &api.SelfSystem{Repo: "project", Branch: "hikari", Scope: "e2e/main", WorkDir: "/workspace/e2e/main"}}
-	if got := builtinSkills(tester); !slices.Equal(got, []string{api.SystemSkill, api.TesterSkill}) {
-		t.Errorf("SK1: a tester gets %v", got)
-	}
-	p := systemPrompt(tester)
-	for _, want := range []string{"## You are the tester of #main", "/workspace/e2e/main/plan.md", "mcp__hikari__pin_releases", "Load the hikari-tester skill", "Describe behavior, not code"} {
-		if !strings.Contains(p, want) {
-			t.Errorf("SK2: tester prompt lacks %q", want)
-		}
-	}
-	start := indexingPrompt(tester, api.TurnContext{MapState: "unbuilt"})
-	if !strings.Contains(start, "Start procedure") || strings.Contains(start, "Build procedure") {
-		t.Errorf("SK2: the first turn = %q", start)
-	}
-	n := turnNotices(tester, api.TurnContext{NewerReleases: []string{"tally/python-library 0.2.0 is newer than your pinned 0.1.0"}})
-	if !strings.Contains(n, "Newer releases: tally/python-library 0.2.0") {
-		t.Errorf("LK3 notice = %q", n)
-	}
-	lead := systemPrompt(api.Self{Name: "lead", Orchestrates: []string{"main"}, Testers: map[string]string{"main": "e2e"}})
-	if !strings.Contains(lead, "e2e is the tester of #main") || !strings.Contains(lead, "get_test_plan") {
-		t.Errorf("SK3: the orchestrator prompt lacks the tester")
-	}
-	data, err := builtin.ReadFile("skills/hikari-tester/SKILL.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"name: hikari-tester", "## Start", "## Test", "## Report", "## Keep true", "pin_releases", "plan.md", "gaps"} {
-		if !strings.Contains(string(data), want) {
-			t.Errorf("SK1: the skill lacks %q", want)
-		}
-	}
-}
-
 func TestRestorePrompt(t *testing.T) {
 	tests := restorePrompt(api.TurnContext{NoLocalResults: true})
 	for _, want := range []string{"fresh clone", "another machine recorded", "record_test_run", "Send no messages"} {
@@ -471,17 +437,8 @@ func TestRestorePrompt(t *testing.T) {
 			t.Errorf("SY10 restore prompt lacks %q:\n%s", want, tests)
 		}
 	}
-	releases := restorePrompt(api.TurnContext{MissingReleases: []string{"python-library 0.1.0 (pinned by shop-e2e)"}})
-	for _, want := range []string{"python-library 0.1.0 (pinned by shop-e2e)", "publish_release", "at a new version", "direct message"} {
-		if !strings.Contains(releases, want) {
-			t.Errorf("SY11 restore prompt lacks %q:\n%s", want, releases)
-		}
-	}
-	if strings.Contains(releases, "Send no messages") {
-		t.Error("SY11 an owner that publishes again tells the tester")
-	}
-	tester := turnNotices(owner, api.TurnContext{MapState: "current", NoLocalResults: true, UnrestoredPins: []string{"orders/python-library 0.1.0"}})
-	if !strings.Contains(tester, "orders/python-library 0.1.0") || !strings.Contains(tester, "pin_releases") || strings.Contains(tester, "Run each suite") {
-		t.Errorf("SY11 a tester waits for its pins first:\n%s", tester)
+	n := turnNotices(owner, api.TurnContext{MapState: "current", NoLocalResults: true})
+	if !strings.Contains(n, "Run each suite") {
+		t.Errorf("SY10 notice lacks the restore step:\n%s", n)
 	}
 }

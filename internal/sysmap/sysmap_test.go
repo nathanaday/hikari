@@ -112,7 +112,7 @@ func TestPrivateRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Validate(m.IDs(), nil, exists); err != nil {
+	if err := p.Validate(m.IDs(), exists); err != nil {
 		t.Fatalf("valid documents: %v", err)
 	}
 	if got := strings.Join(p.Code("create-order"), ","); got != "orders/create.py" || len(p.Code("ghost")) != 0 {
@@ -141,7 +141,7 @@ func TestPrivateRules(t *testing.T) {
 			writeFile(t, root, ".hikari/private/tests.yaml", c.tests)
 			p, err := LoadPrivate(root)
 			if err == nil {
-				err = p.Validate(m.IDs(), nil, exists)
+				err = p.Validate(m.IDs(), exists)
 			}
 			if err == nil || !strings.Contains(err.Error(), c.rule+":") {
 				t.Errorf("error = %v, want rule %s", err, c.rule)
@@ -230,7 +230,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 	if errs := s.PrivateErrors(s.Map()); len(errs) != 0 {
 		t.Errorf("new skeletons must be valid: %v", errs)
 	}
-	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\nenvironment/\n" {
+	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\n" {
 		t.Errorf("L13: .gitignore = %q", ignore)
 	}
 	if info, err := os.Stat(filepath.Join(root, ".hikari/private/reports")); err != nil || !info.IsDir() {
@@ -253,7 +253,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 func TestOpenDeletesTheOldTestPlan(t *testing.T) {
 	root := newScope(t, orderFiles)
 	writeFile(t, root, ".hikari/private/test.yaml", "version: 1\nsuites: {}\nfeatures: {}\n")
-	writeFile(t, root, ".hikari/private/.gitignore", "stale\n")
+	writeFile(t, root, ".hikari/private/.gitignore", "reports/\nresults.yaml\nenvironment/\n")
 	s, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +264,7 @@ func TestOpenDeletesTheOldTestPlan(t *testing.T) {
 	if len(s.Notes()) != 1 || !strings.Contains(s.Notes()[0], "test.yaml") {
 		t.Errorf("O8: notes %v", s.Notes())
 	}
-	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\nenvironment/\n" {
+	if ignore, _ := os.ReadFile(filepath.Join(root, ".hikari/private/.gitignore")); string(ignore) != "reports/\nresults.yaml\n" {
 		t.Errorf("L13: a different .gitignore is rewritten: %q", ignore)
 	}
 }

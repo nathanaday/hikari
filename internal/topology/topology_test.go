@@ -414,22 +414,22 @@ WARN[0000] plain warning
 	}
 }
 
-// projectTopology is a topology in a project repository at dir, with a
-// tester system in e2e and the given extra hikari keys.
+// projectTopology is a topology in a project repository at dir, with the
+// given extra hikari keys.
 func projectTopology(extra, services string) string {
 	return compose(`
   project: {branch: hikari}`+extra+`
   hubs:
-    h: {orchestrator: lead, members: [tester]}`, `
+    h: {orchestrator: lead, members: [site]}`, `
   lead: {x-hikari: {}}
 `+services)
 }
 
-const projectTester = "  tester: {x-hikari: {system: {repo: project, scope: e2e}}}\n"
+const projectSite = "  site: {x-hikari: {system: {repo: project, scope: site}}}\n"
 
 func TestProject(t *testing.T) {
-	dir := fakeRepo(t, "e2e", "config")
-	topo, err := Parse([]byte(projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/config, target: /c}], x-hikari: {serves: tester}}\n")), dir)
+	dir := fakeRepo(t, "site", "config")
+	topo, err := Parse([]byte(projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+"/config, target: /c}], x-hikari: {serves: site}}\n")), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +444,7 @@ func TestProject(t *testing.T) {
 	}
 
 	// PR6: the project repository need not hold a system.
-	if _, err := Parse([]byte(projectTopology("", "  tester: {x-hikari: {}}\n")), dir); err != nil {
+	if _, err := Parse([]byte(projectTopology("", "  site: {x-hikari: {}}\n")), dir); err != nil {
 		t.Errorf("PR6: %v", err)
 	}
 	// Without the key there is no project, and the store is anywhere.
@@ -455,21 +455,21 @@ func TestProject(t *testing.T) {
 }
 
 func TestProjectErrors(t *testing.T) {
-	dir := fakeRepo(t, "e2e", "store/x")
+	dir := fakeRepo(t, "site", "store/x")
 	outside := t.TempDir()
 	cases := map[string]struct{ src, dir, want string }{
-		"PR1 bad branch":       {strings.Replace(projectTopology("", projectTester), "branch: hikari", "branch: a..b", 1), dir, `"a..b" is not a valid branch name`},
-		"PR1 unknown field":    {strings.Replace(projectTopology("", projectTester), "{branch: hikari}", "{branch: hikari, path: x}", 1), dir, "field path not found"},
-		"PR2 not a repo":       {projectTopology("", projectTester), outside, "is not the top directory of a git repository"},
-		"PR3 store outside":    {projectTopology("\n  store: "+outside, projectTester), dir, "must be a directory inside the project repository"},
-		"PR3 store is the top": {projectTopology("\n  store: .", projectTester), dir, "must be a directory inside the project repository"},
-		"PR4 reserved name":    {projectTopology("\n  repos: {project: {path: "+dir+", branch: x}}", projectTester), dir, `"project" is reserved`},
-		"PR4 no project key":   {strings.Replace(projectTopology("", projectTester), "  project: {branch: hikari}", "  store: s", 1), dir, "which needs x-hikari.project"},
-		"PR5 whole repo":       {projectTopology("", "  tester: {x-hikari: {system: {repo: project, scope: .}}}\n"), dir, "needs a scope that does not overlap the store"},
-		"PR5 in the store":     {projectTopology("", "  tester: {x-hikari: {system: {repo: project, scope: store/x}}}\n"), dir, "needs a scope that does not overlap the store"},
-		"PR7 scope":            {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/e2e, target: /e}], x-hikari: {serves: tester}}\n"), dir, "hikari mounts the repos and the store itself"},
-		"PR7 git":              {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+"/.git, target: /g}], x-hikari: {serves: tester}}\n"), dir, "overlaps"},
-		"PR7 whole project":    {projectTopology("", projectTester+"  db: {volumes: [{type: bind, source: "+dir+", target: /p}], x-hikari: {serves: tester}}\n"), dir, "overlaps"},
+		"PR1 bad branch":       {strings.Replace(projectTopology("", projectSite), "branch: hikari", "branch: a..b", 1), dir, `"a..b" is not a valid branch name`},
+		"PR1 unknown field":    {strings.Replace(projectTopology("", projectSite), "{branch: hikari}", "{branch: hikari, path: x}", 1), dir, "field path not found"},
+		"PR2 not a repo":       {projectTopology("", projectSite), outside, "is not the top directory of a git repository"},
+		"PR3 store outside":    {projectTopology("\n  store: "+outside, projectSite), dir, "must be a directory inside the project repository"},
+		"PR3 store is the top": {projectTopology("\n  store: .", projectSite), dir, "must be a directory inside the project repository"},
+		"PR4 reserved name":    {projectTopology("\n  repos: {project: {path: "+dir+", branch: x}}", projectSite), dir, `"project" is reserved`},
+		"PR4 no project key":   {strings.Replace(projectTopology("", projectSite), "  project: {branch: hikari}", "  store: s", 1), dir, "which needs x-hikari.project"},
+		"PR5 whole repo":       {projectTopology("", "  site: {x-hikari: {system: {repo: project, scope: .}}}\n"), dir, "needs a scope that does not overlap the store"},
+		"PR5 in the store":     {projectTopology("", "  site: {x-hikari: {system: {repo: project, scope: store/x}}}\n"), dir, "needs a scope that does not overlap the store"},
+		"PR7 scope":            {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+"/site, target: /e}], x-hikari: {serves: site}}\n"), dir, "hikari mounts the repos and the store itself"},
+		"PR7 git":              {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+"/.git, target: /g}], x-hikari: {serves: site}}\n"), dir, "overlaps"},
+		"PR7 whole project":    {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+", target: /p}], x-hikari: {serves: site}}\n"), dir, "overlaps"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -500,34 +500,6 @@ func TestHubRelations(t *testing.T) {
 	}
 	if got := topo.ReadableHubWikis("dev"); !slices.Equal(got, []string{"eng"}) {
 		t.Errorf("A1 ReadableHubWikis(dev) = %v", got)
-	}
-}
-
-func TestTester(t *testing.T) {
-	repo := fakeRepo(t, "services/orders", "services/inventory", "e2e")
-	src := systemsTopology(repo, validOwners+"  e2e: {x-hikari: {system: {repo: shop, scope: e2e}, tests: h}}\n")
-	src = strings.Replace(src, "members: [orders, inventory]", "members: [orders, inventory, e2e]", 1)
-	topo, err := Parse([]byte(src), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := topo.ReadableReleases("e2e"); !slices.Equal(got, []string{"inventory", "orders"}) {
-		t.Errorf("TS4 ReadableReleases(e2e) = %v", got)
-	}
-	if topo.Tester("h") != "e2e" || topo.Tester("x") != "" {
-		t.Errorf("Tester(h) = %q", topo.Tester("h"))
-	}
-	for name, c := range map[string]struct{ src, want string }{
-		"TS1 no system": {strings.Replace(src, "lead: {x-hikari: {}}", "lead: {x-hikari: {tests: h}}", 1), "only an agent with a system can be a tester"},
-		"TS1 no hub":    {strings.Replace(src, "tests: h}", "tests: ghost}", 1), `tests the hub "ghost"`},
-		"TS2 member":    {strings.Replace(src, "members: [orders, inventory, e2e]", "members: [orders, inventory]", 1), "must be a member of #h"},
-		"TS3 one":       {strings.Replace(src, "scope: services/orders}}}", "scope: services/orders}, tests: h}}", 1), "a hub has one tester"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := Parse([]byte(c.src), t.TempDir()); err == nil || !strings.Contains(err.Error(), c.want) {
-				t.Errorf("error = %v, want %q", err, c.want)
-			}
-		})
 	}
 }
 
@@ -578,7 +550,7 @@ func TestLinkedRepo(t *testing.T) {
 }
 
 func TestLinkedRepoErrors(t *testing.T) {
-	dir := fakeRepo(t, "e2e")
+	dir := fakeRepo(t, "site")
 	if err := os.MkdirAll(filepath.Join(dir, "repos", "junk"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -591,7 +563,7 @@ func TestLinkedRepoErrors(t *testing.T) {
 		"LR3 space":       {linkedTopology(`{url: "a b"}`), "is not a valid url"},
 		"LR4 path branch": {linkedTopology("{path: " + dir + "}"), `"" is not a valid branch name`},
 		"LR5 clone folder": {strings.Replace(linkedTopology("{url: https://example.com/app.git}"), "  lead: {x-hikari: {}}\n",
-			"  lead: {x-hikari: {}}\n  e2e: {x-hikari: {system: {repo: project, scope: repos}}}\n", 1), "does not overlap the clone folder"},
+			"  lead: {x-hikari: {}}\n  site: {x-hikari: {system: {repo: project, scope: repos}}}\n", 1), "does not overlap the clone folder"},
 		"not a clone": {strings.Replace(linkedTopology("{url: https://example.com/app.git}"), "app: {url", "junk: {url", 1), "exists but is not the top directory of a git repo"},
 	}
 	for name, c := range cases {

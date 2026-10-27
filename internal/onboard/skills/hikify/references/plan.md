@@ -45,7 +45,7 @@ Fields of each step:
 - **Needs**: the steps, and the releases by name and version, that must exist first.
 - **Done when**: what a test, a release, or a file shows when the step is done. "Works" is not a criterion; "the suite passes against the release 0.1.0" is.
 
-Order: restructure steps first. Then a library's release before its consumers move. Each consumer moves in its own step, and its suite passes against the release before its own copy is deleted. No step deletes code that a consumer still uses. A move of an E2E test to the tester comes after the releases that the test needs.
+Order: restructure steps first. Then a library's release before its consumers move. Each consumer moves in its own step, and its suite passes against the release before its own copy is deleted. No step deletes code that a consumer still uses. No step moves a suite that is left for integration.
 
 ## The system plan
 
@@ -62,12 +62,12 @@ Order: restructure steps first. Then a library's release before its consumers mo
 |---|---|---|---|
 | tests.test_units > test_round | edge | kept: units | |
 | tests.test_api > test_store | cloud | kept: cloud | |
-| tests/ui/test_dashboard.py (left out) | cloud | moved: main-e2e | [[operator-sees-reading]] |
+| tests/ui/test_dashboard.py (left out) | cloud | left for integration | Needs a browser; checks [[operator-sees-reading]]. |
 | tests.test_old > test_v1_format | cloud | dropped | The v1 format is gone; waits for the user's approval. |
 ```
 
 - **kept: <system>**: the test stays a unit test, in the system that holds its code after the plan.
-- **moved: <tester>**: the test becomes an E2E test, with the story that it checks.
+- **left for integration**: the suite stays in its repository, outside every test command, with the reason and the story that it checks.
 - **dropped**: the test goes, with a reason. A drop waits for the user's approval.
 
 Execution fills in the result of each row. Every test id of the baseline appears once.

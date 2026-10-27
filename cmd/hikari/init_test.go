@@ -67,7 +67,7 @@ func TestWriteProject(t *testing.T) {
 	if repo.IsIgnored(".claude/skills/mine/SKILL.md") {
 		t.Error("a skill of your own stays versioned")
 	}
-	if repo.IsIgnored("e2e/p3/.hikari/private/tests.yaml") {
+	if repo.IsIgnored("site/p3/.hikari/private/tests.yaml") {
 		t.Error("the private documents of a scope must stay versioned")
 	}
 

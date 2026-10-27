@@ -47,8 +47,8 @@ func Run(ctx context.Context, c *api.Client) error {
 		} else if tc.MapState == mapUnbuilt || tc.MapState == mapStale {
 			log.Printf("indexing: the system map is %s", tc.MapState)
 			d.turn(ctx, api.StateIndexing, "indexing the system: the map is "+tc.MapState, indexingPrompt(self, tc))
-		} else if (tc.NoLocalResults && len(tc.UnrestoredPins) == 0) || len(tc.MissingReleases) > 0 {
-			log.Printf("restoring: this machine lacks the system's results or releases")
+		} else if tc.NoLocalResults {
+			log.Printf("restoring: this machine lacks the system's results")
 			d.turn(ctx, api.StateIndexing, "restoring the system on this machine", restorePrompt(tc))
 		}
 	}
@@ -204,7 +204,6 @@ Every participant of a hub receives every post. A post starts a turn at once onl
 	b.WriteString(wikisPrompt(self))
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
-		b.WriteString(testerPrompt(self))
 	}
 	if len(self.Orchestrates) > 0 {
 		b.WriteString(orchestratorPrompt(self))

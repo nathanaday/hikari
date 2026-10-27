@@ -1,7 +1,0 @@
-version: 1
-description: An HTTP service, released as a container image that hikari builds from the Dockerfile of the owner's scope, with a README that documents its API and settings.
-layout:
-  require: [README.md]
-  allow: [README.md, "docs/**/*.md"]
-image:
-  dockerfile: Dockerfile

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/e2e"
 	"github.com/nathanaday/hikari/internal/sysmap"
 	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -119,42 +118,6 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	mux.HandleFunc("DELETE /api/ui/wiki/{scope}/{name}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
 		return s.sys.RemoveDocument(ref, r.PathValue("id"))
 	}))
-	mux.HandleFunc("PUT /api/ui/e2e/{hub}/gaps/{gap}", ui(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Approved bool `json:"approved"`
-		}
-		if err := decode(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := s.sys.SetApproval(r.PathValue("hub"), r.PathValue("gap"), req.Approved); err != nil {
-			writeSystemError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("PUT /api/ui/e2e/{hub}/bench/{id}", ui(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Passed bool   `json:"passed"`
-			Note   string `json:"note"`
-		}
-		if err := decode(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := s.sys.RecordBench(r.PathValue("hub"), r.PathValue("id"), req.Passed, req.Note); err != nil {
-			writeSystemError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("POST /api/ui/e2e/{hub}/environment/stop", ui(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := s.sys.StopHubEnvironment(r.Context(), r.PathValue("hub")); err != nil {
-			writeSystemError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
 	mux.HandleFunc("PUT /api/ui/wiki/{scope}/{name}/key/{id}", userWrite(func(r *http.Request, ref string) error {
 		var req struct {
 			Key bool `json:"key"`
@@ -210,31 +173,6 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 	})
 	handle("GET /api/node/wiki/docs/{id}", func(r *http.Request, node string) (any, error) {
 		return sys.GetDocument(node, r.PathValue("id"))
-	})
-	handle("POST /api/node/e2e/lock", func(r *http.Request, node string) (any, error) {
-		var pins []e2e.LockedRelease
-		if err := decode(r, &pins); err != nil {
-			return nil, err
-		}
-		return sys.PinReleases(node, pins)
-	})
-	handle("POST /api/node/e2e/environment", func(r *http.Request, node string) (any, error) {
-		var req struct {
-			Scenario string `json:"scenario"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return sys.StartEnvironment(r.Context(), node, req.Scenario)
-	})
-	handle("DELETE /api/node/e2e/environment", func(r *http.Request, node string) (any, error) {
-		return sys.StopEnvironment(r.Context(), node)
-	})
-	handle("GET /api/node/e2e/environment", func(r *http.Request, node string) (any, error) {
-		return sys.EnvironmentStatus(r.Context(), node)
-	})
-	handle("GET /api/node/e2e/plans/{hub}", func(r *http.Request, node string) (any, error) {
-		return sys.GetTestPlan(node, r.PathValue("hub"))
 	})
 	handle("GET /api/node/wiki/search", func(r *http.Request, node string) (any, error) {
 		return sys.SearchWiki(node, r.URL.Query().Get("q"))

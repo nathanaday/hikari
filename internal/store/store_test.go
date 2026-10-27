@@ -92,12 +92,8 @@ func TestLoadDeliverable(t *testing.T) {
 	if d.Description == "" || len(d.Layout.Require) != 2 || len(d.Targets) != 1 || d.Targets[0].Repo != "acme/inventory" {
 		t.Errorf("D1: %+v", d)
 	}
-	defineDeliverable(t, s, "http-service", pythonLibrary+"image: {dockerfile: build/Dockerfile, platform: linux/arm64}\n")
-	if d, err := s.LoadDeliverable("http-service"); err != nil || d.Image == nil || d.Image.ContextDir() != "." || d.Image.Platform != "linux/arm64" {
-		t.Errorf("IM1: %+v, %v", d.Image, err)
-	}
 	names, _ := s.DeliverableNames()
-	if !slices.Equal(names, []string{"http-service", "python-library"}) {
+	if !slices.Equal(names, []string{"python-library"}) {
 		t.Errorf("names = %v", names)
 	}
 
@@ -112,9 +108,7 @@ func TestLoadDeliverable(t *testing.T) {
 		"D4 wrong pin":     {pythonLibrary + "targets: [{type: dockerhub, repo: a/b}]\n", "x", "cannot pin repo"},
 		"D4 bad kind":      {pythonLibrary + "targets: [{type: huggingface, kind: weights}]\n", "x", "kind must be one of"},
 		"D5 no skill":      {pythonLibrary, "", "SKILL.md is empty"},
-		"IM1 escaping":     {pythonLibrary + "image: {dockerfile: ../Dockerfile}\n", "x", "must be a relative path inside the owner's scope"},
-		"IM1 no file":      {pythonLibrary + "image: {context: .}\n", "x", "image.dockerfile"},
-		"IM1 platform":     {pythonLibrary + "image: {dockerfile: Dockerfile, platform: arm64}\n", "x", "must be <os>/<arch>"},
+		"D1 image":         {pythonLibrary + "image: {dockerfile: Dockerfile}\n", "x", "field image not found"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := newStore(t)
@@ -268,6 +262,12 @@ func TestPublish(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(dir, ManifestFile))
 	if !strings.Contains(string(data), "released: 2026-10-22T10:00:00Z") || !strings.Contains(string(data), "certificates: []") {
 		t.Errorf("written manifest:\n%s", data)
+	}
+	if old, err := ParseManifest(append(data, "image: {tag: x, id: y, platform: linux/amd64}\n"...)); err != nil || old.Version != "1.0.0" {
+		t.Errorf("the image key of an older release is ignored: %+v, %v", old, err)
+	}
+	if _, err := ParseManifest(append(data, "extra: 1\n"...)); err == nil {
+		t.Error("an unknown key of a manifest is an error")
 	}
 	if link, _ := os.Readlink(filepath.Join(s.DeliverableReleasesDir("inventory", "python-library"), "latest")); link != "1.0.0" {
 		t.Errorf("R17 latest -> %q", link)

@@ -39,17 +39,6 @@ type Manifest struct {
 	Product      ProductInfo   `yaml:"product" json:"product"`
 	Map          string        `yaml:"map" json:"map"`
 	Certificates []Certificate `yaml:"certificates" json:"certificates"`
-	// Image is the image of an image release (rule IM3 of the
-	// environments spec).
-	Image *ImageInfo `yaml:"image,omitempty" json:"image,omitempty"`
-}
-
-// ImageInfo names the image that hikari built for a release: its tag in
-// the host's Docker, its id, and its platform.
-type ImageInfo struct {
-	Tag      string `yaml:"tag" json:"tag"`
-	ID       string `yaml:"id" json:"id"`
-	Platform string `yaml:"platform" json:"platform"`
 }
 
 // ProductInfo summarizes the product of a release.
@@ -86,15 +75,19 @@ func mapSlice(in []string, f func(string) string) []string {
 	return out
 }
 
-// ParseManifest reads a manifest, rejecting unknown fields.
+// ParseManifest reads a manifest, rejecting unknown fields. The image key
+// of an older release is ignored.
 func ParseManifest(data []byte) (Manifest, error) {
-	var m Manifest
+	var m struct {
+		Manifest `yaml:",inline"`
+		Image    any `yaml:"image"`
+	}
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&m); err != nil {
 		return Manifest{}, fmt.Errorf("%s: %w", ManifestFile, err)
 	}
-	return m, nil
+	return m.Manifest, nil
 }
 
 // PublishInput is what the server knows when an owner publishes.
@@ -116,9 +109,6 @@ type PublishInput struct {
 	// Hikari is the version of the server.
 	Hikari string
 	Now    time.Time
-	// BuildImage builds the image of an image deliverable, after every
-	// other check passed (rule IM2 of the environments spec).
-	BuildImage func(ImageSpec) (ImageInfo, error)
 }
 
 // ProductCheck is what Check reports about a staged product that meets
@@ -263,18 +253,6 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 	if len(errs) > 0 {
 		return Manifest{}, errors.Join(errs...)
 	}
-	var image *ImageInfo
-	if d.Image != nil {
-		if in.BuildImage == nil {
-			return Manifest{}, fmt.Errorf("deliverable %q makes an image, and this hikari cannot build one", in.Deliverable)
-		}
-		info, err := in.BuildImage(*d.Image)
-		if err != nil {
-			return Manifest{}, fmt.Errorf("IM2: the image of %s %s did not build: %w", in.Deliverable, in.Version, err)
-		}
-		image = &info
-	}
-
 	dest := s.ReleaseDir(in.System, in.Deliverable, in.Version)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return Manifest{}, err
@@ -321,7 +299,7 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		},
-		Map: "map.yaml", Certificates: certs, Image: image,
+		Map: "map.yaml", Certificates: certs,
 	}
 	data, err := yaml.Marshal(s.onDisk(m))
 	if err != nil {

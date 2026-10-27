@@ -62,8 +62,6 @@ type Agent struct {
 	System       *System  `json:"system"`
 	Releases     []string `json:"releases"`
 	Deliverables []string `json:"deliverables"`
-	Tests        string   `json:"tests"`
-	E2E          *E2E     `json:"e2e"`
 	// Image and Build describe the container: the image key, and the
 	// build's context and Dockerfile.
 	Image string `json:"image"`
@@ -83,11 +81,6 @@ type System struct {
 	Scope string   `json:"scope"`
 	Read  []string `json:"read"`
 	Test  string   `json:"test"`
-}
-
-type E2E struct {
-	CPUs   string `json:"cpus"`
-	Memory string `json:"memory"`
 }
 
 type Sidecar struct {
@@ -140,8 +133,6 @@ type srcService struct {
 			Releases     []string `yaml:"releases"`
 			Deliverables []string `yaml:"deliverables"`
 		} `yaml:"grants"`
-		Tests  string `yaml:"tests"`
-		E2E    *E2E   `yaml:"e2e"`
 		Serves string `yaml:"serves"`
 	} `yaml:"x-hikari"`
 }
@@ -195,7 +186,7 @@ func ReadModel(text []byte, dir string) *Model {
 		if h != nil {
 			a.Name = nameOr(h.Name, id)
 			a.Description, a.Instructions, a.Model = freeText(h.Description), freeText(h.Instructions), h.Model
-			a.System, a.Tests, a.E2E = h.System, h.Tests, h.E2E
+			a.System = h.System
 			a.Releases, a.Deliverables = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables)
 			if a.System != nil {
 				a.System.Read = nonNil(a.System.Read)

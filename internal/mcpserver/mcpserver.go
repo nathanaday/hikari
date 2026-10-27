@@ -33,13 +33,6 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	if self.System != nil {
 		addOwnerTools(s, c)
 	}
-	if self.Tests != "" {
-		addTesterTools(s, c)
-		addEnvironmentTools(s, c)
-	}
-	if self.Tests != "" || len(self.Testers) > 0 {
-		addTestPlanReader(s, c)
-	}
 	if len(self.Orchestrates) > 0 {
 		addOrchestratorTools(s, c)
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/environments"
 )
 
 func toolNames(t *testing.T, self api.Self) []string {
@@ -56,11 +55,9 @@ func TestToolsByRole(t *testing.T) {
 		self api.Self
 		want []string
 	}{
-		"member":               {api.Self{Name: "writer"}, sorted(everyone)},
-		"owner":                {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
-		"orchestrator":         {api.Self{Name: "lead", Orchestrates: []string{"eng"}}, sorted(everyone, orchestrator)},
-		"tester":               {api.Self{Name: "e2e", System: &api.SelfSystem{}, Tests: "eng"}, sorted(everyone, ownerOnly, []string{"environment_status", "get_test_plan", "pin_releases", "start_environment", "stop_environment"})},
-		"lead of a tested hub": {api.Self{Name: "lead", Orchestrates: []string{"eng"}, Testers: map[string]string{"eng": "e2e"}}, sorted(everyone, orchestrator, []string{"get_test_plan"})},
+		"member":       {api.Self{Name: "writer"}, sorted(everyone)},
+		"owner":        {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
+		"orchestrator": {api.Self{Name: "lead", Orchestrates: []string{"eng"}}, sorted(everyone, orchestrator)},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -75,8 +72,6 @@ func TestToolsByRole(t *testing.T) {
 func TestResultsRender(t *testing.T) {
 	now := time.Now()
 	for _, v := range []any{
-		api.TestPlan{Environment: &environments.Status{State: environments.Running, Started: now, Stops: now, Services: []environments.Service{{Name: "a"}}}},
-		environments.Status{State: environments.None},
 		api.DocumentHit{Backlinks: []api.DocRef{{ID: "a"}}},
 		api.WikiView{Documents: []api.WikiDoc{{ID: "a", Created: now}}},
 	} {
