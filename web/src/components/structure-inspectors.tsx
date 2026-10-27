@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Boxes, FileCode2, FolderGit2, Hash, Package } from 'lucide-react'
+import { Boxes, FileCode2, FolderGit2, Package } from 'lucide-react'
 import { FindingsList } from '@/components/findings-list'
-import { HubDiagram } from '@/components/hub-diagram'
 import { Section } from '@/components/system-detail'
 import { Chips, Field, Select, TextField } from '@/components/topology-fields'
 import { Button } from '@/components/ui/button'
@@ -45,10 +44,9 @@ function Problems({ findings }: { findings: Finding[] }) {
   )
 }
 
-// Identity edits the name and the id of an agent, a hub, or a repo (rule
-// SI6). A rename keeps the id; the id changes only while nothing outside
+// Identity edits the name and the id of an agent or a repo (rule SI6). A rename keeps the id; the id changes only while nothing outside
 // the file is keyed by it.
-function Identity({ kind, id, name, locked, p }: { kind: 'agent' | 'hub' | 'repo'; id: string; name: string; locked: boolean; p: InspectorProps }) {
+function Identity({ kind, id, name, locked, p }: { kind: 'agent' | 'repo'; id: string; name: string; locked: boolean; p: InspectorProps }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <TextField
@@ -56,7 +54,7 @@ function Identity({ kind, id, name, locked, p }: { kind: 'agent' | 'hub' | 'repo
         value={name}
         check={(v) => (v === id ? null : nameProblem(v, kind, id, p.model))}
         onCommit={(v) => p.add({ op: 'rename', kind, id, name: v })}
-        hint={kind === 'repo' ? 'What the UI calls it.' : `What agents and you call it: ${kind === 'hub' ? '#' : '@'}${name}.`}
+        hint={kind === 'repo' ? 'What the UI calls it.' : `What agents and you call it: @${name}.`}
       />
       {locked ? (
         <Field label="Id" hint="The store is keyed by this id, so it stays. Rename it instead.">
@@ -133,6 +131,15 @@ export function ProjectInspector(p: InspectorProps) {
           {pr.repo ? 'Turn off the project repository' : 'Turn on the project repository'}
         </Button>
       </Section>
+      <Section title="Orchestrator">
+        <Field label="Orchestrator" hint="It plans from the system maps, writes the vocabulary and the public wiki, and every post wakes it. It owns no system; every other agent owns one.">
+          <Select
+            value={pr.orchestration}
+            options={[{ value: '', label: 'None' }, ...p.model.agents.filter((a) => !a.system || a.id === pr.orchestration).map((a) => ({ value: a.id, label: a.name }))]}
+            onChange={(v) => p.add({ op: 'set_orchestration', agent: v })}
+          />
+        </Field>
+      </Section>
       <Section title="Store">
         <TextField label="Directory" value={pr.store} mono placeholder="store" onCommit={(v) => p.add({ op: 'set_project', store: v })} hint="Relative to the compose file. Empty means store/." />
       </Section>
@@ -185,45 +192,6 @@ export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
   )
 }
 
-// HubInspector edits a hub (rule SI3).
-export function HubInspector({ id, ...p }: InspectorProps & { id: string }) {
-  const h = p.model.hubs.find((x) => x.id === id)!
-  const agent = (a: string) => p.model.agents.find((x) => x.id === a)
-  const candidates = p.model.agents.filter((a) => a.id !== h.orchestrator && !h.members.includes(a.id))
-  return (
-    <div className="space-y-6">
-      <Header icon={<Hash className="size-4 text-muted-foreground" />} name={h.name} id={h.id} />
-      <Problems findings={findingsOf(p.findings, { kind: 'hub', id })} />
-      <HubDiagram hub={h} model={p.model} onAgent={(a) => p.select({ kind: 'agent', id: a })} />
-      <Identity kind="hub" id={h.id} name={h.name} locked={h.id_locked} p={p} />
-      <TextField label="Description" value={h.description} multiline onCommit={(v) => p.add({ op: 'set_hub', id, description: v })} hint="Every participant sees it." />
-      <Field label="Orchestrator" hint="It plans the hub's work, and a post wakes it.">
-        <Select
-          value={h.orchestrator}
-          options={p.model.agents.filter((a) => !h.members.includes(a.id) && !a.system).map((a) => ({ value: a.id, label: a.name }))}
-          onChange={(v) => p.add({ op: 'set_hub', id, orchestrator: v })}
-        />
-      </Field>
-      <Field label="Members">
-        <Chips
-          items={h.members.map((m) => ({ value: m, label: agent(m)?.name ?? m }))}
-          onRemove={(m) => p.add({ op: 'remove_member', hub: id, agent: m })}
-          onAdd={(m) => p.add({ op: 'add_member', hub: id, agent: m })}
-          choices={candidates.map((a) => ({ value: a.id, label: a.name }))}
-          addLabel="Add a member…"
-          empty="No members"
-        />
-      </Field>
-      <RemoveButton
-        label="Remove the hub"
-        onRemove={async () => {
-          if (!(await p.add({ op: 'remove_hub', id }))) p.select({ kind: 'project' })
-        }}
-      />
-    </div>
-  )
-}
-
 const modelOptions = (opts: Options, current: string) => {
   const list = [{ value: '', label: 'The default model' }, ...opts.models.map((m) => ({ value: m, label: m }))]
   if (current && !opts.models.includes(current)) list.push({ value: current, label: current })
@@ -233,48 +201,19 @@ const modelOptions = (opts: Options, current: string) => {
 // AgentInspector edits an agent (rule SI4).
 export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
   const a = p.model.agents.find((x) => x.id === id)!
-  const memberOf = p.model.hubs.filter((h) => h.members.includes(id))
-  const orchestrates = p.model.hubs.filter((h) => h.orchestrator === id)
-  const notIn = p.model.hubs.filter((h) => h.orchestrator !== id && !h.members.includes(id))
+  const orchestrator = p.model.project.orchestration === id
   return (
     <div className="space-y-6">
       <Header icon={<Boxes className="size-4 text-muted-foreground" />} name={a.name} id={a.id} />
       <Problems findings={findingsOf(p.findings, { kind: 'agent', id })} />
       <Identity kind="agent" id={a.id} name={a.name} locked={a.id_locked} p={p} />
-      <TextField label="Description" value={a.description} multiline onCommit={(v) => p.add({ op: 'set_agent', id, description: v })} hint="Every agent in its hubs sees it." />
+      <TextField label="Description" value={a.description} multiline onCommit={(v) => p.add({ op: 'set_agent', id, description: v })} hint="Every agent in the room sees it." />
       <TextField label="Instructions" value={a.instructions} multiline onCommit={(v) => p.add({ op: 'set_agent', id, instructions: v })} hint="Only this agent sees them, in its system prompt." />
       <Field label="Model">
         <Select value={a.model} options={modelOptions(p.options, a.model)} onChange={(v) => p.add({ op: 'set_agent', id, model: v })} />
       </Field>
 
-      <Section title="Hubs">
-        <ul className="divide-y rounded-md border text-sm">
-          {orchestrates.map((h) => (
-            <li key={h.id} className="flex items-center justify-between px-3 py-1.5">
-              <button type="button" className="underline-offset-2 hover:underline" onClick={() => p.select({ kind: 'hub', id: h.id })}>
-                #{h.name}
-              </button>
-              <span className="text-xs text-muted-foreground">orchestrator</span>
-            </li>
-          ))}
-          {memberOf.map((h) => (
-            <li key={h.id} className="flex items-center justify-between px-3 py-1.5">
-              <button type="button" className="underline-offset-2 hover:underline" onClick={() => p.select({ kind: 'hub', id: h.id })}>
-                #{h.name}
-              </button>
-              <Button size="xs" variant="ghost" onClick={() => p.add({ op: 'remove_member', hub: h.id, agent: id })}>
-                Leave
-              </Button>
-            </li>
-          ))}
-          {orchestrates.length + memberOf.length === 0 && <li className="px-3 py-1.5 text-muted-foreground">In no hub, so nothing can reach it.</li>}
-        </ul>
-        {notIn.length > 0 && (
-          <Select value="" placeholder="Add to a hub…" options={notIn.map((h) => ({ value: h.id, label: `#${h.name}` }))} onChange={(v) => v && p.add({ op: 'add_member', hub: v, agent: id })} className="w-auto text-xs text-muted-foreground" />
-        )}
-      </Section>
-
-      <SystemSection a={a} p={p} />
+      <SystemSection a={a} orchestrator={orchestrator} p={p} />
 
       {a.system && (
         <Section title="Grants">
@@ -310,9 +249,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
       </Section>
 
       <RemoveButton
-        label="Remove the agent"
-        disabled={orchestrates.length > 0}
-        reason={`It orchestrates ${orchestrates.map((h) => '#' + h.name).join(', ')}; give the hub another orchestrator first.`}
+        label={orchestrator ? 'Remove the agent, and leave the project without an orchestrator' : 'Remove the agent'}
         onRemove={async () => {
           if (!(await p.add({ op: 'remove_agent', id }))) p.select({ kind: 'project' })
         }}
@@ -354,16 +291,15 @@ function ContainerSummary({ a }: { a: TopologyAgent }) {
   )
 }
 
-function SystemSection({ a, p }: { a: TopologyAgent; p: InspectorProps }) {
+function SystemSection({ a, orchestrator, p }: { a: TopologyAgent; orchestrator: boolean; p: InspectorProps }) {
   const repos = [...(p.model.project.repo ? [{ value: 'project', label: 'the project repository' }] : []), ...p.model.repos.map((r) => ({ value: r.id, label: r.name }))]
-  const orchestrates = p.model.hubs.some((h) => h.orchestrator === a.id)
   if (!a.system) {
     return (
       <Section title="System">
         <p className="text-sm text-muted-foreground">
-          {orchestrates ? 'An orchestrator owns no code: it plans from the maps of its members.' : 'It owns no code. Give it a system to make it the only agent that reads and changes a part of a repo.'}
+          {orchestrator ? 'The orchestrator owns no code: it plans from the maps of the owners.' : 'It owns no code yet. Every agent but the orchestrator owns a system: the part of a repo that only it reads and changes.'}
         </p>
-        {!orchestrates &&
+        {!orchestrator &&
           (repos.length ? (
             <Select value="" placeholder="Own a system in…" options={repos} onChange={(v) => v && p.add({ op: 'set_system', id: a.id, repo: v })} className="w-auto text-xs text-muted-foreground" />
           ) : (
@@ -426,24 +362,22 @@ export function SidecarInspector({ id, ...p }: InspectorProps & { id: string }) 
   )
 }
 
-// AddForm makes a repo, a hub, an agent, or a sidecar (rule SI7).
+// AddForm makes a repo, an agent, or a sidecar (rule SI7).
 export function AddForm({ what, ...p }: InspectorProps & { what: AddKind }) {
   const [id, setID] = useState('')
   const [a, setA] = useState('')
   const [b, setB] = useState('')
-  const [hubs, setHubs] = useState<string[]>([])
   const [urlKind, setUrlKind] = useState<'url' | 'path'>(p.model.project.repo ? 'url' : 'path')
   const [refusal, setRefusal] = useState<string | null>(null)
   const kind = what === 'repo' ? 'repo' : what
   const idProblem = id ? nameProblem(id, kind, null, p.model) : null
-  const title = { repo: 'Add a repo', hub: 'Add a hub', agent: 'Add an agent', sidecar: 'Add a sidecar' }[what]
-  const ready = id && !idProblem && (what !== 'hub' || a) && (what !== 'repo' || (a && (urlKind === 'path' || !urlProblem(a)))) && (what !== 'sidecar' || (a && b))
+  const title = { repo: 'Add a repo', agent: 'Add an agent', sidecar: 'Add a sidecar' }[what]
+  const ready = id && !idProblem && (what !== 'repo' || (a && (urlKind === 'path' || !urlProblem(a)))) && (what !== 'sidecar' || (a && b))
 
   const submit = async () => {
     let op: Op
     if (what === 'repo') op = { op: 'add_repo', id, [urlKind]: a, ...(b ? { branch: b } : {}) }
-    else if (what === 'hub') op = { op: 'add_hub', id, orchestrator: a, description: b, members: [] }
-    else if (what === 'agent') op = { op: 'add_agent', id, template: a, description: b, hubs }
+    else if (what === 'agent') op = { op: 'add_agent', id, template: a, description: b }
     else op = { op: 'add_sidecar', id, serves: a, image: b }
     const err = await p.add(op)
     setRefusal(err)
@@ -481,16 +415,6 @@ export function AddForm({ what, ...p }: InspectorProps & { what: AddKind }) {
           </Field>
         </>
       )}
-      {what === 'hub' && (
-        <>
-          <Field label="Orchestrator">
-            <Select value={a} placeholder="Choose an agent…" options={p.model.agents.filter((x) => !x.system).map((x) => ({ value: x.id, label: x.name }))} onChange={setA} />
-          </Field>
-          <Field label="Description">
-            <input value={b} onChange={(e) => setB(e.target.value)} className="h-8 w-full rounded-md border border-input px-3 text-sm shadow-xs outline-none" />
-          </Field>
-        </>
-      )}
       {what === 'agent' && (
         <>
           <Field label="Container" hint="The new agent copies the compose keys of this agent: its image or build, and its credentials.">
@@ -499,15 +423,7 @@ export function AddForm({ what, ...p }: InspectorProps & { what: AddKind }) {
           <Field label="Description">
             <input value={b} onChange={(e) => setB(e.target.value)} className="h-8 w-full rounded-md border border-input px-3 text-sm shadow-xs outline-none" />
           </Field>
-          <Field label="Hubs" hint="It joins each as a member. An agent in no hub cannot be reached.">
-            <Chips
-              items={hubs.map((h) => ({ value: h, label: '#' + (p.model.hubs.find((x) => x.id === h)?.name ?? h) }))}
-              onRemove={(h) => setHubs(hubs.filter((x) => x !== h))}
-              onAdd={(h) => setHubs([...hubs, h])}
-              choices={p.model.hubs.filter((h) => !hubs.includes(h.id)).map((h) => ({ value: h.id, label: '#' + h.name }))}
-              addLabel="Add to a hub…"
-            />
-          </Field>
+          <p className="text-xs text-muted-foreground">It joins the room. Give it a system next, or make it the orchestrator in the project.</p>
         </>
       )}
       {what === 'sidecar' && (

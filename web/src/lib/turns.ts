@@ -31,24 +31,25 @@ export function groupTurns(agent: string, entries: Activity[]): Turn[] {
 }
 
 // turnKeys returns the conversations that show a turn: the ones of the
-// messages that woke the agent, read from its trigger, or the agent's hubs
-// when nothing woke it, such as indexing.
-export function turnKeys(t: Turn, hubsOf: string[], me: string): string[] {
+// messages that woke the agent, read from its trigger ("woken by user in
+// the room, lead directly"), or the room when nothing woke it, such as
+// indexing.
+export function turnKeys(t: Turn, me: string): string[] {
   const keys = new Set<string>()
   const trigger = t.trigger ?? ''
-  for (const m of trigger.matchAll(/(\S+) in #([\w-]+)/g)) keys.add(`hub:${m[2]}`)
-  for (const m of trigger.matchAll(/(\S+) by direct message/g)) {
+  if (/\S+ in the room/.test(trigger)) keys.add('room')
+  for (const m of trigger.matchAll(/([\w-]+) directly/g)) {
     const fake: Message = { id: 0, from: m[1], to: t.agent, body: '', time: t.time }
     for (const k of conversationKeys(fake, me)) keys.add(k)
   }
-  if (keys.size === 0) for (const h of hubsOf) keys.add(`hub:${h}`)
+  if (keys.size === 0) keys.add('room')
   return [...keys]
 }
 
-export function turnInView(t: Turn, v: View, hubsOf: string[], me: string): boolean {
+export function turnInView(t: Turn, v: View, me: string): boolean {
   if (v.kind === 'all') return true
-  if (v.kind === 'dm') return v.name === t.agent && turnKeys(t, hubsOf, me).includes(viewKey(v))
-  return turnKeys(t, hubsOf, me).includes(viewKey(v))
+  if (v.kind === 'dm') return v.name === t.agent && turnKeys(t, me).includes(viewKey(v))
+  return turnKeys(t, me).includes(viewKey(v))
 }
 
 export type Item = { kind: 'message'; message: Message } | { kind: 'turn'; turn: Turn }
@@ -111,8 +112,8 @@ export function stepLabel(a: Activity): string {
   }
   if (hikariTool.test(tool)) {
     const name = tool.replace(hikariTool, '')
-    const to = str(a.input, 'hub') ? `#${str(a.input, 'hub')}` : str(a.input, 'to')
-    if (name === 'post_to_hub' || name === 'send_direct_message') return `${done ? 'Sent' : 'Sending'} a message to ${to}`
+    if (name === 'post') return `${done ? 'Posted' : 'Posting'} to the room`
+    if (name === 'send_direct_message') return `${done ? 'Sent' : 'Sending'} a message to ${str(a.input, 'to')}`
     return name.replaceAll('_', ' ')
   }
   return tool

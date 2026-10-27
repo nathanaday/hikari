@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Star } from 'lucide-react'
 import { HealthBadge } from '@/components/health'
 import { Markdown } from '@/components/markdown'
 import { Button } from '@/components/ui/button'
@@ -8,7 +7,7 @@ import { asText, storeFileURL, useFetch } from '@/hooks/use-store-file'
 import type { DocKind, WikiDoc, WikiView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { documentBody } from '@/lib/wiki'
-import { agentIDProblem, isUserKind, kindsOf, removeDoc, setKey, template, userDocProblem, wikiName, writeDoc, type WikiIndex } from '@/lib/wikis'
+import { agentIDProblem, isUserKind, kindsOf, removeDoc, template, userDocProblem, wikiName, writeDoc, type WikiIndex } from '@/lib/wikis'
 
 const noNames: ReadonlySet<string> = new Set()
 
@@ -35,7 +34,6 @@ export function DocumentPanel({ wiki, doc, index, onLink }: { wiki: WikiView; do
   if (editing && text.data !== undefined) {
     return <DocumentEditor wiki={wiki} id={doc.id} initial={text.data} onDone={() => setEditing(false)} />
   }
-  const toggleKey = async () => setError(await setKey(wiki.ref, doc.id, !doc.key))
   const remove = async () => {
     const err = await removeDoc(wiki.ref, doc.id)
     setError(err)
@@ -45,7 +43,6 @@ export function DocumentPanel({ wiki, doc, index, onLink }: { wiki: WikiView; do
     <div className="space-y-2 pr-6" data-testid="document-panel">
       <div>
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          {doc.key && <Star className="size-3.5 fill-current text-amber-500" aria-label="key story" />}
           {doc.name || doc.id}
         </h2>
         <code className="text-xs text-muted-foreground">
@@ -67,11 +64,6 @@ export function DocumentPanel({ wiki, doc, index, onLink }: { wiki: WikiView; do
         <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={text.data === undefined}>
           Edit
         </Button>
-        {wiki.scope === 'hub' && doc.kind === 'story' && (
-          <Button size="sm" variant="outline" onClick={toggleKey}>
-            {doc.key ? 'Unmark key' : 'Mark key'}
-          </Button>
-        )}
         {user &&
           (confirm ? (
             <>

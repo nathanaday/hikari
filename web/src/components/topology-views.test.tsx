@@ -10,7 +10,7 @@ describe('DiffView', () => {
     const html = renderToStaticMarkup(<DiffView diff={(plan as Plan).diff} />)
     expect(html).toContain('data-op="+"')
     expect(html).toContain('data-op="-"')
-    expect(html).toContain('name: core')
+    expect(html).toContain('name: chief')
   })
   it('says when nothing changes', () => {
     expect(renderToStaticMarkup(<DiffView diff={[{ op: ' ', text: 'a', old: 1, new: 1 }]} />)).toContain('does not change')
@@ -20,7 +20,7 @@ describe('DiffView', () => {
 describe('FindingsList', () => {
   it('lists each finding with its line, and says when there is none (YY3)', () => {
     const html = renderToStaticMarkup(
-      <FindingsList findings={[{ severity: 'error', stage: 'topology', message: 'hub "main" references unknown agent "ghost"', line: 7 }]} onLine={() => {}} />,
+      <FindingsList findings={[{ severity: 'error', stage: 'topology', message: 'agent "lead" owns no system and is not the orchestrator', line: 7 }]} onLine={() => {}} />,
     )
     expect(html).toContain('Line 7')
     expect(html).toContain('aria-label="error"')

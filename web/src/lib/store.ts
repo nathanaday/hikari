@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Finding, Hub, Message, Mode, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Peer, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -18,14 +18,16 @@ export type State = {
   startFindings: Finding[]
   me: string
   agents: Agent[]
-  hubs: Hub[]
+  // participants lists everyone in the room: the orchestrator first and
+  // the user last.
+  participants: Peer[]
   messages: Message[]
   systems: SystemView[]
-  vocabularies: Vocabulary[]
+  vocabulary: Vocabulary
   // repos and deliverables let the map draw the topology.
   repos: RepoInfo[]
   deliverables: DeliverableInfo[]
-  // wikis holds the wiki of every system and hub.
+  // wikis holds the public wiki and the wiki of every system.
   wikis: WikiView[]
   // activity holds the recent steps of each agent, oldest first.
   activity: Record<string, Activity[]>
@@ -52,10 +54,10 @@ export function initialState(view: View): State {
     startFindings: [],
     me: 'user',
     agents: [],
-    hubs: [],
+    participants: [],
     messages: [],
     systems: [],
-    vocabularies: [],
+    vocabulary: emptyVocabulary,
     repos: [],
     deliverables: [],
     wikis: [],
@@ -65,18 +67,19 @@ export function initialState(view: View): State {
   }
 }
 
-// resolve returns v if it names a hub or agent of s, and All activity if
-// not. Without agents, only the Topology view exists (rule YV5).
-function resolve(v: View, s: Pick<State, 'hubs' | 'agents' | 'systems' | 'mode'>): View {
+const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
+
+// resolve returns v if it names an agent or a system of s, and All activity
+// if not. Without agents, only the Topology view exists (rule YV5).
+function resolve(v: View, s: Pick<State, 'agents' | 'systems' | 'mode'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
-  if (v.kind === 'hub' && s.hubs.some((h) => h.name === v.name)) return v
+  if (v.kind === 'room') return v
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
   if (v.kind === 'shared') return v
   if (v.kind === 'map') {
     if (v.system) return s.systems.some((x) => x.owner === v.system) ? v : { kind: 'map' }
-    if (v.hub) return s.hubs.some((h) => h.name === v.hub) ? v : { kind: 'map' }
     return v
   }
   return allView
@@ -100,7 +103,7 @@ export function reducer(s: State, a: Action): State {
 function applyEvent(s: State, e: ServerEvent): State {
   switch (e.type) {
     case 'snapshot': {
-      const { me, agents, hubs } = e.snapshot
+      const { me, agents } = e.snapshot
       const systems = e.snapshot.systems ?? []
       return {
         ...s,
@@ -113,15 +116,15 @@ function applyEvent(s: State, e: ServerEvent): State {
         startFindings: e.snapshot.start_findings ?? [],
         me,
         agents,
-        hubs,
+        participants: e.snapshot.participants ?? [],
         systems,
         messages: e.snapshot.messages ?? [],
-        vocabularies: e.snapshot.vocabularies ?? [],
+        vocabulary: e.snapshot.vocabulary ?? emptyVocabulary,
         repos: e.snapshot.repos ?? [],
         deliverables: e.snapshot.deliverables ?? [],
         wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
-        view: resolve(s.view, { agents, hubs, systems, mode: e.snapshot.mode ?? 'running' }),
+        view: resolve(s.view, { agents, systems, mode: e.snapshot.mode ?? 'running' }),
         unread: {},
       }
     }
@@ -146,7 +149,7 @@ function applyEvent(s: State, e: ServerEvent): State {
     case 'system':
       return { ...s, systems: replaceBy(s.systems, e.system, (x) => x.owner) }
     case 'vocabulary':
-      return { ...s, vocabularies: replaceBy(s.vocabularies, e.vocabulary, (x) => x.hub) }
+      return { ...s, vocabulary: e.vocabulary }
     case 'wiki':
       return { ...s, wikis: replaceBy(s.wikis, e.wiki, (x) => x.ref) }
     case 'topology':

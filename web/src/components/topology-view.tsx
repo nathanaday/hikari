@@ -121,7 +121,7 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
                 {!data.model ? '' : data.commits ? 'Each save is a commit in the project repository.' : 'Saves are not committed: the topology is not in a project repository.'}
               </>
             ) : (
-              'The topology is a Docker compose file. Its x-hikari keys describe the hubs, the agents, and their systems.'
+              'The topology is a Docker compose file. Its x-hikari keys describe the orchestrator, the agents, and their systems.'
             )}
           </p>
           {data?.exists && (
@@ -183,7 +183,7 @@ function CreateProject({ file, onCreated }: { file: string; onCreated: () => voi
       <div className="mx-auto max-w-xl space-y-4">
         <h2 className="text-lg font-semibold">There is no {file} yet</h2>
         <p className="text-sm text-muted-foreground">
-          hikari reads the topology from {file}. Create the project, and hikari writes a starter topology with one orchestrator and one hub.
+          hikari reads the topology from {file}. Create the project, and hikari writes a starter topology with one orchestrator.
         </p>
         <ul className="space-y-1.5 text-sm">
           <li>

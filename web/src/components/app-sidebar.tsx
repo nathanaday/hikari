@@ -1,4 +1,4 @@
-import { Activity, BookOpen, FileCode2, Hash, Network } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, MessagesSquare, Network } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -68,16 +68,13 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             <SidebarGroup>
               <SidebarMenu>
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
-                {(state.systems.length > 0 || state.hubs.length > 0) && item({ kind: 'map' }, 'Map', <Network />)}
+                {state.systems.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
                 {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
                 {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}
               </SidebarMenu>
             </SidebarGroup>
             <SidebarGroup>
-              <SidebarGroupLabel>Hubs</SidebarGroupLabel>
-              <SidebarMenu>
-                {state.hubs.map((h) => item({ kind: 'hub', name: h.name }, h.name, <Hash />))}
-              </SidebarMenu>
+              <SidebarMenu>{item({ kind: 'room' }, 'Room', <MessagesSquare />)}</SidebarMenu>
             </SidebarGroup>
             {state.systems.length > 0 && (
               <SidebarGroup>

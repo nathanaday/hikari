@@ -18,15 +18,15 @@ export function Composer({ state, draft, setDraft, send, inputRef }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const v = state.view
-  if (v.kind !== 'dm' && (v.kind !== 'hub' || v.tab === 'vocabulary')) return null
+  if (v.kind !== 'dm' && (v.kind !== 'room' || v.tab === 'vocabulary')) return null
 
-  const hub = v.kind === 'hub' ? state.hubs.find((h) => h.name === v.name) : undefined
-  const woken = hub ? wakeTargets(hub, state.me, draft) : []
-  const hint = hub ? (
+  const room = v.kind === 'room'
+  const woken = room ? wakeTargets(state.participants, state.me, draft) : []
+  const hint = room ? (
     <>
       <Zap className="size-3" />
-      <span data-testid="wake-preview">Wakes {woken.join(', ')}</span>
-      <span className="hidden sm:inline">· write @name to wake a member</span>
+      <span data-testid="wake-preview">{woken.length ? `Wakes ${woken.join(', ')}` : 'Wakes no agent'}</span>
+      <span className="hidden sm:inline">· write @name to wake an agent</span>
     </>
   ) : (
     <>
@@ -38,7 +38,7 @@ export function Composer({ state, draft, setDraft, send, inputRef }: Props) {
   const submit = async () => {
     if (!draft.trim() || sending) return
     setSending(true)
-    const req: SendRequest = hub ? { hub: hub.name, body: draft } : { to: v.name, body: draft }
+    const req: SendRequest = room ? { body: draft } : { to: v.name, body: draft }
     const err = await send(req)
     setSending(false)
     setError(err)
@@ -67,7 +67,7 @@ export function Composer({ state, draft, setDraft, send, inputRef }: Props) {
             }
           }}
           rows={1}
-          placeholder={hub ? `Message #${hub.name}` : `Message ${v.name}`}
+          placeholder={room ? 'Message the room' : `Message ${v.name}`}
           aria-label="Message"
           className="max-h-48 min-h-11 resize-none border-0 px-3 py-2.5 shadow-none focus-visible:ring-0"
         />

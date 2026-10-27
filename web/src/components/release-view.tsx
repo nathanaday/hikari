@@ -98,7 +98,6 @@ export function ReleaseBody({ system, deliverable, version, data }: { system: st
               <code className="text-xs break-all">{m.product.digest}</code>
             </Field>
             <Field label="hikari">{m.hikari}</Field>
-            {m.hubs?.length ? <Field label="announced">{m.hubs.map((h) => `#${h}`).join(', ')}</Field> : null}
           </div>
           {m.certificates?.length ? (
             <div>

@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { MessagesSquare, Zap } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
-import { NetworkMap } from '@/components/network-map'
 import { NodeAvatar } from '@/components/node-avatar'
 import { TurnCard } from '@/components/turn-card'
 import { orchestratorOf } from '@/lib/rules'
@@ -13,10 +12,10 @@ import { inView, viewKey, type View } from '@/lib/view'
 const groupWindowMs = 5 * 60 * 1000
 
 function channel(m: Message): string {
-  return m.hub ? `#${m.hub}` : `${[m.from, m.to].sort().join('>')}`
+  return m.to ? `${[m.from, m.to].sort().join('>')}` : 'room'
 }
 
-export function MessageList({ state, show }: { state: State; show: (v: View) => void }) {
+export function MessageList({ state }: { state: State }) {
   const ref = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const v = state.view
@@ -25,26 +24,14 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
     const out: Turn[] = []
     for (const a of state.agents) {
       for (const t of groupTurns(a.name, state.activity[a.name] ?? [])) {
-        if (turnInView(t, v, a.hubs, state.me)) out.push(t)
+        if (turnInView(t, v, state.me)) out.push(t)
       }
     }
     return out
   }, [state.activity, state.agents, v, state.me])
   const items = useMemo(() => timeline(shown, turns), [shown, turns])
-  // An agent's text can mention anyone that shares a hub with it.
-  const contacts = useMemo(() => {
-    const out = new Map<string, Set<string>>()
-    for (const a of state.agents) {
-      const names = new Set(state.hubs.filter((h) => h.participants.some((p) => p.name === a.name)).flatMap((h) => h.participants.map((p) => p.name)))
-      out.set(a.name, names)
-    }
-    return out
-  }, [state.agents, state.hubs])
-  const hubNames = useMemo(
-    () => new Map(state.hubs.map((h) => [h.name, new Set(h.participants.map((p) => p.name))])),
-    [state.hubs],
-  )
-  const noNames = useMemo(() => new Set<string>(), [])
+  // Anyone in the room can be mentioned.
+  const names = useMemo(() => new Set(state.participants.map((p) => p.name)), [state.participants])
 
   const key = viewKey(v)
   useLayoutEffect(() => {
@@ -70,7 +57,6 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
 
   return (
     <div ref={ref} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto" data-testid="log">
-      {v.kind === 'all' && <NetworkMap state={state} show={show} />}
       {items.length === 0 ? (
         <Empty view={v} />
       ) : (
@@ -78,7 +64,7 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
           {items.map((item, i) => {
             if (item.kind === 'turn') {
               const t = item.turn
-              return <TurnCard key={`${t.agent}:${t.id}`} turn={t} names={contacts.get(t.agent) ?? noNames} />
+              return <TurnCard key={`${t.agent}:${t.id}`} turn={t} names={names} />
             }
             const m = item.message
             const prevItem = items[i - 1]
@@ -88,15 +74,7 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
               prev.from === m.from &&
               channel(prev) === channel(m) &&
               Date.parse(m.time) - Date.parse(prev.time) < groupWindowMs
-            return (
-              <MessageRow
-                key={m.id}
-                m={m}
-                compact={compact}
-                state={state}
-                names={m.hub ? hubNames.get(m.hub) ?? noNames : noNames}
-              />
-            )
+            return <MessageRow key={m.id} m={m} compact={compact} state={state} names={names} />
           })}
         </div>
       )}
@@ -106,10 +84,9 @@ export function MessageList({ state, show }: { state: State; show: (v: View) => 
 
 function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean; state: State; names: ReadonlySet<string> }) {
   const me = state.me
-  const hub = m.hub ? state.hubs.find((h) => h.name === m.hub) : undefined
-  const isOrchestrator = hub !== undefined && orchestratorOf(hub) === m.from
+  const isOrchestrator = orchestratorOf(state.participants) === m.from
   const time = new Date(m.time)
-  const privateDM = !m.hub && m.from !== me && m.to !== me
+  const privateDM = !!m.to && m.from !== me && m.to !== me
 
   return (
     <div data-testid="message" className={`flex gap-3 px-4 hover:bg-neutral-50 md:px-6 ${compact ? 'py-0.5' : 'pt-2.5 pb-0.5'}`}>
@@ -121,7 +98,7 @@ function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean
             {isOrchestrator && <span className="text-xs text-muted-foreground">orchestrator</span>}
             {state.view.kind === 'all' && (
               <span className="text-xs text-muted-foreground" data-testid="channel">
-                {m.hub ? `in #${m.hub}` : `to ${m.to === me ? 'you' : m.to}${privateDM ? ' · private' : ''}`}
+                {m.to ? `to ${m.to === me ? 'you' : m.to}${privateDM ? ' · private' : ''}` : 'in the room'}
               </span>
             )}
             <time dateTime={m.time} title={time.toLocaleString()} className="text-xs text-muted-foreground">
@@ -130,7 +107,7 @@ function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean
           </div>
         )}
         <Markdown text={m.body} names={names} />
-        {m.hub && (
+        {!m.to && (
           <div className="mt-0.5 mb-1 flex items-center gap-1 text-xs text-muted-foreground" data-testid="woke">
             <Zap className="size-3" />
             {m.woke?.length ? `woke ${m.woke.join(', ')}` : 'woke no agents'}
@@ -143,11 +120,11 @@ function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean
 
 function Empty({ view }: { view: View }) {
   const hint =
-    view.kind === 'hub'
-      ? `Post to #${view.name} to start.`
+    view.kind === 'room'
+      ? 'Post to the room to start.'
       : view.kind === 'dm'
         ? `Send ${view.name} a direct message.`
-        : 'Open a hub or a direct message to send the first message.'
+        : 'Open the room or a direct message to send the first message.'
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-16 text-center text-sm text-muted-foreground">
       <MessagesSquare className="size-6 text-neutral-300" />

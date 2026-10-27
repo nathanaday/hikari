@@ -6,22 +6,17 @@ import { allView } from './view'
 const snapshot: Snapshot = {
   me: 'user',
   agents: [
-    { name: 'lead', hubs: ['eng'], status: { state: 'idle' } },
-    { name: 'dev', hubs: ['eng'], status: { state: 'idle' } },
+    { name: 'lead', role: 'orchestrator', status: { state: 'idle' } },
+    { name: 'dev', role: 'owner', status: { state: 'idle' } },
   ],
-  hubs: [
-    {
-      name: 'eng',
-      participants: [
-        { name: 'lead', role: 'orchestrator' },
-        { name: 'dev', role: 'member' },
-        { name: 'user', role: 'operator' },
-      ],
-    },
+  participants: [
+    { name: 'lead', role: 'orchestrator' },
+    { name: 'dev', role: 'owner' },
+    { name: 'user', role: 'operator' },
   ],
   messages: [],
   systems: [],
-  vocabularies: [],
+  vocabulary: { version: 1, terms: [], interfaces: [] },
 }
 
 let nextID = 1
@@ -38,8 +33,8 @@ describe('reducer', () => {
     expect(reducer(initialState(allView), { type: 'event', event: { type: 'snapshot', snapshot: { ...snapshot, version: '0.0.1' } } }).version).toBe('0.0.1')
   })
 
-  it('keeps a view from the URL that names a known hub', () => {
-    expect(loaded({ kind: 'hub', name: 'eng' }).view).toEqual({ kind: 'hub', name: 'eng' })
+  it('keeps the room view from the URL', () => {
+    expect(loaded({ kind: 'room', tab: 'wiki' }).view).toEqual({ kind: 'room', tab: 'wiki' })
   })
 
   it('falls back to All activity for an unknown view', () => {
@@ -56,24 +51,24 @@ describe('reducer', () => {
 
   it('counts unread messages per conversation, not for the open view', () => {
     let s = loaded({ kind: 'dm', name: 'dev' })
-    s = receive(s, msg({ hub: 'eng' }))
+    s = receive(s, msg({}))
     s = receive(s, msg({ to: 'user' }))
     s = receive(s, msg({ from: 'lead', to: 'user' }))
     s = receive(s, msg({ from: 'lead', to: 'user' }))
-    expect(s.unread).toEqual({ 'hub:eng': 1, 'dm:lead': 2 })
+    expect(s.unread).toEqual({ room: 1, 'dm:lead': 2 })
   })
 
   it('does not count messages from the user or between agents', () => {
     let s = loaded()
-    s = receive(s, msg({ from: 'user', hub: 'eng' }))
+    s = receive(s, msg({ from: 'user' }))
     s = receive(s, msg({ from: 'dev', to: 'lead' }))
     expect(s.unread).toEqual({})
     expect(s.messages).toHaveLength(2)
   })
 
   it('clears the count of a view when it opens', () => {
-    let s = receive(loaded(), msg({ hub: 'eng' }))
-    s = reducer(s, { type: 'view', view: { kind: 'hub', name: 'eng' } })
+    let s = receive(loaded(), msg({}))
+    s = reducer(s, { type: 'view', view: { kind: 'room', tab: 'vocabulary' } })
     expect(s.unread).toEqual({})
   })
 
@@ -98,11 +93,11 @@ const systemView = (owner: string, state: 'unbuilt' | 'current' = 'unbuilt'): Sy
   providers: null,
 })
 
-describe('systems and vocabularies', () => {
+describe('systems and the vocabulary', () => {
   const withSystems = () =>
     reducer(initialState({ kind: 'system', name: 'dev' }), {
       type: 'event',
-      event: { type: 'snapshot', snapshot: { ...snapshot, systems: [systemView('dev')], vocabularies: [] } },
+      event: { type: 'snapshot', snapshot: { ...snapshot, systems: [systemView('dev')] } },
     })
 
   it('keeps a system view from the URL for a known system', () => {
@@ -124,10 +119,9 @@ describe('systems and vocabularies', () => {
     expect(s.systems[0].state).toBe('current')
   })
 
-  it('adds or replaces a vocabulary on a vocabulary event', () => {
-    const v = { version: 1, hub: 'eng', terms: [{ term: 'order', definition: 'x' }], interfaces: [] }
-    let s = reducer(withSystems(), { type: 'event', event: { type: 'vocabulary', vocabulary: v } })
-    s = reducer(s, { type: 'event', event: { type: 'vocabulary', vocabulary: { ...v, terms: [] } } })
-    expect(s.vocabularies).toEqual([{ ...v, terms: [] }])
+  it('replaces the vocabulary on a vocabulary event', () => {
+    const v = { version: 1, terms: [{ term: 'order', definition: 'x' }], interfaces: [] }
+    const s = reducer(withSystems(), { type: 'event', event: { type: 'vocabulary', vocabulary: v } })
+    expect(s.vocabulary).toEqual(v)
   })
 })

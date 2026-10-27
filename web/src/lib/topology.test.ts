@@ -14,20 +14,20 @@ const snapshot = (mode: Snapshot['mode']): Snapshot => ({
   start_findings: mode === 'editing' ? [{ severity: 'error', stage: 'start', message: 'a repo has uncommitted changes' }] : undefined,
   me: 'user',
   agents: [],
-  hubs: [],
+  participants: [],
   messages: [],
   systems: [],
-  vocabularies: [],
+  vocabulary: { version: 1, terms: [], interfaces: [] },
 })
 
 describe('the topology fixtures', () => {
   it('read as the wire types (A5)', () => {
     const s = stateFixture as TopologyState
     expect(s.exists).toBe(true)
-    expect(s.model?.hubs[0].id).toBe('main')
+    expect(s.model?.project.orchestration).toBe('lead')
     const p = plan as Plan
     expect(p.diff.some((l) => l.op === '+')).toBe(true)
-    expect(p.summary).toContain('rename hub #main to #core')
+    expect(p.summary).toContain('rename agent lead to chief')
   })
 })
 
@@ -65,7 +65,7 @@ describe('state (YS1, YV5)', () => {
 describe('findings (YY2, YY3)', () => {
   const fs: Finding[] = [
     { severity: 'warning', stage: 'start', message: 'no credential' },
-    { severity: 'error', stage: 'topology', message: 'unknown agent', line: 7, path: 'x-hikari.hubs.main.members[0]' },
+    { severity: 'error', stage: 'topology', message: 'unknown agent', line: 7, path: 'x-hikari.orchestration' },
     { severity: 'warning', stage: 'topology', message: 'unused repo', line: 3 },
     { severity: 'error', stage: 'yaml', message: 'did not find expected node', line: 40 },
   ]

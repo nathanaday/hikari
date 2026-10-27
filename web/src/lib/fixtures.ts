@@ -1,4 +1,4 @@
-import type { Agent, AgentState, DocKind, Feature, Health, SystemView, WikiDoc, WikiView } from './types'
+import type { Agent, AgentState, DocKind, Feature, Health, Role, SystemView, WikiDoc, WikiView } from './types'
 
 // Test fixtures shaped like the shop demo.
 
@@ -30,8 +30,8 @@ export function system(owner: string, features: Feature[] = [], extra: Partial<S
   }
 }
 
-export function agent(name: string, state: AgentState = 'idle'): Agent {
-  return { name, hubs: ['shop'], status: { state } }
+export function agent(name: string, state: AgentState = 'idle', role: Role = 'owner'): Agent {
+  return { name, role, status: { state } }
 }
 
 export function doc(id: string, kind: DocKind = 'feature', extra: Partial<WikiDoc> = {}): WikiDoc {
@@ -39,6 +39,6 @@ export function doc(id: string, kind: DocKind = 'feature', extra: Partial<WikiDo
 }
 
 export function wikiOf(ref: string, documents: WikiDoc[]): WikiView {
-  const [scope, name] = ref.split(':')
-  return { ref, scope: scope as 'hub' | 'system', name, documents }
+  if (ref === 'public') return { ref, scope: 'public', name: 'public', documents }
+  return { ref, scope: 'system', name: ref.slice(ref.indexOf(':') + 1), documents }
 }

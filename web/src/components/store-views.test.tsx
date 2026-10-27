@@ -24,7 +24,6 @@ const release: ReleaseDetail = {
     notes: 'First release.',
     hikari: '0.0.1',
     source_commit: '23732d5585d3cec9b4798f825ba99c519488b2e0',
-    hubs: ['shop'],
     product: { path: 'product/', files: 3, bytes: 2569, digest: 'sha256:d8c523f2' },
     map: 'map.yaml',
     certificates: [
@@ -62,7 +61,7 @@ const marked = (html: string) => {
 describe('ReleaseBody', () => {
   it('shows the manifest, the certificates, and the files with digests (U14)', () => {
     const html = renderToStaticMarkup(<ReleaseBody system="inventory" deliverable="python-library" version="0.1.0" data={release} />)
-    for (const want of ['First release.', '3 files, 2569 bytes', 'sha256:d8c523f2', '23732d5', '#shop', 'href="https://github.com/acme/inventory/releases/tag/v0.1.0"', 'acme/inventory · v0.1.0', 'sha256:abc', 'product/inventory/stock.py', 'a40eab3a', 'sha256 0ffc73ea41e7']) {
+    for (const want of ['First release.', '3 files, 2569 bytes', 'sha256:d8c523f2', '23732d5', 'href="https://github.com/acme/inventory/releases/tag/v0.1.0"', 'acme/inventory · v0.1.0', 'sha256:abc', 'product/inventory/stock.py', 'a40eab3a', 'sha256 0ffc73ea41e7']) {
       expect(html).toContain(want)
     }
     expect(html.match(/data-testid="certificate"/g)).toHaveLength(2)

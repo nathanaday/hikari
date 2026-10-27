@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { SeverityDot } from '@/components/findings-list'
 import { PlanReview } from '@/components/plan-review'
-import { AddForm, AgentInspector, HubInspector, type InspectorProps, type Options, ProjectInspector, RepoInspector, SidecarInspector } from '@/components/structure-inspectors'
+import { AddForm, AgentInspector, type InspectorProps, type Options, ProjectInspector, RepoInspector, SidecarInspector } from '@/components/structure-inspectors'
 import { Button } from '@/components/ui/button'
 import { exists, findingsOf, parseSelection, roles, selectionKey, worst, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { applyOps, getOptions, planOps } from '@/lib/topology'
@@ -111,7 +111,6 @@ export function StructureTab({ data, mode, reload, show, select: selectKey, onPe
           <div className="mx-auto max-w-2xl" key={key}>
             {selection.kind === 'project' && <ProjectInspector {...inspector} />}
             {selection.kind === 'repo' && <RepoInspector {...inspector} id={selection.id} />}
-            {selection.kind === 'hub' && <HubInspector {...inspector} id={selection.id} />}
             {selection.kind === 'agent' && <AgentInspector {...inspector} id={selection.id} />}
             {selection.kind === 'sidecar' && <SidecarInspector {...inspector} id={selection.id} />}
             {selection.kind === 'add' && <AddForm {...inspector} what={selection.what} />}
@@ -202,19 +201,6 @@ export function EntityList({ model, findings, selected, select }: { model: Topol
       <Group title="Repos" add="repo" onAdd={onAdd}>
         {model.repos.map((r) => (
           <Row key={r.id} active={selected === `repo:${r.id}`} title={r.name} id={r.id} sub={r.url || r.path} severity={sev({ kind: 'repo', id: r.id })} onClick={() => select({ kind: 'repo', id: r.id })} />
-        ))}
-      </Group>
-      <Group title="Hubs" add="hub" onAdd={onAdd}>
-        {model.hubs.map((h) => (
-          <Row
-            key={h.id}
-            active={selected === `hub:${h.id}`}
-            title={`#${h.name}`}
-            id={h.id}
-            sub={h.members.length === 1 ? '1 member' : `${h.members.length} members`}
-            severity={sev({ kind: 'hub', id: h.id })}
-            onClick={() => select({ kind: 'hub', id: h.id })}
-          />
         ))}
       </Group>
       <Group title="Agents" add="agent" onAdd={onAdd}>

@@ -1,14 +1,13 @@
-import { BookOpen, Boxes, Hash, Network, Package } from 'lucide-react'
+import { BookOpen, Boxes, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
 import { NodeAvatar } from '@/components/node-avatar'
 import { StatusDot } from '@/components/status-dot'
 import { mapStateLabel } from '@/lib/labels'
-import { orchestratorOf } from '@/lib/rules'
 import type { State } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import type { HubTab, View } from '@/lib/view'
+import type { RoomTab, View } from '@/lib/view'
 
 type Props = { state: State; show: (v: View) => void; onMention: (name: string) => void }
 
@@ -42,23 +41,24 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           {v.system}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The wiki of {v.system}: its features, principles, and rules, your plans and notes, and the documents of its hubs that link them.{' '}
+          The wiki of {v.system}: its features, principles, and rules, your plans and notes, and the documents of the public wiki that link them.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.system! })}>
             Open the system page
           </button>
           .
         </p>
       </>
-    ) : v.hub ? (
+    ) : v.public ? (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <Network className="size-4 text-muted-foreground" />
           {crumb}
-          <span className="font-normal text-muted-foreground">/</span>#{v.hub}
+          <span className="font-normal text-muted-foreground">/</span>
+          public wiki
         </h1>
         <p className="text-sm text-muted-foreground">
-          The wiki of #{v.hub}: its stories, rules, and principles, your plans and notes, and the features of its systems that they link.{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'hub', name: v.hub!, tab: 'wiki' })}>
+          The public wiki: its stories, rules, and principles, your plans and notes, and the features of the systems that they link.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'room', tab: 'wiki' })}>
             Open the list
           </button>
           .
@@ -70,7 +70,9 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           <Network className="size-4 text-muted-foreground" />
           Map
         </h1>
-        <p className="text-sm text-muted-foreground">Each hub and system, with its repository and the deliverables it holds. Click a system or a hub to open its wiki.</p>
+        <p className="text-sm text-muted-foreground">
+          The orchestrator and each system, with its repository and the deliverables it holds. Click a system to open its wiki, or the orchestrator to open the public wiki.
+        </p>
       </>
     )
   } else if (v.kind === 'shared') {
@@ -81,7 +83,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           Shared
         </h1>
         <p className="text-sm text-muted-foreground">
-          What every agent can read in store/shared: your policies, skills, agent definitions, and deliverables. The hub vocabularies are in each hub.
+          What every agent can read in store/shared: your policies, skills, agent definitions, and deliverables. The vocabulary and the public wiki are in the room.
         </p>
       </>
     )
@@ -105,17 +107,14 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         </p>
       </>
     )
-  } else if (v.kind === 'hub') {
-    const hub = state.hubs.find((h) => h.name === v.name)!
-    const vocab = state.vocabularies.find((x) => x.hub === hub.name)
-    const entries = (vocab?.terms.length ?? 0) + (vocab?.interfaces.length ?? 0)
-    const hubWiki = state.wikis.find((w) => w.ref === `hub:${hub.name}`)
-    const docs = hubWiki?.documents.length ?? 0
+  } else if (v.kind === 'room') {
+    const entries = state.vocabulary.terms.length + state.vocabulary.interfaces.length
+    const docs = state.wikis.find((w) => w.ref === 'public')?.documents.length ?? 0
     const tab = v.tab ?? 'messages'
-    const tabButton = (t: HubTab, label: string) => (
+    const tabButton = (t: RoomTab, label: string) => (
       <button
         type="button"
-        onClick={() => show({ kind: 'hub', name: hub.name, tab: t === 'messages' ? undefined : t })}
+        onClick={() => show({ kind: 'room', tab: t === 'messages' ? undefined : t })}
         aria-pressed={tab === t}
         className={cn(
           '-mb-px border-b-2 px-1 pb-2 text-sm transition-colors',
@@ -127,13 +126,13 @@ export function ConversationHeader({ state, show, onMention }: Props) {
     )
     body = (
       <>
-        <h1 className="flex items-center gap-1 text-base font-semibold">
-          <Hash className="size-4 text-muted-foreground" />
-          {hub.name}
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <MessagesSquare className="size-4 text-muted-foreground" />
+          Room
         </h1>
-        {hub.description && <p className="text-sm text-muted-foreground">{hub.description}</p>}
+        <p className="text-sm text-muted-foreground">Every agent and you. A post reaches everyone.</p>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {hub.participants.map((p) =>
+          {state.participants.map((p) =>
             p.name === state.me ? (
               <Badge key={p.name} variant="outline" className="h-6 gap-1.5 font-normal text-muted-foreground">
                 you
@@ -196,10 +195,6 @@ export function ConversationHeader({ state, show, onMention }: Props) {
     )
   } else {
     const agent = state.agents.find((a) => a.name === v.name)!
-    const roles = agent.hubs.map((h) => {
-      const hub = state.hubs.find((x) => x.name === h)!
-      return `${orchestratorOf(hub) === agent.name ? 'orchestrator' : 'member'} of #${h}`
-    })
     const owns = state.systems.some((x) => x.owner === agent.name)
     body = (
       <div className="flex gap-3">
@@ -213,7 +208,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             </Badge>
           </h1>
           <p className="text-sm text-muted-foreground">
-            {[agent.description, roles.join(', ')].filter(Boolean).join(' · ')}
+            {[agent.description, agent.role].filter(Boolean).join(' · ')}
             {owns && (
               <>
                 {' · '}

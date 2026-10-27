@@ -2,9 +2,9 @@ import { useCallback, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
-import { HubWiki } from '@/components/hub-wiki'
 import { MapView } from '@/components/map-view'
 import { MessageList } from '@/components/message-list'
+import { PublicWiki } from '@/components/public-wiki'
 import { SignIn } from '@/components/sign-in'
 import { ReleaseView } from '@/components/release-view'
 import { SharedView } from '@/components/shared-view'
@@ -14,6 +14,7 @@ import { VocabularyPanel } from '@/components/vocabulary-panel'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useHikari } from '@/hooks/use-hikari'
+import { orchestratorOf } from '@/lib/rules'
 import { viewKey } from '@/lib/view'
 
 export default function App() {
@@ -39,12 +40,12 @@ export default function App() {
     main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} system={v.name} deliverable={v.deliverable} version={v.version} />
   } else if (v.kind === 'shared') {
     main = <SharedView />
-  } else if (v.kind === 'hub' && v.tab === 'wiki') {
-    main = <HubWiki hub={state.hubs.find((h) => h.name === v.name)!} wiki={state.wikis.find((w) => w.ref === `hub:${v.name}`)} show={show} />
-  } else if (v.kind === 'hub' && v.tab === 'vocabulary') {
-    main = <VocabularyPanel hub={state.hubs.find((h) => h.name === v.name)!} vocabulary={state.vocabularies.find((x) => x.hub === v.name)} />
+  } else if (v.kind === 'room' && v.tab === 'wiki') {
+    main = <PublicWiki orchestrator={orchestratorOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
+  } else if (v.kind === 'room' && v.tab === 'vocabulary') {
+    main = <VocabularyPanel orchestrator={orchestratorOf(state.participants)} vocabulary={state.vocabulary} />
   } else {
-    main = <MessageList state={state} show={show} />
+    main = <MessageList state={state} />
   }
 
   const mention = (name: string) => {

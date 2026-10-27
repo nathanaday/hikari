@@ -174,7 +174,7 @@ function icon(step: Activity) {
     case 'Skill':
     case 'Agent':
       return Sparkles
-    case 'mcp__hikari__post_to_hub':
+    case 'mcp__hikari__post':
     case 'mcp__hikari__send_direct_message':
       return Send
   }

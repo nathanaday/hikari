@@ -30,11 +30,11 @@ export const validProjectName = (s: string) => s.trim() !== '' && [...s].length 
 // isExpression reports whether compose fills a value in (rule SI8).
 export const isExpression = (v: string) => /\$[{A-Za-z_]/.test(v.replaceAll('$$', ''))
 
-export type Kind = 'agent' | 'hub' | 'repo' | 'sidecar'
+export type Kind = 'agent' | 'repo' | 'sidecar'
 
 // nameProblem says why value cannot be the name or the id of an entity of
 // kind, other than the one whose id is self, or returns null (rule SV1).
-// Agents, hubs, sidecars, and user share a namespace; repos have their own.
+// Agents, sidecars, and user share a namespace; repos have their own.
 export function nameProblem(value: string, kind: Kind, self: string | null, m: TopologyModel): string | null {
   if (!validName(value)) return 'Use a lowercase letter, then lowercase letters, digits, and dashes, up to 32 characters.'
   if (kind === 'repo') {
@@ -45,7 +45,6 @@ export function nameProblem(value: string, kind: Kind, self: string | null, m: T
   if (value === 'user') return 'The name user is reserved for you.'
   const taken = [
     ...m.agents.map((a) => ({ id: a.id, name: a.name, kind: 'agent' })),
-    ...m.hubs.map((h) => ({ id: h.id, name: h.name, kind: 'hub' })),
     ...m.sidecars.map((s) => ({ id: s.id, name: s.id, kind: 'sidecar' })),
   ].find((e) => e.id !== self && (e.id === value || e.name === value))
   return taken ? `The ${taken.kind} ${taken.id} is ${value} already.` : null

@@ -2,8 +2,8 @@ import type { Finding, TopologyAgent, TopologyModel } from './types'
 
 // An entity of the Structure tab: its kind and its id. The project has no
 // id.
-export type Selection = { kind: 'project' } | { kind: 'repo' | 'hub' | 'agent' | 'sidecar'; id: string } | { kind: 'add'; what: AddKind }
-export type AddKind = 'repo' | 'hub' | 'agent' | 'sidecar'
+export type Selection = { kind: 'project' } | { kind: 'repo' | 'agent' | 'sidecar'; id: string } | { kind: 'add'; what: AddKind }
+export type AddKind = 'repo' | 'agent' | 'sidecar'
 
 // Op is one operation of the topology API (section 4 of its spec).
 export type Op = { op: string } & Record<string, unknown>
@@ -18,8 +18,8 @@ export function parseSelection(key: string | undefined): Selection | undefined {
   if (!key) return undefined
   if (key === 'project') return { kind: 'project' }
   const [kind, id] = key.split(':')
-  if (kind === 'add' && ['repo', 'hub', 'agent', 'sidecar'].includes(id)) return { kind: 'add', what: id as AddKind }
-  if (['repo', 'hub', 'agent', 'sidecar'].includes(kind) && id) return { kind: kind as 'repo', id }
+  if (kind === 'add' && ['repo', 'agent', 'sidecar'].includes(id)) return { kind: 'add', what: id as AddKind }
+  if (['repo', 'agent', 'sidecar'].includes(kind) && id) return { kind: kind as 'repo', id }
   return undefined
 }
 
@@ -28,8 +28,6 @@ export function exists(s: Selection, m: TopologyModel): boolean {
   switch (s.kind) {
     case 'repo':
       return m.repos.some((r) => r.id === s.id)
-    case 'hub':
-      return m.hubs.some((h) => h.id === s.id)
     case 'agent':
       return m.agents.some((a) => a.id === s.id)
     case 'sidecar':
@@ -42,11 +40,9 @@ export function exists(s: Selection, m: TopologyModel): boolean {
 export function entityPaths(s: Selection): string[] {
   switch (s.kind) {
     case 'project':
-      return ['name', 'x-hikari.name', 'x-hikari.project', 'x-hikari.store']
+      return ['name', 'x-hikari.name', 'x-hikari.project', 'x-hikari.store', 'x-hikari.orchestration']
     case 'repo':
       return [`x-hikari.repos.${s.id}`]
-    case 'hub':
-      return [`x-hikari.hubs.${s.id}`]
     case 'agent':
     case 'sidecar':
       return [`services.${s.id}`]
@@ -68,16 +64,12 @@ export function worst(fs: Finding[]): Finding['severity'] | null {
   return fs.length ? 'warning' : null
 }
 
-// roles says what an agent does, by the names of its hubs (decision 2 of
-// the structure view spec).
+// roles says what an agent does (decision 2 of the structure view spec).
 export function roles(a: TopologyAgent, m: TopologyModel): string {
   const parts: string[] = []
-  const orchestrates = m.hubs.filter((h) => h.orchestrator === a.id).map((h) => `#${h.name}`)
-  const member = m.hubs.filter((h) => h.members.includes(a.id)).map((h) => `#${h.name}`)
-  if (orchestrates.length) parts.push(`orchestrates ${orchestrates.join(', ')}`)
-  if (member.length) parts.push(`member of ${member.join(', ')}`)
+  if (m.project.orchestration === a.id) parts.push('orchestrator')
   if (a.system) parts.push(`owns ${m.repos.find((r) => r.id === a.system!.repo)?.name ?? a.system.repo}${a.system.scope ? '/' + a.system.scope : ''}`)
-  if (!parts.length) parts.push('in no hub')
+  if (!parts.length) parts.push('owns no system')
   return parts.join(', ')
 }
 

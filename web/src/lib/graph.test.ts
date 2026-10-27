@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { doc, feature, system, wikiOf } from './fixtures'
 import { docNodeID, featureRadius, neighborsOf, systemRadius, topologyGraph, wikiGraph } from './graph'
-import type { Hub } from './types'
 import { wikiIndex } from './wikis'
 
 const shop = () => ({
@@ -51,21 +50,14 @@ describe('topologyGraph', () => {
   })
 })
 
-describe('topologyGraph with hubs', () => {
-  const hub = (name: string, orchestrator: string, members: string[]): Hub => ({
-    name,
-    participants: [{ name: orchestrator, role: 'orchestrator' }, ...members.map((m) => ({ name: m, role: 'member' as const })), { name: 'user', role: 'operator' }],
-  })
-
-  it('draws each hub as a hexagon joined to its systems and its child hubs (U1)', () => {
-    const g = topologyGraph({ ...shop(), hubs: [hub('shop', 'lead', ['orders', 'inventory', 'writer']), hub('company', 'ceo', ['lead'])] })
-    const hubs = g.nodes.filter((n) => n.kind === 'hub')
-    expect(hubs.map((n) => [n.id, n.shape, n.label])).toEqual([
-      ['hub:company', 'hexagon', '#company'],
-      ['hub:shop', 'hexagon', '#shop'],
-    ])
-    const edges = g.edges.filter((e) => e.source.startsWith('hub:')).map((e) => `${e.source} ${e.target}`)
-    expect(edges).toEqual(['hub:company hub:shop', 'hub:shop system:inventory', 'hub:shop system:orders'])
+describe('topologyGraph with an orchestrator', () => {
+  it('draws the orchestrator as a hexagon joined to every system (decision 5)', () => {
+    const g = topologyGraph({ ...shop(), orchestrator: 'lead' })
+    const lead = g.nodes.filter((n) => n.kind === 'orchestrator')
+    expect(lead.map((n) => [n.id, n.shape, n.label])).toEqual([['orchestrator:lead', 'hexagon', 'lead']])
+    const edges = g.edges.filter((e) => e.source.startsWith('orchestrator:')).map((e) => `${e.source} ${e.target}`)
+    expect(edges).toEqual(['orchestrator:lead system:inventory', 'orchestrator:lead system:orders'])
+    expect(g.edges.filter((e) => e.dashed)).toHaveLength(1)
   })
 })
 
@@ -76,12 +68,12 @@ describe('wikiGraph', () => {
     doc('never-oversell', 'rule', { links: ['create-order', 'stock-never-negative'] }),
     doc('Ideas', 'note', { links: ['create-order'] }),
   ])
-  const shop = wikiOf('hub:shop', [
+  const pub = wikiOf('public', [
     doc('order-items', 'story', { name: 'Order items', links: ['create-order', 'reserve-stock'] }),
     doc('stock-never-negative', 'rule'),
   ])
   const inventory = wikiOf('system:inventory', [doc('reserve-stock', 'feature')])
-  const index = wikiIndex([shop, orders, inventory])
+  const index = wikiIndex([pub, orders, inventory])
 
   it('has a node per document with the shape of its kind (U2, U3)', () => {
     const g = wikiGraph(orders, index)
@@ -100,19 +92,19 @@ describe('wikiGraph', () => {
     const g = wikiGraph(orders, index)
     const foreign = g.nodes.filter((n) => n.foreign).map((n) => [n.id, n.label, n.radius])
     expect(foreign).toEqual([
-      [docNodeID('hub:shop', 'order-items'), 'Order items · #shop', 4],
-      [docNodeID('hub:shop', 'stock-never-negative'), 'stock-never-negative · #shop', 4],
+      [docNodeID('public', 'order-items'), 'Order items · the public wiki', 4],
+      [docNodeID('public', 'stock-never-negative'), 'stock-never-negative · the public wiki', 4],
     ])
     expect([...neighborsOf(g, docNodeID('system:orders', 'create-order'))].sort()).toEqual([
-      docNodeID('hub:shop', 'order-items'),
+      docNodeID('public', 'order-items'),
       docNodeID('system:orders', 'Ideas'),
       docNodeID('system:orders', 'never-oversell'),
       docNodeID('system:orders', 'validate-order'),
     ])
   })
 
-  it('draws the stories of a hub with the features of its systems', () => {
-    const g = wikiGraph(shop, index)
+  it('draws the stories of the public wiki with the features of the systems', () => {
+    const g = wikiGraph(pub, index)
     expect(g.nodes.filter((n) => n.foreign).map((n) => n.ref).sort()).toEqual(['create-order', 'never-oversell', 'reserve-stock'])
     expect(g.edges.length).toBe(3)
   })

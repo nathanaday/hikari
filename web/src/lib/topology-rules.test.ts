@@ -20,10 +20,9 @@ describe('names (SV1)', () => {
   const m = (stateFixture as TopologyState).model!
   it('refuses a taken name, a reserved one, and a bad one', () => {
     expect(nameProblem('lead', 'agent', null, m)).toContain('agent lead')
-    expect(nameProblem('main', 'agent', null, m)).toContain('hub main')
     expect(nameProblem('lead', 'agent', 'lead', m)).toBeNull()
-    expect(nameProblem('user', 'hub', null, m)).toContain('reserved')
-    expect(nameProblem('Dev', 'hub', null, m)).toContain('lowercase')
+    expect(nameProblem('user', 'agent', null, m)).toContain('reserved')
+    expect(nameProblem('Dev', 'agent', null, m)).toContain('lowercase')
     expect(nameProblem('main', 'repo', null, m)).toBeNull()
     expect(nameProblem('project', 'repo', null, m)).toContain('reserved')
   })

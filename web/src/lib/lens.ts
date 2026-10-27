@@ -73,6 +73,7 @@ export function topologyPaint(lens: TopologyLens, node: GraphNode, ctx: Topology
         return sys?.dirty ? filled('dirty') : neutral
     }
   }
+  if (node.kind === 'orchestrator' && lens === 'activity') return activityPaint(ctx.agents.get(node.ref)?.status.state)
   if (node.kind === 'repo' && lens === 'git') {
     const dirty = [...ctx.systems.values()].some((s) => s.repo === node.ref && s.dirty)
     return dirty ? filled('dirty') : neutral
@@ -87,7 +88,7 @@ export function topologyDetail(lens: TopologyLens, node: GraphNode, ctx: Topolog
     if (lens !== 'git') return ''
     return topologyPaint('git', node, ctx).fill === 'dirty' ? 'uncommitted changes' : 'clean'
   }
-  if (node.kind !== 'system') return ''
+  if (node.kind !== 'system' && (node.kind !== 'orchestrator' || lens !== 'activity')) return ''
   const sys = ctx.systems.get(node.ref)
   switch (lens) {
     case 'activity': {
@@ -196,7 +197,7 @@ export function docDetail(lens: WikiLens, node: GraphNode, ctx: WikiContext): st
   const stale = state === 'stale' || state === 'undescribed' ? ` · document ${state}` : ''
   switch (lens) {
     case 'kind':
-      return [d.kind, d.key ? 'key' : '', d.status ?? ''].filter(Boolean).join(' · ') + stale
+      return [d.kind, d.status ?? ''].filter(Boolean).join(' · ') + stale
     case 'tests':
       if (d.health) return d.health + stale
       if (d.support) return `support ${d.support}`

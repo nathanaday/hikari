@@ -21,12 +21,13 @@ import {
   type TopologyLens,
   type WikiLens,
 } from '@/lib/lens'
+import { orchestratorOf } from '@/lib/rules'
 import type { State } from '@/lib/store'
 import type { WikiView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import type { View } from '@/lib/view'
 import { linkTarget } from '@/lib/wiki'
-import { hubRef, systemRef, wikiIndex, wikiName } from '@/lib/wikis'
+import { publicRef, systemRef, wikiIndex, wikiName } from '@/lib/wikis'
 
 const lensKey = { topology: 'hikari.map.lens', wiki: 'hikari.wiki.lens' }
 
@@ -49,25 +50,30 @@ function remember(key: string, lens: Lens) {
   }
 }
 
-// handoff says how the canvas moves between maps: a system or a hub opens
-// into its wiki map, and a wiki map folds back into its node (rule U41, and
-// U1 of the wikis spec).
-function handoff(from: string, to: string): Handoff | undefined {
+// handoff says how the canvas moves between maps: a system opens into its
+// wiki map, the orchestrator into the public wiki, and a wiki map folds back
+// into its node (rule U41, and U1 of the wikis spec).
+function makeHandoff(orchestrator: string | undefined) {
+  return (from: string, to: string) => handoff(from, to, orchestrator)
+}
+
+function handoff(from: string, to: string, orchestrator: string | undefined): Handoff | undefined {
   const node = (key: string) => {
     const ref = key.slice('wiki:'.length)
-    const [scope, name] = ref.split(':')
-    return nodeID(scope === 'hub' ? 'hub' : 'system', name)
+    return ref === publicRef ? nodeID('orchestrator', orchestrator ?? '') : nodeID('system', ref.slice(ref.indexOf(':') + 1))
   }
   if (from === 'topology' && to.startsWith('wiki:')) return { kind: 'in', from: node(to) }
   if (from.startsWith('wiki:') && to === 'topology') return { kind: 'out', to: node(from) }
   return undefined
 }
 
-// MapView draws the topology map, and the wiki map of one system or hub, on
-// one canvas (rules U30 to U45, and section 10 of the wikis spec).
+// MapView draws the topology map, and the wiki map of one system or of the
+// public wiki, on one canvas (rules U30 to U45, and section 10 of the wikis
+// spec).
 export function MapView({ state, show }: { state: State; show: (v: View) => void }) {
-  const view = state.view.kind === 'map' ? state.view : { kind: 'map' as const }
-  const ref = view.system ? systemRef(view.system) : view.hub ? hubRef(view.hub) : null
+  const view: Extract<View, { kind: 'map' }> = state.view.kind === 'map' ? state.view : { kind: 'map' }
+  const ref = view.system ? systemRef(view.system) : view.public ? publicRef : null
+  const orchestrator = orchestratorOf(state.participants)
   const wiki = ref ? state.wikis.find((w) => w.ref === ref) : undefined
   const [topoLens, setTopoLens] = useState<TopologyLens>(() => remembered(lensKey.topology, topologyLenses, 'activity'))
   const [wikiLens, setWikiLens] = useState<WikiLens>(() => remembered(lensKey.wiki, wikiLenses, 'kind'))
@@ -76,8 +82,8 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
 
   const index = useMemo(() => wikiIndex(state.wikis), [state.wikis])
   const topology = useMemo(
-    () => topologyGraph({ systems: state.systems, repos: state.repos, deliverables: state.deliverables, hubs: state.hubs }),
-    [state.systems, state.repos, state.deliverables, state.hubs],
+    () => topologyGraph({ systems: state.systems, repos: state.repos, deliverables: state.deliverables, orchestrator }),
+    [state.systems, state.repos, state.deliverables, orchestrator],
   )
   const docs = useMemo(() => (wiki ? wikiGraph(wiki, index) : null), [wiki, index])
   const graph = docs ?? topology
@@ -106,10 +112,10 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   )
 
   // The tests lens carries over between the maps (rule U45).
-  const openWiki = (scope: 'system' | 'hub', name: string, doc?: string) => {
+  const openWiki = (wikiRef: string, doc?: string) => {
     if (topoLens === 'tests' && !ref) pickWikiLens('tests')
     setCreating(false)
-    show(scope === 'system' ? { kind: 'map', system: name, doc } : { kind: 'map', hub: name, doc })
+    show(wikiRef === publicRef ? { kind: 'map', public: true, doc } : { kind: 'map', system: wikiRef.slice(wikiRef.indexOf(':') + 1), doc })
   }
   const back = () => {
     if (wikiLens === 'tests') pickTopologyLens('tests')
@@ -134,17 +140,14 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
       return
     }
     const found = index.byID.get(id)
-    if (found) {
-      const [scope, name] = found.wiki.ref.split(':')
-      openWiki(scope as 'system' | 'hub', name, id)
-    }
+    if (found) openWiki(found.wiki.ref, id)
   }
 
   const node = selected ? graph.nodes.find((n) => n.id === selected) : undefined
   const onClick = (id: string | null) => {
     const n = id ? graph.nodes.find((x) => x.id === id) : undefined
-    if (n?.kind === 'system') openWiki('system', n.ref)
-    else if (n?.kind === 'hub') openWiki('hub', n.ref)
+    if (n?.kind === 'system') openWiki(systemRef(n.ref))
+    else if (n?.kind === 'orchestrator') openWiki(publicRef)
     else if (n?.kind === 'doc') selectDoc(n.ref)
     else if (wiki) selectDoc(null)
     else setTopoSelected(id)
@@ -156,11 +159,11 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   }
   const onOpen = (id: string) => {
     const n = graph.nodes.find((x) => x.id === id)
-    if (n?.kind === 'system') openWiki('system', n.ref)
-    if (n?.kind === 'hub') openWiki('hub', n.ref)
+    if (n?.kind === 'system') openWiki(systemRef(n.ref))
+    if (n?.kind === 'orchestrator') openWiki(publicRef)
   }
 
-  if (state.systems.length === 0 && state.hubs.length === 0) {
+  if (state.systems.length === 0 && !orchestrator) {
     return <p className="flex-1 py-12 text-center text-sm text-muted-foreground">Nothing to map yet.</p>
   }
 
@@ -180,7 +183,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   } else if (doc && wiki) {
     panelBody = <DocumentPanel key={`${wiki.ref}/${doc.id}`} wiki={wiki} doc={doc} index={index} onLink={(href) => selectDoc(linkTarget(decodeURI(href)))} />
   } else if (node?.kind === 'repo') {
-    panelBody = <RepoPanel name={node.ref} state={state} open={(s) => openWiki('system', s)} />
+    panelBody = <RepoPanel name={node.ref} state={state} open={(s) => openWiki(systemRef(s))} />
   } else if (node?.kind === 'deliverable') {
     panelBody = <DeliverablePanel name={node.ref} state={state} show={show} />
   }
@@ -198,7 +201,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
     <GraphCanvas
       graph={graph}
       graphKey={graphKey}
-      handoff={handoff}
+      handoff={makeHandoff(orchestrator)}
       paint={paint}
       card={card}
       selected={selected}
@@ -223,7 +226,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
       {wiki && <WikiProblems wiki={wiki} />}
       <Legend lens={lens} dashed={!!view.system} />
       {wiki && wiki.documents.length === 0 && (
-        <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-muted-foreground">{wikiName(wiki.ref)} has no documents yet.</p>
+        <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-muted-foreground">{wiki.ref === publicRef ? 'The public wiki' : wikiName(wiki.ref)} has no documents yet.</p>
       )}
     </GraphCanvas>
   )
@@ -253,9 +256,9 @@ function kindLine(n: GraphNode, state: State): string {
     const count = state.systems.find((s) => s.owner === n.ref)?.features.length ?? 0
     return `system · ${count} feature${count === 1 ? '' : 's'}`
   }
-  if (n.kind === 'hub') {
-    const count = state.wikis.find((w) => w.ref === hubRef(n.ref))?.documents.length ?? 0
-    return `hub · ${count} document${count === 1 ? '' : 's'} in its wiki`
+  if (n.kind === 'orchestrator') {
+    const count = state.wikis.find((w) => w.ref === publicRef)?.documents.length ?? 0
+    return `orchestrator · ${count} document${count === 1 ? '' : 's'} in the public wiki`
   }
   if (n.kind === 'repo') return `repository · branch ${state.repos.find((r) => r.name === n.ref)?.branch ?? ''}`
   const holders = state.deliverables.find((d) => d.name === n.ref)?.holders ?? []

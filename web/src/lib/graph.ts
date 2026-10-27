@@ -1,11 +1,12 @@
-import type { DeliverableInfo, DocKind, Hub, RepoInfo, SystemView, WikiDoc, WikiView } from './types'
+import type { DeliverableInfo, DocKind, RepoInfo, SystemView, WikiDoc, WikiView } from './types'
 import { wikiName, type WikiIndex } from './wikis'
 
-export type NodeKind = 'system' | 'repo' | 'deliverable' | 'hub' | 'doc'
+export type NodeKind = 'system' | 'repo' | 'deliverable' | 'orchestrator' | 'doc'
 export type Shape = 'circle' | 'square' | 'diamond' | 'hexagon'
 
 // GraphNode is one node as the canvas draws it. ref names what it stands
-// for: a system, a repository, a deliverable, a hub, or a document id.
+// for: a system, a repository, a deliverable, the orchestrator, or a
+// document id.
 export type GraphNode = {
   id: string
   kind: NodeKind
@@ -38,12 +39,13 @@ export function featureRadius(neighbors: number): number {
   return Math.min(14, 5 + 1.5 * neighbors)
 }
 
-type TopologyInput = { systems: SystemView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; hubs?: Hub[] }
+type TopologyInput = { systems: SystemView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; orchestrator?: string }
 
 // topologyGraph builds the topology map: systems, repositories, held
-// deliverables, and hubs, with their edges (rules U30 and U31, and U1 of the
-// wikis spec).
-export function topologyGraph({ systems, repos, deliverables, hubs = [] }: TopologyInput): Graph {
+// deliverables, and the orchestrator in the middle with an edge to each
+// system (rules U30 and U31, U1 of the wikis spec, and decision 5 of the
+// remove-hubs spec).
+export function topologyGraph({ systems, repos, deliverables, orchestrator }: TopologyInput): Graph {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
   const names = new Set(systems.map((s) => s.owner))
@@ -61,19 +63,9 @@ export function topologyGraph({ systems, repos, deliverables, hubs = [] }: Topol
     nodes.push({ id: nodeID('deliverable', d.name), kind: 'deliverable', ref: d.name, label: d.name, shape: 'diamond', radius: 10 })
     for (const h of holders) edges.push({ source: nodeID('deliverable', d.name), target: nodeID('system', h), dashed: false })
   }
-  const hubNames = new Set(hubs.map((h) => h.name))
-  for (const h of [...hubs].sort(byName)) {
-    nodes.push({ id: nodeID('hub', h.name), kind: 'hub', ref: h.name, label: `#${h.name}`, shape: 'hexagon', radius: 11 })
-    const members = h.participants.filter((p) => p.role === 'member').map((p) => p.name)
-    for (const m of [...members].sort()) {
-      if (names.has(m)) edges.push({ source: nodeID('hub', h.name), target: nodeID('system', m), dashed: false })
-    }
-    for (const child of [...hubs].sort(byName)) {
-      const orchestrator = child.participants.find((p) => p.role === 'orchestrator')?.name
-      if (child.name !== h.name && orchestrator && members.includes(orchestrator) && hubNames.has(child.name)) {
-        edges.push({ source: nodeID('hub', h.name), target: nodeID('hub', child.name), dashed: false })
-      }
-    }
+  if (orchestrator) {
+    nodes.push({ id: nodeID('orchestrator', orchestrator), kind: 'orchestrator', ref: orchestrator, label: orchestrator, shape: 'hexagon', radius: 11 })
+    for (const s of [...names].sort()) edges.push({ source: nodeID('orchestrator', orchestrator), target: nodeID('system', s), dashed: false })
   }
   const pairs = new Set<string>()
   const dashed = (a: string, b: string) => {
@@ -104,7 +96,7 @@ export const docShape: Record<DocKind, Shape> = {
 
 export const docNodeID = (wiki: string, id: string) => `doc:${wiki}/${id}`
 
-// wikiGraph builds the wiki map of one system or hub: a node per document,
+// wikiGraph builds the wiki map of one system or of the public wiki: a node per document,
 // and a smaller node for each document of another wiki that links one of
 // them or that one of them links, with an edge when either links the other
 // (rules U2 and U3).

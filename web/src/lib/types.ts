@@ -1,28 +1,22 @@
 // Wire types of the server's UI API. They mirror internal/api and the
 // snapshot in internal/server.
 
+// Message is a post to the room, or a direct message when to is set.
 export type Message = {
   id: number
   from: string
-  hub?: string
   to?: string
   body: string
   time: string
   woke?: string[]
 }
 
-export type Role = 'orchestrator' | 'member' | 'operator'
+export type Role = 'orchestrator' | 'owner' | 'operator'
 
 export type Peer = {
   name: string
   role: Role
   description?: string
-}
-
-export type Hub = {
-  name: string
-  description?: string
-  participants: Peer[]
 }
 
 export type AgentState = 'starting' | 'idle' | 'working' | 'indexing' | 'error' | 'exited'
@@ -56,7 +50,7 @@ export type Activity = {
 export type Agent = {
   name: string
   description?: string
-  hubs: string[]
+  role: Role
   status: Status
 }
 
@@ -123,7 +117,6 @@ export type Manifest = {
   notes: string
   hikari: string
   source_commit?: string
-  hubs: string[]
   product: { path: string; files: number; bytes: number; digest: string }
   map: string
   certificates: Certificate[]
@@ -186,7 +179,6 @@ export type SystemView = {
 
 export type Vocabulary = {
   version: number
-  hub: string
   terms: { term: string; definition: string; avoid?: string[] }[]
   interfaces: Interface[]
 }
@@ -203,10 +195,9 @@ export type WikiDoc = {
   description?: string
   // links are the documents it links, in any wiki.
   links: string[]
-  key?: boolean
   status?: string
-  // health is a feature's; support sums the features a hub's story or
-  // rule links.
+  // health is a feature's; support sums the features that a document of
+  // the public wiki links.
   health?: Health
   support?: Health
   created?: string
@@ -215,11 +206,11 @@ export type WikiDoc = {
   hash: string
 }
 
-// WikiView is the wiki of a system or a hub. ref is "system:<name>" or
-// "hub:<name>".
+// WikiView is the wiki of a system, or the public wiki. ref is
+// "system:<name>" or "public".
 export type WikiView = {
   ref: string
-  scope: 'system' | 'hub'
+  scope: 'system' | 'public'
   name: string
   documents: WikiDoc[]
   problems?: string[]
@@ -239,10 +230,12 @@ export type Snapshot = {
   start_findings?: Finding[]
   me: string
   agents: Agent[]
-  hubs: Hub[]
+  // participants lists everyone in the room: the orchestrator first and
+  // the user last.
+  participants: Peer[]
   messages: Message[]
   systems: SystemView[]
-  vocabularies: Vocabulary[]
+  vocabulary: Vocabulary
   repos?: RepoInfo[]
   deliverables?: DeliverableInfo[]
   wikis?: WikiView[]
@@ -265,7 +258,8 @@ export type ServerEvent =
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
 
-export type SendRequest = { hub: string; body: string } | { to: string; body: string }
+// SendRequest posts to the room, or sends a direct message when to is set.
+export type SendRequest = { to?: string; body: string }
 
 // The topology API (section 6 of the topology API spec).
 
@@ -279,17 +273,9 @@ export type Finding = {
   line?: number
 }
 
-export type TopologyProject = { id: string; name: string; store: string; repo: boolean; branch: string }
+// orchestration is the service id of the orchestrator, or "".
+export type TopologyProject = { id: string; name: string; store: string; repo: boolean; branch: string; orchestration: string }
 export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
-export type TopologyHub = {
-  id: string
-  name: string
-  description: string
-  orchestrator: string
-  members: string[]
-  line: number
-  id_locked: boolean
-}
 export type TopologySystem = { repo: string; scope: string; read: string[]; test: string }
 export type TopologyAgent = {
   id: string
@@ -311,7 +297,6 @@ export type TopologySidecar = { id: string; serves: string; image: string; line:
 export type TopologyModel = {
   project: TopologyProject
   repos: TopologyRepo[]
-  hubs: TopologyHub[]
   agents: TopologyAgent[]
   sidecars: TopologySidecar[]
 }

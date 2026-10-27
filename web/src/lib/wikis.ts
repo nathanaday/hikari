@@ -15,7 +15,7 @@ export const kindLabel: Record<DocKind, string> = {
 
 export const isUserKind = (k: DocKind) => k === 'plan' || k === 'note'
 
-export const hubRef = (hub: string) => `hub:${hub}`
+export const publicRef = 'public'
 export const systemRef = (system: string) => `system:${system}`
 
 // Located is a document with the wiki it is in.
@@ -53,22 +53,17 @@ export function docHealth(d: WikiDoc): Health | undefined {
   return d.health ?? d.support
 }
 
-// orderDocs sorts documents for a list: key stories first, then by kind in
-// the order of the kinds table, then by name.
+// orderDocs sorts documents for a list: by kind in the order of the kinds
+// table, then by name.
 export function orderDocs(docs: WikiDoc[]): WikiDoc[] {
   const order: DocKind[] = ['story', 'rule', 'principle', 'feature', 'plan', 'note']
-  return [...docs].sort(
-    (a, b) =>
-      Number(!!b.key) - Number(!!a.key) ||
-      order.indexOf(a.kind) - order.indexOf(b.kind) ||
-      (a.name || a.id).localeCompare(b.name || b.id),
-  )
+  return [...docs].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || (a.name || a.id).localeCompare(b.name || b.id))
 }
 
-// wikiName says which wiki a ref names, for a label: "#shop" or "orders".
+// wikiName says which wiki a ref names, for a label: "the public wiki" or
+// "orders".
 export function wikiName(ref: string): string {
-  const [scope, name] = ref.split(':')
-  return scope === 'hub' ? `#${name}` : name
+  return ref === publicRef ? 'the public wiki' : ref.slice(ref.indexOf(':') + 1)
 }
 
 // userDocName reports why a name cannot name a user document (rule D2), or
@@ -84,8 +79,8 @@ export function userDocProblem(name: string): string | null {
 
 // kindsOf returns the kinds a wiki holds: the agent kinds of its scope,
 // then the user's (section 2 of the wikis spec).
-export function kindsOf(scope: 'hub' | 'system'): DocKind[] {
-  return scope === 'hub' ? ['story', 'rule', 'principle', 'plan', 'note'] : ['feature', 'principle', 'rule', 'plan', 'note']
+export function kindsOf(scope: 'public' | 'system'): DocKind[] {
+  return scope === 'public' ? ['story', 'rule', 'principle', 'plan', 'note'] : ['feature', 'principle', 'rule', 'plan', 'note']
 }
 
 // template is the text of a new document of kind: a plan or a note needs
@@ -101,9 +96,8 @@ export function agentIDProblem(id: string): string | null {
   return /^[a-z][a-z0-9-]{0,47}$/.test(id) ? null : 'The id is lowercase letters, digits, and dashes, starting with a letter.'
 }
 
-function docURL(ref: string, part: 'docs' | 'key', id: string): string {
-  const [scope, name] = ref.split(':')
-  return `/api/ui/wiki/${scope}/${name}/${part}/${encodeURIComponent(id)}`
+function docURL(ref: string, id: string): string {
+  return `/api/ui/wiki/${encodeURIComponent(ref)}/docs/${encodeURIComponent(id)}`
 }
 
 // request sends one change of the user to the server and returns its
@@ -122,6 +116,5 @@ async function request(url: string, method: string, body?: unknown): Promise<str
 
 // writeDoc creates or replaces a document with the text the user gives
 // (rules U6 and U8).
-export const writeDoc = (ref: string, id: string, text: string) => request(docURL(ref, 'docs', id), 'PUT', { text })
-export const removeDoc = (ref: string, id: string) => request(docURL(ref, 'docs', id), 'DELETE')
-export const setKey = (ref: string, id: string, key: boolean) => request(docURL(ref, 'key', id), 'PUT', { key })
+export const writeDoc = (ref: string, id: string, text: string) => request(docURL(ref, id), 'PUT', { text })
+export const removeDoc = (ref: string, id: string) => request(docURL(ref, id), 'DELETE')

@@ -5,8 +5,8 @@ describe('view', () => {
   it('round-trips through the URL hash', () => {
     for (const v of [
       { kind: 'all' },
-      { kind: 'hub', name: 'eng' },
-      { kind: 'hub', name: 'eng', tab: 'vocabulary' },
+      { kind: 'room' },
+      { kind: 'room', tab: 'vocabulary' },
       { kind: 'dm', name: 'eng-lead' },
       { kind: 'system', name: 'orders' },
       { kind: 'release', name: 'orders', deliverable: 'python-library', version: '1.2.0-rc.1' },
@@ -14,19 +14,20 @@ describe('view', () => {
       { kind: 'map' },
       { kind: 'map', system: 'orders' },
       { kind: 'map', system: 'orders', doc: 'reserve-stock' },
-      { kind: 'map', hub: 'shop' },
-      { kind: 'map', hub: 'shop', doc: 'Ideas for Q1' },
-      { kind: 'hub', name: 'eng', tab: 'wiki' },
+      { kind: 'map', public: true },
+      { kind: 'map', public: true, doc: 'Ideas for Q1' },
+      { kind: 'room', tab: 'wiki' },
     ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)
     }
     expect(parseHash('#/nonsense')).toEqual({ kind: 'all' })
-    expect(viewKey({ kind: 'hub', name: 'eng', tab: 'vocabulary' })).toBe(viewKey({ kind: 'hub', name: 'eng' }))
+    expect(parseHash('#/team/eng')).toEqual({ kind: 'all' })
+    expect(viewKey({ kind: 'room', tab: 'vocabulary' })).toBe(viewKey({ kind: 'room' }))
   })
 
   it('files a message under its conversation', () => {
     const base = { id: 1, body: '', time: '' }
-    expect(conversationKeys({ ...base, from: 'dev', hub: 'eng' }, 'user')).toEqual(['hub:eng'])
+    expect(conversationKeys({ ...base, from: 'dev' }, 'user')).toEqual(['room'])
     expect(conversationKeys({ ...base, from: 'user', to: 'dev' }, 'user')).toEqual(['dm:dev'])
     expect(conversationKeys({ ...base, from: 'dev', to: 'user' }, 'user')).toEqual(['dm:dev'])
     expect(conversationKeys({ ...base, from: 'dev', to: 'lead' }, 'user')).toEqual([])
