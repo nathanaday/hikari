@@ -6,7 +6,7 @@ description: Report how much of a SKU is free to sell.
 interfaces: [Stock.available]
 related: ["[[restock]]"]
 updated: 2026-10-22T05:57:04Z
-described_commit: c69dd499311b21c5210c0ae3e984060aa0ba051a
+described_commits: [shop@c69dd499311b21c5210c0ae3e984060aa0ba051a]
 described_at: 2026-10-22T05:57:09Z
 ---
 

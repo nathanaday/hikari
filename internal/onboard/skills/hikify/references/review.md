@@ -18,7 +18,7 @@ Look for:
 
 1. A step that breaks a behavior the baseline covers, or that the user's decisions fixed.
 2. A step that needs a release, a repository, or a file that no earlier step makes.
-3. A boundary without a reason of the three kinds (library; client and server; scope in a repository), or a partition that holds two concerns.
+3. A boundary without a reason of the three kinds (library; client and server; folder in a repository), or a partition that holds two concerns.
 4. A test that the ledger loses, places twice, or places in a partition that will not hold its code.
 5. A partition's suite that would still need a display, a browser, or another partition.
 6. A step whose "Done when" nothing can show.

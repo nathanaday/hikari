@@ -25,15 +25,16 @@ services:
   server:
     <<: *agent
     build: {context: ., dockerfile: server.Dockerfile}
-    volumes: [server-venv:/workspace/.venv]          # only for a dependency folder
+    volumes: [server-venv:/workspace/server/.venv]   # only for a dependency folder
     x-hikari:
       description: Owns the acme HTTP server.
       instructions: |
         Format with ruff. Keep each handler in its own module.
         Do not run tests/browser: it needs Playwright and a browser, which this container lacks.
       partition:
-        repo: server
-        test: python3 -m pytest -q tests --ignore=tests/browser -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
+        folders:
+          - {repo: server}
+        test: cd server && python3 -m pytest -q tests --ignore=tests/browser -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
 
 volumes:
   server-venv:
@@ -43,9 +44,9 @@ volumes:
 
 - Names of services and repos: lowercase letters, digits, and dashes, at most 32 characters.
 - `x-hikari.orchestration` names the service of the orchestration agent, which has no partition. Every other agent has a partition.
-- A partition without `scope` owns the whole repository. Its container sees it at `/workspace`.
+- A partition is a list of folders. A folder with only `repo` is the whole repository, and its container sees it at `/workspace/<repo>`. Write one folder for each repository; the hikify skill may later give a partition more.
 - A service sets no `networks`, `ports`, `privileged`, `network_mode`, or bind mount of a repository. hikari mounts the repositories and the vault itself.
-- Under `/workspace`, only named volumes and tmpfs inside the agent's own scope are allowed. Use them for dependency folders such as `node_modules` or `.venv`, so that installs do not land in git.
+- Under `/workspace`, only named volumes and tmpfs inside one of the agent's writable folders are allowed, such as `/workspace/server/.venv`. Use them for dependency folders such as `node_modules` or `.venv`, so that installs do not land in git.
 - No `environment` variable starts with `HIKARI_`.
 
 ## The agent Dockerfile
@@ -65,7 +66,7 @@ USER agent
 
 ## The test command
 
-- It runs from `/workspace/<scope>`, which is `/workspace` for a whole repository.
+- It runs in `/workspace`, where the repository is `/workspace/<name>`. Start it with `cd <name> &&`, so that the runner works as it does in the repository. hikari reads the paths of the report relative to `/workspace`, and then relative to the folder.
 - It writes JUnit XML to `/hikari/private/reports/all.xml`: hikari makes the command the suite `all`, and reads the report of a suite from `<suite>.xml`. Common forms:
   - pytest: `-o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml`
   - Go: `go test -v ./... 2>&1 | go-junit-report > /hikari/private/reports/all.xml` (install `go-junit-report` with `go install` in the Dockerfile)

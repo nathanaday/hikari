@@ -5,7 +5,7 @@ description: Wrap existing git repositories into a hikari project, one partition
 
 # Containerize repositories
 
-You work for the user in their own Claude Code session, in a hikari project repository (the directory with `topology.yaml`, made by `hikari init`). The result is a containerized project: one hikari partition for each repository, whose scope is the whole repository, and no change to any code. Each partition agent agent then maps its repository and records its tests, and those results become the baseline that the hikify skill starts from.
+You work for the user in their own Claude Code session, in a hikari project repository (the directory with `topology.yaml`, made by `hikari init`). The result is a containerized project: one hikari partition for each repository, with one folder, the whole repository, and no change to any code. Each partition agent then maps its repository and records its tests, and those results become the baseline that the hikify skill starts from.
 
 The user is the authority on the project. Propose, show, and ask; do not decide for them what they did not say. Where the request already answers a question, use the answer and do not ask again.
 
@@ -51,7 +51,7 @@ A repository that does not ignore its build products (`__pycache__/`, `node_modu
 Read `references/topology.md`. For each repository, write:
 
 - `<name>.Dockerfile` in the project, from `hikari-agent`, which installs the toolchain that the survey found;
-- a service in `topology.yaml` with a `description`, `instructions`, and `partition: {repo: <name>, test: <command>}`. A partition with no `scope` owns the whole repository.
+- a service in `topology.yaml` with a `description`, `instructions`, and a partition of one folder, the whole repository: `partition: {folders: [{repo: <name>}], test: <command>}`. A folder with no `path` is the whole repository, and the agent sees it at `/workspace/<name>`.
 
 The test command runs every suite that can run in the container, and writes one JUnit XML report to `/hikari/private/reports/all.xml`. hikari makes the command the partition agent's first suite, `all`, and reads its report from that path. The partition agent can split it into more suites later. Leave out each suite that needs a display, a browser, hardware, a service that the container lacks, network access, or credentials. Do not change the suite to make it run. Name each suite that you left out, with the reason, in the partition agent's `instructions` and in `state.md`. hikify records them as left for integration; they stay in the repository.
 
@@ -65,7 +65,7 @@ Run `hikari check topology.yaml`, and fix each finding. Then prove each image be
 
 ```sh
 docker compose -f topology.yaml build <service>
-docker run --rm -v "$PWD/repos/<name>:/workspace" -v "$(mktemp -d):/hikari/private/reports" \
+docker run --rm -v "$PWD/repos/<name>:/workspace/<name>" -v "$(mktemp -d):/hikari/private/reports" \
   -w /workspace <project>-<service> sh -c '<test command>'
 ```
 

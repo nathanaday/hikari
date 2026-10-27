@@ -26,7 +26,7 @@ interfaces: [Stock.reserve]
 related: ["[[check-availability]]"]
 created: 2026-10-22T05:57:04Z
 updated: 2026-10-22T05:57:04Z
-described_commit: c69dd499311b21c5210c0ae3e984060aa0ba051a
+described_commits: [shop@c69dd499311b21c5210c0ae3e984060aa0ba051a]
 described_at: 2026-10-22T05:57:09Z
 ---
 
@@ -45,7 +45,7 @@ An order must not promise stock that another order already holds. A reservation 
 | `related` | you | optional; neighbors that the body does not link, given as ids in a write |
 | `created` | hikari | the create write; a rename keeps it |
 | `updated` | hikari | the last write of the document |
-| `described_commit`, `described_at` | hikari | set by `mark_map_current` |
+| `described_commits`, `described_at` | hikari | set by `mark_map_current`: the commit of each repository of your writable folders |
 
 A property that no rule names belongs to the user; hikari keeps it and never reads it.
 
@@ -59,12 +59,12 @@ hikari refuses a change that breaks one of these and names the write and the rul
 - **W2.** `name` is present. `description` is one sentence on one line, at most 200 characters.
 - **W3.** Only a feature names `interfaces`, and each is in your `provides` or `consumes`. Call `set_partition_info` first.
 - **W4.** The body has a `## Purpose` section with text. A write never gives a `## Notes` section.
-- **W5.** `created`, `updated`, `described_commit`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
+- **W5.** `created`, `updated`, `described_commits`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
 - **W9.** A change has at most 100 writes.
 - **K1.** A link is `[[id]]` or `[[id|text]]`. A link to a heading, `[[id#heading]]`, is refused.
 - **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a story, rule, or principle of the public wiki. A document does not link itself.
 
-Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `code-map.yaml`; a Purpose that names a path in your scope; more than 60 features.
+Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `code-map.yaml`; a Purpose that names a path in your workspace; more than 60 features.
 
 ## The public wiki
 

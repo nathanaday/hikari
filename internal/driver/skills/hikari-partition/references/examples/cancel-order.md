@@ -5,7 +5,7 @@ name: Cancel an order
 description: Cancel a placed order and release the stock it holds.
 interfaces: [cancel_order, Stock.release]
 updated: 2026-10-22T05:57:47Z
-described_commit: 18fb34a61faecd80590d70a507ed4908a37f983e
+described_commits: [shop@18fb34a61faecd80590d70a507ed4908a37f983e]
 described_at: 2026-10-22T05:57:49Z
 ---
 

@@ -5,17 +5,18 @@
 ```yaml
 version: 1
 parts:                          # the main parts of the code
-  - path: orders/
+  - path: shop/services/orders/orders/
     description: Order intake and cancellation.
-  - path: tests/
+  - path: shop/services/orders/tests/
     description: Unit tests.
 features:                       # the code of each feature in the wiki
   create-order:
-    code: [orders/create.py]
+    code: [shop/services/orders/orders/create.py]
     notes: create_order() checks items, then reserves each one.
 ```
 
-- Paths are relative to your scope and must exist (P3).
+- Paths are workspace paths: relative to `/workspace`, as `ls /workspace` shows them, such as `shop/services/orders/orders/create.py`. They must exist (P3).
+- A path can name a read-only folder, but only changes in your writable folders make a feature stale.
 - Every key under `features` is a feature id in the wiki (P2). After a rename or a remove, update the key.
 - Give every feature a `code` entry. Use a directory when the feature owns it, and files otherwise. A directory covers every file below it. Without an entry hikari cannot tell when the feature's code changed, and `get_my_partition` warns.
 - `parts` holds what is not a feature: packages, helpers, fixtures, build code. A changed path that belongs to no feature is reported as unmapped; put it under a feature's `code`, or make it a part.

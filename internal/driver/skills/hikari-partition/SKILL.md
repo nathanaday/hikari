@@ -32,7 +32,7 @@ References:
 - `change_wiki`: create, modify, rename, or remove the features, principles, and rules of your wiki, as one change. hikari checks every write and applies all of them or none.
 - `get_document` and `search_wiki`: read any document of the wikis you can read, with the documents that link it.
 - `record_test_run`: after a suite's command ran, hikari reads its JUnit XML report and records the result of each test.
-- `mark_map_current`: declares that the documents describe the code as it is now. It commits your pending changes and records the commit in every document.
+- `mark_map_current`: declares that the documents describe the code as it is now. It commits your pending changes and records, in every document, the commit of each repository of your writable folders.
 - `get_my_partition`: the map with each feature's health and state, the stale features with their changed paths, the changed paths that belong to no feature, the failing tests, the pending features, the unmapped tests, the keys that match no test, warnings, and problems in the private documents.
 
 ## Build
@@ -40,7 +40,7 @@ References:
 For a partition with no wiki:
 
 1. Orient. Read the instruction files, the manifests, the entry points, and the names of the test directories. Write `parts` in `code-map.yaml`.
-2. Survey. For each part, send the `hikari-feature-survey` agent with the part's paths, the partition's interfaces, and the vocabulary's terms. When the scope has about 40 source files or fewer, read the part yourself instead. Each survey returns candidate features with their code paths, evidence, and candidate neighbors.
+2. Survey. For each part, send the `hikari-feature-survey` agent with the part's paths, the partition's interfaces, and the vocabulary's terms. When your writable folders have about 40 source files or fewer, read the part yourself instead. Each survey returns candidate features with their code paths, evidence, and candidate neighbors.
 3. Decide the feature set against [wiki.md](references/wiki.md): merge, split, name, and give ids. Call `set_partition_info` first, so that the interfaces exist for the documents to name.
 4. Link against the link rules. Every feature should have a neighbor.
 5. Write one `change_wiki` call with every create. Add a principle or a rule only where the code shows one clearly.

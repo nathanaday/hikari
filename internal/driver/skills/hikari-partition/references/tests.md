@@ -8,12 +8,12 @@ A test is one test case, as your test runner reports it. hikari never counts tes
 version: 1
 suites:
   unit:
-    command: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/unit.xml
+    command: python3 -m pytest -q shop/services/inventory/tests -o pythonpath=shop/services/inventory -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/unit.xml
     description: Fast unit tests with fakes. No network.
 tests:
-  tests/test_stock.py: ["[[reserve-stock]]", "[[check-availability]]"]
-  "tests.test_stock.StockTest > test_restock_adds_stock": ["[[restock-sku]]", "[[check-availability]]"]
-  tests/live/: []
+  shop/services/inventory/tests/test_stock.py: ["[[reserve-stock]]", "[[check-availability]]"]
+  "shop.services.inventory.tests.test_stock.StockTest > test_restock_adds_stock": ["[[restock-sku]]", "[[check-availability]]"]
+  shop/services/inventory/tests/live/: []
 gaps:
   reserve-stock: [A quantity that is not positive is not tested.]
 ```
@@ -22,7 +22,8 @@ See [examples/tests.yaml](examples/tests.yaml) for the shop's inventory.
 
 ## Suites
 
-- A suite name is lowercase letters, digits, and dashes (X2). Each suite has a `command`, run from your working directory.
+- A suite name is lowercase letters, digits, and dashes (X2). Each suite has a `command`, run in `/workspace`. hikari reads every path of the report as a workspace path, so name the tests by their workspace path, such as `shop/services/inventory/tests`, and point the runner at the folder it needs, as `-o pythonpath=` does for pytest.
+- Only your folders are writable, not `/workspace` itself. Turn off a runner's cache in its working directory, as `-p no:cacheprovider` does for pytest, or put it inside one of your writable folders.
 - The command must write a JUnit XML report to `/hikari/private/reports/<suite>.xml`. That path is fixed: hikari reads the report there and deletes it once it is recorded.
 - Add a suite for each kind of test that you run separately, for example `unit` and `integration`.
 
@@ -41,8 +42,8 @@ When the runner your partition uses is not in the image, ask the user to add it.
 
 hikari names a test by its JUnit class name, then ` > `, then its name:
 
-- vitest: `test/unit/wiki.test.ts > search > finds a tag` (the file, then the describe blocks, then the test).
-- pytest: `tests.test_stock.StockTest > test_reserve_holds_stock` (the module and class, then the test).
+- vitest: `web/test/unit/wiki.test.ts > search > finds a tag` (the file, then the describe blocks, then the test).
+- pytest: `shop.services.inventory.tests.test_stock.StockTest > test_reserve_holds_stock` (the module and class, then the test).
 
 `get_my_partition` lists the ids of the tests that no key covers under `unmapped_tests`, grouped by file. Copy ids from there; do not guess them.
 
@@ -50,9 +51,9 @@ hikari names a test by its JUnit class name, then ` > `, then its name:
 
 Each key under `tests` covers one test or a group of tests. Its value is a list of links to the features those tests touch, each `"[[feature-id]]"` (X3). Quote the links: YAML reads a bare `[[...]]` as a list.
 
-- A **directory key** names a directory of your scope, such as `tests/live/`. It covers every test whose file is under it.
-- A **file key** names a file of your scope, such as `tests/test_stock.py`. It covers every test in that file.
-- An **id key** is anything else. It covers the test with that id, and every test whose id starts with the key followed by ` > ` or `.`: `tests.test_stock.StockTest` covers the class, `test/unit/wiki.test.ts > lint` covers the describe block.
+- A **directory key** names a directory of your workspace, such as `shop/services/inventory/tests/live/`. It covers every test whose file is under it.
+- A **file key** names a file of your workspace, such as `shop/services/inventory/tests/test_stock.py`. It covers every test in that file.
+- An **id key** is anything else. It covers the test with that id, and every test whose id starts with the key followed by ` > ` or `.`: `shop.services.inventory.tests.test_stock.StockTest` covers the class, `web/test/unit/wiki.test.ts > lint` covers the describe block.
 
 hikari decides the kind from the disk. When keys overlap, the most specific decides a test's links: an id key beats a file key, a file key beats a directory key, and between two keys of the same kind the longer wins. The links do not add up: write every feature the test touches on the key that decides it. A key that a more specific key overrides for every test it matches does nothing, and `get_my_partition` warns about it.
 

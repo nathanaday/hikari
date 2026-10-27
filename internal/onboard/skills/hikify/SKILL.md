@@ -30,7 +30,7 @@ The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan
 
 Read `references/topology.md`.
 
-1. Write `topology.target.yaml`: the whole target topology. It starts from `topology.yaml`, and adds the partitions, libraries, and grants of the design. Run `hikari check -draft topology.target.yaml` until it passes.
+1. Write `topology.target.yaml`: the whole target topology. It starts from `topology.yaml`, and adds the partitions, libraries, and grants of the design. Each partition is a list of folders, and may take folders from more than one repository (`references/topology.md`). Run `hikari check -draft topology.target.yaml` until it passes.
 2. Write `onboarding/topology.md`: each partition and library in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
 3. Draft the deliverable of each new library in `onboarding/shared/deliverables/<name>/`, as `references/topology.md` shows.
 4. Draft the stories, rules, and principles of the public wiki with the user, in `onboarding/wiki/public/<id>.md`. Follow `references/public-wiki.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the partition agents' maps by their ids, which are in `vault/partitions/<partition>/read-only/features/`. Propose the stories that the suites left for integration check, and the flows across partitions that no test covers.

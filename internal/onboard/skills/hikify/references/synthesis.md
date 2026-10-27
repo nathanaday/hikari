@@ -12,7 +12,7 @@
 
 ## Boundaries
 
-For each partition of the target: what it owns, and the reason for its boundary, of one of three kinds (library; client and server; scope in a repository). Then each split you considered and decided against, and why.
+For each partition of the target: what it owns, and the reason for its boundary, of one of three kinds (library; client and server; folder in a repository). Then each split you considered and decided against, and why.
 
 ## Left for integration
 
