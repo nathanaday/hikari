@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run of the shop: inventory loaded the `python-library` skill, staged its package and README, ran `check_release`, published 0.1.0, and lead checked the release against the deliverable's definition. `sha256sum -c SHA256SUMS` passes in the release directory.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Sources: `docs/brainstorm/deliverables.md` and `deliverables-answers.md`. This spec replaces section 5 (Releases) of `docs/specs/shared-store.md`, its rules R1 to R11, its decisions 1 and 7 where they concern releases, and the `release-docs` skill (H5).
 
 ## Summary

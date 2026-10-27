@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-25 of a two-agent project, `ids-check`, named `Ids Check`, whose hub `eng` is named `platform` and whose agents `eng-orchestrator` and `dev` are named `chief` and `builder`. A post in `#platform` that mentioned `@builder` woke `chief` and `builder`, and `builder` answered in `#platform`: "builder, in #platform." The store held `hubs/eng`, the container of `dev` listed `/hikari/public/readonly/hubs/platform`, and the containers and networks were `ids-check-dev-1` and `ids-check-agent-dev`. The sidebar showed the project's name.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 1. **A map takes the system's new name** (ID12). The public map records `system.name`, and hikari refused a map whose name was not its system's. The map's place in the store, keyed by id, already says which system it describes, so hikari now writes the new name into the map at start and shows a note. Agents that read `map.yaml` then see names too. Found in the tests.

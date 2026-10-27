@@ -2,6 +2,8 @@
 
 Status: built. Checked in a headless Chrome on 2026-10-26 against `hikari up` on the project of the topology API's live run, while its agents ran. In one review of six changes, the tab added the hub `#ops`, added the agent `reviewer` from the template `orchestrator` into `#core` and `#ops`, changed its id to `critic`, set its model, removed it from `#core`, and renamed `#core`, whose id `main` is locked, to `#platform`. The review listed the note "Ask @app in #platform before the release." under a checkbox, and the save committed the compose file and the note as `user: add hub #ops; add agent reviewer in #core, #ops; ...`. After Stop, a pending member was saved with no "applies at the next start". A system with a scope and a read path that do not exist, and a release grant, showed four findings at line 41 and an error dot on the agent's row. A file that is not YAML showed "Fix it in the YAML tab". The browser logged no errors.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 1. **Summaries use names.** A commit message named hubs and agents by id, as `add agent reviewer in #main`, while you know the hub as `#core`. Each summary now uses the names of the moment. Found in the browser check.

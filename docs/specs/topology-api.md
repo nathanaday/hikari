@@ -78,7 +78,7 @@ From the rounds and their answers:
 
 ## 3. The Source Model
 
-- **TM1.** The model holds the project (id, name, store, project branch), each repo (id, name, url, path, branch), each hub (id, name, description, orchestrator, members), each agent (id, name, description, instructions, model, system, grants, tests, e2e limits, image or build, its other compose keys by name), and each sidecar (id, serves). Each entity has its line.
+- **TM1.** The model holds the project (id, name, store, project branch), each repo (id, name, url, path, branch), each hub (id, name, description, orchestrator, members), each agent (id, name, description, instructions, model, system, grants, image or build, its other compose keys by name), and each sidecar (id, serves). Each entity has its line.
 - **TM2.** A value is shown as the source writes it. A value that holds `${`, which compose interpolates, is marked as an expression.
 - **TM3.** Each agent, hub, and repo has `id_locked`, true when something outside the file is keyed by its id: a directory `store/systems/<id>` or `store/hubs/<id>`, a vocabulary file, or a clone `repos/<id>`.
 - **TM4.** A text with a YAML syntax error has no model.
@@ -98,13 +98,12 @@ Each operation is a JSON object with an `op` and its fields. Ids name the entiti
 | `add_hub` | `id`, `orchestrator`, `description`, `members` | the id is taken |
 | `set_hub` | `id`, `description`, `orchestrator` | |
 | `add_member`, `remove_member` | `hub`, `agent` | the agent is already a member, or is not |
-| `remove_hub` | `id` | an agent would be in no hub, or an agent tests it |
+| `remove_hub` | `id` | an agent would be in no hub |
 | `add_agent` | `id`, `template`, `description`, `hubs` | the id is taken |
-| `set_agent` | `id`, `description`, `instructions`, `model`, `tests` | |
+| `set_agent` | `id`, `description`, `instructions`, `model` | |
 | `set_system` | `id`, `repo`, `scope`, `read`, `test` | |
 | `clear_system` | `id` | |
 | `set_grants` | `id`, `releases`, `deliverables` | |
-| `set_e2e` | `id`, `cpus`, `memory` | |
 | `remove_agent` | `id` | it orchestrates a hub, or a grant, a sidecar, or no other agent would name it |
 | `add_sidecar` | `id`, `serves`, `image` | the id is taken |
 | `set_serves` | `id`, `agent` | |
@@ -115,7 +114,7 @@ Each operation is a JSON object with an `op` and its fields. Ids name the entiti
 - **TE1.** An operation edits the source text with primitive edits only (decision 3). No byte outside the nodes it changes changes.
 - **TE2.** Optional fields follow decision 4.
 - **TE3.** `rename` sets the entity's `name` field, or removes it when the new name is the id. It changes no reference.
-- **TE4.** `change_id` renames the key, and every reference to it: `orchestrator`, `members`, `grants.releases`, `tests`, `serves`, and `system.repo`.
+- **TE4.** `change_id` renames the key, and every reference to it: `orchestrator`, `members`, `grants.releases`, `serves`, and `system.repo`.
 - **TE5.** `add_agent` copies its template's text (decision 5), or writes `image: hikari-agent` and the credential variables when it names no template. It adds the agent to each hub of `hubs` as a member.
 - **TE6.** `remove_agent` removes the agent from the members of every hub. `remove_hub` and `clear_system` leave the store directory in place, and the plan says so.
 - **TE7.** A list of operations applies in order, as a whole. When one is refused, the response names its index and the reason, and nothing is written.

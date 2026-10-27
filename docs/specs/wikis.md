@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-22 of a project from `hikari init` with an orchestrator, `lead`, and two owners, `tally` and `ballots`, in the project repository. The owners built their wikis. A plan written by hand in `#main`'s folder was committed as the user (`user: wiki edits before lead's change`) just before the lead's change. The lead loaded `hikari-hub` and wrote a story that links four features of both systems and a principle, and named the plan without linking it. The story's support was `passing`. Through the UI endpoints, a note was written and the story marked key, each committed as the user, and a story with a dead link was refused with K2. The tally owner read the hub wiki from its mount and named the story and the principle that concern it. Its turn context listed the plan the user then added to its wiki. At stop the repository was clean, and an edit made while hikari was stopped was committed as the user at the next start. The Chrome extension was not connected, so the views were checked by render tests, not in a browser.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 1. **A user document is lighter, not dashed** (U3). A dashed outline already means a stale feature, so a plan or a note is drawn smaller and paler under the Kind lens, and neutral under Tests.
@@ -9,7 +11,7 @@ Changes made during the build:
 3. **A change fans out to the wiki itself.** The change fan-out dropped the wiki of a change when it notified the peers of a system, so a system wiki sent no event. Found by the server test.
 4. **The start check of the project repository commits only wiki edits** (C5), and only when every changed path is in a wiki folder.
 
-Sources: `docs/brainstorm/e2e.md` (round 1, section B) and `e2e-answers.md`, and the user's note of 2026-10-22: "the hub-level and system-level feature wikis ... contain principles, features, business rules, that connect the fabric of the entire ecosystem together, and also serve as a place for the user to store future plans, roadmaps, and notes." The note adds a step to the E2E work, before the tester: this is now the second step. The tester, the plan, and the lock follow in the third step; environments in the fourth; bench results in the fifth.
+Sources: `docs/archive/e2e.md` (round 1, section B) and `e2e-answers.md`, and the user's note of 2026-10-22: "the hub-level and system-level feature wikis ... contain principles, features, business rules, that connect the fabric of the entire ecosystem together, and also serve as a place for the user to store future plans, roadmaps, and notes." The note adds a step to the E2E work, before the tester: this is now the second step. The tester, the plan, and the lock follow in the third step; environments in the fourth; bench results in the fifth.
 
 A review of the draft against the code found that hand edits, renames across wikis, concurrent changes, and authorship needed exact rules. Sections 3, 4, and 9 hold them, and decision 8 onward.
 

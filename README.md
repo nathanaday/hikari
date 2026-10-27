@@ -125,7 +125,7 @@ services:
     x-hikari: {name: builder, description: Developer.}
 ```
 
-Agents and the UI use names: here you post in `#platform` and mention `@builder`. References in the file use ids, such as `members: [dev]`, so a rename changes one line. Everything outside the file is keyed by id: the store directories, the vocabulary files, the release manifests, the tester's lock, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's or hub's id.
+Agents and the UI use names: here you post in `#platform` and mention `@builder`. References in the file use ids, such as `members: [dev]`, so a rename changes one line. Everything outside the file is keyed by id: the store directories, the vocabulary files, the release manifests, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's or hub's id.
 
 ### Systems
 
@@ -189,58 +189,13 @@ A hub's wiki is `store/hubs/<hub>/wiki/`. Its orchestrator writes it through `ch
 
 Plans and notes are yours. Write them in Obsidian, where the store is one vault, or in the UI. Agents read them and never change them, and the prompts say to act on a plan only when you ask. You can write any document by hand; one of an agent's kinds must keep the rules of its kind. A hand edit that breaks one document affects only that document: hikari keeps its last valid version and shows the problem. You mark a key story, the stories that matter most to you, in the UI. Before each turn, an agent is told which documents of the wikis it reads were changed by someone else.
 
-`get_document` and `search_wiki` read any document of the wikis an agent can read, with the documents that link it. A hub's story or rule shows its support: the health of the features it links.
-
-### E2E tests
-
-A hub can have a tester: an owner whose scope is the E2E scaffold of the hub, and who proves the hub's stories, rules, and principles against the releases of its systems.
-
-```yaml
-  vote-e2e:
-    build: {context: ., dockerfile: python.Dockerfile}
-    x-hikari:
-      description: Proves the stories of #main against the releases of its systems.
-      system: {repo: project, scope: e2e/main}
-      tests: main            # the tester of #main; it must be a member of the hub
-```
-
-The tester reads the releases of every system in the hub. It writes `plan.md` in its scope: the components of the test system (pinned releases, images, fixtures, simulators, and what each stands in for), the actors that drive it, the scenarios, and the gaps it cannot test. It pins the release set it tests with `pin_releases`, which writes `releases.lock` with each release's digest. Its `tests.yaml` links tests to the stories, rules, and principles of the hub, and each of them gets health from those tests, as a feature does from unit tests: a new pin makes every result pending until the tests run again, and a failing story names the systems whose features it links. hikari tells the tester when a release newer than its pin appears. The `hikari-tester` skill teaches it the plan and the procedures.
-
-A hub with a tester gets a Tests tab: each story with its E2E health and its support, the gaps, the plan, and the release set. A gap counts only when you approve it there; a gap whose text changes needs a new approval. The tester and the hub's orchestrator read the same view with `get_test_plan`. The tester's tests reach libraries, binaries, and data where its container mounts the releases. Services run beside them in an environment.
-
-Some stories can only be checked on real hardware. The tester writes such a check as a bench procedure in its plan: what to set up, what to do, and what proves a pass. You run it and record pass or fail on the Tests tab, with a note. A result counts for the stories it touches, like an E2E result, until the release set or the procedure changes.
-
-#### Environments
-
-A deliverable can make a container image: its `deliverable.yaml` names the Dockerfile in the owner's scope, and hikari builds the image when the owner publishes, from the commit that the map describes. The release records the image's tag and id; the image stays in your Docker.
-
-```yaml
-image:
-  dockerfile: Dockerfile    # relative to the owner's scope
-  platform: linux/arm64     # optional; the host's platform by default
-```
-
-The tester describes its test system's services in `environment.yaml`, a compose file at the root of its scope. A service runs an image release, or any image with a pinned release's product, or a directory of the tester's scope, mounted read-only:
-
-```yaml
-services:
-  cloud:
-    x-hikari: {release: cloud/http-service}
-    healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]}
-  edge:
-    image: debian:bookworm-slim
-    x-hikari:
-      mount: {edge/linux-tarball: /opt/edge, "scope:fixtures/readings": /data}
-    command: [/opt/edge/bin/edge, --cloud, http://cloud:8000, --replay, /data]
-  mail:
-    image: axllent/mailpit:v1.21      # stands in for the mail service
-```
-
-`start_environment(scenario)` starts the services for a scenario of the plan, whose actors set the replicas, waits until they are healthy, and connects the tester's container to their network, so the tests reach each service by name. Each service's log is in the tester's `/hikari/private/environment/logs/`. `stop_environment` removes everything; hikari also stops an environment when its scenario's minutes end and when hikari stops. hikari refuses an environment that sets networks, ports, a bind mount, privileges, or a variable of the host, and one that does not match the plan. One environment runs per hub. The Tests tab shows it, with a Stop button. `x-hikari.e2e: {cpus: "2", memory: 4g}` on the tester limits each of its services.
-
-`make example-sensors` makes a project shaped like an IoT monitoring product in `.hikari/demo/sensors`: an edge binary, a cloud service released as an image, a web console, a thresholds data release, and a tester. Run it with `make up COMPOSE=.hikari/demo/sensors/compose.yaml`, after you copy `.env` into it.
+`get_document` and `search_wiki` read any document of the wikis an agent can read, with the documents that link it. A hub's story, rule, or principle shows its support: the health of the features it links.
 
 The Map view draws the topology as a force graph: each hub, each system, the repository its code is in, and the deliverables it holds, with dashed edges where one system reads another's releases or uses its interfaces. Lenses color the systems: Activity (cyan while the owner works, muted cyan while it waits), Tests (red for a failing feature, yellow for a pending one, green when they pass), and Git (magenta for uncommitted changes). Click a system or a hub and the camera moves into it, and it opens into its wiki map: one node per document, shaped by kind, with smaller nodes for the documents of other wikis that it links or that link it. The wiki lenses are Kind, Tests (a feature's health, a story's support), and Age. Click a document to read it beside the graph, with the documents that link it, and to edit it; the New button writes a document. Each hub page has a Wiki tab that lists its documents, key stories first. Back returns to the topology.
+
+### Suites of the whole application
+
+Each system's tests cover only its own code. A suite that needs a display, a browser, the whole application, or another system stays in its repository, outside every test command, and hikify records it in `onboarding/` as left for integration. hikari does not run these suites yet, so a hub's stories, rules, and principles have no health of their own: each shows its support.
 
 ### Each agent's container
 
@@ -342,7 +297,7 @@ Three commands work on the whole project:
 3. Copy `.env.example` to `.env`. Set a credential, and set `HIKARI_BRANCH` to your own branch, for example `hikari-bob`.
 4. Run `hikari check myproject/compose.yaml`, then `hikari up myproject/compose.yaml`.
 
-A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the teammate's machine recorded. On its first turn, each owner runs its suites again, and publishes again each release that a tester pins. Then it tells the tester, which pins the releases again.
+A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the teammate's machine recorded. On its first turn, each owner runs its suites again.
 
 The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
 
@@ -371,12 +326,12 @@ It keeps its progress in `onboarding/state.md`, so a new session continues where
 
 `hikify` starts where containerize ends, and refactors the project into isolated systems with you. Run `/hikify` in the same project. It works in stages, and keeps each one in `onboarding/`:
 
-1. **Analysis.** A subagent reads each repository with its owner's map and the baseline. The session then writes a synthesis of the duplicated code, the boundaries it proposes, and the candidate E2E tests, and asks you its questions. A difference in behavior between two copies of code is always your decision.
+1. **Analysis.** A subagent reads each repository with its owner's map and the baseline. The session then writes a synthesis of the duplicated code, the boundaries it proposes, and the suites it leaves for integration, and asks you its questions. A difference in behavior between two copies of code is always your decision.
 2. **Target topology.** It drafts `compose.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft compose.target.yaml` checks a target whose new repositories and scopes do not exist yet. With you, it drafts the stories, rules, and principles of each hub, and you pick the key stories.
 3. **Change plan.** It writes plan documents for each hub and system, and a ledger that says where each baseline test goes.
 4. **Review.** Fresh reviewer subagents look for what would break, in rounds, until a round finds only minor problems. After four rounds with serious findings, the session stops and asks you.
 5. **Execution.** After you approve, the session makes the new repositories, moves code with its history, and installs the drafts and the target topology. You create each new remote. Then you start hikari, and ask the orchestrator to carry out the plan: it sends each step to its owner when the releases it needs exist. The session follows the run from files.
-6. **Verification.** The session checks that every baseline test is kept, moved to the tester, or dropped with your approval, and that the key stories pass. Then it clones the project into a temporary folder, syncs, checks, and starts it, as a teammate would.
+6. **Verification.** The session checks that every baseline test is kept, left for integration, or dropped with your approval, and that the support of each key story is passing. Then it clones the project into a temporary folder, syncs, checks, and starts it, as a teammate would.
 
 To try it, run `make example-onboard`. It writes two small repositories as local remotes, and an empty project in `.hikari/demo/onboard/project`.
 
@@ -415,7 +370,6 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation, scoped commits, and the remote operations of sync and push
 - `internal/linked`: the checks of a start, and `hikari sync` and `hikari push` across the project's repos
-- `internal/e2e`, `internal/environments`, `internal/images`: the tester's plan and lock, its environments, and image releases
 - `internal/node`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent
 - `internal/launcher`: writes the override file and runs the compose project

@@ -16,19 +16,20 @@ between two systems drifts, and the drift is a bug that no unit test
 finds, so a library serves both instead.
 
 Each system tests only its own code, with the unit tests of its language.
-A test that needs a display, a browser, the whole application, or another
-system is an E2E test, and it belongs to the hub's tester, which runs it
-against releases. Inside one system, such a test depends on code the
-system does not own, so its failure names the wrong owner, and its tools
-weigh down the system's container.
+Inside one system, a suite that needs a display, a browser, the whole
+application, or another system depends on code the system does not own,
+so its failure names the wrong owner, and its tools weigh down the
+system's container. Such a suite stays in its repository, outside every
+test command, and hikify records it as left for integration. A way to run
+it is planted.
 
 ## Ids and names
 
 Every agent, hub, and repo has an id and a name. The id keys what lives
 outside the compose file: store directories, vocabulary files, release
-manifests, the tester's lock, containers, networks, and clones. The name
-is what people and agents use. A rename then changes one field, and the
-store, the releases, and the pins stay as they are; a release is
+manifests, containers, networks, and clones. The name is what people and
+agents use. A rename then changes one field, and the store and the
+releases stay as they are; a release is
 immutable, so it could not follow a rename anyway.
 
 The id is the key that the file already writes, not a generated code, so a
@@ -247,62 +248,6 @@ stay on the host between runs, like the map in the store. A rename in the
 wiki follows into the test map, the code map, and the recorded hashes, so
 that a rename never makes results pending or leaves a private file invalid.
 
-## A tester proves the stories
-
-The orchestrator decides what a hub's systems must do together, in the
-hub's stories, rules, and principles. Another agent, the tester, proves it,
-because the agent that sets the bar should not also write the check: when
-one agent writes both and a test fails, it can change either one. The tester
-is an ordinary owner whose scope is the E2E scaffold, so it keeps the
-boundary that every owner keeps: it never sees another system's code, and
-tests only what the systems release.
-
-Its test map links the hub's documents as an owner's links its features, so
-a story's health comes from one test map, one results file, and one health
-computation. The "code" of a story is the release lock: a result counts
-while the test and the lock are unchanged, so a new pin makes every E2E
-result pending through the hashing that already decides when a unit test
-result counts. The tester pins with a tool, so that it never types a digest.
-
-The tester's plan lives in its scope, because it describes the scaffold, and
-hikari serves it to the orchestrator and the user, who cannot read the
-scope. A plan names what it cannot test. A gap counts only when the user
-approves it, and an approval holds a digest of the gap's text, so the
-tester cannot close a hard story by calling it a gap, nor change a gap after
-the user approved it.
-
-## Bench results
-
-Not every story can be checked by a machine: a model on an NPU, or a relay
-on a real output, needs hardware that the test system does not have. A gap
-says so; a bench procedure does better when the user has the hardware. The
-tester writes the steps, the user runs them and records the result, and the
-result counts like a test result: the same digest of the lock that makes a
-test result pending makes a bench result pending, and so does a change of
-the procedure, because a result of other steps says nothing of these.
-
-## Environments run on the host
-
-A tester's container cannot start containers: the Docker socket would give
-it the host. So the tester describes its services in a compose file, and
-hikari runs it, as hikari runs the topology: it reads the file, refuses what
-would cross a boundary, writes an override with the network and the mounts,
-and starts the project. The tester's container then joins the environment's
-network, so the tests reach each service by name and nothing else.
-
-A release is either mounted into a container or is an image; hikari knows no
-other kinds of product. An owner cannot run Docker either, so hikari builds
-an image release on the host, from the commit that the map describes, and
-the build context never enters the release. The image stays in the host's
-Docker: an archive of every version in the store would cost more than a
-rebuild from the commit.
-
-`start_environment` waits until the services are healthy, instead of
-returning at once and waking the tester later: hikari has no sender for such
-a message, and a start takes seconds to minutes. No variable of the host
-reaches an environment, so an environment never holds a credential; a test
-against a real cloud service is planted.
-
 ## Orchestrators see what they orchestrate
 
 An orchestrator reads only the systems of the direct members of its hubs. In
@@ -383,9 +328,7 @@ A fresh clone lacks what git does not version: test results and releases.
 A missing results file is no evidence, so the map keeps the health that
 the teammate's machine recorded, instead of dropping every feature to
 pending and committing the drop. The owner's first turn runs its suites
-again, and publishes again each release that a tester pins. Then the
-owner tells the tester, which pins again. A rebuild can change a
-release's digest, so a pin is never carried across machines silently.
+again.
 
 ## Onboarding runs in your own session
 
@@ -407,8 +350,8 @@ the owners' first turns map the code and record the tests. That gives the
 refactor of hikify three things it would otherwise rebuild: every
 repository runs in hikari, every test has a recorded outcome, and each
 repository has a map written by the agent that owns it. A suite that
-cannot run in a container is a finding, not a change: hikify moves it to
-the tester. The one exception is an ignore line for build products, with
+cannot run in a container is a finding, not a change: hikify leaves it
+in its repository for integration. The one exception is an ignore line for build products, with
 your approval. Without it, every machine commits the products again.
 
 `hikari status` reads only files, so the session can watch the owners'
@@ -730,8 +673,8 @@ from before the record existed has no known age and shows as the oldest.
   spends one tool call to load the hikari tools.
 - The first indexing turn of an owner reads its whole system.
 - No agent sees another system's code. A system tests against another
-  system's published releases when the topology grants them, and a hub's
-  tester runs E2E tests against the releases of the hub's systems.
+  system's published releases when the topology grants them. No agent runs
+  a suite of the whole application; such suites wait for integration.
 - Teammates' branches are merged by people with git. hikari pushes and
   syncs, but it never merges.
 - Release grants change only when a container starts, and there are no

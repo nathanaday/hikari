@@ -45,7 +45,7 @@ Onboarding costs agent time. Each owner reads its whole repository on its first 
 | 1. Make the project | you | run `hikari init` | an empty project repository |
 | 2. Containerize | your Claude Code session, then the owner agents | give the repository URLs, approve ignore lines, start hikari | one system for each repository, and a baseline of every test |
 | 3. Design | your session, with reviewer subagents | answer questions, pick key stories, approve the plan | a target topology, hub stories, a change plan, and a test ledger |
-| 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored systems, E2E tests |
+| 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored systems |
 | 5. Verify | your session | approve the push | a checked ledger, and a proof that a fresh clone starts |
 
 Each stage records its progress in `onboarding/state.md`. You can stop after any stage and continue later.
@@ -103,7 +103,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 4. **Approve the ignore lines.** When a repository does not ignore its build products, such as `__pycache__/` or `node_modules/`, the skill shows you the lines to add to its `.gitignore`. This is the only change that containerize makes in a repository. Without it, every machine commits the build products again.
 
-5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator and a hub. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. The design stage moves it to the hub's tester.
+5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator and a hub. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
 
 6. **Start hikari** when the skill asks, in a terminal of your own, and leave it running:
 
@@ -129,7 +129,7 @@ Run the second skill in the same project:
 
 ### Analysis
 
-One subagent reads each repository, its owner's map, and the baseline. Each writes a report in `onboarding/analysis/`. The session then writes `onboarding/analysis/synthesis.md`: the duplicated code, the boundaries it proposes, and the candidate E2E tests. It then asks you its questions in one message.
+One subagent reads each repository, its owner's map, and the baseline. Each writes a report in `onboarding/analysis/`. The session then writes `onboarding/analysis/synthesis.md`: the duplicated code, the boundaries it proposes, and the suites it leaves for integration. It then asks you its questions in one message.
 
 Answer each question in the conversation. You can also write an answer in the `## Your answers` section of a report. Some answers are yours alone:
 
@@ -142,10 +142,10 @@ Answer each question in the conversation. You can also write an answer in the `#
 The session writes:
 
 - `compose.target.yaml`: the whole target topology. `hikari check -draft compose.target.yaml` checks it, even though its new repositories do not exist yet.
-- `onboarding/topology.md`: each system, library, hub, and tester in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
+- `onboarding/topology.md`: each system, library, and hub in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
 - Drafts of the hub's stories, rules, and principles, in `onboarding/wiki/hubs/<hub>/`.
 
-**Pick the key stories.** The session asks which stories are key. A key story is part of the integration test that matters most to you. The tester must prove each one, or name the reason why it cannot.
+**Pick the key stories.** The session asks which stories are key. A key story is part of the integration test that matters most to you. Its support, the health of the features it links, must pass at the end.
 
 Every boundary states one of three reasons: a library that two or more systems need, a client and a server, or two concerns that stay in one repository. If you disagree with a boundary, say so, and the session revises the design.
 
@@ -155,7 +155,7 @@ The session writes:
 
 - a hub plan, `onboarding/wiki/hubs/<hub>/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
 - a system plan for each owner;
-- the ledger, `onboarding/verification.md`, which gives the planned place of every baseline test: kept, moved to the tester, or dropped with a reason. A drop waits for your approval.
+- the ledger, `onboarding/verification.md`, which gives the planned place of every baseline test: kept, left for integration, or dropped with a reason. A drop waits for your approval.
 
 Fresh reviewer subagents then look for what would break, in rounds. Each round's findings and their resolutions are in `onboarding/review/<n>.md`. A round with only minor findings ends the review. After four rounds that still have serious findings, the session stops and asks you how to go on.
 
@@ -190,7 +190,7 @@ Tell the session to start the restructure. hikari must be stopped.
 
    Agents act on a plan only when you ask.
 
-5. **Watch.** The orchestrator posts the state of each step in the hub. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. The tester runs the E2E tests against the releases. When a step waits for you or for the session, the orchestrator says so in the hub.
+5. **Watch.** The orchestrator posts the state of each step in the hub. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. When a step waits for you or for the session, the orchestrator says so in the hub.
 
    If an owner reports that a step cannot be done as written, the orchestrator tells you. The session proposes a change to the plan, and changes it only with your approval.
 
@@ -202,11 +202,11 @@ The session:
 
 1. fills in the result of each row of the ledger from the recorded tests;
 2. asks you to approve each test that the plan drops;
-3. checks that every suite passes, and that every key story passes;
+3. checks that every suite passes, and that the support of every key story is passing;
 4. asks your approval to run `hikari push`, which pushes the hikari branch of each linked repository and then of the project;
 5. runs a dry run: it clones the project into a temporary folder, runs `hikari sync` and `hikari check`, and starts hikari there until every agent connects.
 
-The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the systems, their releases, the moved tests, and the stories.
+The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the systems, their releases, the suites left for integration, and the stories.
 
 ## After onboarding
 
@@ -246,7 +246,7 @@ A teammate starts from a clone of the project repository:
    hikari up compose.yaml
    ```
 
-A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the other machine recorded. On its first turn, each owner runs its tests again and publishes again each release that a tester pins.
+A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the other machine recorded. On its first turn, each owner runs its tests again.
 
 To share your agents' work, run `hikari push compose.yaml`. It pushes your branch of each linked repository first, then of the project. It never forces.
 
@@ -310,4 +310,4 @@ cd .hikari/demo/onboard/project
 claude
 ```
 
-The command prints the `file://` URLs of the two repositories. Give them to `/containerize-repo`, then run `/hikify`. The skill must find the copied module, ask you which behavior is right, propose an `accounts` library, and move the browser test to a tester.
+The command prints the `file://` URLs of the two repositories. Give them to `/containerize-repo`, then run `/hikify`. The skill must find the copied module, ask you which behavior is right, propose an `accounts` library, and leave the browser test in its repository for integration.

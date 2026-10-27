@@ -2,6 +2,8 @@
 
 Status: built. Section 5 (Releases), rules R1 to R11, and the `release-docs` skill are replaced by `docs/specs/deliverables.md`.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 - Orchestrators also learn which release grants their members have, so that they can plan tests against releases. They cannot change grants; they ask the user.

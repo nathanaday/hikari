@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-22 of a project from `hikari init` with one owner, `app`, whose scope is in the project repository: its first turn made the commits `app: set the system info`, `app: change features: create count-votes, create refuse-blank-votes, create pick-winner`, and `app: mark the map current at 71cd386`; the lead's vocabulary change was `lead: define vote in the #main vocabulary`; the owner's test run changed the health in `map.yaml` with no commit; the stop commit `app: store changes left when hikari stopped` left the repository clean. A start from `main` checked out `hikari` and refused a compose file on it that named another branch; two later starts made no commit.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 1. **The runs directory is ignored as `/.hikari/`** (PR11, PR23). A `.hikari/` pattern also matches the `.hikari` directory of each scope, which hides the private documents. Found in the tests.
@@ -9,7 +11,7 @@ Changes made during the build:
 3. **The times of a feature document keep whole seconds.** The document stores seconds, and the wiki in memory kept nanoseconds, so each start wrote the map again and made a commit at stop. Found in the live run.
 4. **A failed store commit is noted only in the result of `change_features`** (PR21). The other tools have no notes; the server logs the failure.
 
-Sources: `docs/brainstorm/e2e.md` (round 1, section H) and `e2e-answers.md`. Every recommendation of section H was agreed. This is the first of four steps of the E2E work.
+Sources: `docs/archive/e2e.md` (round 1, section H) and `e2e-answers.md`. Every recommendation of section H was agreed. This is the first of four steps of the E2E work.
 
 ## Summary
 

@@ -1,6 +1,14 @@
 # Spec: set the E2E work aside
 
-Status: approved.
+Status: built. Checked in a live run on 2026-10-26: `hikari check examples/shop/compose.yaml` passed, and `hikari up -no-launch` served the UI in headless Chrome, where `#shop` has the tabs Messages, Vocabulary, and Wiki, `#/hub/shop/tests` opens All, the snapshot's wikis have no `tests` field, and `/api/node/e2e/plans/shop` is not found. The Docker daemon was not running; neither command needed it.
+
+Changes made during the build:
+
+1. **A principle of a hub shows its support too** (RE10). Before the tester, only a story and a rule had support. A hub document's `health` is now empty, and `support` is its health.
+2. **An old manifest loads through a wrapper that accepts `image:` and drops it** (RE11). The manifest decoder stays strict for every other key. A test covers both.
+3. **The restore turn always ends with "Send no messages"** (RE13). Only the missing-release step needed messages.
+4. **The team example's QA agent is `qa`, not `tester`** (RE21). It was a plain agent with no E2E role. Test fixtures that named an agent `tester` or a scope `e2e` use `site`.
+5. **hikify's verification asks the user to read each key story's support on the hub's Wiki tab** (RE16). The session had read it from `get_test_plan`, and it has no other view of a hub wiki's support.
 
 Sources: `docs/brainstorm/shared-language.md` (questions A1 to A5) and `shared-language-answers.md`. This is step 1 of the seven steps of the shared language.
 

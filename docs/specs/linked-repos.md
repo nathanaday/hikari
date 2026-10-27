@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-23 with a project from `hikari init` and two linked repos, `greet` and `hello`, on local bare remotes. `hikari check` named both missing clones, and `hikari sync` cloned them. Alex's run committed the owners' maps on `hikari`, and `hikari push` pushed both repos, then the project. Bob cloned the project, ran `hikari sync -from hikari` with `HIKARI_BRANCH=hikari-bob`, and his run started on `hikari-bob` from Alex's maps. A third clone found that a fresh clone dropped every health to pending and committed the drop; after the fix (change 2), Carol's owners took a restore turn of 7 to 10 seconds, ran their suites, and the maps changed only by the time of the run. `hikari up` on a clone that was not synced refused to start and started no container.
 
+The tester, environments, and image releases were removed in `remove-e2e.md`.
+
 Changes made during the build:
 
 1. **The first line of `git status` keeps its leading space.** The git helper trimmed the output on both sides, so the status line of a modified file lost the first letter of its path, and the refusal of PR10 named `gitignore` for `.gitignore`. It now trims the end only. Found in the tests.
