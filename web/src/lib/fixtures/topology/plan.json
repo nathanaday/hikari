@@ -1,6 +1,6 @@
 {
   "revision": "c0459b66bcb3190e3c47acf1db49f53162bd5d08d2ad08a036d4c668239ca343",
-  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {name: chief, description: Leads the demo.}\n  dev:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Builds it., partition: {repo: project, scope: app}}\n",
+  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {name: chief, description: Leads the demo.}\n  dev:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Builds it., partition: {folders: [{repo: project, path: app}]}}\n",
   "diff": [
     {
       "op": " ",
@@ -95,7 +95,7 @@
     },
     {
       "op": "+",
-      "text": "    x-hikari: {description: Builds it., partition: {repo: project, scope: app}}",
+      "text": "    x-hikari: {description: Builds it., partition: {folders: [{repo: project, path: app}]}}",
       "new": 16
     }
   ],
@@ -146,9 +146,14 @@
         "instructions": "",
         "model": "",
         "partition": {
-          "repo": "project",
-          "scope": "app",
-          "read": [],
+          "folders": [
+            {
+              "repo": "project",
+              "path": "app",
+              "read_only": false,
+              "at": ""
+            }
+          ],
           "test": ""
         },
         "releases": [],
@@ -190,12 +195,12 @@
   "mounts": {
     "dev": [
       {
-        "container": "/workspace/app",
+        "container": "/workspace/project/app",
         "host": "app",
         "mode": "writable"
       },
       {
-        "container": "/workspace/app/.hikari",
+        "container": "/workspace/project/app/.hikari",
         "host": "",
         "mode": "read-only"
       },

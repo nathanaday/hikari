@@ -76,7 +76,7 @@ func showLoaded(con *console.Console, load func(context.Context, string) (*topol
 // only (rules DR1 to DR3 of the hikify design spec).
 func check(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	draft := fs.Bool("draft", false, "check a target topology: repos and scopes that do not exist yet are allowed, and the running project is not checked")
+	draft := fs.Bool("draft", false, "check a target topology: repos and folders that do not exist yet are allowed, and the running project is not checked")
 	file, err := topologyArg(fs, args, "hikari check [flags] [topology.yaml]")
 	if err != nil {
 		return err
@@ -187,6 +187,16 @@ func status(ctx context.Context, args []string) error {
 	return nil
 }
 
+// shortCommits writes described commits as <repo>@<12 characters>.
+func shortCommits(commits []string) string {
+	out := make([]string, len(commits))
+	for i, c := range commits {
+		repo, commit, _ := strings.Cut(c, "@")
+		out[i] = fmt.Sprintf("%s@%.12s", repo, commit)
+	}
+	return strings.Join(out, ", ")
+}
+
 // statusLines renders the status of each partition as plain lines.
 func statusLines(partitions []linked.PartitionStatus, tests bool) []string {
 	var out []string
@@ -195,10 +205,10 @@ func statusLines(partitions []linked.PartitionStatus, tests bool) []string {
 		switch {
 		case !s.Cloned:
 			head += "not cloned"
-		case s.Commit == "":
+		case len(s.Commits) == 0:
 			head += "not described"
 		default:
-			head += fmt.Sprintf("described at %.12s · %s", s.Commit, plural(s.Features, "feature"))
+			head += fmt.Sprintf("described at %s · %s", shortCommits(s.Commits), plural(s.Features, "feature"))
 			if parts := counts(s.Health, "passing", "failing", "pending", "untested"); parts != "" {
 				head += ": " + parts
 			}

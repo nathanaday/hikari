@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/vault"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 // User is the reserved name of the human operator. The user is in the room
@@ -59,13 +61,40 @@ type Grants struct {
 	Skills []string `yaml:"skills"`
 }
 
-// Partition is the code that one agent owns: a scope inside a repo.
+// Partition is the folders that one agent's container mounts as its
+// workspace. Test runs in /workspace.
 type Partition struct {
-	Repo string `yaml:"repo"`
-	// Scope is relative to the repo root. Empty means the whole repo.
-	Scope string   `yaml:"scope"`
-	Read  []string `yaml:"read"`
-	Test  string   `yaml:"test"`
+	Folders []Folder `yaml:"folders"`
+	Test    string   `yaml:"test"`
+}
+
+// Folder is a path in a repo. Repo holds the repo's id in the file and its
+// name after Parse. Path is relative to the repo's root, with slashes; empty
+// means the whole repo.
+type Folder struct {
+	Repo     string `yaml:"repo"`
+	Path     string `yaml:"path"`
+	ReadOnly bool   `yaml:"read_only"`
+	At       string `yaml:"at"`
+	// Place is where the folder mounts, relative to /workspace: At, or the
+	// repo's name and Path.
+	Place string `yaml:"-"`
+}
+
+// Writable returns the folders without read_only, in order.
+func (p *Partition) Writable() []Folder {
+	var out []Folder
+	for _, f := range p.Folders {
+		if !f.ReadOnly {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// Uses reports whether a folder of p is in repo.
+func (p *Partition) Uses(repo string) bool {
+	return slices.ContainsFunc(p.Folders, func(f Folder) bool { return f.Repo == repo })
 }
 
 // Repo is a git repo on the host. Path is absolute after Parse. A linked
@@ -202,7 +231,7 @@ func (a Agent) empty() bool {
 // sees the file as compose will run it.
 func Load(ctx context.Context, file string) (*Topology, error) { return load(ctx, file, false) }
 
-// LoadDraft is Load for a target topology: repos and scopes that do not
+// LoadDraft is Load for a target topology: repos and folders that do not
 // exist yet are not errors (rule DR1).
 func LoadDraft(ctx context.Context, file string) (*Topology, error) { return load(ctx, file, true) }
 
@@ -332,6 +361,10 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 			fail("services."+name, "service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
 			continue
 		}
+		if oldPartition(&sk.Hikari) {
+			fail("services."+name+".x-hikari.partition", "service %q: the partition uses the old keys repo, scope, and read; write it as folders: [{repo: <repo>, path: <scope>}], with read_only: true for each read path", name)
+			continue
+		}
 		var h serviceHikari
 		if err := decodeStrict(&sk.Hikari, &h); err != nil {
 			fail("services."+name+".x-hikari", "service %q: x-hikari: %v", name, err)
@@ -356,6 +389,24 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	}
 	t.rekey()
 	return &t, nil
+}
+
+// oldPartition reports whether an x-hikari node holds a partition of the
+// form before folders (decision 5 of the partition folders spec).
+func oldPartition(n *yaml.Node) bool {
+	if n.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if p := n.Content[i+1]; n.Content[i].Value == "partition" && p.Kind == yaml.MappingNode {
+			for j := 0; j+1 < len(p.Content); j += 2 {
+				if k := p.Content[j].Value; k == "scope" || k == "read" || k == "repo" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // decodeStrict decodes node into v and rejects unknown fields.
@@ -431,9 +482,17 @@ func (t *Topology) normalize() {
 			a.Name = name
 		}
 		if a.Partition != nil {
-			a.Partition.Scope = cleanRel(a.Partition.Scope)
-			for i, p := range a.Partition.Read {
-				a.Partition.Read[i] = cleanRel(p)
+			for i, f := range a.Partition.Folders {
+				f.Path, f.At = cleanSlash(f.Path), cleanSlash(f.At)
+				f.Place = f.At
+				if f.Place == "" {
+					repo := f.Repo
+					if r, ok := t.Repos[f.Repo]; ok {
+						repo = r.Name
+					}
+					f.Place = path.Join(repo, f.Path)
+				}
+				a.Partition.Folders[i] = f
 			}
 		}
 		t.Agents[name] = a
@@ -458,9 +517,12 @@ func (t *Topology) rekey() {
 	agents := map[string]Agent{}
 	for _, a := range t.Agents {
 		if s := a.Partition; s != nil {
-			sys := *s
-			sys.Repo = repo(s.Repo)
-			a.Partition = &sys
+			p := *s
+			p.Folders = slices.Clone(s.Folders)
+			for i := range p.Folders {
+				p.Folders[i].Repo = repo(p.Folders[i].Repo)
+			}
+			a.Partition = &p
 		}
 		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
 		agents[a.Name] = a
@@ -532,12 +594,13 @@ func resolvePath(p, dir string) string {
 	return filepath.Clean(p)
 }
 
-// cleanRel cleans a relative path and maps "." to "".
-func cleanRel(p string) string {
+// cleanSlash cleans a relative path, writes it with slashes, and maps "."
+// to "".
+func cleanSlash(p string) string {
 	if p == "" {
 		return ""
 	}
-	if c := filepath.Clean(p); c != "." {
+	if c := path.Clean(filepath.ToSlash(p)); c != "." {
 		return c
 	}
 	return ""
@@ -637,7 +700,9 @@ func (t *Topology) validateRepos() []error {
 	used := map[string]bool{}
 	for _, a := range t.Agents {
 		if a.Partition != nil {
-			used[a.Partition.Repo] = true
+			for _, f := range a.Partition.Folders {
+				used[f.Repo] = true
+			}
 		}
 	}
 	for _, name := range sortedKeys(t.Repos) {
@@ -782,75 +847,34 @@ func (t *Topology) validatePartitions() []error {
 			}
 			seen[sk] = true
 		}
-		s := a.Partition
-		if s == nil {
+		if a.Partition == nil {
 			continue
 		}
 		if name == t.Orchestration {
 			fail(name, "partition", "the orchestration agent cannot have a partition")
 		}
-		repo, ok := t.Repos[s.Repo]
-		if !ok {
-			if s.Repo == ProjectRepo {
-				fail(name, "partition.repo", "the partition is in repo %q, which needs x-hikari.project", ProjectRepo)
-			} else {
-				fail(name, "partition.repo", "partition references unknown repo %q", s.Repo)
-			}
-			continue
-		}
-		if s.Repo == ProjectRepo {
-			if vault := t.VaultInProject(); s.Scope == "" || (vault != "" && overlaps(filepath.FromSlash(vault), s.Scope)) {
-				fail(name, "partition.scope", "a partition in the project repository needs a scope that does not overlap the vault")
-			} else if overlaps(CloneDir, s.Scope) {
-				fail(name, "partition.scope", "a partition in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
-			}
-		}
-		if slices.Contains(t.Missing, s.Repo) || t.draft {
-			if s.Scope != "" && !filepath.IsLocal(s.Scope) {
-				fail(name, "partition.scope", "scope %q must be a relative path inside the repo", s.Scope)
-			}
-			for _, p := range s.Read {
-				if p == "" || !filepath.IsLocal(p) {
-					fail(name, "partition.read", "read path %q must be a relative path inside the repo", p)
-				}
-			}
-			continue
-		}
-		if s.Scope != "" {
-			if !filepath.IsLocal(s.Scope) {
-				fail(name, "partition.scope", "scope %q must be a relative path inside the repo", s.Scope)
-			} else if !isDir(filepath.Join(repo.Path, s.Scope)) {
-				fail(name, "partition.scope", "scope %q is not a directory in repo %q", s.Scope, s.Repo)
-			}
-		}
-		for _, p := range s.Read {
-			if p == "" || !filepath.IsLocal(p) {
-				fail(name, "partition.read", "read path %q must be a relative path inside the repo", p)
-			} else if !isDir(filepath.Join(repo.Path, p)) {
-				fail(name, "partition.read", "read path %q is not a directory in repo %q", p, s.Repo)
-			}
-		}
+		errs = append(errs, t.validateFolders(name, a.Partition)...)
 	}
 
-	// Scopes in one repo must not overlap, and no read path may reach into a
-	// scope.
+	// Writable folders of two partitions must not overlap in a repo, and no
+	// folder may reach into another partition's writable folder (rule F3).
 	partitionAgents := t.PartitionAgents()
-	for i, a := range partitionAgents {
-		sa := t.Agents[a].Partition
-		for _, b := range partitionAgents[i+1:] {
-			sb := t.Agents[b].Partition
-			if sa.Repo == sb.Repo && overlaps(sa.Scope, sb.Scope) {
-				errs = append(errs, at("services."+b+".x-hikari.partition.scope", "agents %q and %q have overlapping scopes in repo %q", a, b, sa.Repo))
-			}
-		}
-	}
 	for _, a := range partitionAgents {
-		sa := t.Agents[a].Partition
-		for _, p := range sa.Read {
+		pa := t.Agents[a].Partition
+		for i, fa := range pa.Folders {
 			for _, b := range partitionAgents {
-				sb := t.Agents[b].Partition
-				if sa.Repo == sb.Repo && p != "" && overlaps(p, sb.Scope) {
-					fail(a, "partition.read", "read path %q overlaps the scope of %q", p, b)
+				if a == b || (!fa.ReadOnly && b < a) {
+					continue
+				}
+				for _, fb := range t.Agents[b].Partition.Writable() {
+					if fa.Repo != fb.Repo || !overlaps(fa.Path, fb.Path) {
+						continue
+					}
+					if fa.ReadOnly {
+						fail(a, fmt.Sprintf("partition.folders[%d]", i), "the read-only folder %s overlaps the writable folder %s of %q in repo %q", folderName(fa), folderName(fb), b, fa.Repo)
+					} else {
+						fail(a, fmt.Sprintf("partition.folders[%d]", i), "the writable folders %s of %q and %s of %q overlap in repo %q", folderName(fa), a, folderName(fb), b, fa.Repo)
+					}
 				}
 			}
 		}
@@ -858,14 +882,75 @@ func (t *Topology) validatePartitions() []error {
 	return errs
 }
 
-// overlaps reports whether one relative path is the other or contains it.
-// The empty path is the whole repo.
+// validateFolders checks the folders of one partition (rules F1 to F3).
+func (t *Topology) validateFolders(name string, p *Partition) []error {
+	var errs []error
+	fail := func(key, format string, args ...any) {
+		errs = append(errs, at("services."+name+".x-hikari."+key, "agent %q: "+format, append([]any{name}, args...)...))
+	}
+	if len(p.Writable()) == 0 {
+		fail("partition.folders", "the partition needs at least one folder without read_only: its private documents and its commits live there")
+	}
+	for i, f := range p.Folders {
+		key := fmt.Sprintf("partition.folders[%d]", i)
+		repo, ok := t.Repos[f.Repo]
+		switch {
+		case f.Repo == "":
+			fail(key+".repo", "folder %d has no repo", i+1)
+			continue
+		case !ok && f.Repo == ProjectRepo:
+			fail(key+".repo", "the folder %s is in repo %q, which needs x-hikari.project", folderName(f), ProjectRepo)
+			continue
+		case !ok:
+			fail(key+".repo", "folder %d references unknown repo %q", i+1, f.Repo)
+			continue
+		}
+		if f.Path != "" && !filepath.IsLocal(f.Path) {
+			fail(key+".path", "path %q must be a relative path inside the repo", f.Path)
+			continue
+		}
+		if raw := p.Folders[i].At; raw != "" && !filepath.IsLocal(raw) {
+			fail(key+".at", "at %q must be a relative path under %s", raw, api.WorkspaceRoot)
+		} else if under(f.Place, ".hikari") || under(f.Place, ".git") {
+			fail(key, "the folder %s has the place %s/%s, which hikari keeps for itself", folderName(f), api.WorkspaceRoot, f.Place)
+		}
+		if f.Repo == ProjectRepo {
+			if vault := t.VaultInProject(); f.Path == "" || (vault != "" && overlaps(vault, f.Path)) {
+				fail(key+".path", "a folder in the project repository needs a path that does not overlap the vault")
+			} else if overlaps(CloneDir, f.Path) {
+				fail(key+".path", "a folder in the project repository needs a path that does not overlap the clone folder %s/", CloneDir)
+			}
+		}
+		if f.Path != "" && !slices.Contains(t.Missing, f.Repo) && !t.draft && !isDir(filepath.Join(repo.Path, filepath.FromSlash(f.Path))) {
+			fail(key+".path", "path %q is not a directory in repo %q", f.Path, f.Repo)
+		}
+		for j, g := range p.Folders[:i] {
+			switch {
+			case overlaps(f.Place, g.Place):
+				fail(key, "the folders %d and %d have the places %s and %s, which nest; give one of them at:", j+1, i+1, g.Place, f.Place)
+			case f.Repo == g.Repo && overlaps(f.Path, g.Path):
+				fail(key, "the folders %d and %d overlap in repo %q; one folder of a repo cannot hold another", j+1, i+1, f.Repo)
+			}
+		}
+	}
+	return errs
+}
+
+// folderName names a folder in an error: its repo and its path.
+func folderName(f Folder) string {
+	if f.Path == "" {
+		return f.Repo + " (the whole repo)"
+	}
+	return f.Repo + "/" + f.Path
+}
+
+// overlaps reports whether one relative slash path is the other or
+// contains it. The empty path is the whole repo.
 func overlaps(a, b string) bool {
 	if a == "" || b == "" || a == b {
 		return true
 	}
-	sep := string(filepath.Separator)
-	return strings.HasPrefix(a, b+sep) || strings.HasPrefix(b, a+sep)
+	return strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
 
 func isDir(p string) bool {
@@ -947,6 +1032,23 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// Workspace returns the folders of agent's partition with their host
+// paths, or nil when agent has no partition.
+func (t *Topology) Workspace(agent string) workspace.Workspace {
+	p := t.Agents[agent].Partition
+	if p == nil {
+		return nil
+	}
+	out := make(workspace.Workspace, len(p.Folders))
+	for i, f := range p.Folders {
+		out[i] = workspace.Folder{
+			Place: f.Place, Repo: f.Repo, Path: f.Path, ReadOnly: f.ReadOnly,
+			Host: filepath.Join(t.Repos[f.Repo].Path, filepath.FromSlash(f.Path)),
+		}
+	}
+	return out
 }
 
 // VaultOf returns the topology's vault, which maps the names of partitions to

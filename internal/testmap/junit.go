@@ -47,9 +47,9 @@ type junitProblem struct {
 }
 
 // ParseReport reads the test cases of a JUnit XML report (rules J3 to J5).
-// workDir is the scope as the container sees it, so that an absolute path
-// under it becomes relative to the scope. disk tells whether a class name
-// names a file of the scope.
+// workDir is /workspace, so that an absolute path under it becomes a
+// workspace path. disk tells whether a class name names a file of the
+// workspace.
 func ParseReport(data []byte, workDir string, disk Disk) ([]Case, error) {
 	if len(data) > MaxReportBytes {
 		return nil, fmt.Errorf("the report has %d bytes; at most %d", len(data), MaxReportBytes)
@@ -149,7 +149,7 @@ func newCase(jc junitCase, suiteFile, workDir string, disk Disk) Case {
 	return c
 }
 
-// relative returns p relative to the scope, or "" when p is empty or
+// relative returns p relative to the workspace, or "" when p is empty or
 // outside it (rule J4).
 func relative(p, workDir string) string {
 	p = strings.TrimSpace(p)

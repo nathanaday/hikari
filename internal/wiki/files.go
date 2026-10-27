@@ -17,6 +17,9 @@ import (
 type Files struct {
 	dir   string
 	kinds []string
+	// repo is the repo of a described commit of the format before, which
+	// names none.
+	repo string
 
 	mu       sync.Mutex
 	w        Wiki
@@ -46,8 +49,34 @@ func (s *Files) load() error {
 	if err != nil {
 		return err
 	}
+	for _, d := range w {
+		s.qualify(d)
+	}
 	s.w, s.raw, s.problems, s.broken = w, raw, problems, broken
 	return nil
+}
+
+// SetRepo names the repo of a described commit that names none, as a
+// document of the format before records it (rule F8 of the partition
+// folders spec). The next write of a document writes the new form.
+func (s *Files) SetRepo(repo string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repo = repo
+	for _, d := range s.w {
+		s.qualify(d)
+	}
+}
+
+func (s *Files) qualify(d *Document) {
+	if s.repo == "" {
+		return
+	}
+	for i, c := range d.DescribedCommits {
+		if !strings.Contains(c, "@") {
+			d.DescribedCommits[i] = s.repo + "@" + c
+		}
+	}
 }
 
 // Dir returns the directory of the wiki.
@@ -239,9 +268,9 @@ func (s *Files) relinkLocked(renamed, removed map[string]string, textOnly bool) 
 	return written, nil
 }
 
-// SetDescribed records commit and now as what every agent document
+// SetDescribed records commits and now as what every agent document
 // describes. A document whose file is broken on disk is left alone.
-func (s *Files) SetDescribed(commit string, now time.Time) error {
+func (s *Files) SetDescribed(commits []string, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := s.w.Clone()
@@ -249,7 +278,7 @@ func (s *Files) SetDescribed(commit string, now time.Time) error {
 		if d.User() || s.broken[id] {
 			continue
 		}
-		d.DescribedCommit, d.DescribedAt = commit, now.UTC().Truncate(time.Second)
+		d.DescribedCommits, d.DescribedAt = slices.Clone(commits), now.UTC().Truncate(time.Second)
 		if err := s.write(d); err != nil {
 			return err
 		}
@@ -294,6 +323,7 @@ func (s *Files) WriteDoc(name, text string, c Check) error {
 	if err := s.writeText(name, text); err != nil {
 		return err
 	}
+	s.qualify(d)
 	s.w[name] = d
 	delete(s.broken, name)
 	s.problems = slices.DeleteFunc(s.problems, func(p string) bool { return strings.HasPrefix(p, name+".md: ") })

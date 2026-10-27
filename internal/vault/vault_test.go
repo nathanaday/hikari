@@ -77,7 +77,7 @@ func stage(t *testing.T, s Vault, deliverable string, files map[string]string) {
 func input(version string) PublishInput {
 	return PublishInput{
 		Partition: "inventory", Deliverable: "python-library", Version: version, Notes: "First release.",
-		SourceCommit: "abc123", Map: []byte("version: 3\n"), Features: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hikari: "0.0.1",
+		SourceCommits: []string{"shop@abc123"}, Map: []byte("version: 3\n"), Features: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hikari: "0.0.1",
 		Now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC),
 	}
 }
@@ -226,7 +226,7 @@ func TestPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Deliverable != "python-library" || m.Version != "1.0.0" || m.Partition != "inventory" || m.SourceCommit != "abc123" ||
+	if m.Deliverable != "python-library" || m.Version != "1.0.0" || m.Partition != "inventory" || !slices.Equal(m.SourceCommits, []string{"shop@abc123"}) ||
 		m.Notes != "First release." || m.Map != "features/map.yaml" || m.Hikari != "0.0.1" ||
 		m.Product.Files != 4 || m.Product.Path != "product/" || !strings.HasPrefix(m.Product.Digest, "sha256:") || m.Certificates == nil {
 		t.Errorf("R14 manifest: %+v", m)

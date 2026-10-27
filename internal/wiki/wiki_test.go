@@ -19,7 +19,7 @@ description: Hold a quantity of a SKU for an order when enough is available.
 interfaces: [Stock.reserve]
 related: ["[[check-availability]]"]
 updated: 2026-10-22T05:57:04Z
-described_commit: c69dd49
+described_commits: [shop@c69dd49]
 described_at: 2026-10-22T05:57:09Z
 owner-note: keep
 ---
@@ -61,7 +61,7 @@ func TestParseAndRender(t *testing.T) {
 	if !slices.Equal(d.Related, []string{"check-availability"}) {
 		t.Errorf("related links are read as ids: %v", d.Related)
 	}
-	if d.DescribedCommit != "c69dd49" || d.Updated.Hour() != 5 {
+	if !slices.Equal(d.DescribedCommits, []string{"shop@c69dd49"}) || d.Updated.Hour() != 5 {
 		t.Errorf("code-owned properties: %+v", d)
 	}
 	if len(d.Extra) != 1 || d.Extra[0].Key != "owner-note" {
@@ -72,6 +72,28 @@ func TestParseAndRender(t *testing.T) {
 	}
 	if d.Render() != reserveDoc {
 		t.Errorf("render differs from the source:\n%s", d.Render())
+	}
+}
+
+// TestOldDescribedCommit reads a document of the format before, whose one
+// described commit names no repo (rule F8): the files give it the repo of
+// the first writable folder, and the next write writes the new form.
+func TestOldDescribedCommit(t *testing.T) {
+	dir := t.TempDir()
+	old := strings.Replace(reserveDoc, "described_commits: [shop@c69dd49]", "described_commit: c69dd49", 1)
+	if err := os.WriteFile(filepath.Join(dir, "reserve-stock.md"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir, []string{Feature})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetRepo("shop")
+	if got := s.Wiki()["reserve-stock"].DescribedCommits; !slices.Equal(got, []string{"shop@c69dd49"}) {
+		t.Errorf("F8: the old commit belongs to the first writable folder's repo: %v", got)
+	}
+	if got := s.Wiki()["reserve-stock"].Render(); got != reserveDoc {
+		t.Errorf("F8: the next write writes the new form:\n%s", got)
 	}
 }
 
@@ -349,8 +371,11 @@ func TestFilesWriteReloadAndKeepTheLastValidWiki(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(data), "---\nid: reserve-stock\n") || s.Raw("reserve-stock") != string(data) {
 		t.Errorf("W7: the file: %v\n%s", err, data)
 	}
-	if err := s.SetDescribed("abc123", now); err != nil || s.Wiki()["release-stock"].DescribedCommit != "abc123" {
+	if err := s.SetDescribed([]string{"shop@abc123", "protos@def456"}, now); err != nil || !slices.Equal(s.Wiki()["release-stock"].DescribedCommits, []string{"shop@abc123", "protos@def456"}) {
 		t.Errorf("S22: described: %v", err)
+	}
+	if raw := s.Raw("release-stock"); !strings.Contains(raw, "described_commits: [shop@abc123, protos@def456]\n") {
+		t.Errorf("F8: the document records one commit for each repo:\n%s", raw)
 	}
 	if _, err := s.Change([]Write{{Op: "rename", ID: "release-stock", To: "free-stock"}}, Check{}, now); err != nil {
 		t.Fatal(err)

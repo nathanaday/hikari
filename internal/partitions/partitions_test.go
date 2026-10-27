@@ -33,8 +33,8 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {partition: {repo: shop, scope: services/orders, test: python3 -m unittest}, grants: {deliverables: [python-library]}}}
-  inventory: {x-hikari: {partition: {repo: shop, scope: services/inventory}}}
+  orders: {x-hikari: {partition: {folders: [{repo: shop, path: services/orders}], test: python3 -m unittest}, grants: {deliverables: [python-library]}}}
+  inventory: {x-hikari: {partition: {folders: [{repo: shop, path: services/inventory}]}}}
 `
 
 const pythonLibrary = `version: 1
@@ -125,15 +125,15 @@ func (f *fixture) describeOrders(t *testing.T) {
 	}})
 	must(t, err)
 	write(t, f.repo, "services/orders/.hikari/private/code-map.yaml", `version: 1
-parts: [{path: create.py, description: Order creation.}]
+parts: [{path: shop/services/orders/create.py, description: Order creation.}]
 features:
-  create-order: {code: [create.py]}
+  create-order: {code: [shop/services/orders/create.py]}
 `)
 	write(t, f.repo, "services/orders/.hikari/private/tests.yaml", `version: 1
 suites:
   unit: {command: python3 -m pytest}
 tests:
-  tests/test_create.py: ["[[create-order]]"]
+  shop/services/orders/tests/test_create.py: ["[[create-order]]"]
 `)
 }
 
@@ -144,7 +144,7 @@ func (f *fixture) runOrders(t *testing.T, outcomes ...string) api.RunResult {
 	var b strings.Builder
 	b.WriteString(`<testsuites><testsuite name="pytest">`)
 	for i, o := range outcomes {
-		fmt.Fprintf(&b, `<testcase classname="tests.test_create.CreateTest" name="test_%d" file="tests/test_create.py">`, i)
+		fmt.Fprintf(&b, `<testcase classname="tests.test_create.CreateTest" name="test_%d" file="shop/services/orders/tests/test_create.py">`, i)
 		switch o {
 		case testmap.Failed:
 			b.WriteString(`<failure message="AssertionError: no order stored"/>`)
@@ -261,7 +261,7 @@ func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "no test case") {
 		t.Errorf("J2: an empty report: %v", err)
 	}
-	write(t, f.repo, "services/orders/.hikari/private/code-map.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [create.py]}\n")
+	write(t, f.repo, "services/orders/.hikari/private/code-map.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [shop/services/orders/create.py]}\n")
 	if _, err := f.m.MarkCurrent("orders"); err == nil || !strings.Contains(err.Error(), "P2") {
 		t.Errorf("mark current with invalid documents: %v", err)
 	}
@@ -291,16 +291,19 @@ func TestPartitionAgentWorkflow(t *testing.T) {
 	}
 
 	write(t, f.repo, "services/orders/cancel.py", "def cancel(): pass\n")
-	commit, err := f.m.MarkCurrent("orders")
+	commits, err := f.m.MarkCurrent("orders")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := git(t, f.repo, "log", "-1", "--format=%an|%s"); got != "orders (hikari)|orders: changes described by the feature map" {
 		t.Errorf("MarkCurrent commit: %q", got)
 	}
+	if head := git(t, f.repo, "rev-parse", "HEAD"); !slices.Equal(commits, []string{"shop@" + head}) {
+		t.Errorf("MarkCurrent returns %v, want shop@%s", commits, head)
+	}
 	v, _ := f.m.OwnView("orders")
-	if v.State != featuremap.Current || v.Partition.DescribedState.Commit != commit || v.Features[0].Health != testmap.Passing || v.Features[0].Tests.Passed != 3 {
-		t.Errorf("after MarkCurrent: state %s, commit %s, health %s", v.State, v.Partition.DescribedState.Commit, v.Features[0].Health)
+	if v.State != featuremap.Current || !slices.Equal(v.Partition.DescribedState.Commits, commits) || v.Features[0].Health != testmap.Passing || v.Features[0].Tests.Passed != 3 {
+		t.Errorf("after MarkCurrent: state %s, commits %v, health %s", v.State, v.Partition.DescribedState.Commits, v.Features[0].Health)
 	}
 
 	// The map change itself is not a code change.
@@ -316,10 +319,10 @@ func TestPartitionAgentWorkflow(t *testing.T) {
 	write(t, f.repo, "services/orders/create.py", "def create(): return 1\n")
 	write(t, f.repo, "services/orders/README.md", "# orders\n")
 	tc := f.m.TurnContext("orders")
-	if tc.MapState != featuremap.Stale || len(tc.StaleFeatures) != 1 || tc.StaleFeatures[0].ID != "create-order" || !slices.Equal(tc.StaleFeatures[0].Paths, []string{"create.py"}) {
+	if tc.MapState != featuremap.Stale || len(tc.StaleFeatures) != 1 || tc.StaleFeatures[0].ID != "create-order" || !slices.Equal(tc.StaleFeatures[0].Paths, []string{"shop/services/orders/create.py"}) {
 		t.Errorf("S20: turn context after a host edit: %+v", tc)
 	}
-	if !slices.Equal(tc.UnmappedPaths, []string{"README.md"}) {
+	if !slices.Equal(tc.UnmappedPaths, []string{"shop/services/orders/README.md"}) {
 		t.Errorf("S21: unmapped paths: %v", tc.UnmappedPaths)
 	}
 	if v, _ := f.m.OwnView("orders"); v.Features[0].Health != testmap.Pending || v.Features[0].State != featuremap.Stale || !slices.Equal(v.PendingFeatures, []string{"create-order"}) {
@@ -330,9 +333,9 @@ func TestPartitionAgentWorkflow(t *testing.T) {
 	}
 
 	// The automatic commit takes the edit and the map file.
-	commit, err = f.m.Commit("orders", "")
-	if err != nil || commit == "" {
-		t.Fatalf("automatic commit = %q, %v", commit, err)
+	commits, err = f.m.Commit("orders", "")
+	if err != nil || len(commits) != 1 {
+		t.Fatalf("automatic commit = %v, %v", commits, err)
 	}
 	if got := git(t, f.repo, "log", "-1", "--format=%s"); got != "orders: changes left at the end of a turn" {
 		t.Errorf("G13 message: %q", got)
@@ -341,8 +344,8 @@ func TestPartitionAgentWorkflow(t *testing.T) {
 	if !strings.Contains(files, "services/orders/create.py") || strings.Contains(files, "map.yaml") || strings.Contains(files, "inventory") {
 		t.Errorf("G7 automatic commit files:\n%s", files)
 	}
-	if commit, err := f.m.Commit("orders", "nothing to do"); err != nil || commit != "" {
-		t.Errorf("G12 commit without changes = %q, %v", commit, err)
+	if commits, err := f.m.Commit("orders", "nothing to do"); err != nil || len(commits) != 0 {
+		t.Errorf("G12 commit without changes = %v, %v", commits, err)
 	}
 	if got := f.m.Summary(); !slices.Contains(got, `orders made 2 commit(s) on hikari/work in repo "shop"`) {
 		t.Errorf("G11 summary = %v", got)
@@ -441,7 +444,7 @@ func TestOrchestrationView(t *testing.T) {
 
 	// The UI view flags the same way.
 	uv := f.m.PartitionView("orders")
-	if uv.PartitionAgent != "orders" || uv.Scope != "services/orders" || uv.Branch != "hikari/work" || len(uv.Flags) != 1 {
+	if uv.PartitionAgent != "orders" || len(uv.Folders) != 1 || uv.Folders[0].Place != "shop/services/orders" || len(uv.Repos) != 1 || uv.Repos[0].Branch != "hikari/work" || len(uv.Flags) != 1 {
 		t.Errorf("UI view: %+v", uv)
 	}
 }
@@ -489,7 +492,7 @@ func TestChangesNotifyDependentPartitions(t *testing.T) {
 
 func TestSelf(t *testing.T) {
 	f := newFixture(t)
-	if sys := f.m.Self("orders"); sys == nil || sys.WorkDir != "/workspace/services/orders" {
+	if sys := f.m.Self("orders"); sys == nil || sys.WorkDir != "/workspace" || len(sys.Folders) != 1 || sys.Folders[0].Place != "shop/services/orders" || sys.Repos[0].Branch != "hikari/work" {
 		t.Errorf("Self(orders) = %+v", sys)
 	}
 	if sys := f.m.Self("lead"); sys != nil {
@@ -572,14 +575,14 @@ func TestPublishRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := git(t, f.repo, "rev-parse", "HEAD")
-	if rel.SourceCommit != head || rel.Hikari == "" {
+	if !slices.Equal(rel.SourceCommits, []string{"shop@" + head}) || rel.Hikari == "" {
 		t.Errorf("release %+v; HEAD is %s", rel, head)
 	}
 	copied, _ := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", "features", "map.yaml"))
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
 		t.Errorf("the copied map must be the public view:\n%s", copied)
 	}
-	if doc, err := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", "features", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
+	if doc, err := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", "features", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commits: [shop@"+head+"]") {
 		t.Errorf("L11: the release holds the wiki: %v\n%s", err, doc)
 	}
 	if len(changes) == 0 || changes[0].Partition != "orders" {
@@ -703,7 +706,7 @@ func TestChangeFeatures(t *testing.T) {
 	if len(res.Notes) != 0 || len(v.PrivateErrors) != 0 {
 		t.Errorf("E7: a rename leaves nothing to fix: notes %v, errors %v", res.Notes, v.PrivateErrors)
 	}
-	if priv, _ := featuremap.LoadPrivate(filepath.Join(f.repo, "services/orders")); priv.Tests.Tests["tests/test_create.py"][0] != "[[place-order]]" || priv.CodeMap.Features["place-order"].Code == nil {
+	if priv, _ := featuremap.LoadPrivate(filepath.Join(f.repo, "services/orders")); priv.Tests.Tests["shop/services/orders/tests/test_create.py"][0] != "[[place-order]]" || priv.CodeMap.Features["place-order"].Code == nil {
 		t.Errorf("E7: private documents after a rename: %+v", priv)
 	}
 	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err == nil {
@@ -742,12 +745,12 @@ func TestChangeFeatures(t *testing.T) {
 func TestMarkCurrentDescribesEveryDocument(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	commit, err := f.m.MarkCurrent("orders")
+	commits, err := f.m.MarkCurrent("orders")
 	if err != nil {
 		t.Fatal(err)
 	}
 	doc, _ := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features", "create-order.md"))
-	if !strings.Contains(string(doc), "described_commit: "+commit) || !strings.Contains(string(doc), "described_at: ") {
+	if !strings.Contains(string(doc), "described_commits: ["+commits[0]+"]") || !strings.Contains(string(doc), "described_at: ") {
 		t.Errorf("S22: the document records the commit:\n%s", doc)
 	}
 	if v, _ := f.m.OwnView("orders"); v.Features[0].State != featuremap.Current {
@@ -864,13 +867,13 @@ func TestTestHealth(t *testing.T) {
 suites:
   unit: {command: python3 -m pytest}
 tests:
-  tests/test_gone.py: ["[[create-order]]"]
+  shop/services/orders/tests/test_gone.py: ["[[create-order]]"]
 `)
 	v, _ = f.m.OwnView("orders")
-	if len(v.UnmappedTests) != 1 || v.UnmappedTests[0].File != "tests/test_create.py" || len(v.UnmappedTests[0].Tests) != 3 {
+	if len(v.UnmappedTests) != 1 || v.UnmappedTests[0].File != "shop/services/orders/tests/test_create.py" || len(v.UnmappedTests[0].Tests) != 3 {
 		t.Errorf("C1: unmapped %+v", v.UnmappedTests)
 	}
-	if !slices.Equal(v.StaleKeys, []string{"tests/test_gone.py"}) || v.Features[0].Health != testmap.Pending {
+	if !slices.Equal(v.StaleKeys, []string{"shop/services/orders/tests/test_gone.py"}) || v.Features[0].Health != testmap.Pending {
 		t.Errorf("S30: stale keys %v, health %s", v.StaleKeys, v.Features[0].Health)
 	}
 }

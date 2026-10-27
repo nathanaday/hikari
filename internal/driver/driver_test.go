@@ -61,15 +61,26 @@ func TestSystemPromptStatesTheRoom(t *testing.T) {
 var partitionAgent = api.Self{
 	Name:         "orders",
 	Participants: room,
-	Partition:    &api.SelfPartition{Repo: "shop", Branch: "hikari/work", Scope: "services/orders", Read: []string{"proto"}, WorkDir: "/workspace/services/orders"},
+	Partition: &api.SelfPartition{
+		Folders: []api.Folder{
+			{Place: "shop/services/orders", Repo: "shop", Path: "services/orders"},
+			{Place: "shop/proto", Repo: "shop", Path: "proto", ReadOnly: true},
+			{Place: "protos", Repo: "protos", Path: "orders"},
+		},
+		Repos:   []api.RepoState{{Name: "shop", Branch: "hikari/work"}, {Name: "protos", Branch: "hikari/work"}},
+		WorkDir: "/workspace",
+	},
 }
 
 func TestPartitionAgentSystemPrompt(t *testing.T) {
 	p := systemPrompt(partitionAgent)
 	for _, want := range []string{
-		`You are the partition agent of the partition "orders": the directory services/orders of the repo "shop".`,
-		"Your working directory, /workspace/services/orders, is your scope.",
-		"You can also read, but not change, /workspace/proto.",
+		`You are the partition agent of the partition "orders". Your working directory, /workspace, is your workspace`,
+		"- /workspace/shop/services/orders: services/orders of the repo shop; you can change it\n",
+		"- /workspace/shop/proto: proto of the repo shop; read-only\n",
+		"- /workspace/protos: orders of the repo protos; you can change it\n",
+		"workspace paths, relative to /workspace, such as shop/services/orders/app.py",
+		`on its branch: "hikari/work" in shop, "hikari/work" in protos`,
 		"/hikari/self/features/map.yaml, from the features",
 		"/hikari/self/features/",
 		"/hikari/private/code-map.yaml, the code map",
@@ -83,7 +94,6 @@ func TestPartitionAgentSystemPrompt(t *testing.T) {
 		"/hikari/public holds what every agent",
 		"load the hikari-partition skill",
 		"mcp__hikari__get_vocabulary",
-		`Commits go to the branch "hikari/work".`,
 		"no trailers such as Co-Authored-By",
 		"run the suites that touch the affected features",
 		"tell the orchestration agent, or the partition agent of that partition, what you need",
@@ -341,7 +351,7 @@ func TestHealthNotice(t *testing.T) {
 }
 
 func TestTurnNoticesReportPrivateErrors(t *testing.T) {
-	got := turnNotices(partitionAgent, api.TurnContext{MapState: "current", PrivateErrors: []string{`P3: code-map.yaml: path "x.py" does not exist in the scope`}})
+	got := turnNotices(partitionAgent, api.TurnContext{MapState: "current", PrivateErrors: []string{`P3: code-map.yaml: path "x.py" is in no folder of the workspace, or does not exist`}})
 	if !strings.Contains(got, "Your private documents have problems: P3:") {
 		t.Errorf("notices: %q", got)
 	}

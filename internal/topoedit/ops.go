@@ -33,13 +33,11 @@ type Op struct {
 	Path         *string `json:"path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
 	Vault        *string `json:"vault,omitempty"`
-	Repo         *string `json:"repo,omitempty"`
-	Scope        *string `json:"scope,omitempty"`
 	Test         *string `json:"test,omitempty"`
 	Serves       *string `json:"serves,omitempty"`
 	Image        *string `json:"image,omitempty"`
 
-	Read         *[]string `json:"read,omitempty"`
+	Folders      *[]Folder `json:"folders,omitempty"`
 	Releases     *[]string `json:"releases,omitempty"`
 	Deliverables *[]string `json:"deliverables,omitempty"`
 	Skills       *[]string `json:"skills,omitempty"`
@@ -251,8 +249,8 @@ func (e *editor) apply(op Op) error {
 			return errors.New("the project repository is already off")
 		}
 		for _, a := range e.model.Agents {
-			if a.Partition != nil && a.Partition.Repo == topology.ProjectRepo {
-				return fmt.Errorf("the partition of %q is in the project repository", a.ID)
+			if a.Partition != nil && a.Partition.Uses(topology.ProjectRepo) {
+				return fmt.Errorf("the partition of %q has a folder in the project repository", a.ID)
 			}
 		}
 		for _, r := range e.model.Repos {
@@ -289,8 +287,8 @@ func (e *editor) apply(op Op) error {
 			return err
 		}
 		for _, a := range e.model.Agents {
-			if a.Partition != nil && a.Partition.Repo == r.ID {
-				return fmt.Errorf("the partition of %q is in the repo %q", a.ID, r.ID)
+			if a.Partition != nil && a.Partition.Uses(r.ID) {
+				return fmt.Errorf("the partition of %q has a folder in the repo %q", a.ID, r.ID)
 			}
 		}
 		if r.URL != "" && exists(filepath.Join(e.dir, topology.CloneDir, r.ID)) {
@@ -620,45 +618,94 @@ func (e *editor) setPartition(op Op) error {
 	if err != nil {
 		return err
 	}
+	if op.Folders != nil && len(*op.Folders) == 0 {
+		return errors.New("a partition needs a folder; clear the partition instead")
+	}
 	if err := e.ensure("services."+a.ID, "x-hikari"); err != nil {
 		return err
 	}
 	p := "services." + a.ID + ".x-hikari"
 	if a.Partition == nil {
-		repo := deref(op.Repo)
-		if repo == "" {
-			return errors.New("a partition needs a repo")
+		if op.Folders == nil {
+			return errors.New("a partition needs a folder")
 		}
-		kv := []any{"repo", repo}
-		if s := deref(op.Scope); s != "" {
-			kv = append(kv, "scope", s)
-		}
-		if op.Read != nil && len(*op.Read) > 0 {
-			kv = append(kv, "read", list(*op.Read))
-		}
+		kv := []any{"folders", folderList(*op.Folders)}
 		if t := deref(op.Test); t != "" {
 			kv = append(kv, "test", t)
 		}
+		v := mapping(kv...)
+		v.Style = 0
 		e.summary = append(e.summary, "give "+a.Name+" a partition")
-		return e.setValue(p, "partition", mapping(kv...), false)
-	}
-	if op.Repo != nil && *op.Repo == "" {
-		return errors.New("a partition needs a repo; clear the partition instead")
+		return e.setValue(p, "partition", v, false)
 	}
 	p += ".partition"
-	for _, f := range []struct {
-		key string
-		v   *string
-	}{{"repo", op.Repo}, {"scope", op.Scope}, {"test", op.Test}} {
-		if err := e.setField(p, f.key, f.v, false); err != nil {
+	if op.Folders != nil {
+		if err := e.setValueFirst(p, "folders", folderList(*op.Folders)); err != nil {
 			return err
 		}
+		for _, key := range []string{"repo", "scope", "read"} {
+			if err := e.deleteKey(p, key); err != nil {
+				return err
+			}
+		}
 	}
-	if err := e.setList(p, "read", op.Read); err != nil {
+	if err := e.setField(p, "test", op.Test, false); err != nil {
 		return err
 	}
 	e.summary = append(e.summary, "change the partition of "+a.Name)
 	return nil
+}
+
+// setValueFirst sets key of the mapping at p, as the first key when the
+// mapping lacks it.
+func (e *editor) setValueFirst(p, key string, v *yaml.Node) error {
+	return e.setValue(p, key, v, true)
+}
+
+// folderList renders folders as a block list of one-line mappings.
+func folderList(folders []Folder) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, f := range folders {
+		kv := []any{"repo", f.Repo}
+		if f.Path != "" {
+			kv = append(kv, "path", f.Path)
+		}
+		if f.ReadOnly {
+			kv = append(kv, "read_only", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+		}
+		if f.At != "" {
+			kv = append(kv, "at", f.At)
+		}
+		n.Content = append(n.Content, mapping(kv...))
+	}
+	return n
+}
+
+// workspaceMoves says which partitions' workspaces move when the repo id
+// changes its name from old to name: the folders without at (decision 1 of
+// the partition folders spec).
+func (e *editor) workspaceMoves(id, old, name string) {
+	for _, a := range e.model.Agents {
+		if a.Partition == nil {
+			continue
+		}
+		var moves []string
+		for _, f := range a.Partition.Folders {
+			if f.Repo == id && f.At == "" {
+				moves = append(moves, fmt.Sprintf("/workspace/%s to /workspace/%s", joinPlace(old, f.Path), joinPlace(name, f.Path)))
+			}
+		}
+		if len(moves) > 0 {
+			e.effects = append(e.effects, fmt.Sprintf("moves the workspace of %s: %s; update the paths in its code map and its test map", a.Name, strings.Join(moves, ", ")))
+		}
+	}
+}
+
+func joinPlace(repo, p string) string {
+	if p == "" || p == "." {
+		return repo
+	}
+	return repo + "/" + strings.Trim(p, "/")
 }
 
 func (e *editor) removeAgent(op Op) error {
@@ -738,6 +785,8 @@ func (e *editor) rename(op Op) error {
 	}
 	if op.Kind != "repo" {
 		e.renames = append(e.renames, Rename{Kind: op.Kind, From: old, To: name})
+	} else {
+		e.workspaceMoves(id, old, name)
 	}
 	e.summary = append(e.summary, fmt.Sprintf("rename %s %s to %s", op.Kind, old, name))
 	return nil
@@ -802,9 +851,20 @@ func (e *editor) changeID(op Op) error {
 	case "repo":
 		parent = "x-hikari.repos"
 		for _, a := range e.model.Agents {
-			if a.Partition != nil && a.Partition.Repo == op.ID {
+			switch {
+			case a.Partition == nil:
+			case a.Partition.Old:
 				refs = append(refs, ref{"services." + a.ID + ".x-hikari.partition", "repo", -1})
+			default:
+				for i, f := range a.Partition.Folders {
+					if f.Repo == op.ID {
+						refs = append(refs, ref{fmt.Sprintf("services.%s.x-hikari.partition.folders[%d]", a.ID, i), "repo", -1})
+					}
+				}
 			}
+		}
+		if name == op.ID {
+			e.workspaceMoves(op.ID, op.ID, op.NewID)
 		}
 	}
 	// The references first: renaming the key changes their paths.

@@ -107,10 +107,10 @@ func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 		d.session = res.session
 	}
 	if (d.self.Partition != nil || d.self.Orchestration) && ctx.Err() == nil {
-		if commit, cerr := d.c.Commit(ctx, ""); cerr != nil {
-			log.Printf("automatic commit: %v", cerr)
-		} else if commit != "" {
-			log.Printf("committed changes left by the turn: %s", commit)
+		if commits, cerr := d.c.Commit(ctx, ""); cerr != nil {
+			log.Printf("automatic apply: %v", cerr)
+		} else if len(commits) > 0 {
+			log.Printf("applied changes left by the turn: %s", strings.Join(commits, ", "))
 		}
 	}
 	if err != nil {

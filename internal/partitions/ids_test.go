@@ -23,8 +23,8 @@ x-hikari:
   orchestration: eng-lead
 services:
   eng-lead: {x-hikari: {name: chief}}
-  orders: {x-hikari: {name: intake, partition: {repo: shop, scope: services/orders}, grants: {deliverables: [python-library]}}}
-  inventory: {x-hikari: {partition: {repo: shop, scope: services/inventory}}}
+  orders: {x-hikari: {name: intake, partition: {folders: [{repo: shop, path: services/orders}]}, grants: {deliverables: [python-library]}}}
+  inventory: {x-hikari: {partition: {folders: [{repo: shop, path: services/inventory}]}}}
 `
 
 func read(t *testing.T, path string) string {
@@ -60,8 +60,8 @@ func TestRenamedEntities(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(partitions, "intake")); !os.IsNotExist(err) {
 		t.Errorf("ID6: no directory is keyed by the name: %v", err)
 	}
-	if v := f.m.PartitionView("intake"); v.PartitionAgent != "intake" || v.Repo != "store" {
-		t.Errorf("ID13: the view names the partition and its repo: partition agent %q, repo %q", v.PartitionAgent, v.Repo)
+	if v := f.m.PartitionView("intake"); v.PartitionAgent != "intake" || v.Folders[0].Repo != "store" || v.Repos[0].Name != "store" {
+		t.Errorf("ID13: the view names the partition and its repo: partition agent %q, folders %+v", v.PartitionAgent, v.Folders)
 	}
 
 	_, err = f.m.ChangeWiki("chief", true, []wiki.Write{

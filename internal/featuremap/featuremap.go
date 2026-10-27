@@ -19,11 +19,14 @@ import (
 	"time"
 )
 
-// Dir is the directory of the private documents inside a scope:
-// <scope>/.hikari/private. The map lives in the vault.
+// Dir is the directory of the private documents inside the first writable
+// folder of a partition: <folder>/.hikari/private. The map lives in the
+// vault.
 const Dir = ".hikari"
 
-const version = 4
+// version 5 records one described commit for each repo (decision 3 of the
+// partition folders spec); Open converts a version 4 map.
+const version = 5
 
 type Map struct {
 	Version   int       `yaml:"version" json:"version"`
@@ -50,9 +53,10 @@ type Interface struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
-// DescribedState is the commit whose code the map describes.
+// DescribedState is the commits whose code the map describes: one
+// <repo>@<commit> for each repo of the partition's writable folders.
 type DescribedState struct {
-	Commit  string    `yaml:"commit,omitempty" json:"commit,omitempty"`
+	Commits []string  `yaml:"commits,omitempty" json:"commits,omitempty"`
 	Updated time.Time `yaml:"updated,omitempty" json:"updated,omitzero"`
 }
 
@@ -94,6 +98,7 @@ func (m *Map) Clone() *Map {
 	c.Partition.Responsibilities = slices.Clone(m.Partition.Responsibilities)
 	c.Partition.Interfaces.Provides = slices.Clone(m.Partition.Interfaces.Provides)
 	c.Partition.Interfaces.Consumes = slices.Clone(m.Partition.Interfaces.Consumes)
+	c.Partition.DescribedState.Commits = slices.Clone(m.Partition.DescribedState.Commits)
 	c.Features = make([]Feature, len(m.Features))
 	for i, f := range m.Features {
 		f.Interfaces = slices.Clone(f.Interfaces)
@@ -161,9 +166,9 @@ func (m *Map) Project(entries []FeatureEntry) {
 	m.Features = out
 }
 
-// MarkCurrent records commit as the code that the map describes.
-func (m *Map) MarkCurrent(commit string, now time.Time) {
-	m.Partition.DescribedState = DescribedState{Commit: commit, Updated: now.UTC()}
+// MarkCurrent records commits as the code that the map describes.
+func (m *Map) MarkCurrent(commits []string, now time.Time) {
+	m.Partition.DescribedState = DescribedState{Commits: slices.Clone(commits), Updated: now.UTC()}
 }
 
 func (m *Map) index(id string) int {
@@ -238,10 +243,10 @@ const (
 )
 
 // State computes the state of m from the paths that changed since its
-// described commit (rules S13 to S15).
+// described commits (rules S13 to S15).
 func State(m *Map, changed []string) string {
 	switch {
-	case m.Partition.DescribedState.Commit == "":
+	case len(m.Partition.DescribedState.Commits) == 0:
 		return Unbuilt
 	case len(changed) > 0:
 		return Stale

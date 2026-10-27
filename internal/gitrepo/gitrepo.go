@@ -34,7 +34,7 @@ func AuthorEmail(agent string) string {
 }
 
 // runtimeFiles excludes the files that hikari keeps out of commits in each
-// scope: test results and reports. The ignore file that does so is on the
+// partition: test results and reports. The ignore file that does so is on the
 // hikari branch, so on another branch they would look like changes.
 var runtimeFiles = []string{
 	":(exclude,glob)**/.hikari/private/results.yaml",
@@ -120,11 +120,16 @@ func changedList(status []string) string {
 	return strings.Join(paths, ", ")
 }
 
-// Commit stages and commits every change inside scope, and nothing outside
-// it, with agent as the author. It fails if branch is not checked out. It
-// returns the new commit, or "" when the scope has no changes.
-func (r *Repo) Commit(branch, scope, agent, message string) (string, error) {
-	return r.CommitPaths(branch, []string{pathspec(scope)}, agent, message)
+// Commit stages and commits every change inside the folders, relative to
+// the repo, and nothing outside them, with agent as the author. It fails if
+// branch is not checked out. It returns the new commit, or "" when the
+// folders have no changes.
+func (r *Repo) Commit(branch string, folders []string, agent, message string) (string, error) {
+	specs := make([]string, len(folders))
+	for i, f := range folders {
+		specs[i] = pathspec(f)
+	}
+	return r.CommitPaths(branch, specs, agent, message)
 }
 
 // CommitPaths is Commit for several paths, relative to the repo. A path
@@ -175,14 +180,14 @@ func (r *Repo) CommitPaths(branch string, paths []string, agent, message string)
 	return r.git("rev-parse", "HEAD")
 }
 
-// ChangedSince returns the paths inside scope that differ from commit:
+// ChangedSince returns the paths inside folder that differ from commit:
 // committed changes, uncommitted changes, and untracked files. Paths are
-// relative to scope. Paths under any of the exclude directories, which are
-// relative to scope, are left out.
-func (r *Repo) ChangedSince(commit, scope string, exclude ...string) ([]string, error) {
+// relative to folder. Paths under any of the exclude directories, which are
+// relative to folder, are left out.
+func (r *Repo) ChangedSince(commit, folder string, exclude ...string) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	spec := pathspec(scope)
+	spec := pathspec(folder)
 	diff, err := r.git("diff", "--name-only", "--no-renames", commit, "--", spec)
 	if err != nil {
 		return nil, err
@@ -195,8 +200,8 @@ func (r *Repo) ChangedSince(commit, scope string, exclude ...string) ([]string, 
 	var out []string
 	for _, p := range append(lines(diff), lines(untracked)...) {
 		rel := p
-		if scope != "" {
-			rel = strings.TrimPrefix(p, scope+"/")
+		if folder != "" {
+			rel = strings.TrimPrefix(p, folder+"/")
 		}
 		if seen[rel] || excluded(rel, exclude) {
 			continue
@@ -207,12 +212,17 @@ func (r *Repo) ChangedSince(commit, scope string, exclude ...string) ([]string, 
 	return out, nil
 }
 
-// Dirty reports whether scope has uncommitted changes: modified, deleted,
-// or untracked files that git does not ignore.
-func (r *Repo) Dirty(scope string) (bool, error) {
+// Dirty reports whether any of the folders, relative to the repo, has
+// uncommitted changes: modified, deleted, or untracked files that git does
+// not ignore.
+func (r *Repo) Dirty(folders ...string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out, err := r.git("status", "--porcelain", "--untracked-files=all", "--", pathspec(scope))
+	specs := make([]string, len(folders))
+	for i, f := range folders {
+		specs[i] = pathspec(f)
+	}
+	out, err := r.git(append([]string{"status", "--porcelain", "--untracked-files=all", "--"}, specs...)...)
 	return out != "", err
 }
 
@@ -273,11 +283,11 @@ func (r *Repo) CountOn(since string, paths ...string) (int, error) {
 	return strconv.Atoi(out)
 }
 
-func pathspec(scope string) string {
-	if scope == "" {
+func pathspec(folder string) string {
+	if folder == "" {
 		return "."
 	}
-	return scope
+	return folder
 }
 
 func excluded(p string, dirs []string) bool {

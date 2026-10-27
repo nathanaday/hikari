@@ -19,7 +19,7 @@ import (
 // ProjectIgnore is the .gitignore of a new project repository (rule PR23,
 // IN1 of the linked repositories spec, and HS3 of the containerize spec).
 // The runs directory is anchored, so that the .hikari directory of each
-// scope, which holds the private documents, stays versioned.
+// partition's folder, which holds the private documents, stays versioned.
 func ProjectIgnore() string {
 	return strings.Join([]string{".env", "/.hikari/", "/repos/", ".obsidian/", ".DS_Store", "/.claude/settings.local.json"}, "\n") + "\n"
 }
@@ -63,14 +63,16 @@ services:
     x-hikari:
       description: Orchestrates the project. Plans from the feature maps and reports to you.
 
-  # A partition agent. A partition's code can be in a repo under
-  # x-hikari.repos, or in this repository with repo: project.
+  # A partition agent. A partition is a list of folders, each a path in a
+  # repo under x-hikari.repos, or in this repository with repo: project.
   # app:
   #   <<: *agent
   #   build: {context: ., dockerfile: app.Dockerfile}   # FROM hikari-agent, with the app's toolchain
   #   x-hikari:
   #     description: Owns the app.
-  #     partition: {repo: app, test: make test}           # no scope: the whole repo
+  #     partition:
+  #       folders: [{repo: app}]         # no path: the whole repo, at /workspace/app
+  #       test: make -C app test         # runs in /workspace
 `
 
 // StarterTopology returns the starter topology file of a project named

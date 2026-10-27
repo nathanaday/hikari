@@ -16,6 +16,7 @@ import (
 	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vault"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 // Finding is one result of a check.
@@ -82,11 +83,11 @@ func OldLayout(topo *topology.Topology) []string {
 	}
 	out = append(out, topo.VaultOf().OldLayout()...)
 	for _, name := range topo.PartitionAgents() {
-		s := topo.Agents[name].Partition
-		if slices.Contains(topo.Missing, s.Repo) {
+		home := topo.Workspace(name).Home()
+		if slices.Contains(topo.Missing, home.Repo) {
 			continue
 		}
-		dir := filepath.Join(topo.Repos[s.Repo].Path, s.Scope, featuremap.Dir, featuremap.PrivateDir)
+		dir := filepath.Join(home.Host, featuremap.Dir, featuremap.PrivateDir)
 		if exists(filepath.Join(dir, featuremap.OldCodeMapFile)) && !exists(filepath.Join(dir, featuremap.CodeMapFile)) {
 			out = append(out, fmt.Sprintf("the private directory %s of %s holds %s and no %s, the old layout: rename %s to %s; see %s", dir, name, featuremap.OldCodeMapFile, featuremap.CodeMapFile, featuremap.OldCodeMapFile, featuremap.CodeMapFile, vault.MigratingGuide))
 		}
@@ -177,8 +178,8 @@ func listed(paths []string) string {
 	return strings.Join(paths, ", ")
 }
 
-// mapCommits returns the commit that each partition's map describes, for the
-// partitions of repo. In a project repository, the maps are read from your
+// mapCommits returns the commit of repo that each partition's map
+// describes, for the partitions with a writable folder in repo. In a project repository, the maps are read from your
 // branch, which hikari up checks out; otherwise from the vault's files.
 func mapCommits(topo *topology.Topology, repo string) map[string]string {
 	out := map[string]string{}
@@ -190,7 +191,8 @@ func mapCommits(topo *topology.Topology, repo string) map[string]string {
 		}
 	}
 	for _, partitionAgent := range topo.PartitionAgents() {
-		if topo.Agents[partitionAgent].Partition.Repo != repo {
+		ws := topo.Workspace(partitionAgent)
+		if !slices.Contains(ws.Repos(), repo) {
 			continue
 		}
 		var data []byte
@@ -203,8 +205,10 @@ func mapCommits(topo *topology.Topology, repo string) map[string]string {
 		if err != nil {
 			continue
 		}
-		if m, err := featuremap.Decode(data); err == nil && m.Partition.DescribedState.Commit != "" {
-			out[partitionAgent] = m.Partition.DescribedState.Commit
+		if m, err := featuremap.Decode(data, ws.Home().Repo); err == nil {
+			if c := workspace.CommitOf(m.Partition.DescribedState.Commits, repo); c != "" {
+				out[partitionAgent] = c
+			}
 		}
 	}
 	return out

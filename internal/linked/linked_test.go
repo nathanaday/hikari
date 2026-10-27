@@ -69,7 +69,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  dev: {x-hikari: {partition: {repo: app, scope: src}}}
+  dev: {x-hikari: {partition: {folders: [{repo: app, path: src}]}}}
 `
 	tp, err := topology.Parse([]byte(src), dir)
 	if err != nil {
@@ -289,7 +289,7 @@ func TestStatus(t *testing.T) {
 	}
 	Sync(tp, "", skills)
 	tp = topo(t, dir, "hikari", appURL)
-	if s := Status(tp)[0]; !s.Cloned || s.Commit != "" || s.Results {
+	if s := Status(tp)[0]; !s.Cloned || len(s.Commits) != 0 || s.Results {
 		t.Errorf("SU1 before any run: %+v", s)
 	}
 	work(t, dir, tp, "a.go")
@@ -302,7 +302,7 @@ runs:
       - {id: "a > one", outcome: passed}
 `)
 	s := Status(tp)[0]
-	if s.Commit == "" || !s.Results || len(s.Suites) != 1 {
+	if len(s.Commits) == 0 || !s.Results || len(s.Suites) != 1 {
 		t.Fatalf("SU1, SU2: %+v", s)
 	}
 	su := s.Suites[0]
@@ -328,7 +328,7 @@ func TestOldLayout(t *testing.T) {
 	git(t, dir, "init", "--quiet", "shop")
 	write(t, repo, "orders/.hikari/private/layout.yaml", "version: 1\n")
 	write(t, dir, "store/shared/vocabulary/terms.yaml", "version: 1\n")
-	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {repo: shop, scope: orders}}}\n"
+	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {folders: [{repo: shop, path: orders}]}}}\n"
 	tp, err := topology.Parse([]byte(src), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -357,7 +357,7 @@ func TestCheckSkills(t *testing.T) {
 	write(t, dir, "vault/skills/style/SKILL.md", "# style\n")
 	write(t, dir, "vault/skills/empty/notes.md", "x\n")
 	write(t, dir, "vault/skills/lib/SKILL.md", "# lib\n")
-	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib], skills: [style, empty, ghost, lib]}}}\n"
+	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {folders: [{repo: shop, path: orders}]}, grants: {deliverables: [lib], skills: [style, empty, ghost, lib]}}}\n"
 	tp, err := topology.Parse([]byte(src), dir)
 	if err != nil {
 		t.Fatal(err)

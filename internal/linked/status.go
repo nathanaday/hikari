@@ -11,15 +11,17 @@ import (
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 // PartitionStatus is what the files say of one partition (rules SU1 to SU4 of
 // the containerize spec).
 type PartitionStatus struct {
-	Name, Repo string
-	Cloned     bool
-	// Commit is the commit that the map describes, or "".
-	Commit   string
+	Name string
+	// Cloned says whether every repo of the partition's folders is cloned.
+	Cloned bool
+	// Commits are the commits that the map describes, as <repo>@<commit>.
+	Commits  []string
 	Features int
 	// Health counts the features by recorded health.
 	Health map[string]int
@@ -43,20 +45,21 @@ func Status(topo *topology.Topology) []PartitionStatus {
 	st := topo.VaultOf()
 	var out []PartitionStatus
 	for _, partitionAgent := range topo.PartitionAgents() {
-		sys := topo.Agents[partitionAgent].Partition
-		s := PartitionStatus{Name: partitionAgent, Repo: sys.Repo, Cloned: !slices.Contains(topo.Missing, sys.Repo), Health: map[string]int{}}
+		ws := topo.Workspace(partitionAgent)
+		cloned := !slices.ContainsFunc(ws, func(f workspace.Folder) bool { return slices.Contains(topo.Missing, f.Repo) })
+		s := PartitionStatus{Name: partitionAgent, Cloned: cloned, Health: map[string]int{}}
 		if data, err := os.ReadFile(st.MapFile(partitionAgent)); err == nil {
-			m, err := featuremap.Decode(data)
+			m, err := featuremap.Decode(data, ws.Home().Repo)
 			if err != nil {
 				s.Problem = "map.yaml: " + err.Error()
 			}
-			s.Commit, s.Features = m.Partition.DescribedState.Commit, len(m.Features)
+			s.Commits, s.Features = m.Partition.DescribedState.Commits, len(m.Features)
 			for _, f := range m.Features {
 				s.Health[f.Health]++
 			}
 		}
 		if s.Cloned {
-			path := filepath.Join(topo.Repos[sys.Repo].Path, sys.Scope, featuremap.Dir, featuremap.PrivateDir, testmap.ResultsFile)
+			path := filepath.Join(ws.Home().Host, featuremap.Dir, featuremap.PrivateDir, testmap.ResultsFile)
 			if _, err := os.Stat(path); err == nil {
 				s.Results = true
 				results, err := testmap.LoadResults(path)

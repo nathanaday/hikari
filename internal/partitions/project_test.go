@@ -21,11 +21,11 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {partition: {repo: project, scope: app}}}
+  orders: {x-hikari: {partition: {folders: [{repo: project, path: app}]}}}
 `
 
 // newProject makes a project repository with one partition agent, orders, whose
-// scope app is in the project repository, and starts a Manager on it.
+// folder app is in the project repository, and starts a Manager on it.
 func newProject(t *testing.T) (dir string, m *Manager) {
 	t.Helper()
 	f := newFixture(t) // sets up git for the test
@@ -99,21 +99,22 @@ func TestProjectVaultCommits(t *testing.T) {
 		t.Errorf("PR15 vocabulary commit = %s | %s | %v", a, s, files)
 	}
 
-	// The scope's own commit stays separate from the vault's.
-	write(t, dir, "app/.hikari/private/code-map.yaml", "version: 1\nparts: [{path: create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [create.py]}\n")
-	write(t, dir, "app/.hikari/private/tests.yaml", "version: 1\nsuites:\n  unit: {command: pytest}\ntests:\n  tests/test_create.py: [\"[[create-order]]\"]\n")
-	head, err := m.MarkCurrent("orders")
+	// The folder's own commit stays separate from the vault's.
+	write(t, dir, "app/.hikari/private/code-map.yaml", "version: 1\nparts: [{path: project/app/create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [project/app/create.py]}\n")
+	write(t, dir, "app/.hikari/private/tests.yaml", "version: 1\nsuites:\n  unit: {command: pytest}\ntests:\n  project/app/tests/test_create.py: [\"[[create-order]]\"]\n")
+	commits, err := m.MarkCurrent("orders")
 	must(t, err)
-	if a, s, files := lastCommit(t, dir); a != "orders (hikari)" || s != "orders: mark the map current at "+head[:7] || !slices.Contains(files, "vault/partitions/orders/read-only/features/map.yaml") {
+	head := strings.TrimPrefix(commits[0], "project@")
+	if a, s, files := lastCommit(t, dir); a != "orders (hikari)" || s != "orders: mark the map current at project@"+head[:7] || !slices.Contains(files, "vault/partitions/orders/read-only/features/map.yaml") {
 		t.Errorf("PR15 mark_map_current commit = %s | %s | %v", a, s, files)
 	}
 	if got := git(t, dir, "log", "-1", "--format=%s", head); got != "orders: changes described by the feature map" {
-		t.Errorf("the described commit is the scope's: %q", got)
+		t.Errorf("the described commit is the folder's: %q", got)
 	}
 
 	// PR16: a test run changes the map but makes no commit.
 	before := git(t, dir, "rev-parse", "HEAD")
-	write(t, dir, "app/.hikari/private/reports/unit.xml", `<testsuites><testsuite name="pytest"><testcase classname="tests.test_create.T" name="test_a" file="tests/test_create.py"/></testsuite></testsuites>`)
+	write(t, dir, "app/.hikari/private/reports/unit.xml", `<testsuites><testsuite name="pytest"><testcase classname="tests.test_create.T" name="test_a" file="project/app/tests/test_create.py"/></testsuite></testsuites>`)
 	if _, err := m.RecordRun("orders", "unit"); err != nil {
 		t.Fatal(err)
 	}

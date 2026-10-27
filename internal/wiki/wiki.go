@@ -85,7 +85,7 @@ type Check struct {
 	// Known reports whether an id names any document of another wiki, for
 	// the links of user documents (rule N3). nil knows nothing outside.
 	Known func(id string) bool
-	// Exists reports whether a path relative to the scope exists, for the
+	// Exists reports whether a workspace path exists, for the
 	// warning on paths in a Purpose. nil skips that warning.
 	Exists func(rel string) bool
 }
@@ -283,7 +283,7 @@ func (w Wiki) linksAgentDoc(id string) bool {
 	return false
 }
 
-// pathsIn returns the words of text that name a path in the scope.
+// pathsIn returns the words of text that name a path in the workspace.
 func pathsIn(text string, exists func(string) bool) []string {
 	var out []string
 	for _, word := range strings.FieldsFunc(text, func(r rune) bool {

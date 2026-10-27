@@ -1,8 +1,10 @@
 # A shop with two partitions in one repo. The orchestration agent plans from
-# the feature maps and never sees code. orders and inventory each own one
-# directory of the repo. Both partition agents hold the python-library
-# deliverable, defined in vault/public/deliverables/python-library/, so each
-# can publish its package as a release. orders can read inventory's
+# the feature maps and never sees code. orders and inventory each have one
+# folder of the repo, which their agents see at /workspace/shop/services/orders
+# and /workspace/shop/services/inventory, and their test commands run in
+# /workspace. Both partition agents hold the python-library deliverable,
+# defined in vault/public/deliverables/python-library/, so each can publish
+# its package as a release. orders can read inventory's
 # releases, so it can test against the real stock library once inventory
 # publishes it. Both are granted the python-style skill of
 # vault/skills/python-style/. orders also has a sidecar, a small web server
@@ -35,9 +37,9 @@ services:
     x-hikari:
       description: Owns order intake.
       partition:
-        repo: shop
-        scope: services/orders
-        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
+        folders:
+          - {repo: shop, path: services/orders}
+        test: python3 -m pytest -q shop/services/orders/tests -o pythonpath=shop/services/orders -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         deliverables: [python-library]
         releases: [inventory]
@@ -49,9 +51,9 @@ services:
     x-hikari:
       description: Owns stock levels and reservations.
       partition:
-        repo: shop
-        scope: services/inventory
-        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
+        folders:
+          - {repo: shop, path: services/inventory}
+        test: python3 -m pytest -q shop/services/inventory/tests -o pythonpath=shop/services/inventory -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         deliverables: [python-library]
         skills: [python-style]

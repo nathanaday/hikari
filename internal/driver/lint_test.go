@@ -95,11 +95,14 @@ func lintSelves() map[string]api.Self {
 		"the orchestration agent of an empty project": {Name: "conductor", Orchestration: true, Participants: room},
 		"a partition agent": {
 			Name: "orders", Participants: room, Releases: []string{"inventory"}, Deliverables: deliverable, Skills: []string{"style"},
-			Partition: &api.SelfPartition{Repo: "shop", Branch: "hikari", Scope: "services/orders", Read: []string{"proto"}, WorkDir: "/workspace/services/orders"},
+			Partition: &api.SelfPartition{
+				Folders: []api.Folder{{Place: "shop/services/orders", Repo: "shop", Path: "services/orders"}, {Place: "shop/proto", Repo: "shop", Path: "proto", ReadOnly: true}},
+				Repos:   []api.RepoState{{Name: "shop", Branch: "hikari"}}, WorkDir: "/workspace",
+			},
 		},
 		"a partition agent with no orchestration agent": {
 			Name: "orders", Participants: room[1:],
-			Partition: &api.SelfPartition{Repo: "shop", Branch: "hikari", WorkDir: "/workspace"},
+			Partition: &api.SelfPartition{Folders: []api.Folder{{Place: "shop", Repo: "shop"}}, Repos: []api.RepoState{{Name: "shop", Branch: "hikari"}}, WorkDir: "/workspace"},
 		},
 	}
 }

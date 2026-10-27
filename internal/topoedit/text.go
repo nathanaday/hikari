@@ -341,9 +341,45 @@ func mapping(kv ...any) *yaml.Node {
 	return n
 }
 
-// valueText renders v for the place after "key: " at keyIndent: a scalar
-// with a newline becomes a literal block, and anything else one line.
+// valueText renders v for the place after "key:" at keyIndent: a scalar
+// with a newline becomes a literal block, a block collection the lines
+// below the key, and anything else one line. The text starts with the
+// space or the newline that follows the colon.
 func valueText(v *yaml.Node, keyIndent int) (string, error) {
+	if (v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode) && v.Style&yaml.FlowStyle == 0 && len(v.Content) > 0 {
+		return blockText(v, keyIndent+2)
+	}
+	text, err := lineText(v, keyIndent)
+	return " " + text, err
+}
+
+// blockText renders a block collection as lines at indent, each item or
+// value on one line.
+func blockText(v *yaml.Node, indent int) (string, error) {
+	pad := strings.Repeat(" ", indent)
+	var b strings.Builder
+	if v.Kind == yaml.SequenceNode {
+		for _, item := range v.Content {
+			text, err := flowValue(item)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString("\n" + pad + "- " + text)
+		}
+		return b.String(), nil
+	}
+	for i := 0; i+1 < len(v.Content); i += 2 {
+		text, err := valueText(v.Content[i+1], indent)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString("\n" + pad + v.Content[i].Value + ":" + text)
+	}
+	return b.String(), nil
+}
+
+// lineText renders a value that is not a block collection.
+func lineText(v *yaml.Node, keyIndent int) (string, error) {
 	if v.Kind == yaml.ScalarNode && strings.Contains(v.Value, "\n") {
 		chomp := "|-"
 		body := v.Value
@@ -447,7 +483,7 @@ func (d *doc) setValueBefore(p path, key string, v *yaml.Node, before string) ([
 	if err != nil {
 		return nil, err
 	}
-	line := strings.Repeat(" ", indent) + key + ": " + text + "\n"
+	line := strings.Repeat(" ", indent) + key + ":" + text + "\n"
 	if at >= 0 {
 		// The new key goes above the comment lines over the key it
 		// precedes, which describe that key.
@@ -519,7 +555,7 @@ func (d *doc) replaceValue(e entry, v *yaml.Node) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return d.splice(keyStart+colon+1, end, " "+text+"\n"), nil
+		return d.splice(keyStart+colon+1, end, text+"\n"), nil
 	}
 	return nil, errors.New("cannot replace this value")
 }

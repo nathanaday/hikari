@@ -183,11 +183,11 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		Name:        "mark_map_current",
 		Description: "Declare that your map and private documents describe your code as it is now. hikari checks the private documents and commits your pending changes first.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
-		commit, err := c.MarkMapCurrent(ctx)
+		commits, err := c.MarkMapCurrent(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("The map now describes commit %s.", short(commit))), nil, nil
+		return text(fmt.Sprintf("The map now describes %s.", shortCommits(commits))), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -209,24 +209,24 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Published %s %s %s from commit %s: %d file(s). It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, short(rel.SourceCommit), rel.Product.Files, api.SelfDir, rel.Deliverable, rel.Version)), nil, nil
+		return text(fmt.Sprintf("Published %s %s %s from %s: %d file(s). It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, shortCommits(rel.SourceCommits), rel.Product.Files, api.SelfDir, rel.Deliverable, rel.Version)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "apply",
-		Description: "Commit the changes in your scope to the work branch. Call it after each unit of work.",
+		Description: "Commit the changes in your writable folders: one commit in each repository whose folders changed, on its work branch, with this message. Call it after each unit of work.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a commitArgs) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(a.Message) == "" {
 			return nil, nil, fmt.Errorf("the commit message is empty")
 		}
-		commit, err := c.Commit(ctx, a.Message)
+		commits, err := c.Commit(ctx, a.Message)
 		if err != nil {
 			return nil, nil, err
 		}
-		if commit == "" {
-			return text("Nothing to commit: your scope has no changes."), nil, nil
+		if len(commits) == 0 {
+			return text("Nothing to commit: your folders have no changes."), nil, nil
 		}
-		return text(fmt.Sprintf("Committed %s.", short(commit))), nil, nil
+		return text(fmt.Sprintf("Committed %s.", shortCommits(commits))), nil, nil
 	})
 }
 
@@ -385,6 +385,20 @@ func short(commit string) string {
 		return commit[:10]
 	}
 	return commit
+}
+
+// shortCommits writes commits of the form <repo>@<commit> with short
+// commits, joined by commas.
+func shortCommits(commits []string) string {
+	if len(commits) == 0 {
+		return "no commit"
+	}
+	out := make([]string, len(commits))
+	for i, c := range commits {
+		repo, commit, _ := strings.Cut(c, "@")
+		out[i] = repo + "@" + short(commit)
+	}
+	return strings.Join(out, ", ")
 }
 
 func ptr[T any](v T) *T { return &v }

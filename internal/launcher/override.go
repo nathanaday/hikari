@@ -39,15 +39,10 @@ func TokenVar(id string) string {
 // ids of the project and the agent (rule ID9).
 func NetworkName(project, agent string) string { return project + "-agent-" + agent }
 
-// AgentMounts returns every hikari mount of an agent: its code when it owns
-// a partition, and its part of the vault.
+// AgentMounts returns every hikari mount of an agent: its workspace when it
+// owns a partition, and its part of the vault.
 func AgentMounts(t *topology.Topology, agent, emptyDir string) []Mount {
-	var mounts []Mount
-	a := t.Agents[agent]
-	if s := a.Partition; s != nil {
-		mounts = PartitionMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
-	}
-	return append(mounts, VaultMounts(t, agent)...)
+	return append(PartitionMounts(t.Workspace(agent), emptyDir), VaultMounts(t, agent)...)
 }
 
 type overrideFile struct {
@@ -120,8 +115,8 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 			Labels:  labels,
 			Volumes: []composeMount{{Type: "bind", Source: escape(in.Binaries[agent]), Target: api.BinaryPath, ReadOnly: true}},
 		}
-		if s := t.Agents[agent].Partition; s != nil {
-			svc.WorkingDir = api.WorkDir(s.Scope)
+		if t.Agents[agent].Partition != nil {
+			svc.WorkingDir = api.WorkspaceRoot
 		}
 		for _, m := range AgentMounts(t, agent, in.EmptyDir) {
 			svc.Volumes = append(svc.Volumes, composeMount{Type: "bind", Source: escape(m.Source), Target: m.Target, ReadOnly: m.ReadOnly})

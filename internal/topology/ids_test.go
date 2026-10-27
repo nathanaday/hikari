@@ -23,11 +23,11 @@ services:
     environment: {ANTHROPIC_API_KEY: key}
     x-hikari:
       name: intake
-      partition: {repo: shop, scope: orders}
+      partition: {folders: [{repo: shop, path: orders}]}
       grants: {releases: [inventory]}
   inventory:
     x-hikari:
-      partition: {repo: shop, scope: inventory}
+      partition: {folders: [{repo: shop, path: inventory}]}
   cache: {image: redis, x-hikari: {serves: orders}}
 `
 }
@@ -56,8 +56,8 @@ func TestNames(t *testing.T) {
 	if r := topo.Repos["storefront"]; r.ID != "shop" || r.Path != repo {
 		t.Errorf("storefront: %+v", r)
 	}
-	if got := topo.Agents["intake"].Partition.Repo; got != "storefront" {
-		t.Errorf("partition.repo resolves to the repo's name, got %q", got)
+	if got := topo.Agents["intake"].Partition.Folders[0]; got.Repo != "storefront" || !strings.HasPrefix(got.Place, "storefront") {
+		t.Errorf("a folder's repo resolves to the repo's name, and its place uses the name: %+v", got)
 	}
 	if got := topo.Agents["intake"].Grants.Releases; !slices.Equal(got, []string{"inventory"}) {
 		t.Errorf("grants: %v", got)
@@ -125,7 +125,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  dev: {x-hikari: {partition: {repo: app, scope: src}}}
+  dev: {x-hikari: {partition: {folders: [{repo: app, path: src}]}}}
 `
 	topo, err := Parse([]byte(src), dir)
 	if err != nil {

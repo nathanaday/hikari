@@ -13,22 +13,25 @@ import (
 func partitionAgentPrompt(self api.Self) string {
 	s := self.Partition
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## Your partition\n\nYou are the partition agent of the partition %q: the directory %s of the repo %q. Your working directory, %s, is your scope. It is the only code you can change.",
-		self.Name, scopeName(s.Scope), s.Repo, s.WorkDir)
-	if len(s.Read) > 0 {
-		paths := make([]string, len(s.Read))
-		for i, p := range s.Read {
-			paths[i] = api.WorkDir(p)
+	fmt.Fprintf(&b, "\n## Your partition\n\nYou are the partition agent of the partition %q. Your working directory, %s, is your workspace: these folders, which you work in as one monorepo.\n\n", self.Name, s.WorkDir)
+	for _, f := range s.Folders {
+		where := "the whole repo " + f.Repo
+		if f.Path != "" {
+			where = f.Path + " of the repo " + f.Repo
 		}
-		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
+		mode := "you can change it"
+		if f.ReadOnly {
+			mode = "read-only"
+		}
+		fmt.Fprintf(&b, "- %s: %s; %s\n", api.WorkspacePath(f.Place), where, mode)
 	}
-	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
+	b.WriteString("\nYou can change only the folders that are not read-only. You cannot see the rest of each repo, and you have no git: hikari commits for you. Paths in your code map and your test map are workspace paths, relative to /workspace, such as " + examplePath(s) + ".\n\n")
 	b.WriteString(`- Your feature map is your partition's public description. Its documents are in /hikari/self/features/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes its map, /hikari/self/features/map.yaml, from the features and from set_partition_info. Your private /hikari/private/code-map.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestration agent plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-partition skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/self/releases/ and never change.
 - /hikari/self/granted/ holds files that the user gives you to read, and /hikari/can-edit/ files that the user gives you to change. hikari commits your changes in /hikari/can-edit/ with your code.
 - For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary).
 `)
-	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
+	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. hikari makes one commit with that message in each repo whose folders changed, on its branch: %s. hikari also commits what you leave at the end of each turn.\n", branches(s))
 	b.WriteString("- After a change, run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
 	b.WriteString("- If a task needs a change outside your partition, tell the orchestration agent, or the partition agent of that partition, what you need and why. Do not work around it.\n")
 	return b.String()
@@ -76,7 +79,7 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	} else {
 		b.WriteString(`Your partition documents are not built yet. Load the hikari-partition skill and follow its Build procedure:
 
-1. Read the code in your scope to learn what the partition does, and write the parts of code-map.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
+1. Read the code in your writable folders to learn what the partition does, and write the parts of code-map.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
 2. Describe the partition with set_partition_info, then write one feature document for each feature with change_wiki, linked to the features it works with, and a principle or a rule where the code shows one.
 3. Write the code map of each feature in /hikari/private/code-map.yaml.
 4. Write the suites of /hikari/private/tests.yaml, each with a command that writes a JUnit XML report to /hikari/private/reports/<suite>.xml. Run each suite and call record_test_run for it.
@@ -272,11 +275,24 @@ func wikisPrompt(self api.Self) string {
 	return b.String()
 }
 
-func scopeName(scope string) string {
-	if scope == "" {
-		return "(the whole repo)"
+// examplePath returns a workspace path in the first writable folder, for
+// the prompt.
+func examplePath(s *api.SelfPartition) string {
+	for _, f := range s.Folders {
+		if !f.ReadOnly {
+			return f.Place + "/app.py"
+		}
 	}
-	return scope
+	return "shop/services/orders/app.py"
+}
+
+// branches lists the branch of each repo of the partition.
+func branches(s *api.SelfPartition) string {
+	parts := make([]string, len(s.Repos))
+	for i, r := range s.Repos {
+		parts[i] = fmt.Sprintf("%q in %s", r.Branch, r.Name)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func sharedPrompt(self api.Self) string {

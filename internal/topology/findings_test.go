@@ -11,7 +11,7 @@ func TestFindingPaths(t *testing.T) {
 		"orchestrator":   {"  orchestration: ghost", "  a: {x-hikari: {}}", "x-hikari.orchestration"},
 		"name":           {"  orchestration: a", "  a: {x-hikari: {name: A}}", "services.a.x-hikari.name"},
 		"unreachable":    {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {}}", "services.b"},
-		"partition repo": {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {partition: {repo: ghost}}}", "services.b.x-hikari.partition.repo"},
+		"partition repo": {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {partition: {folders: [{repo: ghost}]}}}", "services.b.x-hikari.partition.folders[0].repo"},
 		"service key":    {"  orchestration: a", "  a: {privileged: true, x-hikari: {}}", "services.a.privileged"},
 		"repo url":       {"  repos: {r: {url: -x}}\n  orchestration: a", "  a: {x-hikari: {}}", "x-hikari.repos.r.url"},
 	}

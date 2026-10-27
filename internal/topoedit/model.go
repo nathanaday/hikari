@@ -70,10 +70,54 @@ type Agent struct {
 }
 
 type Partition struct {
-	Repo  string   `json:"repo"`
-	Scope string   `json:"scope"`
-	Read  []string `json:"read"`
-	Test  string   `json:"test"`
+	Folders []Folder `json:"folders"`
+	Test    string   `json:"test"`
+	// Old is whether the source writes the form before folders: repo,
+	// scope, and read, which the model reads as folders (decision 5 of the
+	// partition folders spec).
+	Old bool `json:"old,omitempty"`
+}
+
+// Folder is one folder of a partition: Repo is the repo's id.
+type Folder struct {
+	Repo     string `json:"repo" yaml:"repo"`
+	Path     string `json:"path" yaml:"path"`
+	ReadOnly bool   `json:"read_only" yaml:"read_only"`
+	At       string `json:"at" yaml:"at"`
+}
+
+// Uses reports whether a folder of p is in repo.
+func (p *Partition) Uses(repo string) bool {
+	for _, f := range p.Folders {
+		if f.Repo == repo {
+			return true
+		}
+	}
+	return false
+}
+
+// srcPartition is a partition as the source writes it, in either form.
+type srcPartition struct {
+	Folders []Folder `yaml:"folders"`
+	Test    string   `yaml:"test"`
+	Repo    string   `yaml:"repo"`
+	Scope   string   `yaml:"scope"`
+	Read    []string `yaml:"read"`
+}
+
+func (s *srcPartition) model() *Partition {
+	p := &Partition{Folders: s.Folders, Test: s.Test}
+	if s.Repo != "" || s.Scope != "" || len(s.Read) > 0 {
+		p.Old = true
+		p.Folders = append(p.Folders, Folder{Repo: s.Repo, Path: s.Scope})
+		for _, r := range s.Read {
+			p.Folders = append(p.Folders, Folder{Repo: s.Repo, Path: r, ReadOnly: true})
+		}
+	}
+	if p.Folders == nil {
+		p.Folders = []Folder{}
+	}
+	return p
 }
 
 type Sidecar struct {
@@ -110,11 +154,11 @@ type srcService struct {
 	Image  string    `yaml:"image"`
 	Build  yaml.Node `yaml:"build"`
 	Hikari *struct {
-		Name         string     `yaml:"name"`
-		Description  string     `yaml:"description"`
-		Instructions string     `yaml:"instructions"`
-		Model        string     `yaml:"model"`
-		Partition    *Partition `yaml:"partition"`
+		Name         string        `yaml:"name"`
+		Description  string        `yaml:"description"`
+		Instructions string        `yaml:"instructions"`
+		Model        string        `yaml:"model"`
+		Partition    *srcPartition `yaml:"partition"`
 		Grants       struct {
 			Releases     []string `yaml:"releases"`
 			Deliverables []string `yaml:"deliverables"`
@@ -165,11 +209,10 @@ func ReadModel(text []byte, dir string) *Model {
 		if h != nil {
 			a.Name = nameOr(h.Name, id)
 			a.Description, a.Instructions, a.Model = freeText(h.Description), freeText(h.Instructions), h.Model
-			a.Partition = h.Partition
-			a.Releases, a.Deliverables, a.Skills = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables), nonNil(h.Grants.Skills)
-			if a.Partition != nil {
-				a.Partition.Read = nonNil(a.Partition.Read)
+			if h.Partition != nil {
+				a.Partition = h.Partition.model()
 			}
+			a.Releases, a.Deliverables, a.Skills = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables), nonNil(h.Grants.Skills)
 		}
 		a.IDLocked = vault != "" && exists(filepath.Join(vault, "partitions", id))
 		m.Agents = append(m.Agents, a)

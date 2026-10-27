@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// File names inside the private directory of a scope.
+// File names inside a partition's private directory.
 const (
 	MapFile     = "tests.yaml"
 	ResultsFile = "results.yaml"
@@ -158,7 +158,7 @@ const (
 	DirKey
 )
 
-// Disk says what a path relative to the scope names on disk.
+// Disk says what a workspace path names on disk.
 type Disk interface {
 	IsFile(rel string) bool
 	IsDir(rel string) bool
@@ -256,7 +256,8 @@ func under(p, dir string) bool {
 	return dir == "." || strings.HasPrefix(p, dir+"/")
 }
 
-// local reports whether p is a relative path that stays inside the scope.
+// local reports whether p is a relative path that stays inside the
+// workspace.
 func local(p string) bool {
 	return p != "" && !path.IsAbs(p) && p != ".." && !strings.HasPrefix(p, "../")
 }

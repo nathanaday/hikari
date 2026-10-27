@@ -17,12 +17,14 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/testmap"
+	"github.com/nathanaday/hikari/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
 
 // Files holds the map of one partition and keeps its file up to date.
 type Files struct {
-	root string // the scope on the host
+	ws   workspace.Workspace
+	root string // the first writable folder on the host
 	path string // the map file on the host
 	name string
 
@@ -35,13 +37,14 @@ type Files struct {
 	notes       []string
 }
 
-// Open loads the map of the partition name from mapPath. root is the partition's
-// scope on the host, where its private documents live. Open writes an
-// unbuilt map and empty private documents for those that do not exist, and
-// reports whether it created the map. testCommand, when set, becomes the
-// suite all of a new test map.
-func Open(root, mapPath, name, testCommand string) (*Files, bool, error) {
-	s := &Files{root: root, path: mapPath, name: name}
+// Open loads the map of the partition name from mapPath. ws is the
+// partition's workspace; its first writable folder holds the private
+// documents. Open writes an unbuilt map and empty private documents for
+// those that do not exist, and reports whether it created the map.
+// testCommand, when set, becomes the suite all of a new test map.
+func Open(ws workspace.Workspace, mapPath, name, testCommand string) (*Files, bool, error) {
+	root := ws.Home().Host
+	s := &Files{ws: ws, root: root, path: mapPath, name: name}
 	note, err := preparePrivate(root, testCommand)
 	if err != nil {
 		return nil, false, err
@@ -54,7 +57,11 @@ func Open(root, mapPath, name, testCommand string) (*Files, bool, error) {
 		s.m = New(name)
 		return s, true, s.save(s.m)
 	}
-	if v, err := fileVersion(s.path); err == nil && v != version {
+	if v, err := fileVersion(s.path); err == nil && v == version-1 {
+		if err := s.convert(); err != nil {
+			return nil, false, fmt.Errorf("feature map %s: %w", s.path, err)
+		}
+	} else if err == nil && v != version {
 		// A map from an earlier hikari is not converted (rule Q4).
 		if err := os.Remove(s.path); err != nil {
 			return nil, false, err
@@ -84,7 +91,7 @@ func (s *Files) adoptName() error {
 	if err != nil {
 		return err
 	}
-	m, old, err := decodeLoose(data)
+	m, old, err := decodeLoose(data, s.ws.Home().Repo)
 	if err != nil || (!old && m.Partition.Name == s.name) {
 		return nil
 	}
@@ -98,15 +105,33 @@ func (s *Files) adoptName() error {
 	return s.save(&m)
 }
 
+// convert rewrites a map of the version before, whose one described
+// commit is in the repo of the first writable folder (rule F8).
+func (s *Files) convert() error {
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return err
+	}
+	m, _, err := decodeLoose(data, s.ws.Home().Repo)
+	if err != nil {
+		return err
+	}
+	m.Version = version
+	s.notes = append(s.notes, fmt.Sprintf("converted %s to version %d: it records one described commit for each repo", s.path, version))
+	return s.save(&m)
+}
+
 // Decode reads a map without checking it, as a teammate's branch or an
-// earlier hikari may have written it.
-func Decode(data []byte) (Map, error) {
-	m, _, err := decodeLoose(data)
+// earlier hikari may have written it. A described commit of the version
+// before belongs to repo.
+func Decode(data []byte, repo string) (Map, error) {
+	m, _, err := decodeLoose(data, repo)
 	return m, err
 }
 
 // decodeLoose reads a map and reports whether it holds the old key system.
-func decodeLoose(data []byte) (Map, bool, error) {
+// The one described commit of the version before becomes an entry of repo.
+func decodeLoose(data []byte, repo string) (Map, bool, error) {
 	var v struct {
 		Map    `yaml:",inline"`
 		System *Partition `yaml:"system"`
@@ -116,6 +141,26 @@ func decodeLoose(data []byte) (Map, bool, error) {
 	}
 	if v.System != nil {
 		v.Map.Partition = *v.System
+	}
+	var old struct {
+		Partition struct {
+			DescribedState struct {
+				Commit string `yaml:"commit"`
+			} `yaml:"described_state"`
+		} `yaml:"partition"`
+		System struct {
+			DescribedState struct {
+				Commit string `yaml:"commit"`
+			} `yaml:"described_state"`
+		} `yaml:"system"`
+	}
+	yaml.Unmarshal(data, &old)
+	commit := old.Partition.DescribedState.Commit
+	if v.System != nil {
+		commit = old.System.DescribedState.Commit
+	}
+	if commit != "" && len(v.Map.Partition.DescribedState.Commits) == 0 {
+		v.Map.Partition.DescribedState.Commits = []string{workspace.Commit(repo, commit)}
 	}
 	return v.Map, v.System != nil, nil
 }
@@ -138,8 +183,12 @@ func fileVersion(path string) (int, error) {
 	return v.Version, nil
 }
 
-// Root returns the scope on the host.
+// Root returns the first writable folder on the host, which holds the
+// private documents.
 func (s *Files) Root() string { return s.root }
+
+// Workspace returns the partition's workspace.
+func (s *Files) Workspace() workspace.Workspace { return s.ws }
 
 // Path returns the map file on the host.
 func (s *Files) Path() string { return s.path }
@@ -244,23 +293,36 @@ func (s *Files) PrivateErrors(m *Map) []string {
 	return strings.Split(err.Error(), "\n")
 }
 
-func (s *Files) exists(rel string) bool {
-	_, err := os.Stat(filepath.Join(s.root, rel))
+// stat returns the file info of a workspace path.
+func (s *Files) stat(p string) (fs.FileInfo, error) {
+	host, ok := s.ws.Host(filepath.ToSlash(p))
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	return os.Stat(host)
+}
+
+func (s *Files) exists(p string) bool {
+	_, err := s.stat(p)
 	return err == nil
 }
 
-// Exists reports whether a path relative to the scope exists.
-func (s *Files) Exists(rel string) bool { return s.exists(rel) }
+// Exists reports whether a workspace path exists.
+func (s *Files) Exists(p string) bool { return s.exists(p) }
 
-// IsFile reports whether a path relative to the scope is a file.
-func (s *Files) IsFile(rel string) bool {
-	info, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(rel)))
+// IsFile reports whether a workspace path is a file.
+func (s *Files) IsFile(p string) bool {
+	info, err := s.stat(p)
 	return err == nil && info.Mode().IsRegular()
 }
 
-// IsDir reports whether a path relative to the scope is a directory.
-func (s *Files) IsDir(rel string) bool {
-	info, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(rel)))
+// IsDir reports whether a workspace path is a directory. The workspace
+// itself, ".", is one.
+func (s *Files) IsDir(p string) bool {
+	if p == "." {
+		return true
+	}
+	info, err := s.stat(p)
 	return err == nil && info.IsDir()
 }
 
@@ -348,13 +410,18 @@ func (s *Files) save(m *Map) error {
 	return nil
 }
 
-// ContentHash hashes the contents of paths relative to root. A directory
-// counts as all the files below it. A missing path changes the hash too.
-func ContentHash(root string, paths []string) (string, error) {
+// ContentHash hashes the contents of the workspace paths of ws. A
+// directory counts as all the files below it. A missing path changes the
+// hash too.
+func ContentHash(ws workspace.Workspace, paths []string) (string, error) {
 	h := sha256.New()
 	sorted := slices.Sorted(slices.Values(paths))
 	for _, p := range slices.Compact(sorted) {
-		abs := filepath.Join(root, filepath.Clean(p))
+		abs, ok := ws.Host(filepath.ToSlash(p))
+		if !ok {
+			fmt.Fprintf(h, "missing\x00%s\x00", p)
+			continue
+		}
 		info, err := os.Stat(abs)
 		if errors.Is(err, fs.ErrNotExist) {
 			fmt.Fprintf(h, "missing\x00%s\x00", p)
@@ -372,8 +439,8 @@ func ContentHash(root string, paths []string) (string, error) {
 			if err != nil || d.IsDir() {
 				return err
 			}
-			rel, _ := filepath.Rel(root, path)
-			return hashFile(h, rel, path)
+			rel, _ := filepath.Rel(abs, path)
+			return hashFile(h, filepath.Join(p, rel), path)
 		})
 		if err != nil {
 			return "", err

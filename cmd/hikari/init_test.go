@@ -105,13 +105,13 @@ func TestWriteProjectWithoutIdentity(t *testing.T) {
 
 func TestStatusLines(t *testing.T) {
 	lines := statusLines([]linked.PartitionStatus{
-		{Name: "app", Cloned: true, Commit: "0123456789abcdef", Features: 2, Health: map[string]int{"passing": 1, "failing": 1}, Results: true,
+		{Name: "app", Cloned: true, Commits: []string{"app@0123456789abcdef"}, Features: 2, Health: map[string]int{"passing": 1, "failing": 1}, Results: true,
 			Suites: []linked.SuiteStatus{{Name: "unit", Counts: map[string]int{"passed": 3}, Tests: []testmap.Result{{ID: "a > one", Outcome: "passed"}}}}},
 		{Name: "web", Cloned: true},
 		{Name: "far", Cloned: false},
 	}, true)
 	got := strings.Join(lines, "\n")
-	for _, want := range []string{"app  described at 0123456789ab · 2 features: 1 passing, 1 failing", "  unit  ran ", "· 3 passed", "    passed  a > one", "web  not described", "  no test results on this machine", "far  not cloned"} {
+	for _, want := range []string{"app  described at app@0123456789ab · 2 features: 1 passing, 1 failing", "  unit  ran ", "· 3 passed", "    passed  a > one", "web  not described", "  no test results on this machine", "far  not cloned"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("SU1 to SU3: lines lack %q:\n%s", want, got)
 		}

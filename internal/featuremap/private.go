@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The private documents live in <scope>/.hikari/private. The partition agent edits
+// The private documents live in <first writable folder>/.hikari/private. The partition agent edits
 // code-map.yaml and tests.yaml directly. The server writes results.yaml, and
 // runs write their reports into reports/.
 const (
@@ -103,7 +103,8 @@ func preparePrivate(root, testCommand string) (string, error) {
 	return fmt.Sprintf("deleted %s: the test plan of an earlier hikari; the partition agent writes %s again", old, testmap.MapFile), nil
 }
 
-// LoadPrivate reads the private documents of the scope root. A missing
+// LoadPrivate reads the private documents under root, the first writable
+// folder on the host. A missing
 // document reads as empty.
 func LoadPrivate(root string) (Private, error) {
 	p := Private{
@@ -144,8 +145,8 @@ func readPrivate(root, file string) ([]byte, error) {
 }
 
 // Validate checks the rules P1 to P3 of the code map and X1 to X4 of the
-// test map against the features of the map. exists reports whether a path
-// relative to the scope exists.
+// test map against the features of the map. exists reports whether a
+// workspace path exists.
 func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) error {
 	var errs []error
 	fail := func(rule, format string, args ...any) {
@@ -156,9 +157,9 @@ func (p Private) Validate(ids map[string]bool, exists func(rel string) bool) err
 	}
 	checkPath := func(where, path string) {
 		if !filepath.IsLocal(filepath.Clean(path)) {
-			fail("P3", "%s: path %q must be relative to the scope and stay inside it", where, path)
+			fail("P3", "%s: path %q must be a workspace path, relative to /workspace, such as shop/services/orders/app.py", where, path)
 		} else if !exists(filepath.Clean(path)) {
-			fail("P3", "%s: path %q does not exist in the scope", where, path)
+			fail("P3", "%s: path %q is in no folder of the workspace, or does not exist", where, path)
 		}
 	}
 	for _, part := range p.CodeMap.Parts {

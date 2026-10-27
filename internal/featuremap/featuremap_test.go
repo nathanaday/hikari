@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/testmap"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 var now = time.Date(2026, 10, 21, 9, 30, 0, 0, time.UTC)
@@ -22,6 +23,11 @@ func newScope(t *testing.T, files map[string]string) string {
 		writeFile(t, root, name, content)
 	}
 	return root
+}
+
+// folder returns a workspace of one writable folder, root, at the place app.
+func folder(root string) workspace.Workspace {
+	return workspace.Workspace{{Place: "app", Repo: "shop", Path: "app", Host: root}}
 }
 
 func writeFile(t *testing.T, root, name, content string) {
@@ -201,7 +207,7 @@ func TestState(t *testing.T) {
 	if got := State(m, nil); got != Unbuilt {
 		t.Errorf("S13: %q", got)
 	}
-	m.MarkCurrent("abc123", now)
+	m.MarkCurrent([]string{"shop@abc123"}, now)
 	if got := State(m, []string{"orders/create.py"}); got != Stale {
 		t.Errorf("S14: %q", got)
 	}
@@ -212,12 +218,12 @@ func TestState(t *testing.T) {
 
 func TestOpenWritesSkeletons(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, created, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "python3 -m unittest")
+	s, created, err := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "python3 -m unittest")
 	if err != nil || !created {
 		t.Fatalf("Open = %v, created %v", err, created)
 	}
 	data, _ := os.ReadFile(s.Path())
-	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 4\npartition:\n  name: orders\n") {
+	if strings.HasPrefix(string(data), "#") || !strings.HasPrefix(string(data), "version: 5\npartition:\n  name: orders\n") {
 		t.Errorf("the map file must start with its version, have no comment, and indent by two spaces:\n%s", data)
 	}
 	p, err := s.Private()
@@ -242,7 +248,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 
 	// Open keeps documents that exist.
 	writeFile(t, root, ".hikari/private/code-map.yaml", "version: 1\nparts: [{path: orders/, description: kept}]\nfeatures: {}\n")
-	if _, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "other"); err != nil {
+	if _, _, err := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "other"); err != nil {
 		t.Fatal(err)
 	}
 	if p, _ := s.Private(); p.CodeMap.Parts[0].Description != "kept" || p.Tests.Suites["all"].Command != "python3 -m unittest" {
@@ -254,7 +260,7 @@ func TestOpenDeletesTheOldTestPlan(t *testing.T) {
 	root := newScope(t, orderFiles)
 	writeFile(t, root, ".hikari/private/test.yaml", "version: 1\nsuites: {}\nfeatures: {}\n")
 	writeFile(t, root, ".hikari/private/.gitignore", "reports/\nresults.yaml\nenvironment/\n")
-	s, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
+	s, _, err := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +277,7 @@ func TestOpenDeletesTheOldTestPlan(t *testing.T) {
 
 func TestFilesRejectInvalidChanges(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, _, _ := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
+	s, _, _ := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	before, _ := os.ReadFile(s.Path())
 	err := s.Update(func(m *Map) error {
 		m.Project([]FeatureEntry{{ID: "Bad ID", Name: "X"}})
@@ -290,10 +296,34 @@ func TestFilesRejectInvalidChanges(t *testing.T) {
 	}
 }
 
+// TestOpenConvertsTheVersionBefore reads a version 4 map, whose one
+// described commit is in the repo of the first writable folder (rule F8).
+func TestOpenConvertsTheVersionBefore(t *testing.T) {
+	root := newScope(t, orderFiles)
+	old := "version: 4\npartition:\n  name: orders\n  described_state:\n    commit: abc123\n    updated: 2026-10-22T05:57:09Z\nfeatures: []\n"
+	writeFile(t, root, ".hikari/map.yaml", old)
+	s, created, err := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
+	if err != nil || created {
+		t.Fatalf("Open = %v, created %v", err, created)
+	}
+	if m := s.Map(); m.Version != 5 || !slices.Equal(m.Partition.DescribedState.Commits, []string{"shop@abc123"}) || m.Partition.DescribedState.Updated.IsZero() {
+		t.Errorf("F8: %+v", m.Partition.DescribedState)
+	}
+	if data, _ := os.ReadFile(s.Path()); !strings.Contains(string(data), "version: 5\n") || !strings.Contains(string(data), "commits:\n      - shop@abc123\n") {
+		t.Errorf("F8: the map is written in the new form:\n%s", data)
+	}
+	if len(s.Notes()) != 1 || !strings.Contains(s.Notes()[0], "converted") {
+		t.Errorf("notes = %v", s.Notes())
+	}
+	if m, err := Decode([]byte(old), "shop"); err != nil || !slices.Equal(m.Partition.DescribedState.Commits, []string{"shop@abc123"}) {
+		t.Errorf("F8: Decode reads the one commit: %+v, %v", m.Partition.DescribedState, err)
+	}
+}
+
 func TestOldKeyIsRewritten(t *testing.T) {
 	root := newScope(t, orderFiles)
 	writeFile(t, root, ".hikari/map.yaml", "version: 4\nsystem:\n  name: orders\n  summary: Kept.\nfeatures: []\n")
-	s, created, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
+	s, created, err := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if err != nil || created || s.Map().Partition.Summary != "Kept." {
 		t.Fatalf("an old map loads: %v, %v", created, err)
 	}
@@ -303,24 +333,24 @@ func TestOldKeyIsRewritten(t *testing.T) {
 	if len(s.Notes()) != 1 {
 		t.Errorf("notes = %v", s.Notes())
 	}
-	if m, err := Decode([]byte("version: 4\nsystem: {name: orders}\n")); err != nil || m.Partition.Name != "orders" {
+	if m, err := Decode([]byte("version: 4\nsystem: {name: orders}\n"), "shop"); err != nil || m.Partition.Name != "orders" {
 		t.Errorf("Decode reads the old key: %+v, %v", m, err)
 	}
 }
 
 func TestFilesReloadHandEdits(t *testing.T) {
 	root := newScope(t, orderFiles)
-	s, _, _ := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
+	s, _, _ := Open(folder(root), filepath.Join(root, ".hikari", "map.yaml"), "orders", "")
 	if s.Reload() {
 		t.Error("Reload without a change reported one")
 	}
 	time.Sleep(10 * time.Millisecond)
-	writeFile(t, root, ".hikari/map.yaml", "version: 4\npartition:\n  name: orders\n  summary: Edited by hand.\n")
+	writeFile(t, root, ".hikari/map.yaml", "version: 5\npartition:\n  name: orders\n  summary: Edited by hand.\n")
 	if !s.Reload() || s.Map().Partition.Summary != "Edited by hand." || s.Error() != "" {
 		t.Fatalf("valid hand edit: summary %q, error %q", s.Map().Partition.Summary, s.Error())
 	}
 	time.Sleep(10 * time.Millisecond)
-	writeFile(t, root, ".hikari/map.yaml", "version: 4\npartition:\n  name: orders\nfeatures:\n  - id: BAD\n    name: x\n")
+	writeFile(t, root, ".hikari/map.yaml", "version: 5\npartition:\n  name: orders\nfeatures:\n  - id: BAD\n    name: x\n")
 	if !s.Reload() || s.Error() == "" || s.Map().Partition.Summary != "Edited by hand." {
 		t.Fatalf("invalid hand edit: error %q, summary %q", s.Error(), s.Map().Partition.Summary)
 	}
@@ -356,14 +386,14 @@ func TestOpenDeletesOldVersions(t *testing.T) {
 	root := newScope(t, orderFiles)
 	mapPath := filepath.Join(root, ".hikari", "map.yaml")
 	writeFile(t, root, ".hikari/map.yaml", "version: 2\npartition:\n  name: orders\n  summary: Old.\nfeatures:\n  - {id: x, name: X}\n")
-	s, created, err := Open(root, mapPath, "orders", "")
+	s, created, err := Open(folder(root), mapPath, "orders", "")
 	if err != nil || !created || len(s.Notes()) != 1 || !strings.Contains(s.Notes()[0], "version 2") {
 		t.Fatalf("Q4: Open = %v, created %v, notes %q", err, created, s.Notes())
 	}
-	if m := s.Map(); m.Version != 4 || len(m.Features) != 0 || m.Partition.Summary != "" {
+	if m := s.Map(); m.Version != 5 || len(m.Features) != 0 || m.Partition.Summary != "" {
 		t.Errorf("Q4: the old map must be replaced, got %+v", m)
 	}
-	if s, _, err := Open(root, mapPath, "orders", ""); err != nil || len(s.Notes()) != 0 {
+	if s, _, err := Open(folder(root), mapPath, "orders", ""); err != nil || len(s.Notes()) != 0 {
 		t.Errorf("a current map is kept: %v %q", err, s.Notes())
 	}
 }
@@ -404,17 +434,21 @@ func TestFeatureStates(t *testing.T) {
 
 func TestContentHash(t *testing.T) {
 	root := newScope(t, orderFiles)
-	a, _ := ContentHash(root, []string{"orders", "tests/test_create.py"})
-	b, _ := ContentHash(root, []string{"tests/test_create.py", "orders"})
+	ws := folder(root)
+	a, _ := ContentHash(ws, []string{"app/orders", "app/tests/test_create.py"})
+	b, _ := ContentHash(ws, []string{"app/tests/test_create.py", "app/orders"})
 	if a != b {
 		t.Error("the hash depends on path order")
 	}
 	writeFile(t, root, "orders/new.py", "x")
-	if c, _ := ContentHash(root, []string{"orders", "tests/test_create.py"}); c == a {
+	if c, _ := ContentHash(ws, []string{"app/orders", "app/tests/test_create.py"}); c == a {
 		t.Error("a new file in a directory did not change the hash")
 	}
 	os.Remove(filepath.Join(root, "tests/test_create.py"))
-	if d, err := ContentHash(root, []string{"tests/test_create.py"}); err != nil || d == "" {
+	if d, err := ContentHash(ws, []string{"app/tests/test_create.py"}); err != nil || d == "" {
 		t.Errorf("a missing path: %q, %v", d, err)
+	}
+	if d, err := ContentHash(ws, []string{"elsewhere/x.py"}); err != nil || d == "" {
+		t.Errorf("a path in no folder: %q, %v", d, err)
 	}
 }

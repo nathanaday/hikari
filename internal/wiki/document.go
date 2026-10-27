@@ -53,10 +53,12 @@ type Document struct {
 	Created time.Time
 	// Updated is the time of the last write of the document.
 	Updated time.Time
-	// DescribedCommit and DescribedAt say which commit the document
-	// describes. mark_map_current sets them; a write leaves them alone.
-	DescribedCommit string
-	DescribedAt     time.Time
+	// DescribedCommits and DescribedAt say which commits the document
+	// describes, one <repo>@<commit> for each repo. mark_map_current sets
+	// them; a write leaves them alone. A document of the format before
+	// records one commit without its repo.
+	DescribedCommits []string
+	DescribedAt      time.Time
 	// Extra holds the user's properties, which no rule names, in their order.
 	Extra []Property
 	// Body is the markdown below the header.
@@ -70,10 +72,11 @@ type Property struct {
 }
 
 // The properties that code knows, in the order they are written.
-var known = []string{"id", "kind", "name", "description", "interfaces", "related", "key", "status", "created", "updated", "described_commit", "described_at"}
+var known = []string{"id", "kind", "name", "description", "interfaces", "related", "key", "status", "created", "updated", "described_commits", "described_at"}
 
 // Owned are the properties that code owns; a write may not give them.
-var Owned = []string{"created", "updated", "described_commit", "described_at"}
+// described_commit is the property of the format before.
+var Owned = []string{"created", "updated", "described_commits", "described_commit", "described_at"}
 
 const timeLayout = "2006-01-02T15:04:05Z"
 
@@ -155,8 +158,13 @@ func Parse(text string) (*Document, error) {
 			d.Created, err = stamp(val)
 		case "updated":
 			d.Updated, err = stamp(val)
+		case "described_commits":
+			d.DescribedCommits, err = list(val)
 		case "described_commit":
-			d.DescribedCommit, err = scalar(val)
+			var c string
+			if c, err = scalar(val); err == nil && c != "" && len(d.DescribedCommits) == 0 {
+				d.DescribedCommits = []string{c}
+			}
 		case "described_at":
 			d.DescribedAt, err = stamp(val)
 		default:
@@ -285,8 +293,8 @@ func (d *Document) Render() string {
 		add("created", str(formatTime(d.Created)))
 	}
 	add("updated", str(formatTime(d.Updated)))
-	if d.DescribedCommit != "" || !d.DescribedAt.IsZero() || d.Kind == Feature || d.Kind == "" {
-		add("described_commit", str(d.DescribedCommit))
+	if len(d.DescribedCommits) > 0 || !d.DescribedAt.IsZero() || d.Kind == Feature || d.Kind == "" {
+		add("described_commits", flow(d.DescribedCommits))
 		add("described_at", str(formatTime(d.DescribedAt)))
 	}
 	for _, p := range d.Extra {
@@ -338,6 +346,7 @@ func (d *Document) Clone() *Document {
 	c := *d
 	c.Interfaces = slices.Clone(d.Interfaces)
 	c.Related = slices.Clone(d.Related)
+	c.DescribedCommits = slices.Clone(d.DescribedCommits)
 	c.Extra = slices.Clone(d.Extra)
 	return &c
 }

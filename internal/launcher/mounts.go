@@ -7,6 +7,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 // Mount is a bind mount of a host path.
@@ -16,23 +17,25 @@ type Mount struct {
 	ReadOnly bool
 }
 
-// PartitionMounts returns the mounts of a partition agent's code (rules M1 to M3, M5,
-// and M7): the scope read-write, each read path read-only, the private
-// documents at /hikari/private, an empty directory over the scope's
-// .hikari, and an empty directory over .git when the scope is the whole
-// repo.
-func PartitionMounts(repoPath, scope string, read []string, emptyDir string) []Mount {
-	scopeTarget := api.WorkDir(scope)
-	mounts := []Mount{{Source: filepath.Join(repoPath, scope), Target: scopeTarget}}
-	for _, p := range read {
-		mounts = append(mounts, Mount{Source: filepath.Join(repoPath, p), Target: path.Join(api.WorkspaceRoot, filepath.ToSlash(p)), ReadOnly: true})
+// PartitionMounts returns the mounts of a partition agent's workspace
+// (rules F4 and M7): each folder at /workspace/<place>, writable or
+// read-only, an empty directory over the .git of a folder that is a whole
+// repo and over the .hikari of each writable folder, and the first
+// writable folder's private documents at /hikari/private.
+func PartitionMounts(ws workspace.Workspace, emptyDir string) []Mount {
+	var mounts []Mount
+	for _, f := range ws {
+		target := api.WorkspacePath(f.Place)
+		mounts = append(mounts, Mount{Source: f.Host, Target: target, ReadOnly: f.ReadOnly})
+		if f.Path == "" {
+			mounts = append(mounts, Mount{Source: emptyDir, Target: path.Join(target, ".git"), ReadOnly: true})
+		}
+		if !f.ReadOnly {
+			mounts = append(mounts, Mount{Source: emptyDir, Target: path.Join(target, ".hikari"), ReadOnly: true})
+		}
 	}
-	mounts = append(mounts,
-		Mount{Source: emptyDir, Target: path.Join(scopeTarget, ".hikari"), ReadOnly: true},
-		Mount{Source: filepath.Join(repoPath, scope, ".hikari", "private"), Target: api.PrivateDir},
-	)
-	if scope == "" {
-		mounts = append(mounts, Mount{Source: emptyDir, Target: path.Join(api.WorkspaceRoot, ".git"), ReadOnly: true})
+	if home := ws.Home(); home.Host != "" {
+		mounts = append(mounts, Mount{Source: filepath.Join(home.Host, ".hikari", "private"), Target: api.PrivateDir})
 	}
 	return mounts
 }

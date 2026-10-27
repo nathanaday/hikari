@@ -35,14 +35,14 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {description: leads engineering}}
-  writer: {x-hikari: {description: writes, partition: {repo: app, scope: writer}}}
-  critic: {x-hikari: {description: reviews, partition: {repo: app, scope: critic}}}
+  writer: {x-hikari: {description: writes, partition: {folders: [{repo: app, path: writer}]}}}
+  critic: {x-hikari: {description: reviews, partition: {folders: [{repo: app, path: critic}]}}}
 `
 
 // flatTopology is the room without an orchestration agent: lead has a partition too.
 var flatTopology = strings.NewReplacer(
 	"  orchestration: lead\n", "",
-	"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {description: leads engineering, partition: {repo: app, scope: lead}}}",
+	"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {description: leads engineering, partition: {folders: [{repo: app, path: lead}]}}}",
 ).Replace(testTopology)
 
 // gitRepo makes a git repo with one file in each of dirs, and returns its
@@ -361,7 +361,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
+  orders: {x-hikari: {partition: {folders: [{repo: shop, path: orders}]}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +401,7 @@ services:
 	}
 
 	self, err := orders.Self(ctx)
-	if err != nil || self.Partition == nil || self.Partition.WorkDir != "/workspace/orders" {
+	if err != nil || self.Partition == nil || self.Partition.WorkDir != "/workspace" {
 		t.Fatalf("partition agent self = %+v, %v", self.Partition, err)
 	}
 	purpose := "## Purpose\n\nA customer places an order.\n"
@@ -453,8 +453,8 @@ services:
 	if err := orders.ChangeVocabulary(ctx, api.VocabularyChange{Op: "remove", Name: "order"}); err == nil {
 		t.Error("a partition agent changed the vocabulary")
 	}
-	if commit, err := orders.Commit(ctx, "Add the map"); err != nil || commit == "" {
-		t.Errorf("commit = %q, %v", commit, err)
+	if commits, err := orders.Commit(ctx, "Add the map"); err != nil || len(commits) != 1 {
+		t.Errorf("commit = %v, %v", commits, err)
 	}
 	if tc, err := orders.TurnContext(ctx); err != nil || tc.MapState != featuremap.Unbuilt {
 		t.Errorf("turn context = %+v, %v", tc, err)
@@ -484,7 +484,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
+  orders: {x-hikari: {partition: {folders: [{repo: shop, path: orders}]}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)

@@ -29,6 +29,7 @@ import (
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"github.com/nathanaday/hikari/internal/wiki"
+	"github.com/nathanaday/hikari/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -46,11 +47,11 @@ type Change struct {
 }
 
 type partitionAgent struct {
-	name       string
-	repoName   string
-	scope      string
-	branch     string
-	repo       *gitrepo.Repo
+	name string
+	// ws is the partition's workspace, and repos the repos of its writable
+	// folders, in order.
+	ws         workspace.Workspace
+	repos      []string
 	featureMap *featuremap.Files
 	wiki       *wiki.Files
 
@@ -60,9 +61,18 @@ type partitionAgent struct {
 	projectErr string
 	// runs serializes the recording of test runs.
 	runs sync.Mutex
-	// dirty says whether the scope had uncommitted changes at the last
-	// check (rule N4).
-	dirty bool
+	// dirty says, for each repo, whether the partition's writable folders
+	// in it had uncommitted changes at the last check (rule N4).
+	dirty map[string]bool
+}
+
+// folders returns the paths of o's writable folders in repo.
+func (o *partitionAgent) folders(repo string) []string {
+	var out []string
+	for _, f := range o.ws.InRepo(repo) {
+		out = append(out, f.Path)
+	}
+	return out
 }
 
 type Manager struct {
@@ -128,26 +138,26 @@ func New(topo *topology.Topology) (*Manager, error) {
 		m.commitOwnFiles()
 	}
 	for _, name := range topo.PartitionAgents() {
-		s := topo.Agents[name].Partition
-		r := topo.Repos[s.Repo]
-		scopeRoot := filepath.Join(r.Path, s.Scope)
-		maps, _, err := featuremap.Open(scopeRoot, m.vault.MapFile(name), name, s.Test)
+		ws := topo.Workspace(name)
+		maps, _, err := featuremap.Open(ws, m.vault.MapFile(name), name, topo.Agents[name].Partition.Test)
 		if err != nil {
 			return nil, fmt.Errorf("agent %q: %w", name, err)
 		}
-		repo := m.repos[s.Repo]
-		privatePath := path.Join(filepath.ToSlash(s.Scope), featuremap.Dir, featuremap.PrivateDir, featuremap.CodeMapFile)
-		if repo.IsIgnored(privatePath) {
-			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", s.Repo, privatePath, name))
+		home := ws.Home()
+		privatePath := path.Join(home.Path, featuremap.Dir, featuremap.PrivateDir, featuremap.CodeMapFile)
+		if m.repos[home.Repo].IsIgnored(privatePath) {
+			m.warnings = append(m.warnings, fmt.Sprintf("repo %q ignores %s, so the private documents of %q are not versioned with its code", home.Repo, privatePath, name))
 		}
 		m.warnings = append(m.warnings, maps.Notes()...)
-		m.partitionAgents[name] = &partitionAgent{name: name, repoName: s.Repo, scope: s.Scope, branch: r.Branch, repo: repo, featureMap: maps}
+		m.partitionAgents[name] = &partitionAgent{name: name, ws: ws, repos: ws.Repos(), featureMap: maps, dirty: map[string]bool{}}
 	}
 	if err := m.openWikis(); err != nil {
 		return nil, err
 	}
 	for _, name := range topo.PartitionAgents() {
-		m.partitionAgents[name].wiki = m.wikis[api.FeatureMapRef(name)].files
+		o := m.partitionAgents[name]
+		o.wiki = m.wikis[api.FeatureMapRef(name)].files
+		o.wiki.SetRepo(o.ws.Home().Repo)
 	}
 	for _, name := range topo.PartitionAgents() {
 		o := m.partitionAgents[name]
@@ -359,10 +369,10 @@ func (m *Manager) testReport(o *partitionAgent, priv featuremap.Private, ids []s
 	if err != nil {
 		problem = err.Error()
 	}
-	root := o.featureMap.Root()
+	ws := o.ws
 	hashes := testmap.Hashes{
-		File: func(rel string) string { h, _ := featuremap.ContentHash(root, []string{rel}); return h },
-		Code: func(id string) string { h, _ := featuremap.ContentHash(root, priv.Code(id)); return h },
+		File: func(rel string) string { h, _ := featuremap.ContentHash(ws, []string{rel}); return h },
+		Code: func(id string) string { h, _ := featuremap.ContentHash(ws, priv.Code(id)); return h },
 	}
 	return testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.featureMap), results, ids, hashes), problem
 }
@@ -482,7 +492,8 @@ func (m *Manager) peers(partition string) []string {
 }
 
 // Watch reloads hand edits of the map files and the feature wikis, and
-// checks each scope for uncommitted changes, until ctx ends.
+// checks each partition's writable folders for uncommitted changes, until
+// ctx ends.
 func (m *Manager) Watch(ctx context.Context) {
 	go m.watchDirty(ctx, 2*time.Second)
 	for _, o := range m.partitionAgents {
@@ -520,7 +531,7 @@ func (m *Manager) watchWikis(ctx context.Context) {
 	}
 }
 
-// watchDirty checks every scope for uncommitted changes every interval, and
+// watchDirty checks every partition for uncommitted changes every interval, and
 // reports each partition whose answer changed (rule N4).
 func (m *Manager) watchDirty(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
@@ -539,19 +550,60 @@ func (m *Manager) watchDirty(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// checkDirty asks git whether o's scope has uncommitted changes, records
-// the answer, and reports whether it changed. A failed check keeps the last
-// answer.
+// checkDirty asks git whether o's writable folders in each repo have
+// uncommitted changes, records the answers, and reports whether one
+// changed. A failed check keeps the last answer.
 func (m *Manager) checkDirty(o *partitionAgent) bool {
-	dirty, err := o.repo.Dirty(o.scope)
-	if err != nil {
-		return false
+	changed := false
+	for _, repo := range o.repos {
+		dirty, err := m.repos[repo].Dirty(o.folders(repo)...)
+		if err != nil {
+			continue
+		}
+		o.mu.Lock()
+		if o.dirty[repo] != dirty {
+			changed = true
+		}
+		o.dirty[repo] = dirty
+		o.mu.Unlock()
 	}
+	return changed
+}
+
+// repoStates returns the branch and the dirty state of each repo of o.
+func (m *Manager) repoStates(o *partitionAgent) []api.RepoState {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	changed := o.dirty != dirty
-	o.dirty = dirty
-	return changed
+	out := []api.RepoState{}
+	for _, repo := range o.repos {
+		out = append(out, api.RepoState{Name: repo, Branch: m.topo.Repos[repo].Branch, Dirty: o.dirty[repo]})
+	}
+	return out
+}
+
+// folders returns o's folders as agents and the UI see them.
+func folders(o *partitionAgent) []api.Folder {
+	out := []api.Folder{}
+	for _, f := range o.ws {
+		out = append(out, api.Folder{Place: f.Place, Repo: f.Repo, Path: f.Path, ReadOnly: f.ReadOnly})
+	}
+	return out
+}
+
+// apply commits o's writable folders, one commit in each repo whose folders
+// changed, with message. It returns the commits as <repo>@<commit>.
+func (m *Manager) apply(o *partitionAgent, message string) ([]string, error) {
+	var out []string
+	var errs []error
+	for _, repo := range o.repos {
+		commit, err := m.repos[repo].Commit(m.topo.Repos[repo].Branch, o.folders(repo), o.name, message)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("repo %q: %w", repo, err))
+		} else if commit != "" {
+			out = append(out, workspace.Commit(repo, commit))
+		}
+	}
+	return out, errors.Join(errs...)
 }
 
 // Repos returns the repositories of the topology with their partitions, for
@@ -561,7 +613,7 @@ func (m *Manager) Repos() []api.RepoInfo {
 	for _, name := range slices.Sorted(maps.Keys(m.topo.Repos)) {
 		info := api.RepoInfo{Name: name, Branch: m.topo.Repos[name].Branch, Partitions: []string{}}
 		for _, partitionAgent := range m.topo.PartitionAgents() {
-			if m.partitionAgents[partitionAgent].repoName == name {
+			if slices.Contains(m.partitionAgents[partitionAgent].repos, name) {
 				info.Partitions = append(info.Partitions, partitionAgent)
 			}
 		}
@@ -574,13 +626,14 @@ func (m *Manager) Repos() []api.RepoInfo {
 	return out
 }
 
-// CommitAll commits the changes left in every partition agent's scope, so that the
-// next run does not find uncommitted changes. hikari calls it at shutdown.
+// CommitAll applies the changes left in every partition agent's writable
+// folders, so that the next run does not find uncommitted changes. hikari
+// calls it at shutdown.
 func (m *Manager) CommitAll() []error {
 	var errs []error
 	for _, name := range m.topo.PartitionAgents() {
 		o := m.partitionAgents[name]
-		if _, err := o.repo.Commit(o.branch, o.scope, name, name+": changes left when hikari stopped"); err != nil {
+		if _, err := m.apply(o, name+": changes left when hikari stopped"); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		}
 		if note := m.commitVault(name, name+": vault changes left when hikari stopped", m.mapPath(name)); note != "" {
@@ -609,13 +662,14 @@ func (m *Manager) CommitAll() []error {
 func (m *Manager) Summary() []string {
 	var out []string
 	for _, name := range m.topo.PartitionAgents() {
-		o := m.partitionAgents[name]
-		n, err := o.repo.CountAuthored(m.start[o.repoName], name)
-		if err != nil {
-			out = append(out, fmt.Sprintf("%s: %v", name, err))
-			continue
+		for _, repo := range m.partitionAgents[name].repos {
+			n, err := m.repos[repo].CountAuthored(m.start[repo], name)
+			if err != nil {
+				out = append(out, fmt.Sprintf("%s: %v", name, err))
+				continue
+			}
+			out = append(out, fmt.Sprintf("%s made %d commit(s) on %s in repo %q", name, n, m.topo.Repos[repo].Branch, repo))
 		}
-		out = append(out, fmt.Sprintf("%s made %d commit(s) on %s in repo %q", name, n, o.branch, o.repoName))
 	}
 	if m.projectRepo != nil {
 		n, err := m.projectRepo.CountOn(m.start[topology.ProjectRepo], m.vaultRel)
@@ -634,14 +688,7 @@ func (m *Manager) Self(agent string) *api.SelfPartition {
 	if !ok {
 		return nil
 	}
-	s := m.topo.Agents[agent].Partition
-	return &api.SelfPartition{
-		Repo:    o.repoName,
-		Branch:  o.branch,
-		Scope:   o.scope,
-		Read:    s.Read,
-		WorkDir: api.WorkDir(o.scope),
-	}
+	return &api.SelfPartition{Folders: folders(o), Repos: m.repoStates(o), WorkDir: api.WorkspaceRoot}
 }
 
 func (m *Manager) partitionAgent(agent string) (*partitionAgent, error) {
@@ -652,21 +699,36 @@ func (m *Manager) partitionAgent(agent string) (*partitionAgent, error) {
 	return o, nil
 }
 
-// changedPaths returns the paths in o's scope that changed since the map's
-// described commit.
+// changedPaths returns the workspace paths in o's writable folders that
+// changed since the map's described commit of each folder's repo (rule F7).
+// A change in a read-only folder belongs to no feature of the partition.
 func (m *Manager) changedPaths(o *partitionAgent, mp *featuremap.Map) []string {
-	commit := mp.Partition.DescribedState.Commit
-	if commit == "" {
+	commits := mp.Partition.DescribedState.Commits
+	if len(commits) == 0 {
 		return nil
 	}
-	if !o.repo.HasCommit(commit) {
-		return []string{fmt.Sprintf("(the described commit %s no longer exists; describe the whole partition again)", commit)}
+	var out []string
+	for _, f := range o.ws.Writable() {
+		commit := workspace.CommitOf(commits, f.Repo)
+		repo := m.repos[f.Repo]
+		switch {
+		case commit == "":
+			out = append(out, fmt.Sprintf("(the map describes no commit of repo %q; describe %s)", f.Repo, f.Place))
+			continue
+		case !repo.HasCommit(commit):
+			out = append(out, fmt.Sprintf("(the described commit %s of repo %q no longer exists; describe %s again)", commit, f.Repo, f.Place))
+			continue
+		}
+		changed, err := repo.ChangedSince(commit, f.Path, featuremap.Dir)
+		if err != nil {
+			out = append(out, fmt.Sprintf("(cannot compare %s with commit %s: %v)", f.Place, commit, err))
+			continue
+		}
+		for _, p := range changed {
+			out = append(out, path.Join(f.Place, p))
+		}
 	}
-	changed, err := o.repo.ChangedSince(commit, o.scope, featuremap.Dir)
-	if err != nil {
-		return []string{fmt.Sprintf("(cannot compare with commit %s: %v)", commit, err)}
-	}
-	return changed
+	return out
 }
 
 // view returns the public view of o's map.
@@ -685,7 +747,7 @@ func (m *Manager) partitionAgentView(o *partitionAgent) featuremap.PartitionAgen
 		ids[i] = f.ID
 	}
 	rep, resultsProblem := m.testReport(o, priv, ids)
-	described := func(id string) bool { return w[id] != nil && w[id].DescribedCommit != "" }
+	described := func(id string) bool { return w[id] != nil && len(w[id].DescribedCommits) > 0 }
 	paths := func(id string) []string { return append(priv.Code(id), rep.Features[id].Files...) }
 	st := featuremap.FeatureStates(ids, described, paths, rep.TestFiles, changed)
 	warnings := w.Warnings(m.check(m.wikis[api.FeatureMapRef(o.name)]))
@@ -809,18 +871,17 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	if err != nil {
 		return api.RunResult{}, err
 	}
-	cases, err := testmap.ParseReport(data, api.WorkDir(o.scope), o.featureMap)
+	cases, err := testmap.ParseReport(data, api.WorkspaceRoot, o.featureMap)
 	if err != nil {
 		return api.RunResult{}, fmt.Errorf("J2: %s: %w", where, err)
 	}
 	ids := o.wiki.Wiki().Features()
 	before, _ := m.testReport(o, priv, ids)
-	root := o.featureMap.Root()
 	code := map[string]string{}
 	for _, id := range ids {
-		code[id], _ = featuremap.ContentHash(root, priv.Code(id))
+		code[id], _ = featuremap.ContentHash(o.ws, priv.Code(id))
 	}
-	run := testmap.NewRun(cases, m.now(), code, func(rel string) string { h, _ := featuremap.ContentHash(root, []string{rel}); return h })
+	run := testmap.NewRun(cases, m.now(), code, func(rel string) string { h, _ := featuremap.ContentHash(o.ws, []string{rel}); return h })
 	resultsPath := o.featureMap.PrivatePath(testmap.ResultsFile)
 	results, _ := testmap.LoadResults(resultsPath)
 	results.Runs[suite] = run
@@ -859,68 +920,84 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	return out, nil
 }
 
-// MarkCurrent commits the pending changes in agent's scope, then records the
-// commit as the code that the map describes. It returns that commit.
-func (m *Manager) MarkCurrent(agent string) (string, error) {
+// MarkCurrent applies the pending changes in agent's writable folders,
+// then records the HEAD of each of its repos as the code that the map
+// describes. It returns those commits, as <repo>@<commit>.
+func (m *Manager) MarkCurrent(agent string) ([]string, error) {
 	o, err := m.partitionAgent(agent)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if err := checkPrivate(o, o.featureMap.Map()); err != nil {
-		return "", err
+		return nil, err
 	}
-	if _, err := o.repo.Commit(o.branch, o.scope, agent, agent+": changes described by the feature map"); err != nil {
-		return "", err
+	if _, err := m.apply(o, agent+": changes described by the feature map"); err != nil {
+		return nil, err
 	}
 	m.checkDirty(o)
-	head, err := o.repo.Head()
-	if err != nil {
-		return "", err
+	var heads []string
+	for _, repo := range o.repos {
+		head, err := m.repos[repo].Head()
+		if err != nil {
+			return nil, fmt.Errorf("repo %q: %w", repo, err)
+		}
+		heads = append(heads, workspace.Commit(repo, head))
 	}
 	now := m.now()
 	m.wikiMu.Lock()
 	defer m.wikiMu.Unlock()
 	w := m.wikis[api.FeatureMapRef(agent)]
 	m.commitUserEdits(fmt.Sprintf("user: wiki edits before %s's change", agent), w)
-	if err := o.wiki.SetDescribed(head, now); err != nil {
-		return "", err
+	if err := o.wiki.SetDescribed(heads, now); err != nil {
+		return nil, err
 	}
-	if err := m.update(agent, func(_ *partitionAgent, mp *featuremap.Map) error { mp.MarkCurrent(head, now); return nil }); err != nil {
-		return "", err
+	if err := m.update(agent, func(_ *partitionAgent, mp *featuremap.Map) error { mp.MarkCurrent(heads, now); return nil }); err != nil {
+		return nil, err
 	}
-	m.commitVault(agent, fmt.Sprintf("%s: mark the map current at %.7s", agent, head), m.mapPath(agent), w.dir)
+	m.commitVault(agent, fmt.Sprintf("%s: mark the map current at %s", agent, shortCommits(heads)), m.mapPath(agent), w.dir)
 	m.markSeen(agent, []*wikiOf{w})
-	return head, nil
+	return heads, nil
 }
 
-// Commit commits the changes in agent's scope, and in a project
-// repository its changes in can-edit/ (rule V10). An empty message makes
-// the automatic commit at the end of a turn (rule G13). It returns the new
-// commit of the scope, or "" when the scope had no changes. For the
-// orchestration agent, which has no scope, it commits only can-edit/.
-func (m *Manager) Commit(agent, message string) (string, error) {
+// shortCommits writes commits as <repo>@<7 characters>, joined by commas.
+func shortCommits(commits []string) string {
+	out := make([]string, len(commits))
+	for i, c := range commits {
+		repo, commit, _ := strings.Cut(c, "@")
+		out[i] = fmt.Sprintf("%s@%.7s", repo, commit)
+	}
+	return strings.Join(out, ", ")
+}
+
+// Commit applies agent's changes (rule F9): one commit in each repo whose
+// writable folders changed, and in a project repository its changes in
+// can-edit/ (rule V10). An empty message makes the automatic apply at the
+// end of a turn (rule G13). It returns the new commits as <repo>@<commit>.
+// For the orchestration agent, which has no folders, it commits only
+// can-edit/.
+func (m *Manager) Commit(agent, message string) ([]string, error) {
 	if strings.TrimSpace(message) == "" {
 		message = agent + ": changes left at the end of a turn"
 	}
 	if agent != "" && agent == m.topo.Orchestration {
 		if note := m.commitVault(agent, message, m.canEditPath(agent)); note != "" {
-			return "", errors.New(note)
+			return nil, errors.New(note)
 		}
-		return "", nil
+		return nil, nil
 	}
 	o, err := m.partitionAgent(agent)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	commit, err := o.repo.Commit(o.branch, o.scope, agent, message)
+	commits, err := m.apply(o, message)
 	if note := m.commitVault(agent, message, m.canEditPath(agent)); note != "" {
 		log.Printf("%s: %s", agent, note)
 	}
-	if err == nil && commit != "" {
+	if len(commits) > 0 {
 		m.checkDirty(o)
 		m.changed(Change{Partition: agent})
 	}
-	return commit, err
+	return commits, err
 }
 
 // PublishRelease publishes the staged product of a deliverable as a
@@ -941,7 +1018,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (vault.Ma
 	}
 	rel, err := m.vault.Publish(vault.PublishInput{
 		Partition: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
-		Certificates: req.Certificates, SourceCommit: v.Partition.DescribedState.Commit, Map: public,
+		Certificates: req.Certificates, SourceCommits: v.Partition.DescribedState.Commits, Map: public,
 		Features: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
@@ -1050,6 +1127,7 @@ func (m *Manager) GetPartition(agent, name string) (api.OrchestrationPartition, 
 	releases, _ := m.vault.Releases(name)
 	return api.OrchestrationPartition{
 		View:      v,
+		Folders:   folders(o),
 		Releases:  releases,
 		Flags:     vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), known, keys(providers)),
 		Providers: providersOf(v.Partition.Interfaces.Consumes, providers, name),
@@ -1105,9 +1183,8 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 	priv, _ := o.featureMap.Private()
 	providers := m.providers(m.topo.PartitionAgents())
 	releases, _ := m.vault.Releases(name)
-	o.mu.Lock()
-	dirty := o.dirty
-	o.mu.Unlock()
+	repos := m.repoStates(o)
+	dirty := slices.ContainsFunc(repos, func(r api.RepoState) bool { return r.Dirty })
 	grants := m.topo.Agents[name].Grants
 	return api.PartitionView{
 		PartitionAgentView: v,
@@ -1116,9 +1193,8 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 		Private:            priv,
 		Releases:           releases,
 		PartitionAgent:     name,
-		Repo:               o.repoName,
-		Scope:              o.scope,
-		Branch:             o.branch,
+		Folders:            folders(o),
+		Repos:              repos,
 		Flags:              vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), m.vocabularyNames(), keys(providers)),
 		Providers:          providersOf(v.Partition.Interfaces.Consumes, providers, name),
 	}

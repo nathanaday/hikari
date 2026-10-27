@@ -13,7 +13,8 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// WorkspaceRoot is where a partition agent's container sees its repo.
+// WorkspaceRoot is where a partition agent's container sees its folders,
+// and its working directory.
 const WorkspaceRoot = "/workspace"
 
 // Where every container sees hikari: its documents, and the hikari binary
@@ -61,18 +62,33 @@ func ReleasesPath(partition string) string {
 // SkillPath returns where a container sees a granted skill.
 func SkillPath(skill string) string { return path.Join(SkillsDir, skill) }
 
-// WorkDir returns the container path of a scope.
-func WorkDir(scope string) string {
-	return path.Join(WorkspaceRoot, scope)
+// WorkspacePath returns the container path of a folder's place.
+func WorkspacePath(place string) string {
+	return path.Join(WorkspaceRoot, place)
+}
+
+// Folder is one folder of a partition as agents and the UI see it, by its
+// place, with no host path.
+type Folder struct {
+	Place    string `yaml:"place" json:"place"`
+	Repo     string `yaml:"repo" json:"repo"`
+	Path     string `yaml:"path,omitempty" json:"path"`
+	ReadOnly bool   `yaml:"read_only,omitempty" json:"read_only"`
+}
+
+// RepoState is a repo that a partition commits to: its branch, and whether
+// the partition's folders in it hold uncommitted changes.
+type RepoState struct {
+	Name   string `json:"name"`
+	Branch string `json:"branch"`
+	Dirty  bool   `json:"dirty"`
 }
 
 // SelfPartition describes the partition that an agent owns.
 type SelfPartition struct {
-	Repo    string   `json:"repo"`
-	Branch  string   `json:"branch"`
-	Scope   string   `json:"scope"`
-	Read    []string `json:"read,omitempty"`
-	WorkDir string   `json:"work_dir"`
+	Folders []Folder    `json:"folders"`
+	Repos   []RepoState `json:"repos"`
+	WorkDir string      `json:"work_dir"`
 }
 
 // TurnContext tells the driver what changed before an agent's next turn.
@@ -219,6 +235,7 @@ type PartitionSummary struct {
 // with interface flags and providers.
 type OrchestrationPartition struct {
 	featuremap.View `yaml:",inline"`
+	Folders         []Folder     `yaml:"folders" json:"folders"`
 	Flags           []vocab.Flag `yaml:"flags,omitempty" json:"flags"`
 	// Releases lists the partition's releases, newest first.
 	Releases []vault.Manifest `yaml:"releases,omitempty" json:"releases"`
@@ -231,15 +248,15 @@ type OrchestrationPartition struct {
 // the private documents.
 type PartitionView struct {
 	featuremap.PartitionAgentView
-	// Dirty says whether the scope has uncommitted changes (rule N1).
+	// Dirty says whether a writable folder has uncommitted changes (rule
+	// N1); Repos says it for each repo.
 	Dirty          bool                `json:"dirty"`
 	Grants         Grants              `json:"grants"`
 	Private        featuremap.Private  `json:"private"`
 	Releases       []vault.Manifest    `json:"releases"`
 	PartitionAgent string              `json:"partition_agent"`
-	Repo           string              `json:"repo"`
-	Scope          string              `json:"scope"`
-	Branch         string              `json:"branch"`
+	Folders        []Folder            `json:"folders"`
+	Repos          []RepoState         `json:"repos"`
 	Flags          []vocab.Flag        `json:"flags"`
 	Providers      map[string][]string `json:"providers"`
 }
@@ -253,7 +270,7 @@ type Grants struct {
 }
 
 // RepoInfo is one repository of the topology, for the UI: its hikari
-// branch and the partitions whose scope is in it. It holds no host path.
+// branch and the partitions with a writable folder in it. It holds no host path.
 type RepoInfo struct {
 	Name       string   `json:"name"`
 	Branch     string   `json:"branch"`
@@ -275,8 +292,10 @@ type CommitRequest struct {
 	Message string `json:"message"`
 }
 
+// CommitResponse lists the commits of an apply, one for each repo that
+// changed, as <repo>@<commit>.
 type CommitResponse struct {
-	Commit string `json:"commit"`
+	Commits []string `json:"commits"`
 }
 
 // VocabularyChange is one change to the vocabulary. Op is "define_term",
@@ -313,18 +332,19 @@ func (c *Client) RecordRun(ctx context.Context, suite string) (RunResult, error)
 	return out, err
 }
 
-func (c *Client) MarkMapCurrent(ctx context.Context) (string, error) {
+// MarkMapCurrent returns the commits that the map now describes.
+func (c *Client) MarkMapCurrent(ctx context.Context) ([]string, error) {
 	var r CommitResponse
 	err := c.do(ctx, http.MethodPost, "/api/agent/map/current", nil, &r)
-	return r.Commit, err
+	return r.Commits, err
 }
 
-// Commit commits the changes in the partition agent's scope. An empty message makes
-// the automatic end-of-turn commit.
-func (c *Client) Commit(ctx context.Context, message string) (string, error) {
+// Commit applies the changes in the partition agent's writable folders. An
+// empty message makes the automatic apply at the end of a turn.
+func (c *Client) Commit(ctx context.Context, message string) ([]string, error) {
 	var r CommitResponse
 	err := c.do(ctx, http.MethodPost, "/api/agent/commit", CommitRequest{Message: message}, &r)
-	return r.Commit, err
+	return r.Commits, err
 }
 
 func (c *Client) PublishRelease(ctx context.Context, req PublishRequest) (vault.Manifest, error) {

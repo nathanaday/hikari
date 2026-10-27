@@ -167,16 +167,16 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		return sys.RecordRun(agent, req.Suite)
 	})
 	handle("POST /api/agent/map/current", func(r *http.Request, agent string) (any, error) {
-		commit, err := sys.MarkCurrent(agent)
-		return api.CommitResponse{Commit: commit}, err
+		commits, err := sys.MarkCurrent(agent)
+		return api.CommitResponse{Commits: commits}, err
 	})
 	handle("POST /api/agent/commit", func(r *http.Request, agent string) (any, error) {
 		var req api.CommitRequest
 		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		commit, err := sys.Commit(agent, req.Message)
-		return api.CommitResponse{Commit: commit}, err
+		commits, err := sys.Commit(agent, req.Message)
+		return api.CommitResponse{Commits: commits}, err
 	})
 	handle("POST /api/agent/releases/check", func(r *http.Request, agent string) (any, error) {
 		var req api.CheckRequest

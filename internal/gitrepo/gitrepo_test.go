@@ -140,7 +140,7 @@ func TestPrepareCreatesAndChecksOutBranch(t *testing.T) {
 	}
 	// A second run reuses the branch with its commits.
 	write(t, r.Path, "services/orders/create.py", "def create(): return 1\n")
-	if _, err := r.Commit("hikari/work", "services/orders", "orders", "change"); err != nil {
+	if _, err := r.Commit("hikari/work", []string{"services/orders"}, "orders", "change"); err != nil {
 		t.Fatal(err)
 	}
 	run(t, r.Path, "checkout", "--quiet", "main")
@@ -164,7 +164,7 @@ func TestCommitStaysInScope(t *testing.T) {
 	// Another partition agent's staged change must not enter this commit.
 	run(t, r.Path, "add", "services/inventory/stock.py")
 
-	commit, err := r.Commit("hikari/work", "services/orders", "orders", "Add cancel")
+	commit, err := r.Commit("hikari/work", []string{"services/orders"}, "orders", "Add cancel")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,13 +178,13 @@ func TestCommitStaysInScope(t *testing.T) {
 
 	// The other partition agent commits its own change, including the deletion only
 	// when the scope is the whole repo.
-	if _, err := r.Commit("hikari/work", "services/inventory", "inventory", "Reserve"); err != nil {
+	if _, err := r.Commit("hikari/work", []string{"services/inventory"}, "inventory", "Reserve"); err != nil {
 		t.Fatal(err)
 	}
 	if got := run(t, r.Path, "status", "--porcelain"); got != "D README.md" {
 		t.Errorf("status after scoped commits = %q, want only the README deletion", got)
 	}
-	if _, err := r.Commit("hikari/work", "", "whole", "Remove README"); err != nil {
+	if _, err := r.Commit("hikari/work", []string{""}, "whole", "Remove README"); err != nil {
 		t.Fatal(err)
 	}
 	if got := run(t, r.Path, "status", "--porcelain"); got != "" {
@@ -195,7 +195,7 @@ func TestCommitStaysInScope(t *testing.T) {
 func TestCommitWithoutChanges(t *testing.T) {
 	r := newRepo(t, shop)
 	r.Prepare("hikari/work")
-	commit, err := r.Commit("hikari/work", "services/orders", "orders", "nothing")
+	commit, err := r.Commit("hikari/work", []string{"services/orders"}, "orders", "nothing")
 	if err != nil || commit != "" {
 		t.Fatalf("Commit with no changes = %q, %v", commit, err)
 	}
@@ -206,7 +206,7 @@ func TestCommitRefusesOtherBranch(t *testing.T) {
 	r.Prepare("hikari/work")
 	run(t, r.Path, "checkout", "--quiet", "main")
 	write(t, r.Path, "services/orders/create.py", "changed\n")
-	if _, err := r.Commit("hikari/work", "services/orders", "orders", "x"); err == nil || !strings.Contains(err.Error(), `branch "hikari/work" is not checked out`) {
+	if _, err := r.Commit("hikari/work", []string{"services/orders"}, "orders", "x"); err == nil || !strings.Contains(err.Error(), `branch "hikari/work" is not checked out`) {
 		t.Fatalf("Commit on main = %v", err)
 	}
 }
@@ -215,7 +215,7 @@ func TestChangedSince(t *testing.T) {
 	r := newRepo(t, shop)
 	start, _ := r.Prepare("hikari/work")
 	write(t, r.Path, "services/orders/create.py", "v2\n")
-	r.Commit("hikari/work", "services/orders", "orders", "v2")
+	r.Commit("hikari/work", []string{"services/orders"}, "orders", "v2")
 	write(t, r.Path, "services/orders/cancel.py", "new\n")           // untracked
 	write(t, r.Path, "services/orders/.hikari/map.yaml", "x: 1\n")   // excluded
 	write(t, r.Path, "services/inventory/stock.py", "other scope\n") // other scope

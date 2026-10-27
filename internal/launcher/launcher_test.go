@@ -12,36 +12,94 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/workspace"
 )
 
 func TestPartitionMounts(t *testing.T) {
-	got := PartitionMounts("/code/shop", "services/orders", []string{"proto"}, "/tmp/empty")
+	ws := workspace.Workspace{
+		{Place: "shop/services/orders", Repo: "shop", Path: "services/orders", Host: "/code/shop/services/orders"},
+		{Place: "shop/proto", Repo: "shop", Path: "proto", Host: "/code/shop/proto", ReadOnly: true},
+	}
+	got := PartitionMounts(ws, "/tmp/empty")
 	want := []Mount{
-		{Source: "/code/shop/services/orders", Target: "/workspace/services/orders"},
-		{Source: "/code/shop/proto", Target: "/workspace/proto", ReadOnly: true},
-		{Source: "/tmp/empty", Target: "/workspace/services/orders/.hikari", ReadOnly: true},
+		{Source: "/code/shop/services/orders", Target: "/workspace/shop/services/orders"},
+		{Source: "/tmp/empty", Target: "/workspace/shop/services/orders/.hikari", ReadOnly: true},
+		{Source: "/code/shop/proto", Target: "/workspace/shop/proto", ReadOnly: true},
 		{Source: "/code/shop/services/orders/.hikari/private", Target: "/hikari/private"},
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("M1 to M3:\n got %+v\nwant %+v", got, want)
+		t.Errorf("F4:\n got %+v\nwant %+v", got, want)
 	}
 	for _, m := range got {
 		if strings.HasSuffix(m.Target, "/.git") {
-			t.Error("M5: a scoped partition must not mount anything at .git")
+			t.Error("M5: a folder inside a repo must not mount anything at .git")
 		}
 	}
 }
 
-func TestWholeRepoScopeHidesGit(t *testing.T) {
-	got := PartitionMounts("/code/shop", "", nil, "/tmp/empty")
+func TestWholeRepoFolderHidesGit(t *testing.T) {
+	got := PartitionMounts(workspace.Workspace{{Place: "shop", Repo: "shop", Host: "/code/shop"}}, "/tmp/empty")
 	want := []Mount{
-		{Source: "/code/shop", Target: "/workspace"},
-		{Source: "/tmp/empty", Target: "/workspace/.hikari", ReadOnly: true},
+		{Source: "/code/shop", Target: "/workspace/shop"},
+		{Source: "/tmp/empty", Target: "/workspace/shop/.git", ReadOnly: true},
+		{Source: "/tmp/empty", Target: "/workspace/shop/.hikari", ReadOnly: true},
 		{Source: "/code/shop/.hikari/private", Target: "/hikari/private"},
-		{Source: "/tmp/empty", Target: "/workspace/.git", ReadOnly: true},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("M5:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+// TestTwoRepoMounts checks the override file of a partition with a folder
+// in each of two repos (rule F19): each folder at its place, the second at
+// its at:, the private documents from the first writable folder, and the
+// working directory /workspace.
+func TestTwoRepoMounts(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"shop/.git", "shop/services/orders", "shop/libs/money", "protos/.git", "protos/orders"} {
+		os.MkdirAll(filepath.Join(dir, d), 0o755)
+	}
+	src := `name: two
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari}, protos: {path: protos, branch: work}}
+services:
+  orders:
+    image: hikari-agent
+    x-hikari:
+      partition:
+        folders:
+          - {repo: shop, path: services/orders}
+          - {repo: shop, path: libs/money, read_only: true}
+          - {repo: protos, path: orders, at: protos}
+`
+	topo, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Override(topo, OverrideInput{RunID: "r1", EmptyDir: "/tmp/empty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f overrideFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	svc := f.Services["orders"]
+	if svc.WorkingDir != "/workspace" {
+		t.Errorf("working_dir = %q, want /workspace", svc.WorkingDir)
+	}
+	want := []composeMount{
+		{Type: "bind", Source: filepath.Join(dir, "shop/services/orders"), Target: "/workspace/shop/services/orders"},
+		{Type: "bind", Source: "/tmp/empty", Target: "/workspace/shop/services/orders/.hikari", ReadOnly: true},
+		{Type: "bind", Source: filepath.Join(dir, "shop/libs/money"), Target: "/workspace/shop/libs/money", ReadOnly: true},
+		{Type: "bind", Source: filepath.Join(dir, "protos/orders"), Target: "/workspace/protos"},
+		{Type: "bind", Source: "/tmp/empty", Target: "/workspace/protos/.hikari", ReadOnly: true},
+		{Type: "bind", Source: filepath.Join(dir, "shop/services/orders/.hikari/private"), Target: "/hikari/private"},
+	}
+	for _, m := range want {
+		if !slices.Contains(svc.Volumes, m) {
+			t.Errorf("no mount %+v in %+v", m, svc.Volumes)
+		}
 	}
 }
 
@@ -61,8 +119,8 @@ x-hikari:
   orchestration: lead
 services:
   lead: {image: hikari-agent, x-hikari: {grants: {skills: [style]}}}
-  orders: {image: hikari-agent, x-hikari: {partition: {repo: shop, scope: services/orders}, grants: {releases: [inventory], skills: [style]}}}
-  inventory: {image: hikari-agent, x-hikari: {partition: {repo: shop, scope: services/inventory}}}
+  orders: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/orders}]}, grants: {releases: [inventory], skills: [style]}}}
+  inventory: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/inventory}]}}}
 `
 	topo, err := topology.Parse([]byte(src), dir)
 	if err != nil {
@@ -140,9 +198,9 @@ services:
     x-hikari: {}
   orders:
     build: {context: ., dockerfile: python.Dockerfile}
-    volumes: [venv:/workspace/services/orders/.venv]
+    volumes: [venv:/workspace/shop/services/orders/.venv]
     depends_on: [orders-db]
-    x-hikari: {partition: {repo: shop, scope: services/orders}}
+    x-hikari: {partition: {folders: [{repo: shop, path: services/orders}]}}
   orders-db:
     image: postgres:17
     x-hikari: {serves: orders}
@@ -160,8 +218,8 @@ services:
   orders:
     build: {context: ., dockerfile: python.Dockerfile}
     networks: {default: null}
-    volumes: [{type: volume, source: venv, target: /workspace/services/orders/.venv}]
-    x-hikari: {partition: {repo: shop, scope: services/orders}}
+    volumes: [{type: volume, source: venv, target: /workspace/shop/services/orders/.venv}]
+    x-hikari: {partition: {folders: [{repo: shop, path: services/orders}]}}
   orders-db: {image: postgres:17, networks: {default: null}, x-hikari: {serves: orders}}
 `
 
@@ -200,7 +258,7 @@ func TestOverride(t *testing.T) {
 		t.Fatalf("%v\n%s", err, data)
 	}
 	orders := f.Services["orders"]
-	if !slices.Equal(orders.Entrypoint, []string{"/hikari/bin/hikari", "driver"}) || !orders.Init || orders.WorkingDir != "/workspace/services/orders" {
+	if !slices.Equal(orders.Entrypoint, []string{"/hikari/bin/hikari", "driver"}) || !orders.Init || orders.WorkingDir != "/workspace" {
 		t.Errorf("O3: %+v", orders)
 	}
 	if !slices.Equal(orders.Networks, replaced{"agent-orders"}) || !strings.Contains(string(data), "networks: !override") {
@@ -219,7 +277,7 @@ func TestOverride(t *testing.T) {
 	if m := targets["/hikari/bin/hikari"]; m.Source != "/bin/hikari-linux-amd64" || !m.ReadOnly {
 		t.Errorf("O2: %+v", m)
 	}
-	if m := targets["/workspace/services/orders"]; m.Source != filepath.Join(repo, "services/orders") || m.ReadOnly {
+	if m := targets["/workspace/shop/services/orders"]; m.Source != filepath.Join(repo, "services/orders") || m.ReadOnly {
 		t.Errorf("O1 scope: %+v", m)
 	}
 	if _, ok := targets["/hikari/staging"]; !ok {
@@ -227,7 +285,7 @@ func TestOverride(t *testing.T) {
 	}
 	prepare := f.Services["orders-prepare"]
 	if prepare.Image != "shop-orders" || prepare.User != "root" || prepare.NetworkMode != "none" ||
-		!slices.Equal(prepare.Entrypoint, []string{"chown", "agent", "/workspace/services/orders/.venv"}) {
+		!slices.Equal(prepare.Entrypoint, []string{"chown", "agent", "/workspace/shop/services/orders/.venv"}) {
 		t.Errorf("O6 prepare: %+v", prepare)
 	}
 	if orders.DependsOn["orders-prepare"].Condition != "service_completed_successfully" {
@@ -282,7 +340,7 @@ func TestOverrideWithCompose(t *testing.T) {
 	if _, ok := orders.DependsOn["orders-db"]; !ok {
 		t.Errorf("the user's depends_on must stay: %v", orders.DependsOn)
 	}
-	if !slices.ContainsFunc(orders.Volumes, func(m composeMount) bool { return m.Target == "/workspace/services/orders/.venv" }) {
+	if !slices.ContainsFunc(orders.Volumes, func(m composeMount) bool { return m.Target == "/workspace/shop/services/orders/.venv" }) {
 		t.Errorf("the user's volume must stay: %+v", orders.Volumes)
 	}
 	if db := merged.Services["orders-db"]; len(db.Networks) != 1 {
@@ -336,8 +394,8 @@ x-hikari:
   orchestration: lead
 services:
   lead: {image: hikari-agent, x-hikari: {}}
-  orders: {image: hikari-agent, x-hikari: {name: intake, partition: {repo: shop, scope: services/orders}}}
-  billing: {image: hikari-agent, x-hikari: {partition: {repo: shop, scope: services/billing}, grants: {releases: [orders]}}}
+  orders: {image: hikari-agent, x-hikari: {name: intake, partition: {folders: [{repo: shop, path: services/orders}]}}}
+  billing: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/billing}]}, grants: {releases: [orders]}}}
 `
 	topo, err := topology.Parse([]byte(src), dir)
 	if err != nil {

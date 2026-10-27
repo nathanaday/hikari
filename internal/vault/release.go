@@ -28,16 +28,20 @@ const (
 // Manifest describes a release. hikari writes every field when it
 // publishes (section 6 of the deliverables spec).
 type Manifest struct {
-	Deliverable  string        `yaml:"deliverable" json:"deliverable"`
-	Version      string        `yaml:"version" json:"version"`
-	Partition    string        `yaml:"partition" json:"partition"`
-	Released     time.Time     `yaml:"released" json:"released"`
-	Notes        string        `yaml:"notes" json:"notes"`
-	Hikari       string        `yaml:"hikari" json:"hikari"`
-	SourceCommit string        `yaml:"source_commit,omitempty" json:"source_commit,omitempty"`
-	Product      ProductInfo   `yaml:"product" json:"product"`
-	Map          string        `yaml:"map" json:"map"`
-	Certificates []Certificate `yaml:"certificates" json:"certificates"`
+	Deliverable string    `yaml:"deliverable" json:"deliverable"`
+	Version     string    `yaml:"version" json:"version"`
+	Partition   string    `yaml:"partition" json:"partition"`
+	Released    time.Time `yaml:"released" json:"released"`
+	Notes       string    `yaml:"notes" json:"notes"`
+	Hikari      string    `yaml:"hikari" json:"hikari"`
+	// SourceCommits are the commits that the map describes, one
+	// <repo>@<commit> for each repo. SourceCommit is the one commit of a
+	// release before partitions had folders.
+	SourceCommits []string      `yaml:"source_commits,omitempty" json:"source_commits,omitempty"`
+	SourceCommit  string        `yaml:"source_commit,omitempty" json:"source_commit,omitempty"`
+	Product       ProductInfo   `yaml:"product" json:"product"`
+	Map           string        `yaml:"map" json:"map"`
+	Certificates  []Certificate `yaml:"certificates" json:"certificates"`
 }
 
 // ProductInfo summarizes the product of a release.
@@ -88,8 +92,8 @@ type PublishInput struct {
 	Version      string
 	Notes        string
 	Certificates []Certificate
-	// SourceCommit is the commit that the partition's map describes.
-	SourceCommit string
+	// SourceCommits are the commits that the partition's map describes.
+	SourceCommits []string
 	// Map is the public map at release time, as YAML.
 	Map []byte
 	// Features holds the agent documents of the feature map at release
@@ -278,7 +282,7 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 	}
 	m := Manifest{
 		Deliverable: in.Deliverable, Version: in.Version, Partition: in.Partition,
-		Released: in.Now.UTC(), Notes: in.Notes, Hikari: in.Hikari, SourceCommit: in.SourceCommit,
+		Released: in.Now.UTC(), Notes: in.Notes, Hikari: in.Hikari, SourceCommits: in.SourceCommits,
 		Product: ProductInfo{
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),

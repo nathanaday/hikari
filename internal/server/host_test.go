@@ -157,7 +157,7 @@ func TestTopologyAPI(t *testing.T) {
 	ops := []topoedit.Op{
 		{Op: "rename", Kind: "agent", ID: "lead", Name: ptrTo("chief")},
 		{Op: "add_agent", ID: "dev", Template: "lead", Description: ptrTo("Builds it.")},
-		{Op: "set_partition", ID: "dev", Repo: ptrTo("project"), Scope: ptrTo("app")},
+		{Op: "set_partition", ID: "dev", Folders: &[]topoedit.Folder{{Repo: "project", Path: "app"}}},
 	}
 	var plan editor.Plan
 	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": ops}, &plan); code != 200 {

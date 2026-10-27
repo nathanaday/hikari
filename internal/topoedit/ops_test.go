@@ -78,12 +78,12 @@ services:
     x-hikari:
       description: Developer. Builds the app.
       instructions: Answer with a short plan in plain text.
-      partition: {repo: app, scope: dev}
+      partition: {folders: [{repo: app, path: dev}]}
   qa:
     <<: *agent
     x-hikari:
       description: QA engineer. Writes the tests.
-      partition: {repo: app, scope: qa}
+      partition: {folders: [{repo: app, path: qa}]}
 `
 }
 
@@ -143,7 +143,7 @@ func TestOperations(t *testing.T) {
 				t.Errorf("%s", got)
 			}
 		}, 6},
-		{"clear the orchestration agent", []Op{{Op: "set_orchestration"}, {Op: "set_partition", ID: "lead", Repo: ptr("app"), Scope: ptr("solo")}}, func(t *testing.T, m *Model, res *Result) {
+		{"clear the orchestration agent", []Op{{Op: "set_orchestration"}, {Op: "set_partition", ID: "lead", Folders: &[]Folder{{Repo: "app", Path: "solo"}}}}, func(t *testing.T, m *Model, res *Result) {
 			if m.Project.Orchestration != "" || strings.Contains(string(res.Text), "orchestration") {
 				t.Errorf("%+v\n%s", m.Project, res.Text)
 			}
@@ -155,7 +155,7 @@ func TestOperations(t *testing.T) {
 		}, 5},
 		{"add an agent from a template", []Op{
 			{Op: "add_agent", ID: "reviewer", Template: "dev", Description: ptr("Reviews.")},
-			{Op: "set_partition", ID: "reviewer", Repo: ptr("app"), Scope: ptr("reviewer")},
+			{Op: "set_partition", ID: "reviewer", Folders: &[]Folder{{Repo: "app", Path: "reviewer"}}},
 		}, func(t *testing.T, m *Model, res *Result) {
 			a := agentOf(m, "reviewer")
 			if a == nil || a.Template != "agent" || a.Description != "Reviews." || a.Instructions != "" {
@@ -167,7 +167,7 @@ func TestOperations(t *testing.T) {
 		}, 6},
 		{"add an agent without a template", []Op{
 			{Op: "add_agent", ID: "solo"},
-			{Op: "set_partition", ID: "solo", Repo: ptr("app"), Scope: ptr("solo")},
+			{Op: "set_partition", ID: "solo", Folders: &[]Folder{{Repo: "app", Path: "solo"}}},
 		}, func(t *testing.T, m *Model, _ *Result) {
 			if a := agentOf(m, "solo"); a == nil || a.Image != "hikari-agent" {
 				t.Errorf("TE5: %+v", a)
@@ -211,16 +211,29 @@ func TestOperations(t *testing.T) {
 func TestPartitionsAndGrants(t *testing.T) {
 	shop := readExample(t, "shop")
 	res, m := apply(t, shop,
-		Op{Op: "set_partition", ID: "orders", Scope: ptr("services/intake"), Read: &[]string{"proto", "docs"}},
+		Op{Op: "set_partition", ID: "orders", Folders: &[]Folder{{Repo: "shop", Path: "services/intake"}, {Repo: "shop", Path: "proto", ReadOnly: true}, {Repo: "protos", Path: "orders", At: "protos"}}},
 		Op{Op: "set_grants", ID: "orders", Releases: &[]string{"inventory"}, Skills: &[]string{"python-style", "reviews"}},
 		Op{Op: "rename", Kind: "repo", ID: "shop", Name: ptr("storefront")},
 	)
 	a := agentOf(m, "orders")
-	if a.Partition.Scope != "services/intake" || !slices.Equal(a.Partition.Read, []string{"proto", "docs"}) || !slices.Equal(a.Releases, []string{"inventory"}) || !slices.Equal(a.Skills, []string{"python-style", "reviews"}) {
+	want := []Folder{{Repo: "shop", Path: "services/intake"}, {Repo: "shop", Path: "proto", ReadOnly: true}, {Repo: "protos", Path: "orders", At: "protos"}}
+	if !slices.Equal(a.Partition.Folders, want) || a.Partition.Old || !strings.Contains(a.Partition.Test, "pytest") || !slices.Equal(a.Releases, []string{"inventory"}) || !slices.Equal(a.Skills, []string{"python-style", "reviews"}) {
 		t.Errorf("%+v %+v\n%s", a, a.Partition, res.Text)
 	}
 	if m.Repos[0].Name != "storefront" {
 		t.Errorf("%+v", m.Repos)
+	}
+	if !strings.Contains(string(res.Text), "        folders:\n          - {repo: shop, path: services/intake}\n          - {repo: shop, path: proto, read_only: true}\n          - {repo: protos, path: orders, at: protos}\n        test: ") {
+		t.Errorf("F13: the folders are a block list of one-line mappings:\n%s", res.Text)
+	}
+	moves := strings.Join(res.Effects, "\n")
+	for _, want := range []string{
+		"moves the workspace of orders: /workspace/shop/services/intake to /workspace/storefront/services/intake, /workspace/shop/proto to /workspace/storefront/proto;",
+		"moves the workspace of inventory: /workspace/shop/services/inventory to /workspace/storefront/services/inventory;",
+	} {
+		if !strings.Contains(moves, want) {
+			t.Errorf("F13: the plan lists the moved workspaces: %q lacks %q", moves, want)
+		}
 	}
 	res, m = apply(t, string(res.Text), Op{Op: "set_grants", ID: "orders", Releases: &[]string{}, Skills: &[]string{}}, Op{Op: "clear_partition", ID: "orders"})
 	if a := agentOf(m, "orders"); a.Partition != nil || len(a.Releases) != 0 || len(a.Skills) != 0 {
@@ -246,7 +259,7 @@ func TestRepoAndProject(t *testing.T) {
 	res, m := apply(t, solo,
 		Op{Op: "enable_project"},
 		Op{Op: "add_repo", ID: "app", URL: ptr("https://example.com/app.git")},
-		Op{Op: "set_partition", ID: "dev", Repo: ptr("app")},
+		Op{Op: "set_partition", ID: "dev", Folders: &[]Folder{{Repo: "app"}}},
 	)
 	if !m.Project.Repo || m.Project.Branch != "${HIKARI_BRANCH:-hikari}" || len(m.Repos) != 1 || m.Repos[0].URL != "https://example.com/app.git" {
 		t.Errorf("%+v %+v\n%s", m.Project, m.Repos, res.Text)
@@ -261,8 +274,26 @@ func TestRepoAndProject(t *testing.T) {
 		t.Error("TM2: an interpolated value is an expression")
 	}
 	res, m = apply(t, string(res.Text), Op{Op: "change_id", Kind: "repo", ID: "app", NewID: "web"})
-	if agentOf(m, "dev").Partition.Repo != "web" {
-		t.Errorf("TE4: partition.repo follows: %s", res.Text)
+	if agentOf(m, "dev").Partition.Folders[0].Repo != "web" {
+		t.Errorf("TE4: the folder's repo follows: %s", res.Text)
+	}
+	if len(res.Effects) != 1 || !strings.Contains(res.Effects[0], "moves the workspace of dev: /workspace/app to /workspace/web") {
+		t.Errorf("F13: a repo named by its id moves the workspace: %v", res.Effects)
+	}
+
+	// A partition of the form before reads as folders, and set_partition
+	// writes it as folders.
+	old := strings.Replace(string(res.Text), "folders:\n          - {repo: web}", "repo: web\n        scope: src\n        read: [proto]", 1)
+	if old == string(res.Text) {
+		old = strings.Replace(string(res.Text), "{folders: [{repo: web}]}", "{repo: web, scope: src, read: [proto]}", 1)
+	}
+	m = ReadModel([]byte(old), t.TempDir())
+	if p := agentOf(m, "dev").Partition; !p.Old || !slices.Equal(p.Folders, []Folder{{Repo: "web", Path: "src"}, {Repo: "web", Path: "proto", ReadOnly: true}}) {
+		t.Fatalf("decision 5: %+v\n%s", p, old)
+	}
+	res, m = apply(t, old, Op{Op: "set_partition", ID: "dev", Folders: &agentOf(m, "dev").Partition.Folders})
+	if p := agentOf(m, "dev").Partition; p.Old || len(p.Folders) != 2 || strings.Contains(string(res.Text), "scope") {
+		t.Errorf("decision 5: set_partition writes folders: %+v\n%s", p, res.Text)
 	}
 }
 
@@ -285,7 +316,7 @@ func TestRefusals(t *testing.T) {
 		{"unknown kind", text, []Op{{Op: "rename", Kind: "team", ID: "dev", Name: ptr("x")}}, "kind must be agent or repo"},
 		{"orchestration agent unknown", text, []Op{{Op: "set_orchestration", Agent: "ghost"}}, "no agent"},
 		{"orchestration agent a sidecar", shop, []Op{{Op: "set_orchestration", Agent: "orders-mock"}}, "no agent"},
-		{"repo in use", shop, []Op{{Op: "remove_repo", ID: "shop"}}, "is in the repo"},
+		{"repo in use", shop, []Op{{Op: "remove_repo", ID: "shop"}}, "has a folder in the repo"},
 		{"no such agent", text, []Op{{Op: "set_agent", ID: "ghost"}}, "no agent"},
 		{"project off", text, []Op{{Op: "set_project", Branch: ptr("x")}}, "needs the project repository"},
 		{"the second fails", text, []Op{{Op: "add_agent", ID: "solo"}, {Op: "add_agent", ID: "solo"}}, "operation 2"},
@@ -358,7 +389,7 @@ func randomOp(rng *rand.Rand, m *Model, i int) Op {
 	case 1:
 		return Op{Op: "set_orchestration", Agent: pick(append(agents, ""))}
 	case 2:
-		return Op{Op: "set_partition", ID: pick(agents), Repo: ptr("app"), Scope: ptr(id)}
+		return Op{Op: "set_partition", ID: pick(agents), Folders: &[]Folder{{Repo: "app", Path: id}}}
 	case 3:
 		return Op{Op: "rename", Kind: "agent", ID: pick(agents), Name: ptr(id)}
 	case 4:

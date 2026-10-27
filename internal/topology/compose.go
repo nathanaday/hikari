@@ -3,6 +3,7 @@ package topology
 import (
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/api"
@@ -110,17 +111,19 @@ func (t *Topology) validateServices() []error {
 		if !isAgent {
 			continue
 		}
-		var scope string
-		if sys := t.Agents[name].Partition; sys != nil {
-			scope = api.WorkDir(sys.Scope)
+		var places []string
+		if p := t.Agents[name].Partition; p != nil {
+			for _, f := range p.Writable() {
+				places = append(places, api.WorkspacePath(f.Place))
+			}
 		}
 		for _, v := range s.Volumes {
 			target := path.Clean(v.Target)
 			switch {
 			case under(target, api.HikariRoot):
 				fail(name, "volumes", "mounts %s; hikari owns %s", v.Target, api.HikariRoot)
-			case under(target, api.WorkspaceRoot) && !scopeVolume(v.Type, target, scope):
-				fail(name, "volumes", "mounts %s; under %s, only named volumes and tmpfs inside the agent's own scope are allowed", v.Target, api.WorkspaceRoot)
+			case under(target, api.WorkspaceRoot) && !slices.ContainsFunc(places, func(p string) bool { return folderVolume(v.Type, target, p) }):
+				fail(name, "volumes", "mounts %s; under %s, only named volumes and tmpfs inside one of the agent's writable folders are allowed", v.Target, api.WorkspaceRoot)
 			}
 		}
 		for k := range s.Environment {
@@ -133,27 +136,29 @@ func (t *Topology) validateServices() []error {
 }
 
 // projectGuarded returns the parts of the project repository that no
-// service can bind mount (rule PR7): its .git and the scopes of its
-// partitions. The vault is guarded for every topology.
+// service can bind mount (rule PR7): its .git and the writable folders of
+// its partitions. The vault is guarded for every topology.
 func (t *Topology) projectGuarded() []string {
 	out := []string{filepath.Join(t.Project.Path, ".git")}
 	for _, name := range t.PartitionAgents() {
-		if s := t.Agents[name].Partition; s.Repo == ProjectRepo {
-			out = append(out, filepath.Join(t.Project.Path, s.Scope))
+		for _, f := range t.Agents[name].Partition.Writable() {
+			if f.Repo == ProjectRepo {
+				out = append(out, filepath.Join(t.Project.Path, filepath.FromSlash(f.Path)))
+			}
 		}
 	}
 	return out
 }
 
-// scopeVolume reports whether a mount of type kind at target is allowed
-// under /workspace: a named volume or tmpfs strictly inside scope, and not
-// in its .hikari or, for a whole-repo scope, .git.
-func scopeVolume(kind, target, scope string) bool {
-	if scope == "" || (kind != "volume" && kind != "tmpfs") || target == scope || !under(target, scope) {
+// folderVolume reports whether a mount of type kind at target is allowed
+// under /workspace (rule F5): a named volume or tmpfs strictly inside the
+// writable folder at place, and not in its .hikari or .git.
+func folderVolume(kind, target, place string) bool {
+	if (kind != "volume" && kind != "tmpfs") || target == place || !under(target, place) {
 		return false
 	}
 	for _, hidden := range []string{".hikari", ".git"} {
-		if under(target, path.Join(scope, hidden)) {
+		if under(target, path.Join(place, hidden)) {
 			return false
 		}
 	}
