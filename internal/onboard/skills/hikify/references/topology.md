@@ -29,7 +29,7 @@ services:
     <<: *agent
     build: {context: ., dockerfile: units.Dockerfile}
     x-hikari:
-      description: Owns the units library, which converts sensor readings.
+      description: The units library, which converts sensor readings.
       partition:
         folders: [{repo: units}]
         test: cd units && python3 -m pytest -q tests -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
@@ -40,7 +40,7 @@ services:
     <<: *agent
     build: {context: ., dockerfile: cloud.Dockerfile}
     x-hikari:
-      description: Owns the cloud API.
+      description: The cloud API.
       partition: {folders: [{repo: cloud}], test: ...}
       grants:
         releases: [units]                   # reads units' releases, read-only

@@ -1,7 +1,7 @@
 # Spec: the Hikari agent, the docs, and the migration
 
-Status: approved.
-M1–M6 and M9–M12 built; M7–M8 pending.
+Status: built. Checked without Docker: `make example-onboard`, a target of one partition with folders from both repositories passed `hikari check -draft`, and a topology written from `containerize-repo`'s reference passed `hikari check` after `hikari sync`. `yami` and `cs566-project` were migrated by following the guide, and a clean clone of `yami` started with `hikari up -no-launch`, converted both maps, and stopped. No agent turn ran, because Docker was not running.
+
 Changes made during the build:
 
 1. **The old topology keys name their move.** `x-hikari.store`, `x-hikari.hubs`, and a service's `system` and `tests` failed with the decoder's "field not found"; each now fails with the move and the section of the guide. Every refusal of an old file, key, or vault directory ends with `docs/guides/migrating.md#<section>`, through `vault.Migrating`.
@@ -72,3 +72,11 @@ From the round and its answers:
 
 - **M11.** `go vet ./...`, `go test -race ./...`, `npm test`, `npm run build`, and `make build` pass.
 - **M12.** A live check of the `onboard` example: `make example-onboard` writes the project and the host skills; a target topology written by following hikify's topology reference, with one partition of folders from both repositories, passes `hikari check -draft topology.target.yaml`; and `containerize-repo`'s topology reference, followed for the two repositories, gives a topology that passes `hikari check` after `hikari sync`. When Docker runs, `hikari up` on the shop runs one turn of each agent to the end, and the agents' tool calls use the new tools.
+
+Changes made in the migration of the two projects (M7 and M8):
+
+1. **The tags and commits.** `pre-shared-language` tags `myprojects/yami` at `7ae8dce`, `myprojects/cs566-project` at `362e6f7`, and `~/projects/software/yami` at `ad1104f`. Each project has one commit, "Migrate to the shared language", on `hikari`. The yami code repository has one commit on `hikari` that renames both code maps, gives their paths and the test maps' file keys the folders' places, puts `cd <scope> &&` before each suite, and drops `environment/` from each private `.gitignore`, which hikari would otherwise commit at the first stop.
+2. **yami's text.** The orchestration agent's and the partition agents' instructions say "partition agent" and "the room", the plugin reads the library's releases at `/hikari/grants/yami-library/releases/`, and the deliverable `npm-package` names `/hikari/staging/` and `/hikari/self/`.
+3. **cs566-project took the new starter text.** Its topology file was the untouched starter of `hikari init`, so it is now the starter of today, with the same project name.
+4. **`hikari check` on yami fails only on files from before the migration.** The yami code repository holds an untracked `README.md` and `docs/`, which hikari counts as uncommitted changes. They are yours, so the migration left them. A clean clone of both repositories passes.
+5. **Descriptions no longer start with "Owns".** The shop, the starter, the README, and the host skills' topology examples describe what a partition is, as "Order intake.", instead of who owns it.

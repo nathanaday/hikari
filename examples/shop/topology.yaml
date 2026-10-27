@@ -35,7 +35,7 @@ services:
     <<: *agent
     build: {context: ., dockerfile: python.Dockerfile}
     x-hikari:
-      description: Owns order intake.
+      description: Order intake.
       partition:
         folders:
           - {repo: shop, path: services/orders}
@@ -49,7 +49,7 @@ services:
     <<: *agent
     build: {context: ., dockerfile: python.Dockerfile}
     x-hikari:
-      description: Owns stock levels and reservations.
+      description: Stock levels and reservations.
       partition:
         folders:
           - {repo: shop, path: services/inventory}

@@ -69,7 +69,7 @@ services:
   #   <<: *agent
   #   build: {context: ., dockerfile: app.Dockerfile}   # FROM hikari-agent, with the app's toolchain
   #   x-hikari:
-  #     description: Owns the app.
+  #     description: The app.
   #     partition:
   #       folders: [{repo: app}]         # no path: the whole repo, at /workspace/app
   #       test: make -C app test         # runs in /workspace

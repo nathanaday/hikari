@@ -83,12 +83,12 @@ services:
   orders:
     <<: *agent
     x-hikari:
-      description: Owns order intake.
+      description: Order intake.
       partition: {folders: [{repo: shop, path: services/orders}]}
   inventory:
     <<: *agent
     x-hikari:
-      description: Owns stock levels and reservations.
+      description: Stock levels and reservations.
       model: haiku
       partition: {folders: [{repo: shop, path: services/inventory}]}
 ```
@@ -121,7 +121,7 @@ services:
     <<: *agent
     x-hikari:
       name: stock
-      description: Owns stock levels and reservations.
+      description: Stock levels and reservations.
       partition: {folders: [{repo: shop, path: services/inventory}]}
 ```
 
@@ -143,7 +143,7 @@ services:
   orders:
     build: {context: ., dockerfile: python.Dockerfile}
     x-hikari:
-      description: Owns order intake.
+      description: Order intake.
       partition:
         folders:
           - {repo: shop, path: services/orders}          # at /workspace/shop/services/orders

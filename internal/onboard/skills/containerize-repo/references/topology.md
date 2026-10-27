@@ -27,7 +27,7 @@ services:
     build: {context: ., dockerfile: server.Dockerfile}
     volumes: [server-venv:/workspace/server/.venv]   # only for a dependency folder
     x-hikari:
-      description: Owns the acme HTTP server.
+      description: The acme HTTP server.
       instructions: |
         Format with ruff. Keep each handler in its own module.
         Do not run tests/browser: it needs Playwright and a browser, which this container lacks.
