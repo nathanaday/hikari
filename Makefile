@@ -46,12 +46,12 @@ test: web/node_modules
 	cd web && npm test
 
 # Create the repo of examples/shop in .hikari/demo/shop, and reset its vault
-# in examples/shop/store with a sample shared policy.
+# in examples/shop/vault from the seed: a policy, a deliverable, and a skill.
 demo-repo:
 	examples/shop/make-repo.sh .hikari/demo/shop
-	rm -rf examples/shop/store
-	mkdir -p examples/shop/store
-	cp -R examples/shop/seed/. examples/shop/store/
+	rm -rf examples/shop/vault
+	mkdir -p examples/shop/vault
+	cp -R examples/shop/seed/. examples/shop/vault/
 
 example-onboard: build
 	rm -rf .hikari/demo/onboard

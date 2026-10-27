@@ -2,7 +2,7 @@
 .env
 /bin/
 /.hikari/
-# The stores that runs create next to the example compose files.
-/examples/*/store/
+# The vaults that runs create next to the example topology files.
+/examples/*/vault/
 myprojects/
 /myprojects/
