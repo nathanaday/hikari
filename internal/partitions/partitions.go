@@ -871,7 +871,11 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	if err != nil {
 		return api.RunResult{}, err
 	}
-	cases, err := testmap.ParseReport(data, api.WorkspaceRoot, o.featureMap)
+	places := make([]string, len(o.ws))
+	for i, f := range o.ws {
+		places[i] = f.Place
+	}
+	cases, err := testmap.ParseReport(data, api.WorkspaceRoot, places, o.featureMap)
 	if err != nil {
 		return api.RunResult{}, fmt.Errorf("J2: %s: %w", where, err)
 	}

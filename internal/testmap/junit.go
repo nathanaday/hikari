@@ -49,8 +49,10 @@ type junitProblem struct {
 // ParseReport reads the test cases of a JUnit XML report (rules J3 to J5).
 // workDir is /workspace, so that an absolute path under it becomes a
 // workspace path. disk tells whether a class name names a file of the
-// workspace.
-func ParseReport(data []byte, workDir string, disk Disk) ([]Case, error) {
+// workspace. A relative path that names nothing in the workspace is read
+// relative to each of folders in turn, the places of the partition's
+// folders, for a runner that writes paths relative to its own folder.
+func ParseReport(data []byte, workDir string, folders []string, disk Disk) ([]Case, error) {
 	if len(data) > MaxReportBytes {
 		return nil, fmt.Errorf("the report has %d bytes; at most %d", len(data), MaxReportBytes)
 	}
@@ -78,7 +80,7 @@ func ParseReport(data []byte, workDir string, disk Disk) ([]Case, error) {
 				if err := dec.DecodeElement(&jc, &t); err != nil {
 					return nil, fmt.Errorf("the report is not valid JUnit XML: %w", err)
 				}
-				c := newCase(jc, nearest(suiteFiles), workDir, disk)
+				c := newCase(jc, nearest(suiteFiles), workDir, folders, disk)
 				if c.ID == "" {
 					continue
 				}
@@ -120,7 +122,7 @@ func merge(c *Case, next Case) {
 	}
 }
 
-func newCase(jc junitCase, suiteFile, workDir string, disk Disk) Case {
+func newCase(jc junitCase, suiteFile, workDir string, folders []string, disk Disk) Case {
 	name := strings.TrimSpace(jc.Name)
 	class := strings.TrimSpace(jc.Classname)
 	c := Case{ID: name, Outcome: Passed}
@@ -139,14 +141,30 @@ func newCase(jc junitCase, suiteFile, workDir string, disk Disk) Case {
 	}
 	for _, f := range []string{jc.File, suiteFile} {
 		if rel := relative(f, workDir); rel != "" {
-			c.File = rel
+			c.File = inFolder(rel, folders, disk)
 			return c
 		}
 	}
-	if rel := relative(class, workDir); rel != "" && disk.IsFile(rel) {
-		c.File = rel
+	if rel := relative(class, workDir); rel != "" {
+		if p := inFolder(rel, folders, disk); disk.IsFile(p) {
+			c.File = p
+		}
 	}
 	return c
+}
+
+// inFolder returns p when it names something in the workspace, and else
+// the first of folder/p that does, or p.
+func inFolder(p string, folders []string, disk Disk) string {
+	if disk.IsFile(p) || disk.IsDir(p) {
+		return p
+	}
+	for _, f := range folders {
+		if q := path.Join(f, p); disk.IsFile(q) || disk.IsDir(q) {
+			return q
+		}
+	}
+	return p
 }
 
 // relative returns p relative to the workspace, or "" when p is empty or

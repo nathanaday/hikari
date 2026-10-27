@@ -14,7 +14,7 @@ func readReport(t *testing.T, name, workDir string, disk Disk) []Case {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cases, err := ParseReport(data, workDir, disk)
+	cases, err := ParseReport(data, workDir, nil, disk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +98,12 @@ func TestBadReports(t *testing.T) {
 		"not xml":  "hello <",
 		"no cases": `<testsuites><testsuite name="s"/></testsuites>`,
 	} {
-		if _, err := ParseReport([]byte(data), "/w", fakeDisk{}); err == nil {
+		if _, err := ParseReport([]byte(data), "/w", nil, fakeDisk{}); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
 	big := make([]byte, MaxReportBytes+1)
-	if _, err := ParseReport(big, "/w", fakeDisk{}); err == nil || !strings.Contains(err.Error(), "at most") {
+	if _, err := ParseReport(big, "/w", nil, fakeDisk{}); err == nil || !strings.Contains(err.Error(), "at most") {
 		t.Errorf("size: %v", err)
 	}
 	if got := message(&junitProblem{Message: strings.Repeat("é", 300)}); len([]rune(got)) != maxMessage {
@@ -147,5 +147,27 @@ func TestResultsRoundTrip(t *testing.T) {
 	os.WriteFile(path, []byte("version: 9\n"), 0o644)
 	if bad, err := LoadResults(path); err == nil || len(bad.Runs) != 0 {
 		t.Fatalf("invalid file: %+v, %v", bad, err)
+	}
+}
+
+// TestReportInAFolder reads the paths of a runner that ran in a folder of
+// the workspace, and wrote paths relative to it, as workspace paths.
+func TestReportInAFolder(t *testing.T) {
+	disk := fakeDisk{files: []string{"shop/services/orders/tests/test_create.py", "protos/tests/test_order.py"}}
+	report := `<testsuite>
+<testcase classname="tests.test_create.T" name="a" file="tests/test_create.py"/>
+<testcase classname="tests.test_order.T" name="b" file="tests/test_order.py"/>
+<testcase classname="shop.services.orders.tests.test_create.T" name="c" file="shop/services/orders/tests/test_create.py"/>
+<testcase classname="x.T" name="d" file="/workspace/protos/tests/test_order.py"/>
+</testsuite>`
+	cases, err := ParseReport([]byte(report), "/workspace", []string{"shop/services/orders", "protos"}, disk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"shop/services/orders/tests/test_create.py", "protos/tests/test_order.py", "shop/services/orders/tests/test_create.py", "protos/tests/test_order.py"}
+	for i, c := range cases {
+		if c.File != want[i] {
+			t.Errorf("case %s: file %q, want %q", c.ID, c.File, want[i])
+		}
 	}
 }
