@@ -56,7 +56,7 @@ func (t *Topology) validateServices() []error {
 		}
 		errs = append(errs, at(path, "service %q: "+format, append([]any{service}, args...)...))
 	}
-	guarded := []string{t.Store}
+	guarded := []string{t.Vault}
 	for _, name := range sortedKeys(t.Repos) {
 		if name == ProjectRepo {
 			guarded = append(guarded, t.projectGuarded()...)
@@ -76,9 +76,9 @@ func (t *Topology) validateServices() []error {
 				fail(name, "x-hikari.serves", "serves %q, which is not an agent", s.Serves)
 			}
 		}
-		if owner, ok := strings.CutSuffix(name, "-prepare"); ok && len(t.NamedVolumes(owner)) > 0 {
-			if _, ok := t.Agents[owner]; ok {
-				fail(name, "", "the name is taken by the prepare service of agent %q", owner)
+		if partitionAgent, ok := strings.CutSuffix(name, "-prepare"); ok && len(t.NamedVolumes(partitionAgent)) > 0 {
+			if _, ok := t.Agents[partitionAgent]; ok {
+				fail(name, "", "the name is taken by the prepare service of agent %q", partitionAgent)
 			}
 		}
 
@@ -102,7 +102,7 @@ func (t *Topology) validateServices() []error {
 			}
 			for _, g := range guarded {
 				if within(src, g) || within(g, src) {
-					fail(name, "volumes", "mounts %s, which overlaps %s; hikari mounts the repos and the store itself", v.Source, g)
+					fail(name, "volumes", "mounts %s, which overlaps %s; hikari mounts the repos and the vault itself", v.Source, g)
 				}
 			}
 		}
@@ -111,7 +111,7 @@ func (t *Topology) validateServices() []error {
 			continue
 		}
 		var scope string
-		if sys := t.Agents[name].System; sys != nil {
+		if sys := t.Agents[name].Partition; sys != nil {
 			scope = api.WorkDir(sys.Scope)
 		}
 		for _, v := range s.Volumes {
@@ -134,11 +134,11 @@ func (t *Topology) validateServices() []error {
 
 // projectGuarded returns the parts of the project repository that no
 // service can bind mount (rule PR7): its .git and the scopes of its
-// systems. The store is guarded for every topology.
+// partitions. The vault is guarded for every topology.
 func (t *Topology) projectGuarded() []string {
 	out := []string{filepath.Join(t.Project.Path, ".git")}
-	for _, name := range t.Owners() {
-		if s := t.Agents[name].System; s.Repo == ProjectRepo {
+	for _, name := range t.PartitionAgents() {
+		if s := t.Agents[name].Partition; s.Repo == ProjectRepo {
 			out = append(out, filepath.Join(t.Project.Path, s.Scope))
 		}
 	}

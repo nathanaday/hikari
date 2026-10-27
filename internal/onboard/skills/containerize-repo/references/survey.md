@@ -4,7 +4,7 @@ Send this brief to one fresh subagent for each repository, with `<name>` and its
 
 ---
 
-Survey the repository at `repos/<name>` for a hikari project, which will run it in a Debian container as one agent's system. Read what you need to answer each point, not every file. Change nothing. Return the findings under these headings, with the file that shows each fact:
+Survey the repository at `repos/<name>` for a hikari project, which will run it in a Debian container as one agent's partition. Read what you need to answer each point, not every file. Change nothing. Return the findings under these headings, with the file that shows each fact:
 
 1. **Toolchain.** The languages, the build files, and the versions they name (for example `go.mod`, `package.json` with its `engines`, `pyproject.toml`, `CMakeLists.txt`). The system packages that the build and the tests need.
 2. **Tests.** Each suite: the command that runs it, where its files are, and about how many tests it has. How each runner can write a JUnit XML report.

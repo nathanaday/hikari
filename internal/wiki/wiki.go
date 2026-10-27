@@ -73,7 +73,7 @@ type Check struct {
 	// Kinds are the agent kinds that the wiki holds. nil allows every
 	// agent kind.
 	Kinds []string
-	// Interfaces are the names the system provides or consumes (rule W3).
+	// Interfaces are the names the partition provides or consumes (rule W3).
 	// nil skips the check.
 	Interfaces map[string]bool
 	// Taken are the ids of the documents of every other wiki, in lower
@@ -170,7 +170,7 @@ func (w Wiki) validateDoc(id string, c Check, strict bool) []error {
 		fail("W1", "document %s.md says id %q; the id is the file name", id, d.ID)
 	}
 	if strict && c.Taken[strings.ToLower(id)] {
-		fail("W1", "another wiki of this store uses the id %q", id)
+		fail("W1", "another wiki of this vault uses the id %q", id)
 	}
 	if strings.TrimSpace(d.Name) == "" {
 		fail("W2", "document %q has no name", id)
@@ -190,7 +190,7 @@ func (w Wiki) validateDoc(id string, c Check, strict bool) []error {
 	if c.Interfaces != nil {
 		for _, name := range d.Interfaces {
 			if !c.Interfaces[name] {
-				fail("W3", "feature %q uses interface %q, which the system neither provides nor consumes", id, name)
+				fail("W3", "feature %q uses interface %q, which the partition neither provides nor consumes", id, name)
 			}
 		}
 	}
@@ -253,7 +253,7 @@ func (w Wiki) Warnings(c Check) []string {
 			}
 		}
 		if c.Taken[strings.ToLower(id)] {
-			out = append(out, fmt.Sprintf("document %q has an id that another wiki of this store uses", id))
+			out = append(out, fmt.Sprintf("document %q has an id that another wiki of this vault uses", id))
 		}
 		for _, n := range d.Neighbors() {
 			if n != id && !w.linkable(n, c) {
@@ -262,7 +262,7 @@ func (w Wiki) Warnings(c Check) []string {
 		}
 	}
 	if features > ManyFeatures {
-		out = append(out, fmt.Sprintf("the system has %d features; above %d you are listing parts, not features", features, ManyFeatures))
+		out = append(out, fmt.Sprintf("the partition has %d features; above %d you are listing parts, not features", features, ManyFeatures))
 	}
 	return out
 }

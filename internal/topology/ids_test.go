@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// renamed has a renamed project, repo, owner, and orchestrator. The
+// renamed has a renamed project, repo, partition agent, and orchestration agent. The
 // references in the file name ids (rule ID5).
 func renamed(repo string) string {
 	return `name: shop
@@ -23,11 +23,11 @@ services:
     environment: {ANTHROPIC_API_KEY: key}
     x-hikari:
       name: intake
-      system: {repo: shop, scope: orders}
+      partition: {repo: shop, scope: orders}
       grants: {releases: [inventory]}
   inventory:
     x-hikari:
-      system: {repo: shop, scope: inventory}
+      partition: {repo: shop, scope: inventory}
   cache: {image: redis, x-hikari: {serves: orders}}
 `
 }
@@ -50,14 +50,14 @@ func TestNames(t *testing.T) {
 	if a := topo.Agents["inventory"]; a.ID != "inventory" || a.Name != "inventory" {
 		t.Errorf("an agent without a name field is named by its id: %+v", a)
 	}
-	if topo.Orchestrator != "chief" {
-		t.Errorf("x-hikari.orchestration resolves to the agent's name, got %q", topo.Orchestrator)
+	if topo.Orchestration != "chief" {
+		t.Errorf("x-hikari.orchestration resolves to the agent's name, got %q", topo.Orchestration)
 	}
 	if r := topo.Repos["storefront"]; r.ID != "shop" || r.Path != repo {
 		t.Errorf("storefront: %+v", r)
 	}
-	if got := topo.Agents["intake"].System.Repo; got != "storefront" {
-		t.Errorf("system.repo resolves to the repo's name, got %q", got)
+	if got := topo.Agents["intake"].Partition.Repo; got != "storefront" {
+		t.Errorf("partition.repo resolves to the repo's name, got %q", got)
 	}
 	if got := topo.Agents["intake"].Grants.Releases; !slices.Equal(got, []string{"inventory"}) {
 		t.Errorf("grants: %v", got)
@@ -80,28 +80,28 @@ func TestNames(t *testing.T) {
 	if got := topo.Participants(); !slices.Equal(got, []string{"chief", "intake", "inventory", "user"}) {
 		t.Errorf("Participants() = %v", got)
 	}
-	if got := topo.VisibleSystems("chief"); !slices.Equal(got, []string{"intake", "inventory"}) {
+	if got := topo.VisiblePartitions("chief"); !slices.Equal(got, []string{"intake", "inventory"}) {
 		t.Errorf("VisibleSystems(chief) = %v", got)
 	}
 
-	st := topo.StoreOf()
-	if got := st.SystemDir("intake"); got != filepath.Join(topo.Store, "systems", "orders") {
+	st := topo.VaultOf()
+	if got := st.PartitionDir("intake"); got != filepath.Join(topo.Vault, "systems", "orders") {
 		t.Errorf("SystemDir(intake) = %s", got)
 	}
-	if got := st.PublicWiki(); got != filepath.Join(topo.Store, "shared", "wiki") {
+	if got := st.PublicWiki(); got != filepath.Join(topo.Vault, "shared", "wiki") {
 		t.Errorf("PublicWiki() = %s", got)
 	}
-	if got := st.VocabularyFile(); got != filepath.Join(topo.Store, "shared", "vocabulary", "terms.yaml") {
+	if got := st.VocabularyFile(); got != filepath.Join(topo.Vault, "shared", "vocabulary", "terms.yaml") {
 		t.Errorf("VocabularyFile() = %s", got)
 	}
-	if st.SystemName("orders") != "intake" {
-		t.Error("the store maps ids back to names")
+	if st.PartitionName("orders") != "intake" {
+		t.Error("the vault maps ids back to names")
 	}
 }
 
 func TestNamesDefaultToIDs(t *testing.T) {
 	repo := fakeRepo(t, "services/orders", "services/inventory", "proto")
-	topo, err := Parse([]byte(systemsTopology(repo, twoOwners)), t.TempDir())
+	topo, err := Parse([]byte(partitionsTopology(repo, twoPartitionAgents)), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  dev: {x-hikari: {system: {repo: app, scope: src}}}
+  dev: {x-hikari: {partition: {repo: app, scope: src}}}
 `
 	topo, err := Parse([]byte(src), dir)
 	if err != nil {

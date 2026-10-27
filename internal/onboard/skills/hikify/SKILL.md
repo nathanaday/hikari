@@ -1,18 +1,18 @@
 ---
 name: hikify
-description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of isolated systems and libraries, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into systems, extract shared libraries, or plan the target topology.
+description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of isolated partitions and libraries, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into partitions, extract shared libraries, or plan the target topology.
 ---
 
 # Hikify: design the refactor
 
-You work for the user in their own Claude Code session, in a hikari project repository. The project is containerized: each repository runs as one hikari system, its owner has mapped it, and `onboarding/baseline.md` records every test. You design how the project becomes a set of isolated systems behind clean interfaces, and then you carry the design out with hikari's agents. The design is yours to draft and the user's to decide. Until the user approves it, nothing in the running project changes: the design stays in `onboarding/` and `compose.target.yaml`.
+You work for the user in their own Claude Code session, in a hikari project repository. The project is containerized: each repository runs as one hikari partition, its partition agent has mapped it, and `onboarding/baseline.md` records every test. You design how the project becomes a set of isolated partitions behind clean interfaces, and then you carry the design out with hikari's agents. The design is yours to draft and the user's to decide. Until the user approves it, nothing in the running project changes: the design stays in `onboarding/` and `topology.target.yaml`.
 
 Read `references/principles.md` first. Every boundary and every plan step must keep its two principles.
 
 ## Rules
 
 1. Start only when `onboarding/state.md` records `containerize: done`. Otherwise tell the user to run the containerize-repo skill first, and stop.
-2. Before approval, change no file in a clone in `repos/`, and do not change `compose.yaml` or the store. The design goes into `onboarding/` and `compose.target.yaml`.
+2. Before approval, change no file in a clone in `repos/`, and do not change `topology.yaml` or the vault. The design goes into `onboarding/` and `topology.target.yaml`.
 3. Commit each change at once, with the user's git identity (a plain `git commit`), on the branch that is checked out.
 4. Put no secret in any file. Push or create a remote repository only with the user's approval in the conversation, for that one action.
 5. Keep `onboarding/state.md` current: the stage, the decisions the user made, and the open questions.
@@ -30,18 +30,18 @@ The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan
 
 Read `references/topology.md`.
 
-1. Write `compose.target.yaml`: the whole target topology. It starts from `compose.yaml`, and adds the systems, libraries, and grants of the design. Run `hikari check -draft compose.target.yaml` until it passes.
-2. Write `onboarding/topology.md`: each system and library in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
+1. Write `topology.target.yaml`: the whole target topology. It starts from `topology.yaml`, and adds the partitions, libraries, and grants of the design. Run `hikari check -draft topology.target.yaml` until it passes.
+2. Write `onboarding/topology.md`: each partition and library in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
 3. Draft the deliverable of each new library in `onboarding/shared/deliverables/<name>/`, as `references/topology.md` shows.
-4. Draft the stories, rules, and principles of the public wiki with the user, in `onboarding/wiki/public/<id>.md`. Follow `references/public-wiki.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the owners' maps by their ids, which are in `store/systems/<system>/wiki/`. Propose the stories that the suites left for integration check, and the flows across systems that no test covers.
+4. Draft the stories, rules, and principles of the public wiki with the user, in `onboarding/wiki/public/<id>.md`. Follow `references/public-wiki.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the partition agents' maps by their ids, which are in `store/systems/<partition>/wiki/`. Propose the stories that the suites left for integration check, and the flows across partitions that no test covers.
 5. Commit. Show the user the topology in a few lines, the diagram's file, and the stories. When the user agrees, set the stage to `hikify: plan`.
 
 ## Stage 3: Change plan
 
 Read `references/plan.md`.
 
-1. Write the project plan, `onboarding/wiki/public/hikify-plan.md`: every step, in order. Restructure steps come first, then the steps of the owners.
-2. Write the system plan, `onboarding/wiki/systems/<system>/hikify-plan-<system>.md`, for each system that has steps: that system's steps, for its owner.
+1. Write the project plan, `onboarding/wiki/public/hikify-plan.md`: every step, in order. Restructure steps come first, then the steps of the partition agents.
+2. Write the partition plan, `onboarding/wiki/systems/<partition>/hikify-plan-<partition>.md`, for each partition that has steps: that partition's steps, for its partition agent.
 3. Write the ledger, `onboarding/verification.md`: every test of the baseline, and every suite that containerize left out, once each, with its planned place.
 4. Check the ledger. Count the test ids in `onboarding/baseline.md` and in the ledger, and fix every id that is missing or appears twice.
 5. Commit, and set the stage to `hikify: review`.
@@ -68,8 +68,8 @@ When the user agrees to start, read `references/execute.md`, and follow it from 
 - `references/principles.md`: hikari's two principles, and why.
 - `references/analysis.md`: the brief for each analysis subagent.
 - `references/synthesis.md`: the form of the synthesis.
-- `references/topology.md`: how to draw boundaries, and the compose parts of a target.
-- `references/plan.md`: the forms of the project plan, the system plan, and the ledger.
+- `references/topology.md`: how to draw boundaries, and the parts of a target topology.
+- `references/plan.md`: the forms of the project plan, the partition plan, and the ledger.
 - `references/review.md`: the brief for each reviewer.
 - `references/execute.md`: the restructure, the run of the plan, and the verification.
 - `references/public-wiki.md`, `references/wiki.md`: the format and rules of wiki documents, from the agents' own skills.

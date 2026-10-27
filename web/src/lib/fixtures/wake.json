@@ -1,22 +1,22 @@
 {
   "rooms": {
-    "orchestrated": { "orchestrator": "lead", "owners": ["critic", "writer"] },
-    "flat": { "orchestrator": "", "owners": ["critic", "lead", "writer"] }
+    "orchestrated": { "orchestration": "lead", "partition_agents": ["critic", "writer"] },
+    "flat": { "orchestration": "", "partition_agents": ["critic", "lead", "writer"] }
   },
   "cases": [
-    { "name": "a user post without mentions wakes only the orchestrator", "room": "orchestrated", "from": "user", "body": "hello team", "woke": ["lead"] },
-    { "name": "a mention also wakes that owner", "room": "orchestrated", "from": "user", "body": "@writer draft it", "woke": ["lead", "writer"] },
-    { "name": "an orchestrator post without mentions wakes every owner", "room": "orchestrated", "from": "lead", "body": "plan: write then review", "woke": ["critic", "writer"] },
-    { "name": "an orchestrator post with a mention wakes that owner", "room": "orchestrated", "from": "lead", "body": "@critic review this", "woke": ["critic"] },
-    { "name": "an owner post wakes the orchestrator", "room": "orchestrated", "from": "writer", "body": "draft done", "woke": ["lead"] },
-    { "name": "an owner can wake another owner", "room": "orchestrated", "from": "writer", "body": "@critic please look", "woke": ["critic", "lead"] },
+    { "name": "a user post without mentions wakes only the orchestration agent", "room": "orchestrated", "from": "user", "body": "hello team", "woke": ["lead"] },
+    { "name": "a mention also wakes that partition agent", "room": "orchestrated", "from": "user", "body": "@writer draft it", "woke": ["lead", "writer"] },
+    { "name": "a post of the orchestration agent without mentions wakes every partition agent", "room": "orchestrated", "from": "lead", "body": "plan: write then review", "woke": ["critic", "writer"] },
+    { "name": "a post of the orchestration agent with a mention wakes that partition agent", "room": "orchestrated", "from": "lead", "body": "@critic review this", "woke": ["critic"] },
+    { "name": "a partition agent post wakes the orchestration agent", "room": "orchestrated", "from": "writer", "body": "draft done", "woke": ["lead"] },
+    { "name": "a partition agent can wake another partition agent", "room": "orchestrated", "from": "writer", "body": "@critic please look", "woke": ["critic", "lead"] },
     { "name": "a mention of someone outside the room does not count", "room": "orchestrated", "from": "lead", "body": "I report to @ceo", "woke": ["critic", "writer"] },
     { "name": "an email address is not a mention", "room": "orchestrated", "from": "lead", "body": "mail a@writer.dev", "woke": ["critic", "writer"] },
     { "name": "a direct message wakes its recipient", "room": "orchestrated", "from": "writer", "to": "critic", "body": "please review", "woke": ["critic"] },
     { "name": "a direct message to the user wakes nobody", "room": "orchestrated", "from": "writer", "to": "user", "body": "a question", "woke": [] },
-    { "name": "without an orchestrator, a post without mentions wakes every agent", "room": "flat", "from": "user", "body": "hello team", "woke": ["critic", "lead", "writer"] },
-    { "name": "without an orchestrator, a mention wakes only that agent", "room": "flat", "from": "user", "body": "@writer draft it", "woke": ["writer"] },
-    { "name": "without an orchestrator, an agent's post without mentions wakes the others", "room": "flat", "from": "writer", "body": "draft done", "woke": ["critic", "lead"] },
-    { "name": "without an orchestrator, an agent's mention wakes that agent", "room": "flat", "from": "writer", "body": "@critic please look", "woke": ["critic"] }
+    { "name": "without an orchestration agent, a post without mentions wakes every agent", "room": "flat", "from": "user", "body": "hello team", "woke": ["critic", "lead", "writer"] },
+    { "name": "without an orchestration agent, a mention wakes only that agent", "room": "flat", "from": "user", "body": "@writer draft it", "woke": ["writer"] },
+    { "name": "without an orchestration agent, an agent's post without mentions wakes the others", "room": "flat", "from": "writer", "body": "draft done", "woke": ["critic", "lead"] },
+    { "name": "without an orchestration agent, an agent's mention wakes that agent", "room": "flat", "from": "writer", "body": "@critic please look", "woke": ["critic"] }
   ]
 }

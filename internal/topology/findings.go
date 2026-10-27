@@ -10,14 +10,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Finding is one result of a check of a compose file (rule TF1 of the
+// Finding is one result of a check of a topology file (rule TF1 of the
 // topology API spec).
 type Finding struct {
 	Severity string `json:"severity"`
 	Stage    string `json:"stage"`
 	Message  string `json:"message"`
 	// Path is the YAML path of the key at fault, in ids, such as
-	// services.web.x-hikari.system.repo. Line is its line in the source, or 0.
+	// services.web.x-hikari.partition.repo. Line is its line in the source, or 0.
 	Path string `json:"path,omitempty"`
 	Line int    `json:"line,omitempty"`
 }

@@ -2,7 +2,7 @@
 
 ## The project plan
 
-`onboarding/wiki/public/hikify-plan.md` is a plan document of the public wiki. Its id is `hikify-plan`, which must be unique in the store.
+`onboarding/wiki/public/hikify-plan.md` is a plan document of the public wiki. Its id is `hikify-plan`, which must be unique in the vault.
 
 ```markdown
 ---
@@ -40,16 +40,16 @@ Why the project changes, in two or three sentences, with links to the stories th
 
 Fields of each step:
 
-- **Actor**: `session` for a restructure step, which this session does on the host: it creates a repository, moves code with its history, writes a Dockerfile, copies drafts into the store, or replaces `compose.yaml` with the target. Otherwise, the agent of the target that does the step.
-- **Changes**: what the step changes, in terms that its actor understands. An owner cannot see another system's code, so tell it what its own code must do.
+- **Actor**: `session` for a restructure step, which this session does on the host: it creates a repository, moves code with its history, writes a Dockerfile, copies drafts into the vault, or replaces `topology.yaml` with the target. Otherwise, the agent of the target that does the step.
+- **Changes**: what the step changes, in terms that its actor understands. A partition agent cannot see another partition's code, so tell it what its own code must do.
 - **Needs**: the steps, and the releases by name and version, that must exist first.
 - **Done when**: what a test, a release, or a file shows when the step is done. "Works" is not a criterion; "the suite passes against the release 0.1.0" is.
 
 Order: restructure steps first. Then a library's release before its consumers move. Each consumer moves in its own step, and its suite passes against the release before its own copy is deleted. No step deletes code that a consumer still uses. No step moves a suite that is left for integration.
 
-## The system plan
+## The partition plan
 
-`onboarding/wiki/systems/<system>/hikify-plan-<system>.md` holds the steps of one system, with the same fields, for its owner. It is a plan document of the system wiki. It repeats the project plan's step ids, so that the owner and the orchestrator name a step the same way.
+`onboarding/wiki/systems/<partition>/hikify-plan-<partition>.md` holds the steps of one partition, with the same fields, for its partition agent. It is a plan document of the feature map. It repeats the project plan's step ids, so that the partition agent and the orchestration agent name a step the same way.
 
 ## The ledger
 
@@ -66,7 +66,7 @@ Order: restructure steps first. Then a library's release before its consumers mo
 | tests.test_old > test_v1_format | cloud | dropped | The v1 format is gone; waits for the user's approval. |
 ```
 
-- **kept: <system>**: the test stays a unit test, in the system that holds its code after the plan.
+- **kept: <partition>**: the test stays a unit test, in the partition that holds its code after the plan.
 - **left for integration**: the suite stays in its repository, outside every test command, with the reason and the story that it checks.
 - **dropped**: the test goes, with a reason. A drop waits for the user's approval.
 

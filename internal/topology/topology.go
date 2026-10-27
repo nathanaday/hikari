@@ -1,5 +1,5 @@
-// Package topology reads a hikari topology: a Docker compose file whose
-// x-hikari keys hold the repos, the systems, the grants, and the orchestrator.
+// Package topology reads a hikari topology: a Docker Compose file whose
+// x-hikari keys hold the repos, the partitions, the grants, and the orchestration agent.
 // Compose describes each agent's environment; hikari keeps the boundaries.
 package topology
 
@@ -22,7 +22,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/nathanaday/hikari/internal/store"
+	"github.com/nathanaday/hikari/internal/vault"
 )
 
 // User is the reserved name of the human operator. The user is in the room
@@ -30,34 +30,34 @@ import (
 const User = "user"
 
 // ProjectRepo is the reserved repo name of the project repository: the git
-// repository that holds the compose file, when x-hikari.project is set.
+// repository that holds the topology file, when x-hikari.project is set.
 const ProjectRepo = "project"
 
 type Agent struct {
 	// ID is the agent's service key, and Name is what people and agents
 	// call it (rules ID1 and ID4 of the ids spec). Name is the ID unless
 	// x-hikari sets it.
-	ID           string  `yaml:"-"`
-	Name         string  `yaml:"name"`
-	Description  string  `yaml:"description"`
-	Instructions string  `yaml:"instructions"`
-	Model        string  `yaml:"model"`
-	System       *System `yaml:"system"`
-	Grants       Grants  `yaml:"grants"`
+	ID           string     `yaml:"-"`
+	Name         string     `yaml:"name"`
+	Description  string     `yaml:"description"`
+	Instructions string     `yaml:"instructions"`
+	Model        string     `yaml:"model"`
+	Partition    *Partition `yaml:"partition"`
+	Grants       Grants     `yaml:"grants"`
 }
 
-// Grants bind an agent to parts of the store: the releases it can read,
+// Grants bind an agent to parts of the vault: the releases it can read,
 // and the deliverables it publishes.
 type Grants struct {
-	// Releases lists the systems whose releases the agent can read.
+	// Releases lists the partitions whose releases the agent can read.
 	Releases []string `yaml:"releases"`
 	// Deliverables lists the deliverables that the agent publishes. Only an
-	// owner can hold deliverables (rule T14).
+	// partition agent can hold deliverables (rule T14).
 	Deliverables []string `yaml:"deliverables"`
 }
 
-// System is the code that one agent owns: a scope inside a repo.
-type System struct {
+// Partition is the code that one agent owns: a scope inside a repo.
+type Partition struct {
 	Repo string `yaml:"repo"`
 	// Scope is relative to the repo root. Empty means the whole repo.
 	Scope string   `yaml:"scope"`
@@ -109,14 +109,14 @@ type Volume struct {
 // Topology is keyed by name: Agents and Repos map each name to its
 // entity, and every reference holds a name. Services stays keyed by
 // service key, because it describes compose. Outside the file, hikari keys
-// by id: the store, compose, and the clones (rules ID6 to ID10).
+// by id: the vault, compose, and the clones (rules ID6 to ID10).
 type Topology struct {
 	// ID is the compose project name, and Name is x-hikari.name, or the ID.
 	ID   string
 	Name string
-	// Store is the directory of the shared store. It is absolute; the
-	// default is store/ next to the compose file.
-	Store string
+	// Vault is the directory of the vault. It is absolute; the
+	// default is store/ next to the topology file.
+	Vault string
 	// Repos holds every repo, the project repository included under
 	// ProjectRepo.
 	Repos map[string]Repo
@@ -125,16 +125,16 @@ type Topology struct {
 	Project  *Repo
 	Agents   map[string]Agent
 	Services map[string]Service
-	// Orchestrator is the name of the agent that x-hikari.orchestration
-	// names, or empty when the project has no orchestrator.
-	Orchestrator string
+	// Orchestration is the name of the agent that x-hikari.orchestration
+	// names, or empty when the project has no orchestration agent.
+	Orchestration string
 
-	// File is the compose file, when the topology came from Load.
+	// File is the topology file, when the topology came from Load.
 	File string
 	// Warnings are compose's warnings about the file, from Load, and
 	// hikari's own.
 	Warnings []string
-	// Dir is the directory of the compose file. Relative paths in x-hikari
+	// Dir is the directory of the topology file. Relative paths in x-hikari
 	// start there.
 	Dir string
 	// Missing lists the linked repos whose clones do not exist yet (rule
@@ -160,10 +160,10 @@ type composeFile struct {
 
 type hikariKeys struct {
 	Name    string          `yaml:"name"`
-	Store   string          `yaml:"store"`
+	Vault   string          `yaml:"vault"`
 	Project *projectKeys    `yaml:"project"`
 	Repos   map[string]Repo `yaml:"repos"`
-	// Orchestration is the service id of the orchestrator.
+	// Orchestration is the service id of the orchestration agent.
 	Orchestration string `yaml:"orchestration"`
 }
 
@@ -186,10 +186,10 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.System == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0
 }
 
-// Load reads a compose file through `docker compose config`, so that hikari
+// Load reads a topology file through `docker compose config`, so that hikari
 // sees the file as compose will run it.
 func Load(ctx context.Context, file string) (*Topology, error) { return load(ctx, file, false) }
 
@@ -224,7 +224,7 @@ func loadText(ctx context.Context, data []byte, abs string, draft bool) (*Topolo
 	var top map[string]yaml.Node
 	if yaml.Unmarshal(data, &top) == nil {
 		if _, ok := top["agents"]; ok {
-			return nil, errors.New("this file uses the old topology format; hikari now reads a compose file (see the README)")
+			return nil, errors.New("this file uses the old topology format; hikari now reads a topology file (see the README)")
 		}
 	}
 	var stderr bytes.Buffer
@@ -266,32 +266,32 @@ func composeMessages(stderr string) []string {
 	return out
 }
 
-// Parse reads compose's resolved form of a compose file, the output of
+// Parse reads compose's resolved form of a topology file, the output of
 // `docker compose config`, whose relative x-hikari paths start at dir.
 func Parse(data []byte, dir string) (*Topology, error) { return parse(data, dir, false) }
 
 func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	var f composeFile
 	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parse compose file: %w", err)
+		return nil, fmt.Errorf("parse topology file: %w", err)
 	}
 	if f.Name == "" && len(f.Services) == 0 && f.Hikari.Kind == 0 {
-		return nil, fmt.Errorf("compose file is empty")
+		return nil, fmt.Errorf("topology file is empty")
 	}
 	t := Topology{ID: f.Name, Name: f.Name, Dir: dir, Agents: map[string]Agent{}, Services: map[string]Service{}, draft: draft}
 	var errs []error
 	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
 
 	if t.ID == "" {
-		fail("name", "the compose file has no top-level name; hikari needs a stable project name")
+		fail("name", "the topology file has no top-level name; hikari needs a stable project name")
 	}
 	var keys hikariKeys
 	if f.Hikari.Kind == 0 {
-		fail("", "the compose file has no top-level x-hikari key")
+		fail("", "the topology file has no top-level x-hikari key")
 	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
 		fail("x-hikari", "x-hikari: %v", err)
 	}
-	t.Store, t.Repos, t.Orchestrator = keys.Store, keys.Repos, keys.Orchestration
+	t.Vault, t.Repos, t.Orchestration = keys.Vault, keys.Repos, keys.Orchestration
 	if keys.Name != "" {
 		t.Name = keys.Name
 	}
@@ -390,10 +390,10 @@ func setKeys(raw map[string]any) map[string]bool {
 }
 
 func (t *Topology) normalize() {
-	if t.Store == "" {
-		t.Store = "store"
+	if t.Vault == "" {
+		t.Vault = "store"
 	}
-	t.Store = resolvePath(t.Store, t.Dir)
+	t.Vault = resolvePath(t.Vault, t.Dir)
 	if t.Project != nil {
 		t.Project.Path = resolvePath(t.Project.Path, t.Dir)
 		t.Project.ID, t.Project.Name = ProjectRepo, ProjectRepo
@@ -421,10 +421,10 @@ func (t *Topology) normalize() {
 		if a.Name == "" {
 			a.Name = name
 		}
-		if a.System != nil {
-			a.System.Scope = cleanRel(a.System.Scope)
-			for i, p := range a.System.Read {
-				a.System.Read[i] = cleanRel(p)
+		if a.Partition != nil {
+			a.Partition.Scope = cleanRel(a.Partition.Scope)
+			for i, p := range a.Partition.Read {
+				a.Partition.Read[i] = cleanRel(p)
 			}
 		}
 		t.Agents[name] = a
@@ -448,16 +448,16 @@ func (t *Topology) rekey() {
 	}
 	agents := map[string]Agent{}
 	for _, a := range t.Agents {
-		if s := a.System; s != nil {
+		if s := a.Partition; s != nil {
 			sys := *s
 			sys.Repo = repo(s.Repo)
-			a.System = &sys
+			a.Partition = &sys
 		}
 		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
 		agents[a.Name] = a
 	}
-	if t.Orchestrator != "" {
-		t.Orchestrator = agent(t.Orchestrator)
+	if t.Orchestration != "" {
+		t.Orchestration = agent(t.Orchestration)
 	}
 	repos := map[string]Repo{}
 	for _, r := range t.Repos {
@@ -496,12 +496,12 @@ func (t *Topology) AgentOfService(id string) (string, bool) {
 	return "", false
 }
 
-// SystemIDs maps the name of each system to its id, for the store (rule
+// PartitionIDs maps the name of each partition to its id, for the vault (rule
 // ID6).
-func (t *Topology) SystemIDs() map[string]string {
+func (t *Topology) PartitionIDs() map[string]string {
 	out := map[string]string{}
 	for name, a := range t.Agents {
-		if a.System != nil {
+		if a.Partition != nil {
 			out[name] = a.ID
 		}
 	}
@@ -541,7 +541,7 @@ func (t *Topology) validate() error {
 	if len(t.Agents) == 0 {
 		fail("services", "topology has no agents")
 	}
-	if o := t.Orchestrator; o != "" {
+	if o := t.Orchestration; o != "" {
 		if _, ok := t.Agents[o]; !ok {
 			fail("x-hikari.orchestration", "x-hikari.orchestration: %q is not an agent's service id", o)
 		}
@@ -555,14 +555,14 @@ func (t *Topology) validate() error {
 	}
 
 	for _, name := range t.AgentNames() {
-		if name != t.Orchestrator && t.Agents[name].System == nil {
-			fail("services."+name, "agent %q owns no system and is not the orchestrator", name)
+		if name != t.Orchestration && t.Agents[name].Partition == nil {
+			fail("services."+name, "agent %q has no partition and is not the orchestration agent", name)
 		}
 	}
 
 	errs = append(errs, t.validateNames()...)
 	errs = append(errs, t.validateRepos()...)
-	errs = append(errs, t.validateSystems()...)
+	errs = append(errs, t.validatePartitions()...)
 	errs = append(errs, t.validateServices()...)
 	return errors.Join(errs...)
 }
@@ -627,8 +627,8 @@ func (t *Topology) validateRepos() []error {
 	var errs []error
 	used := map[string]bool{}
 	for _, a := range t.Agents {
-		if a.System != nil {
-			used[a.System.Repo] = true
+		if a.Partition != nil {
+			used[a.Partition.Repo] = true
 		}
 	}
 	for _, name := range sortedKeys(t.Repos) {
@@ -668,10 +668,10 @@ func (t *Topology) validateRepos() []error {
 		switch {
 		case used[name]:
 		case r.URL != "":
-			// Onboarding links the repos before it writes their systems.
-			t.Warnings = append(t.Warnings, fmt.Sprintf("the linked repo %s is not used by any system yet", name))
+			// Onboarding links the repos before it writes their partitions.
+			t.Warnings = append(t.Warnings, fmt.Sprintf("the linked repo %s is not used by any partition yet", name))
 		default:
-			errs = append(errs, at(path, "repo %q is not used by any system", name))
+			errs = append(errs, at(path, "repo %q is not used by any partition", name))
 		}
 	}
 	return errs
@@ -682,25 +682,25 @@ func (t *Topology) validateProject() []error {
 	var errs []error
 	p := t.Project
 	if _, err := os.Stat(filepath.Join(p.Path, ".git")); err != nil {
-		errs = append(errs, at("x-hikari.project", "x-hikari.project: the directory of the compose file, %s, is not the top directory of a git repository", p.Path))
+		errs = append(errs, at("x-hikari.project", "x-hikari.project: the directory of the topology file, %s, is not the top directory of a git repository", p.Path))
 	}
 	if !validBranchName(p.Branch) {
 		errs = append(errs, at("x-hikari.project.branch", "x-hikari.project: %q is not a valid branch name", p.Branch))
 	}
-	store, root := realPath(t.Store), realPath(p.Path)
-	if store == root || !within(store, root) {
-		errs = append(errs, at("x-hikari.store", "x-hikari.project: the store %s must be a directory inside the project repository %s", t.Store, p.Path))
+	vault, root := realPath(t.Vault), realPath(p.Path)
+	if vault == root || !within(vault, root) {
+		errs = append(errs, at("x-hikari.vault", "x-hikari.project: the vault %s must be a directory inside the project repository %s", t.Vault, p.Path))
 	}
 	return errs
 }
 
-// StoreInProject returns the store's path relative to the project
+// VaultInProject returns the vault's path relative to the project
 // repository, with slashes, or "" when there is no project repository.
-func (t *Topology) StoreInProject() string {
+func (t *Topology) VaultInProject() string {
 	if t.Project == nil {
 		return ""
 	}
-	rel, err := filepath.Rel(realPath(t.Project.Path), realPath(t.Store))
+	rel, err := filepath.Rel(realPath(t.Project.Path), realPath(t.Vault))
 	if err != nil || !filepath.IsLocal(rel) {
 		return ""
 	}
@@ -731,7 +731,7 @@ func validBranchName(b string) bool {
 		!strings.Contains(b, "..") && !strings.Contains(b, "//")
 }
 
-func (t *Topology) validateSystems() []error {
+func (t *Topology) validatePartitions() []error {
 	var errs []error
 	fail := func(agent, key, format string, args ...any) {
 		path := "services." + agent + ".x-hikari"
@@ -745,8 +745,8 @@ func (t *Topology) validateSystems() []error {
 		for _, g := range a.Grants.Releases {
 			if g == name {
 				fail(name, "grants.releases", "cannot be granted its own releases")
-			} else if t.Agents[g].System == nil {
-				fail(name, "grants.releases", "release grant %q is not a system in the topology", g)
+			} else if t.Agents[g].Partition == nil {
+				fail(name, "grants.releases", "release grant %q is not a partition in the topology", g)
 			}
 		}
 		seen := map[string]bool{}
@@ -756,80 +756,80 @@ func (t *Topology) validateSystems() []error {
 				fail(name, "grants.deliverables", "deliverable %q is not a valid name (a-z, 0-9, -, up to 32 characters)", d)
 			case seen[d]:
 				fail(name, "grants.deliverables", "deliverable %q is granted twice", d)
-			case a.System == nil:
-				fail(name, "grants.deliverables", "cannot hold the deliverable %q: only an agent with a system can hold deliverables", d)
+			case a.Partition == nil:
+				fail(name, "grants.deliverables", "cannot hold the deliverable %q: only an agent with a partition can hold deliverables", d)
 			}
 			seen[d] = true
 		}
-		s := a.System
+		s := a.Partition
 		if s == nil {
 			continue
 		}
-		if name == t.Orchestrator {
-			fail(name, "system", "the orchestrator cannot own a system")
+		if name == t.Orchestration {
+			fail(name, "partition", "the orchestration agent cannot have a partition")
 		}
 		repo, ok := t.Repos[s.Repo]
 		if !ok {
 			if s.Repo == ProjectRepo {
-				fail(name, "system.repo", "the system is in repo %q, which needs x-hikari.project", ProjectRepo)
+				fail(name, "partition.repo", "the partition is in repo %q, which needs x-hikari.project", ProjectRepo)
 			} else {
-				fail(name, "system.repo", "system references unknown repo %q", s.Repo)
+				fail(name, "partition.repo", "partition references unknown repo %q", s.Repo)
 			}
 			continue
 		}
 		if s.Repo == ProjectRepo {
-			if store := t.StoreInProject(); s.Scope == "" || (store != "" && overlaps(filepath.FromSlash(store), s.Scope)) {
-				fail(name, "system.scope", "a system in the project repository needs a scope that does not overlap the store")
+			if vault := t.VaultInProject(); s.Scope == "" || (vault != "" && overlaps(filepath.FromSlash(vault), s.Scope)) {
+				fail(name, "partition.scope", "a partition in the project repository needs a scope that does not overlap the vault")
 			} else if overlaps(CloneDir, s.Scope) {
-				fail(name, "system.scope", "a system in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
+				fail(name, "partition.scope", "a partition in the project repository needs a scope that does not overlap the clone folder %s/", CloneDir)
 			}
 		}
 		if slices.Contains(t.Missing, s.Repo) || t.draft {
 			if s.Scope != "" && !filepath.IsLocal(s.Scope) {
-				fail(name, "system.scope", "scope %q must be a relative path inside the repo", s.Scope)
+				fail(name, "partition.scope", "scope %q must be a relative path inside the repo", s.Scope)
 			}
 			for _, p := range s.Read {
 				if p == "" || !filepath.IsLocal(p) {
-					fail(name, "system.read", "read path %q must be a relative path inside the repo", p)
+					fail(name, "partition.read", "read path %q must be a relative path inside the repo", p)
 				}
 			}
 			continue
 		}
 		if s.Scope != "" {
 			if !filepath.IsLocal(s.Scope) {
-				fail(name, "system.scope", "scope %q must be a relative path inside the repo", s.Scope)
+				fail(name, "partition.scope", "scope %q must be a relative path inside the repo", s.Scope)
 			} else if !isDir(filepath.Join(repo.Path, s.Scope)) {
-				fail(name, "system.scope", "scope %q is not a directory in repo %q", s.Scope, s.Repo)
+				fail(name, "partition.scope", "scope %q is not a directory in repo %q", s.Scope, s.Repo)
 			}
 		}
 		for _, p := range s.Read {
 			if p == "" || !filepath.IsLocal(p) {
-				fail(name, "system.read", "read path %q must be a relative path inside the repo", p)
+				fail(name, "partition.read", "read path %q must be a relative path inside the repo", p)
 			} else if !isDir(filepath.Join(repo.Path, p)) {
-				fail(name, "system.read", "read path %q is not a directory in repo %q", p, s.Repo)
+				fail(name, "partition.read", "read path %q is not a directory in repo %q", p, s.Repo)
 			}
 		}
 	}
 
 	// Scopes in one repo must not overlap, and no read path may reach into a
 	// scope.
-	owners := t.Owners()
-	for i, a := range owners {
-		sa := t.Agents[a].System
-		for _, b := range owners[i+1:] {
-			sb := t.Agents[b].System
+	partitionAgents := t.PartitionAgents()
+	for i, a := range partitionAgents {
+		sa := t.Agents[a].Partition
+		for _, b := range partitionAgents[i+1:] {
+			sb := t.Agents[b].Partition
 			if sa.Repo == sb.Repo && overlaps(sa.Scope, sb.Scope) {
-				errs = append(errs, at("services."+b+".x-hikari.system.scope", "agents %q and %q have overlapping scopes in repo %q", a, b, sa.Repo))
+				errs = append(errs, at("services."+b+".x-hikari.partition.scope", "agents %q and %q have overlapping scopes in repo %q", a, b, sa.Repo))
 			}
 		}
 	}
-	for _, a := range owners {
-		sa := t.Agents[a].System
+	for _, a := range partitionAgents {
+		sa := t.Agents[a].Partition
 		for _, p := range sa.Read {
-			for _, b := range owners {
-				sb := t.Agents[b].System
+			for _, b := range partitionAgents {
+				sb := t.Agents[b].Partition
 				if sa.Repo == sb.Repo && p != "" && overlaps(p, sb.Scope) {
-					fail(a, "system.read", "read path %q overlaps the scope of %q", p, b)
+					fail(a, "partition.read", "read path %q overlaps the scope of %q", p, b)
 				}
 			}
 		}
@@ -857,32 +857,32 @@ func (t *Topology) AgentNames() []string {
 	return sortedKeys(t.Agents)
 }
 
-// Owners returns the agents that own a system, in sorted order.
-func (t *Topology) Owners() []string {
+// PartitionAgents returns the agents that have a partition, in sorted order.
+func (t *Topology) PartitionAgents() []string {
 	var out []string
 	for _, name := range t.AgentNames() {
-		if t.Agents[name].System != nil {
+		if t.Agents[name].Partition != nil {
 			out = append(out, name)
 		}
 	}
 	return out
 }
 
-// VisibleSystems returns the systems whose directories agent can read:
-// every system for the orchestrator, and none for any other agent.
-func (t *Topology) VisibleSystems(agent string) []string {
-	if agent == "" || agent != t.Orchestrator {
+// VisiblePartitions returns the partitions whose directories agent can read:
+// every partition for the orchestration agent, and none for any other agent.
+func (t *Topology) VisiblePartitions(agent string) []string {
+	if agent == "" || agent != t.Orchestration {
 		return nil
 	}
-	return t.Owners()
+	return t.PartitionAgents()
 }
 
-// ReadableReleases returns the systems whose releases agent can read: its
-// visible systems as an orchestrator and its release grants, in sorted
-// order, without its own system.
+// ReadableReleases returns the partitions whose releases agent can read: its
+// visible partitions as an orchestration agent and its release grants, in sorted
+// order, without its own partition.
 func (t *Topology) ReadableReleases(agent string) []string {
 	set := map[string]bool{}
-	for _, s := range t.VisibleSystems(agent) {
+	for _, s := range t.VisiblePartitions(agent) {
 		set[s] = true
 	}
 	for _, s := range t.Agents[agent].Grants.Releases {
@@ -892,31 +892,31 @@ func (t *Topology) ReadableReleases(agent string) []string {
 	return sortedKeys(set)
 }
 
-// Participants returns everyone in the room: the orchestrator, then the
+// Participants returns everyone in the room: the orchestration agent, then the
 // other agents in sorted order, then the user.
 func (t *Topology) Participants() []string {
 	var out []string
-	if t.Orchestrator != "" {
-		out = append(out, t.Orchestrator)
+	if t.Orchestration != "" {
+		out = append(out, t.Orchestration)
 	}
 	for _, name := range t.AgentNames() {
-		if name != t.Orchestrator {
+		if name != t.Orchestration {
 			out = append(out, name)
 		}
 	}
 	return append(out, User)
 }
 
-// Role returns what name is in the room: "orchestrator", "owner", or
+// Role returns what name is in the room: "orchestration", "partition", or
 // "operator" for the user.
 func (t *Topology) Role(name string) string {
 	switch {
 	case name == User:
 		return "operator"
-	case name == t.Orchestrator:
-		return "orchestrator"
+	case name == t.Orchestration:
+		return "orchestration"
 	}
-	return "owner"
+	return "partition"
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -928,8 +928,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// StoreOf returns the topology's store, which maps the names of systems to
+// VaultOf returns the topology's vault, which maps the names of partitions to
 // their ids.
-func (t *Topology) StoreOf() store.Store {
-	return store.Store{Root: t.Store, Systems: t.SystemIDs()}
+func (t *Topology) VaultOf() vault.Vault {
+	return vault.Vault{Root: t.Vault, Partitions: t.PartitionIDs()}
 }

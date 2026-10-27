@@ -76,19 +76,19 @@ func (d *dashboard) follow(events <-chan server.Event) {
 			}
 			d.mu.Unlock()
 		case "status":
-			d.setStatus(e.Node, *e.Status)
+			d.setStatus(e.Agent, *e.Status)
 		case "message":
 			d.con.Println(d.messageLine(*e.Message))
 		case "activity":
-			d.setDoing(e.Node, *e.Activity)
+			d.setDoing(e.Agent, *e.Activity)
 		}
 		d.con.Refresh()
 	}
 }
 
-func (d *dashboard) setStatus(node string, s api.Status) {
+func (d *dashboard) setStatus(agent string, s api.Status) {
 	d.mu.Lock()
-	d.status[node] = s
+	d.status[agent] = s
 	d.cost += s.Cost
 	starting := false
 	for _, a := range d.agents {
@@ -105,24 +105,24 @@ func (d *dashboard) setStatus(node string, s api.Status) {
 
 	switch {
 	case s.State == api.StateError:
-		d.con.Error(fmt.Sprintf("%s: %s", node, s.Detail))
+		d.con.Error(fmt.Sprintf("%s: %s", agent, s.Detail))
 	case s.State == api.StateExited && s.Detail != "":
-		d.con.Error(fmt.Sprintf("%s stopped: %s", node, s.Detail))
+		d.con.Error(fmt.Sprintf("%s stopped: %s", agent, s.Detail))
 	}
 }
 
 // setDoing keeps the step that the footer shows for an agent: its running
 // tool, or nothing between tools and after the turn.
-func (d *dashboard) setDoing(node string, a api.Activity) {
+func (d *dashboard) setDoing(agent string, a api.Activity) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch {
 	case a.Kind == api.ActivityTool && !a.Done:
-		d.doing[node] = toolSummary(a)
+		d.doing[agent] = toolSummary(a)
 	case a.Kind == api.ActivityThinking && !a.Done:
-		d.doing[node] = "thinking"
+		d.doing[agent] = "thinking"
 	default:
-		delete(d.doing, node)
+		delete(d.doing, agent)
 	}
 }
 

@@ -21,7 +21,7 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/linked"
-	"github.com/nathanaday/hikari/internal/systems"
+	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -30,21 +30,21 @@ import (
 const maxBodyBytes = 64 << 10
 
 type Event struct {
-	Type       string            `json:"type"`
-	Message    *api.Message      `json:"message,omitempty"`
-	Node       string            `json:"node,omitempty"`
-	Status     *api.Status       `json:"status,omitempty"`
-	Activity   *api.Activity     `json:"activity,omitempty"`
-	System     *api.SystemView   `json:"system,omitempty"`
-	Vocabulary *vocab.Vocabulary `json:"vocabulary,omitempty"`
-	Wiki       *api.WikiView     `json:"wiki,omitempty"`
-	Snapshot   *Snapshot         `json:"snapshot,omitempty"`
-	// Revision is the compose file's new revision, in a topology event
+	Type       string             `json:"type"`
+	Message    *api.Message       `json:"message,omitempty"`
+	Agent      string             `json:"agent,omitempty"`
+	Status     *api.Status        `json:"status,omitempty"`
+	Activity   *api.Activity      `json:"activity,omitempty"`
+	Partition  *api.PartitionView `json:"partition,omitempty"`
+	Vocabulary *vocab.Vocabulary  `json:"vocabulary,omitempty"`
+	Wiki       *api.WikiView      `json:"wiki,omitempty"`
+	Snapshot   *Snapshot          `json:"snapshot,omitempty"`
+	// Revision is the topology file's new revision, in a topology event
 	// (rule TA8 of the topology API spec).
 	Revision string `json:"revision,omitempty"`
 }
 
-type NodeView struct {
+type AgentView struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
 	Role        string     `json:"role"`
@@ -64,17 +64,17 @@ type Snapshot struct {
 	Revision      string             `json:"revision"`
 	StartFindings []topology.Finding `json:"start_findings,omitempty"`
 	Me            string             `json:"me"`
-	Agents        []NodeView         `json:"agents"`
-	// Participants lists everyone in the room: the orchestrator first and
+	Agents        []AgentView        `json:"agents"`
+	// Participants lists everyone in the room: the orchestration agent first and
 	// the user last.
-	Participants []api.Peer       `json:"participants"`
-	Messages     []api.Message    `json:"messages"`
-	Systems      []api.SystemView `json:"systems"`
-	Vocabulary   vocab.Vocabulary `json:"vocabulary"`
+	Participants []api.Peer          `json:"participants"`
+	Messages     []api.Message       `json:"messages"`
+	Partitions   []api.PartitionView `json:"partitions"`
+	Vocabulary   vocab.Vocabulary    `json:"vocabulary"`
 	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
 	Repos        []api.RepoInfo     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
-	// Wikis holds the public wiki and every system wiki.
+	// Wikis holds the public wiki and every feature map.
 	Wikis []api.WikiView `json:"wikis"`
 	// Activity holds the recent steps of each agent.
 	Activity map[string][]api.Activity `json:"activity"`
@@ -93,7 +93,7 @@ type recipient struct {
 type Server struct {
 	topo    *topology.Topology
 	journal io.Writer
-	sys     *systems.Manager
+	sys     *partitions.Manager
 
 	mu     sync.Mutex
 	tokens map[string]string
@@ -113,9 +113,9 @@ type Server struct {
 // whole.
 const maxActivity = 400
 
-// New returns a server for topo and its systems. Each message is also
+// New returns a server for topo and its partitions. Each message is also
 // written to journal as one line of JSON when journal is not nil.
-func New(topo *topology.Topology, journal io.Writer, sys *systems.Manager) *Server {
+func New(topo *topology.Topology, journal io.Writer, sys *partitions.Manager) *Server {
 	s := &Server{
 		topo:      topo,
 		journal:   journal,
@@ -132,26 +132,26 @@ func New(topo *topology.Topology, journal io.Writer, sys *systems.Manager) *Serv
 		s.signal[n] = make(chan struct{})
 		s.status[n] = api.Status{State: api.StateStarting}
 	}
-	sys.OnChange(s.systemChanged)
+	sys.OnChange(s.partitionChanged)
 	return s
 }
 
-// Systems returns the systems manager.
-func (s *Server) Systems() *systems.Manager { return s.sys }
+// Partitions returns the partitions manager.
+func (s *Server) Partitions() *partitions.Manager { return s.sys }
 
-func (s *Server) systemChanged(c systems.Change) {
+func (s *Server) partitionChanged(c partitions.Change) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if c.System != "" {
-		v := s.sys.SystemView(c.System)
-		s.publish(Event{Type: "system", System: &v})
+	if c.Partition != "" {
+		v := s.sys.PartitionView(c.Partition)
+		s.publish(Event{Type: "partition", Partition: &v})
 	}
-	// A system's health is the support of the public wiki's documents.
+	// A partition's health is the support of the public wiki's documents.
 	refs := []string{}
 	if c.Wiki != "" {
 		refs = append(refs, c.Wiki)
 	}
-	if c.System != "" && c.Wiki != api.PublicWikiRef {
+	if c.Partition != "" && c.Wiki != api.PublicWikiRef {
 		refs = append(refs, api.PublicWikiRef)
 	}
 	for _, ref := range refs {
@@ -173,16 +173,16 @@ func NewToken() string {
 	return hex.EncodeToString(b)
 }
 
-// IssueToken returns a new credential that identifies node to the server.
-func (s *Server) IssueToken(node string) string {
+// IssueToken returns a new credential that identifies agent to the server.
+func (s *Server) IssueToken(agent string) string {
 	t := NewToken()
 	s.mu.Lock()
-	s.tokens[t] = node
+	s.tokens[t] = agent
 	s.mu.Unlock()
 	return t
 }
 
-func (s *Server) nodeForToken(token string) (string, bool) {
+func (s *Server) agentForToken(token string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n, ok := s.tokens[token]
@@ -205,9 +205,9 @@ func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 	return s.post(from, req.Body), nil
 }
 
-// post sends body to the room. It wakes the orchestrator, every agent it
-// mentions, and every agent when the orchestrator sends it without
-// mentions. Without an orchestrator, a post without mentions wakes every
+// post sends body to the room. It wakes the orchestration agent, every agent it
+// mentions, and every agent when the orchestration agent sends it without
+// mentions. Without an orchestration agent, a post without mentions wakes every
 // agent.
 func (s *Server) post(from, body string) api.Message {
 	participants := s.topo.Participants()
@@ -217,7 +217,7 @@ func (s *Server) post(from, body string) api.Message {
 			mentioned[name] = true
 		}
 	}
-	orch := s.topo.Orchestrator
+	orch := s.topo.Orchestration
 	var recipients []recipient
 	for _, p := range participants {
 		if p == from || p == topology.User {
@@ -281,23 +281,23 @@ func mentions(body string) map[string]bool {
 	return out
 }
 
-func (s *Server) notify(node string) {
-	close(s.signal[node])
-	s.signal[node] = make(chan struct{})
+func (s *Server) notify(agent string) {
+	close(s.signal[agent])
+	s.signal[agent] = make(chan struct{})
 }
 
-// Take removes and returns every pending message of node. With wait == 0 it
+// Take removes and returns every pending message of agent. With wait == 0 it
 // returns at once. With wait > 0 it first waits until a pending message wakes
-// the node; if wait elapses or ctx ends first, it returns nothing and leaves
+// the agent; if wait elapses or ctx ends first, it returns nothing and leaves
 // the inbox as it was.
-func (s *Server) Take(ctx context.Context, node string, wait time.Duration) []api.Message {
+func (s *Server) Take(ctx context.Context, agent string, wait time.Duration) []api.Message {
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	for {
 		s.mu.Lock()
-		pending := s.inbox[node]
+		pending := s.inbox[agent]
 		if wait == 0 || slices.ContainsFunc(pending, func(d delivery) bool { return d.wake }) {
-			s.inbox[node] = nil
+			s.inbox[agent] = nil
 			s.mu.Unlock()
 			msgs := make([]api.Message, len(pending))
 			for i, d := range pending {
@@ -305,7 +305,7 @@ func (s *Server) Take(ctx context.Context, node string, wait time.Duration) []ap
 			}
 			return msgs
 		}
-		ch := s.signal[node]
+		ch := s.signal[agent]
 		s.mu.Unlock()
 		select {
 		case <-ch:
@@ -317,9 +317,9 @@ func (s *Server) Take(ctx context.Context, node string, wait time.Duration) []ap
 	}
 }
 
-// Requeue puts msgs back at the front of the inbox of node, for when a Take
-// result could not be delivered. The messages wake the node again.
-func (s *Server) Requeue(node string, msgs []api.Message) {
+// Requeue puts msgs back at the front of the inbox of agent, for when a Take
+// result could not be delivered. The messages wake the agent again.
+func (s *Server) Requeue(agent string, msgs []api.Message) {
 	if len(msgs) == 0 {
 		return
 	}
@@ -329,21 +329,21 @@ func (s *Server) Requeue(node string, msgs []api.Message) {
 	for i, m := range msgs {
 		back[i] = delivery{msg: m, wake: true}
 	}
-	s.inbox[node] = append(back, s.inbox[node]...)
-	s.notify(node)
+	s.inbox[agent] = append(back, s.inbox[agent]...)
+	s.notify(agent)
 }
 
-func (s *Server) SetStatus(node string, st api.Status) {
+func (s *Server) SetStatus(agent string, st api.Status) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.status[node] = st
-	s.publish(Event{Type: "status", Node: node, Status: &st})
+	s.status[agent] = st
+	s.publish(Event{Type: "status", Agent: agent, Status: &st})
 }
 
-// AddActivity records a step of node's turn. An entry with the ID of a kept
+// AddActivity records a step of agent's turn. An entry with the ID of a kept
 // entry replaces it. A closing text is marked unheard when the agent sent
 // no message during the turn.
-func (s *Server) AddActivity(node string, a api.Activity) {
+func (s *Server) AddActivity(agent string, a api.Activity) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if a.Time.IsZero() {
@@ -352,12 +352,12 @@ func (s *Server) AddActivity(node string, a api.Activity) {
 	switch a.Kind {
 	case api.ActivityTurn:
 		if !a.Done {
-			s.turnStart[node] = s.nextID
+			s.turnStart[agent] = s.nextID
 		}
 	case api.ActivityDone:
-		a.Unheard = a.Text != "" && !s.sentSince(node, s.turnStart[node])
+		a.Unheard = a.Text != "" && !s.sentSince(agent, s.turnStart[agent])
 	}
-	list := s.activity[node]
+	list := s.activity[agent]
 	if i := slices.IndexFunc(list, func(x api.Activity) bool { return x.ID == a.ID }); i >= 0 {
 		list[i] = a
 	} else {
@@ -371,45 +371,45 @@ func (s *Server) AddActivity(node string, a api.Activity) {
 		}
 		list = slices.Clone(list[n:])
 	}
-	s.activity[node] = list
-	s.publish(Event{Type: "activity", Node: node, Activity: &a})
+	s.activity[agent] = list
+	s.publish(Event{Type: "activity", Agent: agent, Activity: &a})
 }
 
-func (s *Server) sentSince(node string, id int64) bool {
+func (s *Server) sentSince(agent string, id int64) bool {
 	for i := len(s.log) - 1; i >= 0 && s.log[i].ID > id; i-- {
-		if s.log[i].From == node {
+		if s.log[i].From == agent {
 			return true
 		}
 	}
 	return false
 }
 
-func (s *Server) Self(node string) api.Self {
-	a := s.topo.Agents[node]
+func (s *Server) Self(agent string) api.Self {
+	a := s.topo.Agents[agent]
 	self := api.Self{
-		Name:         node,
-		Description:  a.Description,
-		Instructions: a.Instructions,
-		Model:        a.Model,
-		Participants: s.participants(),
-		System:       s.sys.Self(node),
-		Orchestrator: node == s.topo.Orchestrator,
+		Name:          agent,
+		Description:   a.Description,
+		Instructions:  a.Instructions,
+		Model:         a.Model,
+		Participants:  s.participants(),
+		Partition:     s.sys.Self(agent),
+		Orchestration: agent == s.topo.Orchestration,
 	}
-	self.VisibleSystems = s.topo.VisibleSystems(node)
-	self.Releases = s.topo.ReadableReleases(node)
-	self.Deliverables = s.sys.Deliverables(node)
-	for _, m := range self.VisibleSystems {
+	self.VisiblePartitions = s.topo.VisiblePartitions(agent)
+	self.Releases = s.topo.ReadableReleases(agent)
+	self.Deliverables = s.sys.Deliverables(agent)
+	for _, m := range self.VisiblePartitions {
 		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
-			if self.OwnerGrants == nil {
-				self.OwnerGrants = map[string][]string{}
+			if self.PartitionAgentGrants == nil {
+				self.PartitionAgentGrants = map[string][]string{}
 			}
-			self.OwnerGrants[m] = g
+			self.PartitionAgentGrants[m] = g
 		}
 		if d := s.sys.Deliverables(m); len(d) > 0 {
-			if self.OwnerDeliverables == nil {
-				self.OwnerDeliverables = map[string][]api.DeliverableInfo{}
+			if self.PartitionAgentDeliverables == nil {
+				self.PartitionAgentDeliverables = map[string][]api.DeliverableInfo{}
 			}
-			self.OwnerDeliverables[m] = d
+			self.PartitionAgentDeliverables[m] = d
 		}
 	}
 	return self
@@ -448,7 +448,7 @@ func (s *Server) Subscribe() (events <-chan Event, cancel func()) {
 	}
 }
 
-// PublishTopology tells the UI that the compose file changed on disk.
+// PublishTopology tells the UI that the topology file changed on disk.
 func (s *Server) PublishTopology(revision string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -476,7 +476,7 @@ func (s *Server) snapshot() Snapshot {
 		snap.Messages = []api.Message{}
 	}
 	for _, n := range s.topo.AgentNames() {
-		snap.Agents = append(snap.Agents, NodeView{
+		snap.Agents = append(snap.Agents, AgentView{
 			Name:        n,
 			Description: s.topo.Agents[n].Description,
 			Role:        s.topo.Role(n),
@@ -484,10 +484,10 @@ func (s *Server) snapshot() Snapshot {
 		})
 	}
 	snap.Participants = s.participants()
-	snap.Systems = s.sys.Systems()
+	snap.Partitions = s.sys.Partitions()
 	snap.Vocabulary = s.sys.Vocabulary()
 	snap.Repos = s.sys.Repos()
-	snap.Deliverables = s.deliverables(s.sys.Store())
+	snap.Deliverables = s.deliverables(s.sys.Vault())
 	snap.Wikis = s.sys.Wikis()
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {

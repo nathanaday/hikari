@@ -98,7 +98,7 @@ func (p *Project) InspectAgent(ctx context.Context, agent string) (Image, error)
 		img.User = svc.User
 	}
 	if isRoot(img.User) {
-		return Image{}, fmt.Errorf("agent %q: image %s runs as root; set USER in its Dockerfile or user in the compose file", agent, svc.Image)
+		return Image{}, fmt.Errorf("agent %q: image %s runs as root; set USER in its Dockerfile or user in the topology file", agent, svc.Image)
 	}
 	probe := docker(ctx, "run", "--rm", "--network", "none", "--user", img.User, "--entrypoint", "claude", svc.Image, "--version")
 	if out, err := probe.CombinedOutput(); err != nil {

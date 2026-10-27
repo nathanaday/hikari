@@ -16,12 +16,12 @@ import (
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
+	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/server"
-	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// runner starts and stops the agents of one compose file, for the life of
+// runner starts and stops the agents of one topology file, for the life of
 // hikari up (section 8 of the topology API spec). The host serves the UI
 // in every mode.
 type runner struct {
@@ -44,7 +44,7 @@ type run struct {
 	dir     string
 	logFile *os.File
 	journal *lazyFile
-	sys     *systems.Manager
+	sys     *partitions.Manager
 	topo    *topology.Topology
 	stop    func()
 }
@@ -126,7 +126,7 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	topo, err := topology.Load(ctx, r.file)
 	if err != nil {
 		log.Print(err)
-		step.Fail(errors.New("the compose file has errors"))
+		step.Fail(errors.New("the topology file has errors"))
 		src, _ := os.ReadFile(r.file)
 		findings := topology.Findings(err, src)
 		for _, f := range findings {
@@ -167,12 +167,12 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	}
 	showFindings(con, checks)
 
-	step = con.Step("Preparing the repos and the store")
+	step = con.Step("Preparing the repos and the vault")
 	if topo, err = prepareProject(ctx, topo); err != nil {
 		return nil, fail(step, err)
 	}
 	project.Topo = topo
-	sys, err := systems.New(topo)
+	sys, err := partitions.New(topo)
 	if err != nil {
 		return nil, fail(step, err)
 	}
@@ -253,7 +253,7 @@ func (cur *run) close() {
 	cur.logFile.Close()
 }
 
-// stop stops the agents and commits what the owners left (rule UP6). It
+// stop stops the agents and commits what the partition agents left (rule UP6). It
 // returns to the editing state unless hikari exits.
 func (r *runner) stop(exiting bool) {
 	r.mu.Lock()
@@ -268,8 +268,8 @@ func (r *runner) stop(exiting bool) {
 	con.ClearFooter()
 	con.Println("")
 	cur.stop()
-	if len(cur.topo.Owners()) > 0 {
-		step := con.Step("Committing what the owners left")
+	if len(cur.topo.PartitionAgents()) > 0 {
+		step := con.Step("Committing what the partition agents left")
 		for _, err := range cur.sys.CommitAll() {
 			log.Printf("final commit: %v", err)
 			con.Error(fmt.Sprintf("final commit: %v", err))

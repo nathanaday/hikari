@@ -1,5 +1,5 @@
 // Package scaffold writes the files of a new project: the project
-// repository of hikari init, or a compose file alone.
+// repository of hikari init, or a topology file alone.
 package scaffold
 
 import (
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nathanaday/hikari/internal/store"
+	"github.com/nathanaday/hikari/internal/vault"
 )
 
 // ProjectIgnore is the .gitignore of a new project repository (rule PR23,
@@ -22,6 +22,10 @@ import (
 func ProjectIgnore() string {
 	return strings.Join([]string{".env", "/.hikari/", "/repos/", ".obsidian/", ".DS_Store", "/.claude/settings.local.json"}, "\n") + "\n"
 }
+
+// TopologyFile is the name of the topology file that hikari init writes and
+// that hikari's commands open when no file is named.
+const TopologyFile = "topology.yaml"
 
 const envExample = `# Copy this file to .env and set one credential. Git ignores .env.
 # Make a long-lived token with: claude setup-token
@@ -33,10 +37,10 @@ CLAUDE_CODE_OAUTH_TOKEN=
 # HIKARI_BRANCH=hikari-<your name>
 `
 
-const starterCompose = `# The %[1]s project. Start it with: hikari up compose.yaml
+const starterTopology = `# The %[1]s project. Start it with: hikari up
 #
-# This file is a Docker compose file. The x-hikari keys describe the
-# orchestrator and the systems; see the hikari README.
+# This is the topology file: a Docker Compose file whose x-hikari keys
+# describe the orchestration agent and the partitions; see the hikari README.
 
 name: %[1]s
 
@@ -44,9 +48,9 @@ x-hikari:
   # Agents commit to this branch of this repository and of each linked repo,
   # and you merge it. HIKARI_BRANCH in .env gives each person their own.
   project: {branch: "${HIKARI_BRANCH:-hikari}"}
-  # repos:                   # a repository that holds a system's code
-  #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync compose.yaml
-  orchestration: orchestrator   # every other agent owns a system
+  # repos:                   # a repository that holds a partition's code
+  #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync
+  orchestration: orchestrator   # every other agent has a partition
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
@@ -54,25 +58,25 @@ x-agent: &agent
 services:
   orchestrator:
     <<: *agent
-    image: hikari-agent      # an owner builds its own image from hikari-agent instead
+    image: hikari-agent      # a partition agent builds its own image from hikari-agent instead
     x-hikari:
-      description: Orchestrates the project. Plans from the system maps and reports to you.
+      description: Orchestrates the project. Plans from the feature maps and reports to you.
 
-  # An owner of a system. A system's code can be in a repo under
+  # A partition agent. A partition's code can be in a repo under
   # x-hikari.repos, or in this repository with repo: project.
   # app:
   #   <<: *agent
   #   build: {context: ., dockerfile: app.Dockerfile}   # FROM hikari-agent, with the app's toolchain
   #   x-hikari:
   #     description: Owns the app.
-  #     system: {repo: app, test: make test}           # no scope: the whole repo
+  #     partition: {repo: app, test: make test}           # no scope: the whole repo
 `
 
-// StarterCompose returns the starter compose file of a project named
+// StarterTopology returns the starter topology file of a project named
 // name. Without project, it leaves out x-hikari.project, for a directory
 // that is not a project repository (rule TA6 of the topology API spec).
-func StarterCompose(name string, project bool) string {
-	text := fmt.Sprintf(starterCompose, name)
+func StarterTopology(name string, project bool) string {
+	text := fmt.Sprintf(starterTopology, name)
 	if !project {
 		text = strings.Replace(text, projectLines, "", 1)
 		text = strings.Replace(text, linkedRepoLines, "", 1)
@@ -85,8 +89,8 @@ const projectLines = `  # Agents commit to this branch of this repository and of
   project: {branch: "${HIKARI_BRANCH:-hikari}"}
 `
 
-const linkedRepoLines = `  # repos:                   # a repository that holds a system's code
-  #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync compose.yaml
+const linkedRepoLines = `  # repos:                   # a repository that holds a partition's code
+  #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync
 `
 
 // Empty reports whether a directory holds nothing but hikari's own
@@ -113,7 +117,7 @@ func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, e
 	files := map[string]string{
 		".gitignore":   ProjectIgnore(),
 		".env.example": envExample,
-		"compose.yaml": StarterCompose(name, true),
+		TopologyFile:   StarterTopology(name, true),
 	}
 	for rel, content := range files {
 		p := filepath.Join(dir, rel)
@@ -124,7 +128,7 @@ func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, e
 			return false, err
 		}
 	}
-	st := store.Store{Root: filepath.Join(dir, "store")}
+	st := vault.Vault{Root: filepath.Join(dir, "store")}
 	if err := st.Prepare(nil); err != nil {
 		return false, err
 	}

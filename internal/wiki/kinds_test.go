@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-var systemKinds = []string{Feature, Principle, Rule}
+var partitionKinds = []string{Feature, Principle, Rule}
 var publicKinds = []string{Story, Rule, Principle}
 
 func TestKinds(t *testing.T) {
-	c := Check{Kinds: systemKinds}
+	c := Check{Kinds: partitionKinds}
 	w, _, err := Apply(Wiki{}, []Write{
 		{Op: "create", ID: "reserve-stock", Name: "Reserve stock", Description: "Hold stock.", Body: body("Holds stock; keeps [[never-negative]].")},
 		{Op: "create", ID: "never-negative", Kind: Rule, Name: "Never negative", Description: "Stock never goes below zero.", Body: body("Why.")},
@@ -37,7 +37,7 @@ func TestKinds(t *testing.T) {
 		c    Check
 		want string
 	}{
-		"story in a system":          {Write{Op: "create", ID: "s", Kind: Story, Name: "S", Description: "D.", Body: body("p")}, c, "holds feature, principle, rule"},
+		"story in a partition":       {Write{Op: "create", ID: "s", Kind: Story, Name: "S", Description: "D.", Body: body("p")}, c, "holds feature, principle, rule"},
 		"no kind in the public wiki": {Write{Op: "create", ID: "s", Name: "S", Description: "D.", Body: body("p")}, Check{Kinds: publicKinds}, "needs a kind"},
 		"a plan":                     {Write{Op: "create", ID: "p", Kind: Plan, Name: "P", Description: "D.", Body: body("p")}, c, "T3"},
 		"interfaces":                 {Write{Op: "create", ID: "p", Kind: Principle, Name: "P", Description: "D.", Interfaces: []string{"x"}, Body: body("p")}, c, "W3"},
@@ -88,7 +88,7 @@ func TestUserDocuments(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "odd.md"), []byte("---\nkind: wish\ntags: [x]\n---\nA wish.\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "plan.md"), []byte("---\nkind: plan\nstatus: doing\nid: something-else\nrelated: [\"[[a#b]]\"]\n---\nPlan.\n"), 0o644)
 	os.MkdirAll(filepath.Join(dir, "attachments"), 0o755)
-	s, err := Open(dir, systemKinds)
+	s, err := Open(dir, partitionKinds)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestUserDocuments(t *testing.T) {
 		}
 	}
 	if strings.Contains(ws, `links "reserve-stock"`) {
-		t.Errorf("N3: a user document may link any document of the store:\n%s", ws)
+		t.Errorf("N3: a user document may link any document of the vault:\n%s", ws)
 	}
 	if p := UserNameProblem("a: b"); p == "" {
 		t.Error("D2: a colon is refused")

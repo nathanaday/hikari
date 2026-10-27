@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/nathanaday/hikari/internal/node"
+	"github.com/nathanaday/hikari/internal/driver"
 )
 
 //go:embed skills
@@ -21,7 +21,7 @@ var skills embed.FS
 // that it repeats, so that both come from one source.
 var borrowed = map[string]map[string]string{
 	"hikify": {
-		"references/wiki.md":        "skills/hikari-system/references/wiki.md",
+		"references/wiki.md":        "skills/hikari-partition/references/wiki.md",
 		"references/public-wiki.md": "skills/hikari-orchestration/SKILL.md",
 	},
 }
@@ -75,7 +75,7 @@ func Write(dir string) error {
 			return err
 		}
 		for rel, src := range borrowed[name] {
-			data, err := node.BuiltinFile(src)
+			data, err := driver.BuiltinFile(src)
 			if err != nil {
 				return err
 			}

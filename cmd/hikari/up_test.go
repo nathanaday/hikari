@@ -38,7 +38,7 @@ func TestRunnerEditingStates(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Chdir(dir)
-	file := filepath.Join(dir, "compose.yaml")
+	file := filepath.Join(dir, "topology.yaml")
 
 	r, h, _ := newRunner(t, file)
 	r.start()
@@ -73,7 +73,7 @@ func TestRunnerStartAndStop(t *testing.T) {
 		}
 	}
 	t.Chdir(dir)
-	r, h, log := newRunner(t, filepath.Join(dir, "compose.yaml"))
+	r, h, log := newRunner(t, filepath.Join(dir, "topology.yaml"))
 	r.start()
 	if h.Mode() != server.ModeRunning || r.cur == nil {
 		data, _ := os.ReadFile(log)

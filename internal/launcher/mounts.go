@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/store"
+	"github.com/nathanaday/hikari/internal/vault"
 )
 
 // Mount is a bind mount of a host path.
@@ -16,12 +16,12 @@ type Mount struct {
 	ReadOnly bool
 }
 
-// SystemMounts returns the mounts of an owner's code (rules M1 to M3, M5,
+// PartitionMounts returns the mounts of a partition agent's code (rules M1 to M3, M5,
 // and M7): the scope read-write, each read path read-only, the private
 // documents at /hikari/private, an empty directory over the scope's
 // .hikari, and an empty directory over .git when the scope is the whole
 // repo.
-func SystemMounts(repoPath, scope string, read []string, emptyDir string) []Mount {
+func PartitionMounts(repoPath, scope string, read []string, emptyDir string) []Mount {
 	scopeTarget := api.WorkDir(scope)
 	mounts := []Mount{{Source: filepath.Join(repoPath, scope), Target: scopeTarget}}
 	for _, p := range read {
@@ -37,17 +37,17 @@ func SystemMounts(repoPath, scope string, read []string, emptyDir string) []Moun
 	return mounts
 }
 
-// StoreMounts returns the store mounts of an agent (section 3 of the shared
-// store spec). Every agent reads the shared area. An owner gets its own
-// system directory read-only with its staging area read-write. Each
-// visible system is mounted read-only with its staging area hidden, and
-// each other granted system gets its releases read-only. The public wiki
+// VaultMounts returns the vault mounts of an agent (section 3 of the shared
+// store spec). Every agent reads the shared area. A partition agent gets its own
+// partition directory read-only with its staging area read-write. Each
+// visible partition is mounted read-only with its staging area hidden, and
+// each other granted partition gets its releases read-only. The public wiki
 // is in the shared area (rule A1 of the wikis spec).
-func StoreMounts(st store.Store, agent string, owner bool, visible, readable []string, emptyDir string) []Mount {
+func VaultMounts(st vault.Vault, agent string, partitionAgent bool, visible, readable []string, emptyDir string) []Mount {
 	mounts := []Mount{{Source: st.SharedDir(), Target: api.SharedDir, ReadOnly: true}}
-	if owner {
+	if partitionAgent {
 		mounts = append(mounts,
-			Mount{Source: st.SystemDir(agent), Target: api.ExportDir, ReadOnly: true},
+			Mount{Source: st.PartitionDir(agent), Target: api.ExportDir, ReadOnly: true},
 			Mount{Source: st.Staging(agent), Target: path.Join(api.ExportDir, "staging")},
 		)
 	}
@@ -55,7 +55,7 @@ func StoreMounts(st store.Store, agent string, owner bool, visible, readable []s
 		if slices.Contains(visible, sys) {
 			target := path.Join(api.ReadonlyDir, "systems", sys)
 			mounts = append(mounts,
-				Mount{Source: st.SystemDir(sys), Target: target, ReadOnly: true},
+				Mount{Source: st.PartitionDir(sys), Target: target, ReadOnly: true},
 				Mount{Source: emptyDir, Target: path.Join(target, "staging"), ReadOnly: true},
 			)
 		} else {

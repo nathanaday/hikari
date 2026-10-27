@@ -57,7 +57,7 @@ func remote(t *testing.T, files map[string]string) string {
 	return "file://" + bare
 }
 
-// topo is a project whose owner dev owns src in the linked repo app, on
+// topo is a project whose partition agent dev owns src in the linked repo app, on
 // branch.
 func topo(t *testing.T, dir, branch, url string) *topology.Topology {
 	t.Helper()
@@ -69,19 +69,19 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  dev: {x-hikari: {system: {repo: app, scope: src}}}
+  dev: {x-hikari: {partition: {repo: app, scope: src}}}
 `
 	tp, err := topology.Parse([]byte(src), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tp.File = filepath.Join(dir, "compose.yaml")
+	tp.File = filepath.Join(dir, "topology.yaml")
 	return tp
 }
 
 var projectFiles = map[string]string{
 	".gitignore":           ".env\n/.hikari/\n/repos/\n",
-	"compose.yaml":         "# see topo()\n",
+	"topology.yaml":        "# see topo()\n",
 	"store/README.md":      "store\n",
 	"store/shared/note.md": "x\n",
 }
@@ -137,7 +137,7 @@ func work(t *testing.T, project string, tp *topology.Topology, file string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, project, "store/systems/dev/map.yaml", "version: 4\nsystem:\n  name: dev\n  described_state: {commit: "+commit+"}\nfeatures: []\n")
+	write(t, project, "store/systems/dev/map.yaml", "version: 4\npartition:\n  name: dev\n  described_state: {commit: "+commit+"}\nfeatures: []\n")
 	if _, err := pr.CommitPaths(tp.Project.Branch, []string{"store"}, "dev", "dev: map"); err != nil {
 		t.Fatal(err)
 	}

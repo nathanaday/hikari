@@ -1,4 +1,4 @@
-// Package mcpserver exposes the server's node API to Claude Code as MCP tools.
+// Package mcpserver exposes the server's agent API to Claude Code as MCP tools.
 package mcpserver
 
 import (
@@ -23,17 +23,17 @@ type directArgs struct {
 type noArgs struct{}
 
 // New returns the MCP server of the agent described by self. Every agent
-// gets the messaging tools and get_vocabulary. Owners also get the map
-// tools, and the orchestrator the system and vocabulary tools.
+// gets the messaging tools and get_vocabulary. Partition agents also get the map
+// tools, and the orchestration agent the partition and vocabulary tools.
 func New(c *api.Client, self api.Self) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.3.0"}, nil)
 	addVocabularyReader(s, c)
 	addWikiReaders(s, c)
-	if self.System != nil {
-		addOwnerTools(s, c)
+	if self.Partition != nil {
+		addPartitionAgentTools(s, c)
 	}
-	if self.Orchestrator {
-		addOrchestratorTools(s, c)
+	if self.Orchestration {
+		addOrchestrationTools(s, c)
 	}
 
 	mcp.AddTool(s, &mcp.Tool{

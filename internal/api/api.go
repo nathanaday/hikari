@@ -1,4 +1,4 @@
-// Package api holds the wire types of the server's node API and a client for
+// Package api holds the wire types of the server's agent API and a client for
 // it.
 package api
 
@@ -27,9 +27,9 @@ type Message struct {
 }
 
 const (
-	RoleOrchestrator = "orchestrator"
-	RoleOwner        = "owner"
-	RoleOperator     = "operator"
+	RoleOrchestration = "orchestration"
+	RolePartition     = "partition"
+	RoleOperator      = "operator"
 )
 
 type Peer struct {
@@ -43,25 +43,25 @@ type Self struct {
 	Description  string `json:"description,omitempty"`
 	Instructions string `json:"instructions,omitempty"`
 	Model        string `json:"model,omitempty"`
-	// Participants lists everyone in the room: the orchestrator first and
+	// Participants lists everyone in the room: the orchestration agent first and
 	// the user last.
 	Participants []Peer `json:"participants"`
-	// System is set when the agent owns a system.
-	System *SelfSystem `json:"system,omitempty"`
-	// Orchestrator says that the agent is the project's orchestrator.
-	Orchestrator bool `json:"orchestrator,omitempty"`
-	// VisibleSystems lists the systems whose maps the orchestrator reads.
-	VisibleSystems []string `json:"visible_systems,omitempty"`
-	// Releases lists the systems whose releases the agent can read.
+	// Partition is set when the agent has a partition.
+	Partition *SelfPartition `json:"partition,omitempty"`
+	// Orchestration says that the agent is the project's orchestration agent.
+	Orchestration bool `json:"orchestration,omitempty"`
+	// VisiblePartitions lists the partitions whose maps the orchestration agent reads.
+	VisiblePartitions []string `json:"visible_partitions,omitempty"`
+	// Releases lists the partitions whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
-	// Deliverables lists the deliverables that an owner publishes.
+	// Deliverables lists the deliverables that a partition agent publishes.
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
-	// OwnerGrants maps each owner, for the orchestrator, to the systems
+	// PartitionAgentGrants maps each partition agent, for the orchestration agent, to the partitions
 	// whose releases it is granted.
-	OwnerGrants map[string][]string `json:"owner_grants,omitempty"`
-	// OwnerDeliverables maps each owner, for the orchestrator, to the
+	PartitionAgentGrants map[string][]string `json:"partition_agent_grants,omitempty"`
+	// PartitionAgentDeliverables maps each partition agent, for the orchestration agent, to the
 	// deliverables it publishes.
-	OwnerDeliverables map[string][]DeliverableInfo `json:"owner_deliverables,omitempty"`
+	PartitionAgentDeliverables map[string][]DeliverableInfo `json:"partition_agent_deliverables,omitempty"`
 }
 
 // DeliverableInfo names a deliverable for a prompt. Description is the
@@ -71,16 +71,16 @@ type DeliverableInfo struct {
 	Description string `json:"description"`
 }
 
-// SystemSkill and OrchestrationSkill are hikari's own skills, which always come from
-// the binary: one for owners, one for orchestrators. No shared skill or
+// PartitionSkill and OrchestrationSkill are hikari's own skills, which always come from
+// the binary: one for partition agents, one for orchestration agents. No shared skill or
 // deliverable may use their names.
 const (
-	SystemSkill        = "hikari-system"
+	PartitionSkill     = "hikari-partition"
 	OrchestrationSkill = "hikari-orchestration"
 )
 
 // BuiltinSkills are hikari's own skills.
-var BuiltinSkills = []string{SystemSkill, OrchestrationSkill}
+var BuiltinSkills = []string{PartitionSkill, OrchestrationSkill}
 
 // AgentPrefix starts the name of each of hikari's own agents. No shared
 // agent may use it.
@@ -164,31 +164,31 @@ func ClientFromEnv() (*Client, error) {
 
 func (c *Client) Self(ctx context.Context) (Self, error) {
 	var s Self
-	err := c.do(ctx, http.MethodGet, "/api/node/self", nil, &s)
+	err := c.do(ctx, http.MethodGet, "/api/agent/self", nil, &s)
 	return s, err
 }
 
 func (c *Client) Send(ctx context.Context, req SendRequest) (Message, error) {
 	var m Message
-	err := c.do(ctx, http.MethodPost, "/api/node/send", req, &m)
+	err := c.do(ctx, http.MethodPost, "/api/agent/send", req, &m)
 	return m, err
 }
 
-// Inbox removes and returns the node's pending messages. With wait > 0, it
-// first waits up to wait for a message that wakes the node.
+// Inbox removes and returns the driver's pending messages. With wait > 0, it
+// first waits up to wait for a message that wakes the driver.
 func (c *Client) Inbox(ctx context.Context, wait time.Duration) ([]Message, error) {
 	var msgs []Message
-	path := "/api/node/inbox?wait=" + url.QueryEscape(wait.String())
+	path := "/api/agent/inbox?wait=" + url.QueryEscape(wait.String())
 	err := c.do(ctx, http.MethodGet, path, nil, &msgs)
 	return msgs, err
 }
 
 func (c *Client) SetStatus(ctx context.Context, s Status) error {
-	return c.do(ctx, http.MethodPut, "/api/node/status", s, nil)
+	return c.do(ctx, http.MethodPut, "/api/agent/status", s, nil)
 }
 
 func (c *Client) PostActivity(ctx context.Context, a Activity) error {
-	return c.do(ctx, http.MethodPost, "/api/node/activity", a, nil)
+	return c.do(ctx, http.MethodPost, "/api/agent/activity", a, nil)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {

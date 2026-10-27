@@ -1,4 +1,4 @@
-// Package testmap holds an owner's test map (tests.yaml), which links the
+// Package testmap holds a partition agent's test map (tests.yaml), which links the
 // tests that a runner reports to the features of the wiki; the results of
 // the last run of each suite (results.yaml); the JUnit XML reports that runs
 // write; and the health of each feature, computed from all three.
@@ -46,7 +46,7 @@ type Suite struct {
 func Empty(command string) Map {
 	m := Map{Version: version, Suites: map[string]Suite{}, Tests: map[string][]string{}}
 	if command != "" {
-		m.Suites["all"] = Suite{Command: command, Description: "Runs every test of the system."}
+		m.Suites["all"] = Suite{Command: command, Description: "Runs every test of the partition."}
 	}
 	return m
 }

@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-// TestExamples loads each example compose file through compose. The shop
+// TestExamples loads each example topology file through compose. The shop
 // needs the demo repo, which `make demo-repo` creates.
 func TestExamples(t *testing.T) {
 	if exec.Command("docker", "compose", "version").Run() != nil {
 		t.Skip("docker compose is not available")
 	}
-	files, _ := filepath.Glob("../../examples/*/compose.yaml")
+	files, _ := filepath.Glob("../../examples/*/topology.yaml")
 	if len(files) == 0 {
 		t.Fatal("no examples found")
 	}

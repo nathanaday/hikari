@@ -76,7 +76,7 @@ func (h *Host) setMode(mode string, run *Server, findings []topology.Finding) {
 func (h *Host) Starting() { h.setMode(ModeStarting, nil, nil) }
 func (h *Host) Stopping() { h.setMode(ModeStopping, nil, nil) }
 
-// Attach passes the node API to a run's server while it starts, so that
+// Attach passes the agent API to a run's server while it starts, so that
 // the agents can reach it before the UI moves to the running mode.
 func (h *Host) Attach(s *Server) {
 	h.mu.Lock()
@@ -98,7 +98,7 @@ func (h *Host) Editing(findings []topology.Finding) {
 	h.setMode(ModeEditing, nil, findings)
 }
 
-// TopologyChanged tells every open UI that the compose file changed on
+// TopologyChanged tells every open UI that the topology file changed on
 // disk (rule TA8).
 func (h *Host) TopologyChanged(revision string) {
 	h.mu.Lock()
@@ -139,11 +139,11 @@ func (h *Host) Handler() http.Handler {
 		}
 		text, err := readFile(h.editor.File)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "the compose file does not exist; create it first")
+			writeError(w, http.StatusBadRequest, "the topology file does not exist; create it first")
 			return
 		}
 		if fs := h.editor.Lint(r.Context(), text); editor.HasError(fs) {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the compose file has errors; fix them first", "findings": fs})
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the topology file has errors; fix them first", "findings": fs})
 			return
 		}
 		h.Starting()
@@ -245,7 +245,7 @@ func (h *Host) events(w http.ResponseWriter, r *http.Request) {
 func (h *Host) editingSnapshot(mode string, findings []topology.Finding) Snapshot {
 	snap := Snapshot{
 		Version: version.Version, Mode: mode, Me: topology.User, File: linked.Shown(h.editor.File),
-		Agents: []NodeView{}, Participants: []api.Peer{}, Messages: []api.Message{}, Systems: []api.SystemView{},
+		Agents: []AgentView{}, Participants: []api.Peer{}, Messages: []api.Message{}, Partitions: []api.PartitionView{},
 		Repos: []api.RepoInfo{}, Deliverables: []deliverableEntry{}, Wikis: []api.WikiView{},
 		Activity: map[string][]api.Activity{}, StartFindings: findings,
 	}

@@ -120,8 +120,8 @@ func TestIsIgnoredPathsThatDoNotExist(t *testing.T) {
 			t.Errorf("%s is not ignored", p)
 		}
 	}
-	if r.IsIgnored("compose.yaml") || r.IsIgnored("store/") {
-		t.Error("compose.yaml and store/ are not ignored")
+	if r.IsIgnored("topology.yaml") || r.IsIgnored("store/") {
+		t.Error("topology.yaml and store/ are not ignored")
 	}
 }
 
@@ -161,7 +161,7 @@ func TestCommitStaysInScope(t *testing.T) {
 	write(t, r.Path, "services/orders/cancel.py", "def cancel(): pass\n")
 	write(t, r.Path, "services/inventory/stock.py", "def reserve(): return 1\n")
 	os.Remove(filepath.Join(r.Path, "README.md"))
-	// Another owner's staged change must not enter this commit.
+	// Another partition agent's staged change must not enter this commit.
 	run(t, r.Path, "add", "services/inventory/stock.py")
 
 	commit, err := r.Commit("hikari/work", "services/orders", "orders", "Add cancel")
@@ -176,7 +176,7 @@ func TestCommitStaysInScope(t *testing.T) {
 		t.Errorf("author|committer|subject = %q", got)
 	}
 
-	// The other owner commits its own change, including the deletion only
+	// The other partition agent commits its own change, including the deletion only
 	// when the scope is the whole repo.
 	if _, err := r.Commit("hikari/work", "services/inventory", "inventory", "Reserve"); err != nil {
 		t.Fatal(err)

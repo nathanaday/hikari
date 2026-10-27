@@ -1,5 +1,5 @@
 // Package editor serves the topology API of the UI (section 6 of the
-// topology API spec): it reads, lints, plans, and saves the compose file,
+// topology API spec): it reads, lints, plans, and saves the topology file,
 // and commits each save in a project repository.
 package editor
 
@@ -21,19 +21,19 @@ import (
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/scaffold"
-	"github.com/nathanaday/hikari/internal/store"
 	"github.com/nathanaday/hikari/internal/topoedit"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/vault"
 )
 
 // Committer commits paths of the project repository, relative to it, as
-// the user, and returns the commit. During a run, the systems manager
+// the user, and returns the commit. During a run, the partitions manager
 // commits (decision 8 of the topology API spec).
 type Committer func(paths []string, message string) (string, error)
 
-// Editor edits one compose file.
+// Editor edits one topology file.
 type Editor struct {
-	// File is the compose file's absolute path.
+	// File is the topology file's absolute path.
 	File string
 	// WriteSkills writes the host skills into a new project repository.
 	// The command sets it, so that this package needs nothing of the
@@ -187,7 +187,7 @@ type ConflictError struct {
 }
 
 func (e *ConflictError) Error() string {
-	return "the compose file changed since you opened it; reload it, or apply your changes again"
+	return "the topology file changed since you opened it; reload it, or apply your changes again"
 }
 
 func (e *Editor) checkRevision(revision string) ([]byte, error) {
@@ -204,20 +204,20 @@ func (e *Editor) checkRevision(revision string) ([]byte, error) {
 	return text, nil
 }
 
-func (e *Editor) store(m *topoedit.Model) string {
+func (e *Editor) vault(m *topoedit.Model) string {
 	if m == nil {
 		return ""
 	}
-	if m.Project.Store == "" {
+	if m.Project.Vault == "" {
 		return filepath.Join(e.dir(), "store")
 	}
-	if topoedit.IsExpression(m.Project.Store) {
+	if topoedit.IsExpression(m.Project.Vault) {
 		return ""
 	}
-	if filepath.IsAbs(m.Project.Store) {
-		return m.Project.Store
+	if filepath.IsAbs(m.Project.Vault) {
+		return m.Project.Vault
 	}
-	return filepath.Join(e.dir(), m.Project.Store)
+	return filepath.Join(e.dir(), m.Project.Vault)
 }
 
 func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (Plan, error) {
@@ -233,7 +233,7 @@ func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (
 	return Plan{
 		Revision: revision, Text: string(res.Text), Diff: topoedit.Diff(string(text), string(res.Text)),
 		Findings: e.Lint(ctx, res.Text), Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
-		Occurrences: topoedit.Occurrences(e.store(m), res.Renames), AppliesAtStart: e.mode() == "running",
+		Occurrences: topoedit.Occurrences(e.vault(m), res.Renames), AppliesAtStart: e.mode() == "running",
 		Model: topoedit.ReadModel(res.Text, e.dir()),
 	}, nil
 }
@@ -264,14 +264,14 @@ func (e *Editor) Apply(revision string, ops []topoedit.Op, propagate []string) (
 	paths := []string{filepath.Base(e.File)}
 	var skipped []string
 	if len(propagate) > 0 {
-		store := e.store(m)
-		changed, sk, err := topoedit.Propagate(store, res.Renames, propagate)
+		vault := e.vault(m)
+		changed, sk, err := topoedit.Propagate(vault, res.Renames, propagate)
 		if err != nil {
 			return Saved{}, err
 		}
 		skipped = sk
 		for _, c := range changed {
-			if rel, err := filepath.Rel(e.dir(), filepath.Join(store, filepath.FromSlash(c))); err == nil && filepath.IsLocal(rel) {
+			if rel, err := filepath.Rel(e.dir(), filepath.Join(vault, filepath.FromSlash(c))); err == nil && filepath.IsLocal(rel) {
 				paths = append(paths, filepath.ToSlash(rel))
 			}
 		}
@@ -335,7 +335,7 @@ func (e *Editor) commit(m *topoedit.Model, paths []string, msg string) (string, 
 	return commit, ""
 }
 
-// Create writes a new project or compose file (rule TA6).
+// Create writes a new project or topology file (rule TA6).
 func (e *Editor) Create() (Saved, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -349,7 +349,7 @@ func (e *Editor) Create() (Saved, error) {
 		return Saved{}, err
 	}
 	saved := Saved{Skipped: []string{}}
-	if scaffold.Empty(entries) && filepath.Base(e.File) == "compose.yaml" {
+	if scaffold.Empty(entries) && filepath.Base(e.File) == scaffold.TopologyFile {
 		writeSkills := e.WriteSkills
 		if writeSkills == nil {
 			writeSkills = func(string) error { return nil }
@@ -361,7 +361,7 @@ func (e *Editor) Create() (Saved, error) {
 		if !committed {
 			saved.Note = "git has no identity, so the new project is not committed"
 		}
-	} else if err := writeFile(e.File, []byte(scaffold.StarterCompose(name, false))); err != nil {
+	} else if err := writeFile(e.File, []byte(scaffold.StarterTopology(name, false))); err != nil {
 		return Saved{}, err
 	}
 	text, _, _ := e.read()
@@ -409,8 +409,8 @@ func (e *Editor) Options() Options {
 	if m == nil {
 		return o
 	}
-	if root := e.store(m); root != "" {
-		if names, err := (store.Store{Root: root}).DeliverableNames(); err == nil && names != nil {
+	if root := e.vault(m); root != "" {
+		if names, err := (vault.Vault{Root: root}).DeliverableNames(); err == nil && names != nil {
 			o.Deliverables = names
 		}
 	}

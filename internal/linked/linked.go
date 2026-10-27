@@ -11,11 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
+	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/gitrepo"
-	"github.com/nathanaday/hikari/internal/sysmap"
-	"github.com/nathanaday/hikari/internal/systems"
+	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -79,7 +77,7 @@ func Uncommitted(topo *topology.Topology, name string) []string {
 	if err != nil {
 		return []string{err.Error()}
 	}
-	if name == topology.ProjectRepo && repo.Branch() == r.Branch && !slices.ContainsFunc(changed, func(p string) bool { return !systems.IsWikiPath(topo.StoreInProject(), p) }) {
+	if name == topology.ProjectRepo && repo.Branch() == r.Branch && !slices.ContainsFunc(changed, func(p string) bool { return !partitions.IsWikiPath(topo.VaultInProject(), p) }) {
 		return nil
 	}
 	return changed
@@ -111,35 +109,34 @@ func listed(paths []string) string {
 	return strings.Join(paths, ", ")
 }
 
-// mapCommits returns the commit that each system's map describes, for the
-// systems of repo. In a project repository, the maps are read from your
-// branch, which hikari up checks out; otherwise from the store's files.
+// mapCommits returns the commit that each partition's map describes, for the
+// partitions of repo. In a project repository, the maps are read from your
+// branch, which hikari up checks out; otherwise from the vault's files.
 func mapCommits(topo *topology.Topology, repo string) map[string]string {
 	out := map[string]string{}
-	st := topo.StoreOf()
+	st := topo.VaultOf()
 	var project *gitrepo.Repo
-	if p := topo.Project; p != nil && topo.StoreInProject() != "" {
+	if p := topo.Project; p != nil && topo.VaultInProject() != "" {
 		if r := gitrepo.Open(p.Path); r.HasBranch(p.Branch) {
 			project = r
 		}
 	}
-	for _, owner := range topo.Owners() {
-		if topo.Agents[owner].System.Repo != repo {
+	for _, partitionAgent := range topo.PartitionAgents() {
+		if topo.Agents[partitionAgent].Partition.Repo != repo {
 			continue
 		}
 		var data []byte
 		var err error
 		if project != nil {
-			data, err = project.Show("refs/heads/"+topo.Project.Branch, topo.StoreInProject()+"/systems/"+owner+"/map.yaml")
+			data, err = project.Show("refs/heads/"+topo.Project.Branch, topo.VaultInProject()+"/systems/"+partitionAgent+"/map.yaml")
 		} else {
-			data, err = os.ReadFile(st.MapFile(owner))
+			data, err = os.ReadFile(st.MapFile(partitionAgent))
 		}
 		if err != nil {
 			continue
 		}
-		var m sysmap.Map
-		if yaml.Unmarshal(data, &m) == nil && m.System.DescribedState.Commit != "" {
-			out[owner] = m.System.DescribedState.Commit
+		if m, err := featuremap.Decode(data); err == nil && m.Partition.DescribedState.Commit != "" {
+			out[partitionAgent] = m.Partition.DescribedState.Commit
 		}
 	}
 	return out

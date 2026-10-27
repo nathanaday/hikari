@@ -52,7 +52,7 @@ func initProject(args []string) error {
 		fmt.Printf("git has no identity, so the files are not committed. Set user.name and user.email, then run:\n  git -C %s add --all && git -C %s commit -m \"Start the %s project\"\n\n", dir, dir, *name)
 	}
 	fmt.Printf("Next:\n  cp %s %s    and set a credential\n  hikari up %s\n",
-		filepath.Join(dir, ".env.example"), filepath.Join(dir, ".env"), filepath.Join(dir, "compose.yaml"))
+		filepath.Join(dir, ".env.example"), filepath.Join(dir, ".env"), filepath.Join(dir, scaffold.TopologyFile))
 	fmt.Printf("\nTo bring existing repositories into the project, open Claude Code in %s and run /containerize-repo.\n", dir)
 	return nil
 }

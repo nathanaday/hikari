@@ -123,14 +123,14 @@ func track(repo *gitrepo.Repo, branch, from string) (string, bool) {
 	return fmt.Sprintf("%s is up to date with origin/%s", branch, branch), false
 }
 
-// mapFindings reports each map of a system in repo whose commit the repo does not
+// mapFindings reports each map of a partition in repo whose commit the repo does not
 // have (rule SY6).
 func mapFindings(topo *topology.Topology, name string, repo *gitrepo.Repo) []Result {
 	var out []Result
 	commits := mapCommits(topo, name)
-	for _, owner := range slices.Sorted(maps.Keys(commits)) {
-		if c := commits[owner]; !repo.HasCommit(c) {
-			out = append(out, Result{Repo: name, Failed: true, Text: fmt.Sprintf("the map of %s describes commit %.12s, which this clone does not have; the teammate who ran %s may not have pushed it", owner, c, owner)})
+	for _, partitionAgent := range slices.Sorted(maps.Keys(commits)) {
+		if c := commits[partitionAgent]; !repo.HasCommit(c) {
+			out = append(out, Result{Repo: name, Failed: true, Text: fmt.Sprintf("the map of %s describes commit %.12s, which this clone does not have; the teammate who ran %s may not have pushed it", partitionAgent, c, partitionAgent)})
 		}
 	}
 	return out

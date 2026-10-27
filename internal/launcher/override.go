@@ -40,15 +40,15 @@ func TokenVar(id string) string {
 func NetworkName(project, agent string) string { return project + "-agent-" + agent }
 
 // AgentMounts returns every hikari mount of an agent: its code when it owns
-// a system, and its part of the store.
+// a partition, and its part of the vault.
 func AgentMounts(t *topology.Topology, agent, emptyDir string) []Mount {
 	var mounts []Mount
 	a := t.Agents[agent]
-	if s := a.System; s != nil {
-		mounts = SystemMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
+	if s := a.Partition; s != nil {
+		mounts = PartitionMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
 	}
-	st := t.StoreOf()
-	return append(mounts, StoreMounts(st, agent, a.System != nil, t.VisibleSystems(agent), t.ReadableReleases(agent), emptyDir)...)
+	st := t.VaultOf()
+	return append(mounts, VaultMounts(st, agent, a.Partition != nil, t.VisiblePartitions(agent), t.ReadableReleases(agent), emptyDir)...)
 }
 
 type overrideFile struct {
@@ -109,7 +109,7 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 		network := "agent-" + id
 		f.Networks[network] = overrideNetwork{Name: NetworkName(t.ID, id), Labels: labels}
 		svc := overrideService{
-			Entrypoint: []string{api.BinaryPath, "node"},
+			Entrypoint: []string{api.BinaryPath, "driver"},
 			Init:       true,
 			Networks:   replaced{network},
 			ExtraHosts: []string{"host.docker.internal:host-gateway"},
@@ -121,7 +121,7 @@ func Override(t *topology.Topology, in OverrideInput) ([]byte, error) {
 			Labels:  labels,
 			Volumes: []composeMount{{Type: "bind", Source: escape(in.Binaries[agent]), Target: api.BinaryPath, ReadOnly: true}},
 		}
-		if s := t.Agents[agent].System; s != nil {
+		if s := t.Agents[agent].Partition; s != nil {
 			svc.WorkingDir = api.WorkDir(s.Scope)
 		}
 		for _, m := range AgentMounts(t, agent, in.EmptyDir) {

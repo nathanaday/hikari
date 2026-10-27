@@ -1,6 +1,6 @@
-# The compose file of a containerized project
+# The topology file of a containerized project
 
-`compose.yaml` is a Docker compose file. Its `x-hikari` keys tell hikari the repositories, the systems, and the orchestrator. Compose interpolates `${...}` everywhere, so write `$$` for a literal `$` in instructions.
+`topology.yaml` is a Docker Compose file. Its `x-hikari` keys tell hikari the repositories, the partitions, and the orchestration agent. Compose interpolates `${...}` everywhere, so write `$$` for a literal `$` in instructions.
 
 ```yaml
 name: myproject
@@ -20,7 +20,7 @@ services:
     <<: *agent
     image: hikari-agent
     x-hikari:
-      description: Orchestrates the acme product. Plans from the system maps and reports to the user.
+      description: Orchestrates the acme product. Plans from the feature maps and reports to the user.
 
   server:
     <<: *agent
@@ -31,7 +31,7 @@ services:
       instructions: |
         Format with ruff. Keep each handler in its own module.
         Do not run tests/browser: it needs Playwright and a browser, which this container lacks.
-      system:
+      partition:
         repo: server
         test: python3 -m pytest -q tests --ignore=tests/browser -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
 
@@ -42,9 +42,9 @@ volumes:
 ## Rules that hikari checks
 
 - Names of services and repos: lowercase letters, digits, and dashes, at most 32 characters.
-- `x-hikari.orchestration` names the service of the orchestrator, which owns no system. Every other agent owns a system.
-- A system without `scope` owns the whole repository. Its container sees it at `/workspace`.
-- A service sets no `networks`, `ports`, `privileged`, `network_mode`, or bind mount of a repository. hikari mounts the repositories and the store itself.
+- `x-hikari.orchestration` names the service of the orchestration agent, which has no partition. Every other agent has a partition.
+- A partition without `scope` owns the whole repository. Its container sees it at `/workspace`.
+- A service sets no `networks`, `ports`, `privileged`, `network_mode`, or bind mount of a repository. hikari mounts the repositories and the vault itself.
 - Under `/workspace`, only named volumes and tmpfs inside the agent's own scope are allowed. Use them for dependency folders such as `node_modules` or `.venv`, so that installs do not land in git.
 - No `environment` variable starts with `HIKARI_`.
 

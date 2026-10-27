@@ -21,15 +21,15 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/console"
+	"github.com/nathanaday/hikari/internal/driver"
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
-	"github.com/nathanaday/hikari/internal/node"
 	"github.com/nathanaday/hikari/internal/onboard"
+	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/server"
-	"github.com/nathanaday/hikari/internal/systems"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 )
@@ -37,17 +37,19 @@ import (
 const usage = `hikari runs Claude Code agents in containers that talk to each other only through one room.
 
 Usage:
-  hikari up [flags] [compose.yaml]      start the server, the web UI, and the compose project
-  hikari init [flags] <dir>             make a new project repository
-  hikari sync [flags] <compose.yaml>    clone the linked repos, and make your branches from the remote
-  hikari check [flags] <compose.yaml>   run the checks of hikari up, and start nothing
-  hikari push <compose.yaml>            push your branches of the linked repos and the project
-  hikari status [flags] <compose.yaml>  show each system's map and recorded tests
-  hikari version                        print the version
+  hikari up [flags] [topology.yaml]      start the server, the web UI, and the compose project
+  hikari init [flags] <dir>              make a new project repository
+  hikari sync [flags] [topology.yaml]    clone the linked repos, and make your branches from the remote
+  hikari check [flags] [topology.yaml]   run the checks of hikari up, and start nothing
+  hikari push [topology.yaml]            push your branches of the linked repos and the project
+  hikari status [flags] [topology.yaml]  show each partition's feature map and recorded tests
+  hikari version                         print the version
+
+Without a file, each command opens topology.yaml in the current directory.
 
 Internal commands (hikari starts these; you do not run them):
-  hikari node   the agent driver; each container runs it
-  hikari mcp    the agent's MCP tools; Claude Code starts it on each turn
+  hikari driver   the agent driver; each container runs it
+  hikari mcp      the agent's MCP tools; Claude Code starts it on each turn
 `
 
 func main() {
@@ -72,8 +74,8 @@ func main() {
 		err = push(ctx, os.Args[2:])
 	case "status":
 		err = status(ctx, os.Args[2:])
-	case "node":
-		err = runNode(ctx)
+	case "driver":
+		err = runDriver(ctx)
 	case "mcp":
 		err = runMCP(ctx)
 	case "version", "-v", "-version", "--version":
@@ -102,18 +104,13 @@ func up(ctx context.Context, args []string) error {
 	listen := fs.String("listen", "127.0.0.1:7420", "server address")
 	noLaunch := fs.Bool("no-launch", false, "start only the server and print agent credentials, for running agents by hand")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] [compose.yaml]")
+		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] [topology.yaml]")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
-	file := "compose.yaml"
-	switch fs.NArg() {
-	case 0:
-	case 1:
-		file = fs.Arg(0)
-	default:
-		fs.Usage()
-		os.Exit(2)
+	file, err := fileArg(fs)
+	if err != nil {
+		return err
 	}
 	_, port, err := net.SplitHostPort(*listen)
 	if err != nil {
@@ -170,7 +167,7 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	// configuration, so hikari commits them as yours (rule C5 of the wikis
 	// spec).
 	if repo.Branch() == p.Branch {
-		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !systems.IsWikiPath(topo.StoreInProject(), path) }) {
+		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !partitions.IsWikiPath(topo.VaultInProject(), path) }) {
 			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: wiki edits made while hikari was stopped"); err != nil {
 				return nil, fmt.Errorf("the project repository: commit your wiki edits: %w", err)
 			}
@@ -186,22 +183,22 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	}
 	again, err := topology.Load(ctx, topo.File)
 	if err != nil {
-		return nil, fmt.Errorf("the compose file on the project branch %s: %w", p.Branch, err)
+		return nil, fmt.Errorf("the topology file on the project branch %s: %w", p.Branch, err)
 	}
 	if again.Project == nil || again.Project.Branch != p.Branch {
-		return nil, fmt.Errorf("the compose file on the project branch %s names another project branch, or none; make the branches agree", p.Branch)
+		return nil, fmt.Errorf("the topology file on the project branch %s names another project branch, or none; make the branches agree", p.Branch)
 	}
 	if len(again.Missing) > 0 {
-		return nil, fmt.Errorf("the compose file on the project branch %s links repos that are not cloned (%s); run hikari sync %s", p.Branch, strings.Join(again.Missing, ", "), linked.Shown(topo.File))
+		return nil, fmt.Errorf("the topology file on the project branch %s links repos that are not cloned (%s); run hikari sync %s", p.Branch, strings.Join(again.Missing, ", "), linked.Shown(topo.File))
 	}
 	return again, nil
 }
 
-// describe counts the agents, owners, and sidecars of a topology.
+// describe counts the agents, partition agents, and sidecars of a topology.
 func describe(topo *topology.Topology) string {
 	parts := []string{plural(len(topo.Agents), "agent")}
-	if n := len(topo.Owners()); n > 0 {
-		parts = append(parts, plural(n, "system"))
+	if n := len(topo.PartitionAgents()); n > 0 {
+		parts = append(parts, plural(n, "partition"))
 	}
 	if n := len(topo.Services) - len(topo.Agents); n > 0 {
 		parts = append(parts, plural(n, "sidecar"))
@@ -209,16 +206,16 @@ func describe(topo *topology.Topology) string {
 	return strings.Join(parts, " · ")
 }
 
-// prepared says what systems.New prepared.
+// prepared says what partitions.New prepared.
 func prepared(topo *topology.Topology) string {
 	var repos []string
 	for _, name := range slices.Sorted(maps.Keys(topo.Repos)) {
 		repos = append(repos, fmt.Sprintf("%s on %s", name, topo.Repos[name].Branch))
 	}
 	if len(repos) == 0 {
-		return "Prepared the store"
+		return "Prepared the vault"
 	}
-	return "Prepared " + strings.Join(repos, ", ") + " and the store"
+	return "Prepared " + strings.Join(repos, ", ") + " and the vault"
 }
 
 func plural(n int, word string) string {
@@ -288,13 +285,13 @@ func launch(ctx context.Context, con *console.Console, p *launcher.Project, srv 
 	return stop, nil
 }
 
-func runNode(ctx context.Context) error {
+func runDriver(ctx context.Context) error {
 	log.SetFlags(0)
 	c, err := api.ClientFromEnv()
 	if err != nil {
 		return err
 	}
-	err = node.Run(ctx, c)
+	err = driver.Run(ctx, c)
 	if errors.Is(err, context.Canceled) {
 		return nil
 	}

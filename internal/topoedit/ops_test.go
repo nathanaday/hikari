@@ -18,7 +18,7 @@ func ptr[T any](v T) *T { return &v }
 
 func readExample(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "examples", name, "compose.yaml"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", name, "topology.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func agentOf(m *Model, id string) *Agent {
 	return nil
 }
 
-// room returns a project with the orchestrator lead and the owners dev
+// room returns a project with the orchestration agent lead and the partition agents dev
 // and qa, in a repo that it makes.
 func room(t *testing.T) string {
 	t.Helper()
@@ -55,7 +55,7 @@ func room(t *testing.T) string {
 	for _, d := range []string{".git", "dev", "qa", "reviewer", "solo"} {
 		os.MkdirAll(filepath.Join(repo, d), 0o755)
 	}
-	return `# The orchestrator lead, and the owners dev and qa.
+	return `# lead orchestrates the partition agents dev and qa.
 
 name: room
 
@@ -78,12 +78,12 @@ services:
     x-hikari:
       description: Developer. Builds the app.
       instructions: Answer with a short plan in plain text.
-      system: {repo: app, scope: dev}
+      partition: {repo: app, scope: dev}
   qa:
     <<: *agent
     x-hikari:
       description: QA engineer. Writes the tests.
-      system: {repo: app, scope: qa}
+      partition: {repo: app, scope: qa}
 `
 }
 
@@ -93,7 +93,7 @@ func parses(t *testing.T, text []byte) {
 	if exec.Command("docker", "compose", "version").Run() != nil {
 		return
 	}
-	file := filepath.Join(t.TempDir(), "compose.yaml")
+	file := filepath.Join(t.TempDir(), "topology.yaml")
 	if err := os.WriteFile(file, text, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -131,31 +131,31 @@ func TestOperations(t *testing.T) {
 				t.Errorf("%+v", a)
 			}
 		}, 0},
-		{"set the orchestrator", []Op{
-			{Op: "clear_system", ID: "qa"},
+		{"set the orchestration agent", []Op{
+			{Op: "clear_partition", ID: "qa"},
 			{Op: "set_orchestration", Agent: "qa"},
 			{Op: "remove_agent", ID: "lead"},
 		}, func(t *testing.T, m *Model, res *Result) {
 			if m.Project.Orchestration != "qa" || agentOf(m, "lead") != nil {
 				t.Errorf("%+v", m.Project)
 			}
-			if got := strings.Join(res.Summary, "; "); got != "clear the system of qa; make qa the orchestrator; remove agent lead" {
+			if got := strings.Join(res.Summary, "; "); got != "clear the partition of qa; make qa the orchestration agent; remove agent lead" {
 				t.Errorf("%s", got)
 			}
 		}, 6},
-		{"clear the orchestrator", []Op{{Op: "set_orchestration"}, {Op: "set_system", ID: "lead", Repo: ptr("app"), Scope: ptr("solo")}}, func(t *testing.T, m *Model, res *Result) {
+		{"clear the orchestration agent", []Op{{Op: "set_orchestration"}, {Op: "set_partition", ID: "lead", Repo: ptr("app"), Scope: ptr("solo")}}, func(t *testing.T, m *Model, res *Result) {
 			if m.Project.Orchestration != "" || strings.Contains(string(res.Text), "orchestration") {
 				t.Errorf("%+v\n%s", m.Project, res.Text)
 			}
 		}, 2},
-		{"remove the orchestrator", []Op{{Op: "remove_agent", ID: "lead"}}, func(t *testing.T, m *Model, res *Result) {
+		{"remove the orchestration agent", []Op{{Op: "remove_agent", ID: "lead"}}, func(t *testing.T, m *Model, res *Result) {
 			if m.Project.Orchestration != "" || agentOf(m, "lead") != nil {
-				t.Errorf("H18: removing the orchestrator clears the key: %+v\n%s", m.Project, res.Text)
+				t.Errorf("H18: removing the orchestration agent clears the key: %+v\n%s", m.Project, res.Text)
 			}
 		}, 5},
 		{"add an agent from a template", []Op{
 			{Op: "add_agent", ID: "reviewer", Template: "dev", Description: ptr("Reviews.")},
-			{Op: "set_system", ID: "reviewer", Repo: ptr("app"), Scope: ptr("reviewer")},
+			{Op: "set_partition", ID: "reviewer", Repo: ptr("app"), Scope: ptr("reviewer")},
 		}, func(t *testing.T, m *Model, res *Result) {
 			a := agentOf(m, "reviewer")
 			if a == nil || a.Template != "agent" || a.Description != "Reviews." || a.Instructions != "" {
@@ -167,7 +167,7 @@ func TestOperations(t *testing.T) {
 		}, 6},
 		{"add an agent without a template", []Op{
 			{Op: "add_agent", ID: "solo"},
-			{Op: "set_system", ID: "solo", Repo: ptr("app"), Scope: ptr("solo")},
+			{Op: "set_partition", ID: "solo", Repo: ptr("app"), Scope: ptr("solo")},
 		}, func(t *testing.T, m *Model, _ *Result) {
 			if a := agentOf(m, "solo"); a == nil || a.Image != "hikari-agent" {
 				t.Errorf("TE5: %+v", a)
@@ -208,22 +208,22 @@ func TestOperations(t *testing.T) {
 	}
 }
 
-func TestSystemsAndGrants(t *testing.T) {
+func TestPartitionsAndGrants(t *testing.T) {
 	shop := readExample(t, "shop")
 	res, m := apply(t, shop,
-		Op{Op: "set_system", ID: "orders", Scope: ptr("services/intake"), Read: &[]string{"proto", "docs"}},
+		Op{Op: "set_partition", ID: "orders", Scope: ptr("services/intake"), Read: &[]string{"proto", "docs"}},
 		Op{Op: "set_grants", ID: "orders", Releases: &[]string{"inventory"}},
 		Op{Op: "rename", Kind: "repo", ID: "shop", Name: ptr("storefront")},
 	)
 	a := agentOf(m, "orders")
-	if a.System.Scope != "services/intake" || !slices.Equal(a.System.Read, []string{"proto", "docs"}) || !slices.Equal(a.Releases, []string{"inventory"}) {
-		t.Errorf("%+v %+v\n%s", a, a.System, res.Text)
+	if a.Partition.Scope != "services/intake" || !slices.Equal(a.Partition.Read, []string{"proto", "docs"}) || !slices.Equal(a.Releases, []string{"inventory"}) {
+		t.Errorf("%+v %+v\n%s", a, a.Partition, res.Text)
 	}
 	if m.Repos[0].Name != "storefront" {
 		t.Errorf("%+v", m.Repos)
 	}
-	res, m = apply(t, string(res.Text), Op{Op: "set_grants", ID: "orders", Releases: &[]string{}}, Op{Op: "clear_system", ID: "orders"})
-	if a := agentOf(m, "orders"); a.System != nil || len(a.Releases) != 0 {
+	res, m = apply(t, string(res.Text), Op{Op: "set_grants", ID: "orders", Releases: &[]string{}}, Op{Op: "clear_partition", ID: "orders"})
+	if a := agentOf(m, "orders"); a.Partition != nil || len(a.Releases) != 0 {
 		t.Errorf("%+v\n%s", a, res.Text)
 	}
 }
@@ -246,13 +246,13 @@ func TestRepoAndProject(t *testing.T) {
 	res, m := apply(t, solo,
 		Op{Op: "enable_project"},
 		Op{Op: "add_repo", ID: "app", URL: ptr("https://example.com/app.git")},
-		Op{Op: "set_system", ID: "dev", Repo: ptr("app")},
+		Op{Op: "set_partition", ID: "dev", Repo: ptr("app")},
 	)
 	if !m.Project.Repo || m.Project.Branch != "${HIKARI_BRANCH:-hikari}" || len(m.Repos) != 1 || m.Repos[0].URL != "https://example.com/app.git" {
 		t.Errorf("%+v %+v\n%s", m.Project, m.Repos, res.Text)
 	}
 	if !regexp.MustCompile(`\n  repos: \{app: \{url: '?https://example.com/app.git'?\}\}\n  orchestration: lead\n`).Match(res.Text) {
-		t.Errorf("a new repos key goes before the orchestrator:\n%s", res.Text)
+		t.Errorf("a new repos key goes before the orchestration agent:\n%s", res.Text)
 	}
 	if len(res.Effects) != 1 || !strings.Contains(res.Effects[0], "hikari sync") {
 		t.Errorf("TA4: %v", res.Effects)
@@ -261,8 +261,8 @@ func TestRepoAndProject(t *testing.T) {
 		t.Error("TM2: an interpolated value is an expression")
 	}
 	res, m = apply(t, string(res.Text), Op{Op: "change_id", Kind: "repo", ID: "app", NewID: "web"})
-	if agentOf(m, "dev").System.Repo != "web" {
-		t.Errorf("TE4: system.repo follows: %s", res.Text)
+	if agentOf(m, "dev").Partition.Repo != "web" {
+		t.Errorf("TE4: partition.repo follows: %s", res.Text)
 	}
 }
 
@@ -283,8 +283,8 @@ func TestRefusals(t *testing.T) {
 		{"bad name", text, []Op{{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("Builder")}}, "not a valid name"},
 		{"name taken", text, []Op{{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("qa")}}, "taken"},
 		{"unknown kind", text, []Op{{Op: "rename", Kind: "team", ID: "dev", Name: ptr("x")}}, "kind must be agent or repo"},
-		{"orchestrator unknown", text, []Op{{Op: "set_orchestration", Agent: "ghost"}}, "no agent"},
-		{"orchestrator a sidecar", shop, []Op{{Op: "set_orchestration", Agent: "orders-mock"}}, "no agent"},
+		{"orchestration agent unknown", text, []Op{{Op: "set_orchestration", Agent: "ghost"}}, "no agent"},
+		{"orchestration agent a sidecar", shop, []Op{{Op: "set_orchestration", Agent: "orders-mock"}}, "no agent"},
 		{"repo in use", shop, []Op{{Op: "remove_repo", ID: "shop"}}, "is in the repo"},
 		{"no such agent", text, []Op{{Op: "set_agent", ID: "ghost"}}, "no agent"},
 		{"project off", text, []Op{{Op: "set_project", Branch: ptr("x")}}, "needs the project repository"},
@@ -358,7 +358,7 @@ func randomOp(rng *rand.Rand, m *Model, i int) Op {
 	case 1:
 		return Op{Op: "set_orchestration", Agent: pick(append(agents, ""))}
 	case 2:
-		return Op{Op: "set_system", ID: pick(agents), Repo: ptr("app"), Scope: ptr(id)}
+		return Op{Op: "set_partition", ID: pick(agents), Repo: ptr("app"), Scope: ptr(id)}
 	case 3:
 		return Op{Op: "rename", Kind: "agent", ID: pick(agents), Name: ptr(id)}
 	case 4:

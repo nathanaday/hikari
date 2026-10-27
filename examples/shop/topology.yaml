@@ -1,0 +1,61 @@
+# A shop with two partitions in one repo. The orchestration agent plans from
+# the feature maps and never sees code. orders and inventory each own one
+# directory of the repo. Both partition agents hold the python-library
+# deliverable, defined in
+# store/shared/deliverables/python-library/, so each can publish its package
+# as a release. orders can read inventory's releases, so it can test against
+# the real stock library once inventory publishes it. orders also has a
+# sidecar, a small web server that only orders can reach, at
+# http://orders-mock:8000.
+#
+# Create the repo and the vault first, then start the project:
+#   make demo-repo
+#   make up
+
+name: shop
+
+x-hikari:
+  repos:
+    shop: {path: ../../.hikari/demo/shop, branch: hikari/demo}
+  orchestration: orchestrator
+
+x-agent: &agent
+  environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
+
+services:
+  orchestrator:
+    <<: *agent
+    image: hikari-agent
+    x-hikari:
+      description: Orchestrates the shop. Plans changes from the feature maps.
+
+  orders:
+    <<: *agent
+    build: {context: ., dockerfile: python.Dockerfile}
+    x-hikari:
+      description: Owns order intake.
+      partition:
+        repo: shop
+        scope: services/orders
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
+      grants:
+        deliverables: [python-library]
+        releases: [inventory]
+
+  inventory:
+    <<: *agent
+    build: {context: ., dockerfile: python.Dockerfile}
+    x-hikari:
+      description: Owns stock levels and reservations.
+      partition:
+        repo: shop
+        scope: services/inventory
+        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
+      grants:
+        deliverables: [python-library]
+
+  orders-mock:
+    image: python:3.12-slim
+    command: [python3, -m, http.server, "8000"]
+    init: true                    # so that the server stops at once on Ctrl-C
+    x-hikari: {serves: orders}

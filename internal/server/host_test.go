@@ -21,9 +21,9 @@ import (
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// projectCompose is a project of one orchestrator, in a project
+// projectTopology is a project of one orchestration agent, in a project
 // repository.
-const projectCompose = `# The demo project.
+const projectTopology = `# The demo project.
 name: demo
 
 x-hikari:
@@ -111,8 +111,8 @@ func newProjectDir(t *testing.T) (string, string) {
 	// The fixtures must not depend on the machine's credentials.
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	dir := t.TempDir()
-	file := filepath.Join(dir, "compose.yaml")
-	os.WriteFile(file, []byte(projectCompose), 0o644)
+	file := filepath.Join(dir, "topology.yaml")
+	os.WriteFile(file, []byte(projectTopology), 0o644)
 	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".env\n/.hikari/\n"), 0o644)
 	os.MkdirAll(filepath.Join(dir, "store", "shared", "wiki"), 0o755)
 	os.WriteFile(filepath.Join(dir, "store", "shared", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it soon, with @lead.\n"), 0o644)
@@ -133,8 +133,8 @@ func TestTopologyAPI(t *testing.T) {
 	if code := call(t, c, "GET", base+"/api/ui/topology", nil, &state); code != 200 {
 		t.Fatalf("GET topology: %d", code)
 	}
-	if !state.Exists || state.Revision != editor.Revision([]byte(projectCompose), true) || state.Mode != ModeEditing || !state.Commits ||
-		state.Model == nil || state.Model.Project.Orchestration != "lead" || state.Text != projectCompose {
+	if !state.Exists || state.Revision != editor.Revision([]byte(projectTopology), true) || state.Mode != ModeEditing || !state.Commits ||
+		state.Model == nil || state.Model.Project.Orchestration != "lead" || state.Text != projectTopology {
 		t.Errorf("TA1, TM1: %+v", state)
 	}
 	if editor.HasError(state.Findings) {
@@ -153,7 +153,7 @@ func TestTopologyAPI(t *testing.T) {
 	ops := []topoedit.Op{
 		{Op: "rename", Kind: "agent", ID: "lead", Name: ptrTo("chief")},
 		{Op: "add_agent", ID: "dev", Template: "lead", Description: ptrTo("Builds it.")},
-		{Op: "set_system", ID: "dev", Repo: ptrTo("project"), Scope: ptrTo("app")},
+		{Op: "set_partition", ID: "dev", Repo: ptrTo("project"), Scope: ptrTo("app")},
 	}
 	var plan editor.Plan
 	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": ops}, &plan); code != 200 {
@@ -172,13 +172,13 @@ func TestTopologyAPI(t *testing.T) {
 	if added == 0 {
 		t.Errorf("TA3: %+v", plan.Diff)
 	}
-	if b, _ := os.ReadFile(file); string(b) != projectCompose {
+	if b, _ := os.ReadFile(file); string(b) != projectTopology {
 		t.Error("a plan writes nothing")
 	}
 	writeFixture(t, "plan", plan)
 
 	var conflict map[string]string
-	if code := call(t, c, "POST", base+"/api/ui/topology/apply", map[string]any{"revision": "stale", "operations": ops}, &conflict); code != http.StatusConflict || conflict["text"] != projectCompose {
+	if code := call(t, c, "POST", base+"/api/ui/topology/apply", map[string]any{"revision": "stale", "operations": ops}, &conflict); code != http.StatusConflict || conflict["text"] != projectTopology {
 		t.Errorf("TA2: %d %v", code, conflict)
 	}
 	var refused map[string]string
@@ -197,7 +197,7 @@ func TestTopologyAPI(t *testing.T) {
 	if saved.Revision != editor.Revision(data, true) || saved.Commit == "" || string(data) != plan.Text {
 		t.Errorf("apply: %+v\n%s", saved, data)
 	}
-	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename agent lead to chief; add agent dev; give dev a system" {
+	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename agent lead to chief; add agent dev; give dev a partition" {
 		t.Errorf("TC1, TC2: %q", got)
 	}
 	if run(t, dir, "status", "--porcelain") != "" {
@@ -213,7 +213,7 @@ func TestTopologyAPI(t *testing.T) {
 	if state.Model != nil || len(state.Findings) != 1 || state.Findings[0].Stage != topology.StageYAML || state.Findings[0].Line == 0 {
 		t.Errorf("TM4, TF4: %+v", state)
 	}
-	if got := run(t, dir, "log", "-1", "--format=%s"); got != "user: edit compose.yaml" {
+	if got := run(t, dir, "log", "-1", "--format=%s"); got != "user: edit topology.yaml" {
 		t.Errorf("TC2: %q", got)
 	}
 	var startRefused struct {
@@ -226,11 +226,11 @@ func TestTopologyAPI(t *testing.T) {
 	var lint struct {
 		Findings []topology.Finding `json:"findings"`
 	}
-	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": projectCompose}, &lint)
+	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": projectTopology}, &lint)
 	if editor.HasError(lint.Findings) {
 		t.Errorf("lint: %+v", lint.Findings)
 	}
-	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": strings.Replace(projectCompose, "orchestration: lead", "orchestration: ghost", 1)}, &lint)
+	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": strings.Replace(projectTopology, "orchestration: lead", "orchestration: ghost", 1)}, &lint)
 	found := false
 	for _, f := range lint.Findings {
 		found = found || (f.Path == "x-hikari.orchestration" && f.Line == 6)
@@ -304,7 +304,7 @@ func TestCreate(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "My Project")
 	// hikari up writes its log here before the project exists.
 	os.MkdirAll(filepath.Join(dir, ".hikari"), 0o755)
-	_, c, base := hostClient(t, filepath.Join(dir, "compose.yaml"))
+	_, c, base := hostClient(t, filepath.Join(dir, "topology.yaml"))
 	var state editor.State
 	call(t, c, "GET", base+"/api/ui/topology", nil, &state)
 	if state.Exists || state.Revision != "" || state.Model != nil {
@@ -327,11 +327,11 @@ func TestCreate(t *testing.T) {
 
 	other := t.TempDir()
 	os.WriteFile(filepath.Join(other, "README.md"), []byte("# mine\n"), 0o644)
-	_, c, base = hostClient(t, filepath.Join(other, "compose.yaml"))
+	_, c, base = hostClient(t, filepath.Join(other, "topology.yaml"))
 	call(t, c, "POST", base+"/api/ui/topology/create", nil, &saved)
 	call(t, c, "GET", base+"/api/ui/topology", nil, &state)
 	if state.Model == nil || state.Model.Project.Repo || editor.HasError(state.Findings) {
-		t.Errorf("TA6: a directory with files gets a compose file alone: %+v", state)
+		t.Errorf("TA6: a directory with files gets a topology file alone: %+v", state)
 	}
 	var options editor.Options
 	call(t, c, "GET", base+"/api/ui/topology/options", nil, &options)
@@ -342,7 +342,7 @@ func TestCreate(t *testing.T) {
 
 func ptrTo(s string) *string { return &s }
 
-var tempPath = regexp.MustCompile(`(/private)?/var/folders/[^"]*?/(compose\.yaml)|/tmp/[^"]*?/(compose\.yaml)`)
+var tempPath = regexp.MustCompile(`(/private)?/var/folders/[^"]*?/(topology\.yaml)|/tmp/[^"]*?/(topology\.yaml)`)
 
 // writeFixture keeps a response of the topology API for the UI's tests
 // (decision 5 of the topology API spec). With HIKARI_UPDATE_FIXTURES set,
@@ -353,7 +353,7 @@ func writeFixture(t *testing.T, name string, v any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = append(tempPath.ReplaceAll(data, []byte("compose.yaml")), '\n')
+	data = append(tempPath.ReplaceAll(data, []byte("topology.yaml")), '\n')
 	path := filepath.Join("..", "..", "web", "src", "lib", "fixtures", "topology", name+".json")
 	if os.Getenv("HIKARI_UPDATE_FIXTURES") != "" {
 		os.MkdirAll(filepath.Dir(path), 0o755)

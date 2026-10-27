@@ -15,8 +15,8 @@ import (
 // Occurrence is one place where a rename can propagate (rule TP2): @name of
 // an agent in a wiki body or a vocabulary description.
 type Occurrence struct {
-	// Key is <store path>:<line>:<column>. A map summary has no key: its
-	// owner writes it (rule TP4).
+	// Key is <vault path>:<line>:<column>. A map summary has no key: its
+	// partition agent writes it (rule TP4).
 	Key     string `json:"key,omitempty"`
 	File    string `json:"file"`
 	Line    int    `json:"line"`
@@ -35,14 +35,14 @@ func mention(name string) *regexp.Regexp {
 type region struct{ from, to int }
 
 // Occurrences lists every place that renames can propagate to, in the
-// store at store (rule TP1).
-func Occurrences(store string, renames []Rename) []Occurrence {
-	if store == "" || len(renames) == 0 {
+// vault at vault (rule TP1).
+func Occurrences(vault string, renames []Rename) []Occurrence {
+	if vault == "" || len(renames) == 0 {
 		return []Occurrence{}
 	}
 	out := []Occurrence{}
-	for _, f := range propagationFiles(store) {
-		data, err := os.ReadFile(filepath.Join(store, f.rel))
+	for _, f := range propagationFiles(vault) {
+		data, err := os.ReadFile(filepath.Join(vault, f.rel))
 		if err != nil {
 			continue
 		}
@@ -74,21 +74,21 @@ type propagationFile struct {
 	regions func(data []byte) []region
 }
 
-func propagationFiles(store string) []propagationFile {
+func propagationFiles(vault string) []propagationFile {
 	var out []propagationFile
 	for _, pattern := range []string{"systems/*/wiki/*.md", "shared/wiki/*.md"} {
-		matches, _ := filepath.Glob(filepath.Join(store, filepath.FromSlash(pattern)))
+		matches, _ := filepath.Glob(filepath.Join(vault, filepath.FromSlash(pattern)))
 		for _, m := range matches {
-			rel, _ := filepath.Rel(store, m)
+			rel, _ := filepath.Rel(vault, m)
 			out = append(out, propagationFile{rel: filepath.ToSlash(rel), keyed: true, regions: bodyRegion})
 		}
 	}
-	if _, err := os.Stat(filepath.Join(store, "shared", "vocabulary", "terms.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(vault, "shared", "vocabulary", "terms.yaml")); err == nil {
 		out = append(out, propagationFile{rel: "shared/vocabulary/terms.yaml", keyed: true, regions: yamlRegions("definition", "description")})
 	}
-	maps, _ := filepath.Glob(filepath.Join(store, "systems", "*", "map.yaml"))
+	maps, _ := filepath.Glob(filepath.Join(vault, "systems", "*", "map.yaml"))
 	for _, m := range maps {
-		rel, _ := filepath.Rel(store, m)
+		rel, _ := filepath.Rel(vault, m)
 		out = append(out, propagationFile{rel: filepath.ToSlash(rel), regions: yamlRegions("summary")})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
@@ -156,15 +156,15 @@ func yamlRegions(keys ...string) func([]byte) []region {
 }
 
 // Propagate rewrites the occurrences that keys name (rule TP3). It returns
-// the store paths it changed, and the keys it skipped because their text
+// the vault paths it changed, and the keys it skipped because their text
 // no longer matches.
-func Propagate(store string, renames []Rename, keys []string) (changed, skipped []string, err error) {
+func Propagate(vault string, renames []Rename, keys []string) (changed, skipped []string, err error) {
 	want := map[string]bool{}
 	for _, k := range keys {
 		want[k] = true
 	}
 	byFile := map[string][]Occurrence{}
-	for _, o := range Occurrences(store, renames) {
+	for _, o := range Occurrences(vault, renames) {
 		if o.Key != "" && want[o.Key] {
 			byFile[o.File] = append(byFile[o.File], o)
 			delete(want, o.Key)
@@ -175,7 +175,7 @@ func Propagate(store string, renames []Rename, keys []string) (changed, skipped 
 	}
 	sort.Strings(skipped)
 	for _, file := range sorted(byFile) {
-		p := filepath.Join(store, filepath.FromSlash(file))
+		p := filepath.Join(vault, filepath.FromSlash(file))
 		data, err := os.ReadFile(p)
 		if err != nil {
 			return nil, nil, err

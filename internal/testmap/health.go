@@ -42,7 +42,7 @@ type UnmappedFile struct {
 
 const MaxUnmappedIDs = 20
 
-// Report is the health of every feature and what the owner must look at.
+// Report is the health of every feature and what the partition agent must look at.
 type Report struct {
 	Features  map[string]FeatureHealth
 	Failing   []FailingTest

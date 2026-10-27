@@ -1,4 +1,4 @@
-// Package wiki holds one wiki, of a system or the public wiki: one markdown
+// Package wiki holds one wiki, of a partition or the public wiki: one markdown
 // document per entry, with a property header that the server checks and a
 // body for people and agents. A document has a kind: agents write features,
 // principles, rules, and stories; the user writes plans and notes.

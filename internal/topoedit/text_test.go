@@ -44,7 +44,7 @@ services:
     <<: *agent
     x-hikari:
       description: Developer.
-      system:
+      partition:
         repo: app
         read:
           - proto
@@ -115,7 +115,7 @@ func TestPrimitives(t *testing.T) {
 			return d.appendItem(parsePath("services.orchestrator.x-hikari.grants.releases"), scalar("dev"))
 		}, []string{"        releases: [writer, eng]   # the writers"}, []string{"        releases: [writer, eng, dev]   # the writers"}},
 		{"append to a block list", func(d *doc) ([]byte, error) {
-			return d.appendItem(parsePath("services.dev.x-hikari.system.read"), scalar("api"))
+			return d.appendItem(parsePath("services.dev.x-hikari.partition.read"), scalar("api"))
 		}, nil, []string{"          - api"}},
 		{"append to a missing list", func(d *doc) ([]byte, error) {
 			return d.appendItem(parsePath("services.eng.x-hikari.grants"), scalar("x"))
@@ -124,7 +124,7 @@ func TestPrimitives(t *testing.T) {
 			return d.removeItem(parsePath("services.orchestrator.x-hikari.grants.releases"), 0)
 		}, []string{"        releases: [writer, eng]   # the writers"}, []string{"        releases: [eng]   # the writers"}},
 		{"remove from a block list", func(d *doc) ([]byte, error) {
-			return d.removeItem(parsePath("services.dev.x-hikari.system.read"), 0)
+			return d.removeItem(parsePath("services.dev.x-hikari.partition.read"), 0)
 		}, []string{"          - proto"}, nil},
 		{"set a list item", func(d *doc) ([]byte, error) {
 			return d.setItem(parsePath("services.orchestrator.x-hikari.grants.releases[0]"), scalar("builder"))

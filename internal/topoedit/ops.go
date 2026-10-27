@@ -32,7 +32,7 @@ type Op struct {
 	URL          *string `json:"url,omitempty"`
 	Path         *string `json:"path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
-	Store        *string `json:"store,omitempty"`
+	Vault        *string `json:"vault,omitempty"`
 	Repo         *string `json:"repo,omitempty"`
 	Scope        *string `json:"scope,omitempty"`
 	Test         *string `json:"test,omitempty"`
@@ -77,7 +77,7 @@ var ErrNotFound = errors.New("not found")
 var validID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 // Apply applies ops to text in order, as a whole. dir is the directory of
-// the compose file.
+// the topology file.
 func Apply(text []byte, ops []Op, dir string) (*Result, error) {
 	e := &editor{text: text, dir: dir}
 	for i, op := range ops {
@@ -219,15 +219,15 @@ func checkID(id string) error {
 	return nil
 }
 
-func (e *editor) store() string {
-	return storeDir(e.model.Project.Store, e.dir)
+func (e *editor) vault() string {
+	return vaultDir(e.model.Project.Vault, e.dir)
 }
 
-// leaves records that a removal leaves a store directory in place (rule
+// leaves records that a removal leaves a vault directory in place (rule
 // TE6).
 func (e *editor) leaves(rel string) {
-	if store := e.store(); store != "" && exists(filepath.Join(store, rel)) {
-		e.effects = append(e.effects, fmt.Sprintf("leaves %s in the store; delete it in a commit of your own when you no longer need it", filepath.ToSlash(filepath.Join(filepath.Base(store), rel))))
+	if vault := e.vault(); vault != "" && exists(filepath.Join(vault, rel)) {
+		e.effects = append(e.effects, fmt.Sprintf("leaves %s in the vault; delete it in a commit of your own when you no longer need it", filepath.ToSlash(filepath.Join(filepath.Base(vault), rel))))
 	}
 }
 
@@ -250,8 +250,8 @@ func (e *editor) apply(op Op) error {
 			return errors.New("the project repository is already off")
 		}
 		for _, a := range e.model.Agents {
-			if a.System != nil && a.System.Repo == topology.ProjectRepo {
-				return fmt.Errorf("the system of %q is in the project repository", a.ID)
+			if a.Partition != nil && a.Partition.Repo == topology.ProjectRepo {
+				return fmt.Errorf("the partition of %q is in the project repository", a.ID)
 			}
 		}
 		for _, r := range e.model.Repos {
@@ -288,8 +288,8 @@ func (e *editor) apply(op Op) error {
 			return err
 		}
 		for _, a := range e.model.Agents {
-			if a.System != nil && a.System.Repo == r.ID {
-				return fmt.Errorf("the system of %q is in the repo %q", a.ID, r.ID)
+			if a.Partition != nil && a.Partition.Repo == r.ID {
+				return fmt.Errorf("the partition of %q is in the repo %q", a.ID, r.ID)
 			}
 		}
 		if r.URL != "" && exists(filepath.Join(e.dir, topology.CloneDir, r.ID)) {
@@ -302,14 +302,14 @@ func (e *editor) apply(op Op) error {
 			if e.model.Project.Orchestration == "" {
 				return nil
 			}
-			e.summary = append(e.summary, "clear the orchestrator")
+			e.summary = append(e.summary, "clear the orchestration agent")
 			return e.deleteKey("x-hikari", "orchestration")
 		}
 		a, err := e.agent(op.Agent)
 		if err != nil {
 			return err
 		}
-		e.summary = append(e.summary, "make "+a.Name+" the orchestrator")
+		e.summary = append(e.summary, "make "+a.Name+" the orchestration agent")
 		return e.setValue("x-hikari", "orchestration", scalar(a.ID), false)
 	case "add_agent":
 		return e.addAgent(op)
@@ -333,19 +333,19 @@ func (e *editor) apply(op Op) error {
 		}
 		e.summary = append(e.summary, "change "+a.Name)
 		return nil
-	case "set_system":
-		return e.setSystem(op)
-	case "clear_system":
+	case "set_partition":
+		return e.setPartition(op)
+	case "clear_partition":
 		a, err := e.agent(op.ID)
 		if err != nil {
 			return err
 		}
-		if a.System == nil {
-			return fmt.Errorf("%q owns no system", a.ID)
+		if a.Partition == nil {
+			return fmt.Errorf("%q has no partition", a.ID)
 		}
 		e.leaves("systems/" + a.ID)
-		e.summary = append(e.summary, "clear the system of "+a.Name)
-		return e.deleteKey("services."+a.ID+".x-hikari", "system")
+		e.summary = append(e.summary, "clear the partition of "+a.Name)
+		return e.deleteKey("services."+a.ID+".x-hikari", "partition")
 	case "set_grants":
 		a, err := e.agent(op.ID)
 		if err != nil {
@@ -451,12 +451,12 @@ func (e *editor) setProject(op Op) error {
 		}
 		e.summary = append(e.summary, "set the project branch to "+*op.Branch)
 	}
-	if op.Store != nil {
-		if err := e.setField("x-hikari", "store", op.Store, false); err != nil {
+	if op.Vault != nil {
+		if err := e.setField("x-hikari", "vault", op.Vault, false); err != nil {
 			return err
 		}
-		e.effects = append(e.effects, "the store moves to a new directory; hikari makes it empty at the next start, and the old one stays")
-		e.summary = append(e.summary, "move the store")
+		e.effects = append(e.effects, "the vault moves to a new directory; hikari makes it empty at the next start, and the old one stays")
+		e.summary = append(e.summary, "move the vault")
 	}
 	return nil
 }
@@ -489,7 +489,7 @@ func (e *editor) addRepo(op Op) error {
 	}
 	e.summary = append(e.summary, "add repo "+op.ID)
 	if e.model == nil || len(e.model.Repos) == 0 {
-		// The repos go before the orchestrator, as the README writes them.
+		// The repos go before the orchestration agent, as the README writes them.
 		empty := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 		if err := e.edit(func(d *doc) ([]byte, error) {
 			if _, ok := d.find(path{"x-hikari", "repos"}); ok {
@@ -611,7 +611,7 @@ func (e *editor) addService(id, body string) error {
 	return nil
 }
 
-func (e *editor) setSystem(op Op) error {
+func (e *editor) setPartition(op Op) error {
 	a, err := e.agent(op.ID)
 	if err != nil {
 		return err
@@ -620,10 +620,10 @@ func (e *editor) setSystem(op Op) error {
 		return err
 	}
 	p := "services." + a.ID + ".x-hikari"
-	if a.System == nil {
+	if a.Partition == nil {
 		repo := deref(op.Repo)
 		if repo == "" {
-			return errors.New("a system needs a repo")
+			return errors.New("a partition needs a repo")
 		}
 		kv := []any{"repo", repo}
 		if s := deref(op.Scope); s != "" {
@@ -635,13 +635,13 @@ func (e *editor) setSystem(op Op) error {
 		if t := deref(op.Test); t != "" {
 			kv = append(kv, "test", t)
 		}
-		e.summary = append(e.summary, "give "+a.Name+" a system")
-		return e.setValue(p, "system", mapping(kv...), false)
+		e.summary = append(e.summary, "give "+a.Name+" a partition")
+		return e.setValue(p, "partition", mapping(kv...), false)
 	}
 	if op.Repo != nil && *op.Repo == "" {
-		return errors.New("a system needs a repo; clear the system instead")
+		return errors.New("a partition needs a repo; clear the partition instead")
 	}
-	p += ".system"
+	p += ".partition"
 	for _, f := range []struct {
 		key string
 		v   *string
@@ -653,7 +653,7 @@ func (e *editor) setSystem(op Op) error {
 	if err := e.setList(p, "read", op.Read); err != nil {
 		return err
 	}
-	e.summary = append(e.summary, "change the system of "+a.Name)
+	e.summary = append(e.summary, "change the partition of "+a.Name)
 	return nil
 }
 
@@ -677,7 +677,7 @@ func (e *editor) removeAgent(op Op) error {
 			return err
 		}
 	}
-	if a.System != nil {
+	if a.Partition != nil {
 		e.leaves("systems/" + a.ID)
 	}
 	e.summary = append(e.summary, "remove agent "+a.Name)
@@ -767,7 +767,7 @@ func (e *editor) changeID(op Op) error {
 		return fmt.Errorf("kind must be agent or repo, not %q", op.Kind)
 	}
 	if locked {
-		return fmt.Errorf("the store or a clone is keyed by %q, so its id cannot change; rename it instead", op.ID)
+		return fmt.Errorf("the vault or a clone is keyed by %q, so its id cannot change; rename it instead", op.ID)
 	}
 	if op.Kind != "repo" && e.nodeTaken(op.NewID) && op.NewID != name {
 		return fmt.Errorf("the id %q is taken", op.NewID)
@@ -798,8 +798,8 @@ func (e *editor) changeID(op Op) error {
 	case "repo":
 		parent = "x-hikari.repos"
 		for _, a := range e.model.Agents {
-			if a.System != nil && a.System.Repo == op.ID {
-				refs = append(refs, ref{"services." + a.ID + ".x-hikari.system", "repo", -1})
+			if a.Partition != nil && a.Partition.Repo == op.ID {
+				refs = append(refs, ref{"services." + a.ID + ".x-hikari.partition", "repo", -1})
 			}
 		}
 	}

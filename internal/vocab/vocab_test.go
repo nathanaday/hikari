@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestStore(t *testing.T) {
+func TestFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vocabulary", "terms.yaml")
 	s, err := Open(path)
 	if err != nil {

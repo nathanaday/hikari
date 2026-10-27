@@ -8,12 +8,12 @@ import (
 
 func TestFindingPaths(t *testing.T) {
 	cases := map[string]struct{ hikari, services, path string }{
-		"orchestrator": {"  orchestration: ghost", "  a: {x-hikari: {}}", "x-hikari.orchestration"},
-		"name":         {"  orchestration: a", "  a: {x-hikari: {name: A}}", "services.a.x-hikari.name"},
-		"unreachable":  {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {}}", "services.b"},
-		"system repo":  {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {system: {repo: ghost}}}", "services.b.x-hikari.system.repo"},
-		"service key":  {"  orchestration: a", "  a: {privileged: true, x-hikari: {}}", "services.a.privileged"},
-		"repo url":     {"  repos: {r: {url: -x}}\n  orchestration: a", "  a: {x-hikari: {}}", "x-hikari.repos.r.url"},
+		"orchestrator":   {"  orchestration: ghost", "  a: {x-hikari: {}}", "x-hikari.orchestration"},
+		"name":           {"  orchestration: a", "  a: {x-hikari: {name: A}}", "services.a.x-hikari.name"},
+		"unreachable":    {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {}}", "services.b"},
+		"partition repo": {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {partition: {repo: ghost}}}", "services.b.x-hikari.partition.repo"},
+		"service key":    {"  orchestration: a", "  a: {privileged: true, x-hikari: {}}", "services.a.privileged"},
+		"repo url":       {"  repos: {r: {url: -x}}\n  orchestration: a", "  a: {x-hikari: {}}", "x-hikari.repos.r.url"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -42,7 +42,7 @@ services:
     <<: *agent
     x-hikari:
       description: Developer.
-      system:
+      partition:
         read:
           - proto
           - docs
@@ -53,13 +53,13 @@ services:
 	}
 	root := doc.Content[0]
 	for path, want := range map[string]int{
-		"services.dev":                         5,
-		"services.dev.x-hikari.description":    8,
-		"services.dev.x-hikari.system.read":    10,
-		"services.dev.x-hikari.system.read[1]": 12,
-		"services.dev.image":                   5, // from the merge key: the deepest node the source writes
-		"services.ghost":                       4,
-		"":                                     1,
+		"services.dev":                            5,
+		"services.dev.x-hikari.description":       8,
+		"services.dev.x-hikari.partition.read":    10,
+		"services.dev.x-hikari.partition.read[1]": 12,
+		"services.dev.image":                      5, // from the merge key: the deepest node the source writes
+		"services.ghost":                          4,
+		"":                                        1,
 	} {
 		if got := LineOf(root, path); got != want {
 			t.Errorf("TF3: LineOf(%q) = %d, want %d", path, got, want)

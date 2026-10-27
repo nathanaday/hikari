@@ -25,13 +25,13 @@ type Model struct {
 type Project struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Store is x-hikari.store as written, or "".
-	Store string `json:"store"`
+	// Vault is x-hikari.vault as written, or "".
+	Vault string `json:"vault"`
 	// Repo is whether x-hikari.project is set, and Branch is its branch.
 	Repo   bool   `json:"repo"`
 	Branch string `json:"branch"`
 	// Orchestration is x-hikari.orchestration: the service id of the
-	// orchestrator, or "".
+	// orchestration agent, or "".
 	Orchestration string `json:"orchestration"`
 }
 
@@ -46,14 +46,14 @@ type Repo struct {
 }
 
 type Agent struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Instructions string   `json:"instructions"`
-	Model        string   `json:"model"`
-	System       *System  `json:"system"`
-	Releases     []string `json:"releases"`
-	Deliverables []string `json:"deliverables"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	Instructions string     `json:"instructions"`
+	Model        string     `json:"model"`
+	Partition    *Partition `json:"partition"`
+	Releases     []string   `json:"releases"`
+	Deliverables []string   `json:"deliverables"`
 	// Image and Build describe the container: the image key, and the
 	// build's context and Dockerfile.
 	Image string `json:"image"`
@@ -68,7 +68,7 @@ type Agent struct {
 	IDLocked bool     `json:"id_locked"`
 }
 
-type System struct {
+type Partition struct {
 	Repo  string   `json:"repo"`
 	Scope string   `json:"scope"`
 	Read  []string `json:"read"`
@@ -90,7 +90,7 @@ type srcFile struct {
 
 type srcHikari struct {
 	Name    string `yaml:"name"`
-	Store   string `yaml:"store"`
+	Vault   string `yaml:"vault"`
 	Project *struct {
 		Branch string `yaml:"branch"`
 	} `yaml:"project"`
@@ -109,11 +109,11 @@ type srcService struct {
 	Image  string    `yaml:"image"`
 	Build  yaml.Node `yaml:"build"`
 	Hikari *struct {
-		Name         string  `yaml:"name"`
-		Description  string  `yaml:"description"`
-		Instructions string  `yaml:"instructions"`
-		Model        string  `yaml:"model"`
-		System       *System `yaml:"system"`
+		Name         string     `yaml:"name"`
+		Description  string     `yaml:"description"`
+		Instructions string     `yaml:"instructions"`
+		Model        string     `yaml:"model"`
+		Partition    *Partition `yaml:"partition"`
 		Grants       struct {
 			Releases     []string `yaml:"releases"`
 			Deliverables []string `yaml:"deliverables"`
@@ -134,14 +134,14 @@ func ReadModel(text []byte, dir string) *Model {
 	var f srcFile
 	yaml.Unmarshal(text, &f)
 	m := &Model{Repos: []Repo{}, Agents: []Agent{}, Sidecars: []Sidecar{}}
-	m.Project = Project{ID: f.Name, Name: f.Name, Store: f.Hikari.Store, Orchestration: f.Hikari.Orchestration}
+	m.Project = Project{ID: f.Name, Name: f.Name, Vault: f.Hikari.Vault, Orchestration: f.Hikari.Orchestration}
 	if f.Hikari.Name != "" {
 		m.Project.Name = f.Hikari.Name
 	}
 	if f.Hikari.Project != nil {
 		m.Project.Repo, m.Project.Branch = true, f.Hikari.Project.Branch
 	}
-	store := storeDir(f.Hikari.Store, dir)
+	vault := vaultDir(f.Hikari.Vault, dir)
 	line := func(p string) int { return topology.LineOf(d.root, p) }
 
 	for _, id := range sorted(f.Hikari.Repos) {
@@ -163,36 +163,36 @@ func ReadModel(text []byte, dir string) *Model {
 		if h != nil {
 			a.Name = nameOr(h.Name, id)
 			a.Description, a.Instructions, a.Model = freeText(h.Description), freeText(h.Instructions), h.Model
-			a.System = h.System
+			a.Partition = h.Partition
 			a.Releases, a.Deliverables = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables)
-			if a.System != nil {
-				a.System.Read = nonNil(a.System.Read)
+			if a.Partition != nil {
+				a.Partition.Read = nonNil(a.Partition.Read)
 			}
 		}
-		a.IDLocked = store != "" && exists(filepath.Join(store, "systems", id))
+		a.IDLocked = vault != "" && exists(filepath.Join(vault, "systems", id))
 		m.Agents = append(m.Agents, a)
 	}
 	return m
 }
 
-// storeDir resolves x-hikari.store as topology does, or returns "" when
+// vaultDir resolves x-hikari.vault as topology does, or returns "" when
 // it is an expression.
-func storeDir(store, dir string) string {
-	if store == "" {
-		store = "store"
+func vaultDir(vault, dir string) string {
+	if vault == "" {
+		vault = "store"
 	}
-	if strings.Contains(store, "$") {
+	if strings.Contains(vault, "$") {
 		return ""
 	}
-	if store == "~" || strings.HasPrefix(store, "~/") {
+	if vault == "~" || strings.HasPrefix(vault, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
-			store = filepath.Join(home, strings.TrimPrefix(store, "~"))
+			vault = filepath.Join(home, strings.TrimPrefix(vault, "~"))
 		}
 	}
-	if !filepath.IsAbs(store) {
-		store = filepath.Join(dir, store)
+	if !filepath.IsAbs(vault) {
+		vault = filepath.Join(dir, vault)
 	}
-	return store
+	return vault
 }
 
 var interpolation = regexp.MustCompile(`\$[{A-Za-z_]`)

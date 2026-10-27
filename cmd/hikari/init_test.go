@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +51,7 @@ func TestWriteProject(t *testing.T) {
 		t.Errorf("PR24 the new repository is not clean: %s", out)
 	}
 	files, _ := exec.Command("git", "-C", dir, "ls-files").Output()
-	for _, f := range []string{".gitignore", ".env.example", "compose.yaml", "store/README.md", "store/.gitignore"} {
+	for _, f := range []string{".gitignore", ".env.example", "topology.yaml", "store/README.md", "store/.gitignore"} {
 		if !strings.Contains(string(files), f+"\n") {
 			t.Errorf("PR23 %s is not committed:\n%s", f, files)
 		}
@@ -74,14 +75,14 @@ func TestWriteProject(t *testing.T) {
 	// PR26: the starter topology is valid as compose resolves it.
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Log("PR26 needs docker compose; skipped")
-	} else if topo, err := topology.Load(context.Background(), filepath.Join(dir, "compose.yaml")); err != nil {
+	} else if topo, err := topology.Load(context.Background(), filepath.Join(dir, "topology.yaml")); err != nil {
 		t.Errorf("PR26 %v", err)
 	} else if topo.Name != "p3" || topo.Project == nil || topo.Project.Branch != "hikari" {
 		t.Errorf("PR26 topology = %s, %+v", topo.Name, topo.Project)
 	} else {
 		// IN2: HIKARI_BRANCH gives each person their own branch.
 		t.Setenv("HIKARI_BRANCH", "hikari-alex")
-		if topo, err := topology.Load(context.Background(), filepath.Join(dir, "compose.yaml")); err != nil || topo.Project.Branch != "hikari-alex" {
+		if topo, err := topology.Load(context.Background(), filepath.Join(dir, "topology.yaml")); err != nil || topo.Project.Branch != "hikari-alex" {
 			t.Errorf("IN2 with HIKARI_BRANCH: %+v, %v", topo.Project, err)
 		}
 	}
@@ -103,7 +104,7 @@ func TestWriteProjectWithoutIdentity(t *testing.T) {
 }
 
 func TestStatusLines(t *testing.T) {
-	lines := statusLines([]linked.SystemStatus{
+	lines := statusLines([]linked.PartitionStatus{
 		{Name: "app", Cloned: true, Commit: "0123456789abcdef", Features: 2, Health: map[string]int{"passing": 1, "failing": 1}, Results: true,
 			Suites: []linked.SuiteStatus{{Name: "unit", Counts: map[string]int{"passed": 3}, Tests: []testmap.Result{{ID: "a > one", Outcome: "passed"}}}}},
 		{Name: "web", Cloned: true},
@@ -117,5 +118,22 @@ func TestStatusLines(t *testing.T) {
 	}
 	if strings.Contains(got, "far  not cloned\n  no test") {
 		t.Error("a missing clone has no results line")
+	}
+}
+
+func TestDefaultTopologyFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.Parse(nil)
+	if file, err := fileArg(fs); err != nil || file != "topology.yaml" {
+		t.Errorf("N5: no file opens topology.yaml: %q, %v", file, err)
+	}
+	os.WriteFile("compose.yaml", []byte("name: x\n"), 0o644)
+	if _, err := fileArg(fs); err == nil || !strings.Contains(err.Error(), "rename compose.yaml to topology.yaml") {
+		t.Errorf("N5: an old compose.yaml is named: %v", err)
+	}
+	fs.Parse([]string{"compose.yaml"})
+	if file, err := fileArg(fs); err != nil || file != "compose.yaml" {
+		t.Errorf("a named file opens: %q, %v", file, err)
 	}
 }

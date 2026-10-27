@@ -1,5 +1,5 @@
 {
-  "file": "compose.yaml",
+  "file": "topology.yaml",
   "exists": true,
   "revision": "c0459b66bcb3190e3c47acf1db49f53162bd5d08d2ad08a036d4c668239ca343",
   "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Leads the demo.}\n",
@@ -7,7 +7,7 @@
     "project": {
       "id": "demo",
       "name": "demo",
-      "store": "",
+      "vault": "",
       "repo": true,
       "branch": "main",
       "orchestration": "lead"
@@ -20,7 +20,7 @@
         "description": "Leads the demo.",
         "instructions": "",
         "model": "",
-        "system": null,
+        "partition": null,
         "releases": [],
         "deliverables": [],
         "image": "hikari-agent",

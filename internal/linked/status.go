@@ -8,16 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
-	"github.com/nathanaday/hikari/internal/sysmap"
+	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// SystemStatus is what the files say of one system (rules SU1 to SU4 of
+// PartitionStatus is what the files say of one partition (rules SU1 to SU4 of
 // the containerize spec).
-type SystemStatus struct {
+type PartitionStatus struct {
 	Name, Repo string
 	Cloned     bool
 	// Commit is the commit that the map describes, or "".
@@ -39,26 +37,26 @@ type SuiteStatus struct {
 	Tests  []testmap.Result
 }
 
-// Status reads each owner's map in the store and its results file. It
+// Status reads each partition agent's map in the vault and its results file. It
 // writes nothing and needs no server.
-func Status(topo *topology.Topology) []SystemStatus {
-	st := topo.StoreOf()
-	var out []SystemStatus
-	for _, owner := range topo.Owners() {
-		sys := topo.Agents[owner].System
-		s := SystemStatus{Name: owner, Repo: sys.Repo, Cloned: !slices.Contains(topo.Missing, sys.Repo), Health: map[string]int{}}
-		if data, err := os.ReadFile(st.MapFile(owner)); err == nil {
-			var m sysmap.Map
-			if err := yaml.Unmarshal(data, &m); err != nil {
+func Status(topo *topology.Topology) []PartitionStatus {
+	st := topo.VaultOf()
+	var out []PartitionStatus
+	for _, partitionAgent := range topo.PartitionAgents() {
+		sys := topo.Agents[partitionAgent].Partition
+		s := PartitionStatus{Name: partitionAgent, Repo: sys.Repo, Cloned: !slices.Contains(topo.Missing, sys.Repo), Health: map[string]int{}}
+		if data, err := os.ReadFile(st.MapFile(partitionAgent)); err == nil {
+			m, err := featuremap.Decode(data)
+			if err != nil {
 				s.Problem = "map.yaml: " + err.Error()
 			}
-			s.Commit, s.Features = m.System.DescribedState.Commit, len(m.Features)
+			s.Commit, s.Features = m.Partition.DescribedState.Commit, len(m.Features)
 			for _, f := range m.Features {
 				s.Health[f.Health]++
 			}
 		}
 		if s.Cloned {
-			path := filepath.Join(topo.Repos[sys.Repo].Path, sys.Scope, sysmap.Dir, sysmap.PrivateDir, testmap.ResultsFile)
+			path := filepath.Join(topo.Repos[sys.Repo].Path, sys.Scope, featuremap.Dir, featuremap.PrivateDir, testmap.ResultsFile)
 			if _, err := os.Stat(path); err == nil {
 				s.Results = true
 				results, err := testmap.LoadResults(path)

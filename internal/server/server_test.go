@@ -18,15 +18,15 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/sysmap"
-	"github.com/nathanaday/hikari/internal/systems"
+	"github.com/nathanaday/hikari/internal/featuremap"
+	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// testTopology is the room of the tests: lead orchestrates the owners
+// testTopology is the room of the tests: lead orchestrates the partition agents
 // writer and critic, whose code is in the repo REPO.
 const testTopology = `
 name: test
@@ -35,14 +35,14 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {description: leads engineering}}
-  writer: {x-hikari: {description: writes, system: {repo: app, scope: writer}}}
-  critic: {x-hikari: {description: reviews, system: {repo: app, scope: critic}}}
+  writer: {x-hikari: {description: writes, partition: {repo: app, scope: writer}}}
+  critic: {x-hikari: {description: reviews, partition: {repo: app, scope: critic}}}
 `
 
-// flatTopology is the room without an orchestrator: lead owns a system too.
+// flatTopology is the room without an orchestration agent: lead has a partition too.
 var flatTopology = strings.NewReplacer(
 	"  orchestration: lead\n", "",
-	"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {description: leads engineering, system: {repo: app, scope: lead}}}",
+	"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {description: leads engineering, partition: {repo: app, scope: lead}}}",
 ).Replace(testTopology)
 
 // gitRepo makes a git repo with one file in each of dirs, and returns its
@@ -83,7 +83,7 @@ func parseRoom(t *testing.T, src string) *topology.Topology {
 func newServerOf(t *testing.T, src string) (*Server, *bytes.Buffer) {
 	t.Helper()
 	topo := parseRoom(t, src)
-	sys, err := systems.New(topo)
+	sys, err := partitions.New(topo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSnapshotOfNewServerHasEmptyMessageList(t *testing.T) {
 	}
 }
 
-func TestNodeAPI(t *testing.T) {
+func TestAgentAPI(t *testing.T) {
 	s, _ := newTestServer(t)
 	srv := httptest.NewServer(s.Handler("ui-secret"))
 	defer srv.Close()
@@ -241,7 +241,7 @@ func TestNodeAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	room := self.Participants
-	if !self.Orchestrator || len(room) != 4 || room[0].Name != "lead" || room[0].Role != api.RoleOrchestrator || room[1].Role != api.RoleOwner || room[3].Role != api.RoleOperator {
+	if !self.Orchestration || len(room) != 4 || room[0].Name != "lead" || room[0].Role != api.RoleOrchestration || room[1].Role != api.RolePartition || room[3].Role != api.RoleOperator {
 		t.Fatalf("lead's room = %+v", room)
 	}
 
@@ -274,7 +274,7 @@ func TestUIRequiresToken(t *testing.T) {
 	srv := httptest.NewServer(s.Handler("ui-secret"))
 	defer srv.Close()
 
-	// A node token must not open the UI API.
+	// An agent token must not open the UI API.
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/ui/send", strings.NewReader(`{"to":"lead","body":"x"}`))
 	req.Header.Set("Authorization", "Bearer "+s.IssueToken("lead"))
 	resp, err := http.DefaultClient.Do(req)
@@ -338,7 +338,7 @@ func TestUIRequiresToken(t *testing.T) {
 	}
 }
 
-func TestSystemRoutes(t *testing.T) {
+func TestPartitionRoutes(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
@@ -361,7 +361,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
+  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -370,7 +370,7 @@ services:
 	os.MkdirAll(deliverable, 0o755)
 	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
-	sys, err := systems.New(topo)
+	sys, err := partitions.New(topo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,16 +384,16 @@ services:
 	events, cancel := s.Subscribe()
 	defer cancel()
 	snap := (<-events).Snapshot
-	if len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || snap.Vocabulary.Terms == nil {
-		t.Fatalf("snapshot systems = %+v, vocabulary = %+v", snap.Systems, snap.Vocabulary)
+	if len(snap.Partitions) != 1 || snap.Partitions[0].PartitionAgent != "orders" || snap.Vocabulary.Terms == nil {
+		t.Fatalf("snapshot partitions = %+v, vocabulary = %+v", snap.Partitions, snap.Vocabulary)
 	}
-	if len(snap.Repos) != 1 || snap.Repos[0].Name != "shop" || snap.Repos[0].Branch != "hikari/work" || !slices.Equal(snap.Repos[0].Systems, []string{"orders"}) {
+	if len(snap.Repos) != 1 || snap.Repos[0].Name != "shop" || snap.Repos[0].Branch != "hikari/work" || !slices.Equal(snap.Repos[0].Partitions, []string{"orders"}) {
 		t.Errorf("N2: repos = %+v", snap.Repos)
 	}
 	if len(snap.Deliverables) != 1 || snap.Deliverables[0].Name != "lib" || !slices.Equal(snap.Deliverables[0].Holders, []string{"orders"}) {
 		t.Errorf("N3: deliverables = %+v", snap.Deliverables)
 	}
-	if g := snap.Systems[0].Grants; !slices.Equal(g.Deliverables, []string{"lib"}) || g.Releases == nil {
+	if g := snap.Partitions[0].Grants; !slices.Equal(g.Deliverables, []string{"lib"}) || g.Releases == nil {
 		t.Errorf("N1: grants = %+v", g)
 	}
 	if data, _ := json.Marshal(snap.Repos); strings.Contains(string(data), dir) {
@@ -401,23 +401,23 @@ services:
 	}
 
 	self, err := orders.Self(ctx)
-	if err != nil || self.System == nil || self.System.WorkDir != "/workspace/orders" {
-		t.Fatalf("owner self = %+v, %v", self.System, err)
+	if err != nil || self.Partition == nil || self.Partition.WorkDir != "/workspace/orders" {
+		t.Fatalf("partition agent self = %+v, %v", self.Partition, err)
 	}
 	purpose := "## Purpose\n\nA customer places an order.\n"
 	if _, err := orders.ChangeWiki(ctx, false, []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
 		t.Fatal(err)
 	}
-	// One change sends the wiki, the system, and the support of the public
+	// One change sends the wiki, the partition, and the support of the public
 	// wiki.
 	got := map[string]bool{}
 	for range 3 {
 		e := <-events
 		switch {
-		case e.Type == "wiki" && e.Wiki.Ref == "system:orders" && len(e.Wiki.Documents) == 1:
-			got["system wiki"] = true
-		case e.Type == "system" && e.System.Owner == "orders" && len(e.System.Features) == 1:
-			got["system"] = true
+		case e.Type == "wiki" && e.Wiki.Ref == "partition:orders" && len(e.Wiki.Documents) == 1:
+			got["feature map"] = true
+		case e.Type == "partition" && e.Partition.PartitionAgent == "orders" && len(e.Partition.Features) == 1:
+			got["partition"] = true
 		case e.Type == "wiki" && e.Wiki.Ref == "public":
 			got["public wiki"] = true
 		default:
@@ -431,15 +431,15 @@ services:
 		t.Errorf("invalid feature error = %v", err)
 	}
 
-	systemsList, err := lead.ListSystems(ctx)
-	if err != nil || len(systemsList) != 1 || systemsList[0].Features[testmap.Untested] != 1 {
-		t.Errorf("lead list = %+v, %v", systemsList, err)
+	partitionsList, err := lead.ListPartitions(ctx)
+	if err != nil || len(partitionsList) != 1 || partitionsList[0].Features[testmap.Untested] != 1 {
+		t.Errorf("lead list = %+v, %v", partitionsList, err)
 	}
-	if _, err := orders.ListSystems(ctx); err == nil || !strings.Contains(err.Error(), "only \"lead\", the orchestrator") {
-		t.Errorf("owner list error = %v", err)
+	if _, err := orders.ListPartitions(ctx); err == nil || !strings.Contains(err.Error(), "only \"lead\", the orchestration agent") {
+		t.Errorf("partition agent list error = %v", err)
 	}
-	if _, err := lead.GetSystem(ctx, "ghost"); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("unknown system error = %v", err)
+	if _, err := lead.GetPartition(ctx, "ghost"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unknown partition error = %v", err)
 	}
 	if err := lead.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_term", Term: &vocab.Term{Term: "order", Definition: "A request."}}); err != nil {
 		t.Fatal(err)
@@ -448,15 +448,15 @@ services:
 		t.Fatalf("vocabulary event = %+v", e)
 	}
 	if v, err := orders.GetVocabulary(ctx); err != nil || len(v.Terms) != 1 {
-		t.Errorf("an owner reads the vocabulary: %+v, %v", v, err)
+		t.Errorf("a partition agent reads the vocabulary: %+v, %v", v, err)
 	}
 	if err := orders.ChangeVocabulary(ctx, api.VocabularyChange{Op: "remove", Name: "order"}); err == nil {
-		t.Error("an owner changed the vocabulary")
+		t.Error("a partition agent changed the vocabulary")
 	}
 	if commit, err := orders.Commit(ctx, "Add the map"); err != nil || commit == "" {
 		t.Errorf("commit = %q, %v", commit, err)
 	}
-	if tc, err := orders.TurnContext(ctx); err != nil || tc.MapState != sysmap.Unbuilt {
+	if tc, err := orders.TurnContext(ctx); err != nil || tc.MapState != featuremap.Unbuilt {
 		t.Errorf("turn context = %+v, %v", tc, err)
 	}
 }
@@ -484,7 +484,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {x-hikari: {}}
-  orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
+  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
 `), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -493,7 +493,7 @@ services:
 	os.MkdirAll(deliverable, 0o755)
 	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
-	sys, err := systems.New(topo)
+	sys, err := partitions.New(topo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,21 +534,21 @@ services:
 	if len(self.Deliverables) != 1 || self.Deliverables[0].Description != "The library." {
 		t.Errorf("Self.Deliverables = %+v", self.Deliverables)
 	}
-	if lead := s.Self("lead"); len(lead.OwnerDeliverables["orders"]) != 1 {
-		t.Errorf("Self.OwnerDeliverables = %+v", lead.OwnerDeliverables)
+	if lead := s.Self("lead"); len(lead.PartitionAgentDeliverables["orders"]) != 1 {
+		t.Errorf("Self.OwnerDeliverables = %+v", lead.PartitionAgentDeliverables)
 	}
 }
 
-func TestStoreRoutes(t *testing.T) {
+func TestVaultRoutes(t *testing.T) {
 	topo := parseRoom(t, testTopology)
-	sys, err := systems.New(topo)
+	sys, err := partitions.New(topo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := New(topo, nil, sys)
 	srv := httptest.NewServer(s.Handler("ui-secret"))
 	defer srv.Close()
-	root := sys.Store().Root
+	root := sys.Vault().Root
 	os.MkdirAll(filepath.Join(root, "shared", "skills", "style"), 0o755)
 	os.WriteFile(filepath.Join(root, "shared", "skills", "style", "SKILL.md"), []byte("# style\n"), 0o644)
 	os.WriteFile(filepath.Join(root, "shared", "policies", "security.md"), []byte("Never log secrets.\n"), 0o644)
@@ -575,7 +575,7 @@ func TestStoreRoutes(t *testing.T) {
 		return resp.StatusCode, string(b)
 	}
 
-	code, body := get("/api/ui/store/shared")
+	code, body := get("/api/ui/vault/shared")
 	if code != 200 || !strings.Contains(body, `"name":"style"`) || !strings.Contains(body, `"path":"shared/policies/security.md"`) || strings.Contains(body, "logo") {
 		t.Errorf("shared listing = %d %s", code, body)
 	}
@@ -583,7 +583,7 @@ func TestStoreRoutes(t *testing.T) {
 		!strings.Contains(body, `"targets":[{"type":"dockerhub"}],"holders":[]`) || !strings.Contains(body, `"name":"broken"`) || !strings.Contains(body, `"error":"deliverable \"broken\" has no deliverable.yaml`) {
 		t.Errorf("U12 deliverables listing = %s", body)
 	}
-	if code, body := get("/api/ui/store/file?path=shared/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
+	if code, body := get("/api/ui/vault/file?path=shared/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
 		t.Errorf("text file = %d %q", code, body)
 	}
 	for path, want := range map[string]int{
@@ -594,16 +594,16 @@ func TestStoreRoutes(t *testing.T) {
 		"shared/policies/missing.md": 404,
 		"shared/policies":            404,
 	} {
-		if code, _ := get("/api/ui/store/file?path=" + path); code != want {
+		if code, _ := get("/api/ui/vault/file?path=" + path); code != want {
 			t.Errorf("U10: %s = %d, want %d", path, code, want)
 		}
 	}
-	if code, _ := get("/api/ui/store/releases/nope/lib/1.0.0"); code != 404 {
+	if code, _ := get("/api/ui/vault/releases/nope/lib/1.0.0"); code != 404 {
 		t.Errorf("unknown release = %d", code)
 	}
-	resp, _ := http.Get(srv.URL + "/api/ui/store/shared")
+	resp, _ := http.Get(srv.URL + "/api/ui/vault/shared")
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("the store needs the UI token: %s", resp.Status)
+		t.Errorf("the vault needs the UI token: %s", resp.Status)
 	}
 }
 
@@ -618,7 +618,7 @@ func TestActivity(t *testing.T) {
 	s.AddActivity("writer", api.Activity{ID: 2, Turn: 1, Kind: api.ActivityTool, Tool: "Read", Output: "ok", Done: true})
 	s.AddActivity("writer", api.Activity{ID: 3, Turn: 1, Kind: api.ActivityDone, Text: "Should I add it?", Done: true})
 	for range 4 {
-		if e := <-events; e.Type != "activity" || e.Node != "writer" {
+		if e := <-events; e.Type != "activity" || e.Agent != "writer" {
 			t.Errorf("event = %+v", e)
 		}
 	}
@@ -647,9 +647,9 @@ func TestActivity(t *testing.T) {
 	}
 }
 
-// TestRenamedNodesRouteByName checks that messages, mentions, and prompts
+// TestRenamedAgentsRouteByName checks that messages, mentions, and prompts
 // use names (rule ID12 of the ids spec).
-func TestRenamedNodesRouteByName(t *testing.T) {
+func TestRenamedAgentsRouteByName(t *testing.T) {
 	src := strings.NewReplacer(
 		"writer: {x-hikari: {description: writes,", "writer: {x-hikari: {name: scribe, description: writes,",
 		"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {name: chief, description: leads engineering}}",
@@ -660,13 +660,13 @@ func TestRenamedNodesRouteByName(t *testing.T) {
 		t.Errorf("a post wakes the renamed agent: %+v, %v", m, err)
 	}
 	if m, err := s.Send("scribe", post("done")); err != nil || !slices.Equal(m.Woke, []string{"chief"}) {
-		t.Errorf("a post wakes the renamed orchestrator: %+v, %v", m, err)
+		t.Errorf("a post wakes the renamed orchestration agent: %+v, %v", m, err)
 	}
 	if _, err := s.Send("chief", dm("writer", "hi")); err == nil {
 		t.Error("an agent's id is not an address")
 	}
 	self := s.Self("scribe")
-	if self.Name != "scribe" || self.Participants[0].Name != "chief" || self.Orchestrator {
+	if self.Name != "scribe" || self.Participants[0].Name != "chief" || self.Orchestration {
 		t.Errorf("Self(scribe) = %+v", self)
 	}
 	if snap := s.snapshot(); snap.Project != "test" {

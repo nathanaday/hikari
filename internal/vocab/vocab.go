@@ -1,5 +1,5 @@
 // Package vocab holds the project's vocabulary: the shared names of domain
-// terms and of the interfaces between systems. The orchestrator is its only
+// terms and of the interfaces between partitions. The orchestration agent is its only
 // author.
 package vocab
 
@@ -48,14 +48,14 @@ func (v Vocabulary) Names() []string {
 }
 
 const header = `# The vocabulary of the project. hikari writes this file for the
-# orchestrator, who changes it through the vocabulary tools.
+# orchestration agent, who changes it through the vocabulary tools.
 `
 
 var validKind = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// Store holds the vocabulary. The file is created at the first
+// File holds the vocabulary. The file is created at the first
 // change.
-type Store struct {
+type File struct {
 	path string
 
 	mu      sync.Mutex
@@ -65,8 +65,8 @@ type Store struct {
 
 // Open loads the vocabulary from path, or starts an empty one if the file
 // does not exist.
-func Open(path string) (*Store, error) {
-	s := &Store{path: path, v: Vocabulary{Version: version}, version: 1}
+func Open(path string) (*File, error) {
+	s := &File{path: path, v: Vocabulary{Version: version}, version: 1}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return s, nil
@@ -85,7 +85,7 @@ func Open(path string) (*Store, error) {
 
 // Get returns a copy of the vocabulary and its version. The version grows
 // with each change.
-func (s *Store) Get() (Vocabulary, int) {
+func (s *File) Get() (Vocabulary, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v := s.v
@@ -101,7 +101,7 @@ func (s *Store) Get() (Vocabulary, int) {
 }
 
 // DefineTerm adds a term, or replaces the term with the same name.
-func (s *Store) DefineTerm(t Term) error {
+func (s *File) DefineTerm(t Term) error {
 	t.Term = strings.TrimSpace(t.Term)
 	if t.Term == "" || strings.TrimSpace(t.Definition) == "" {
 		return errors.New("a term needs a name and a definition")
@@ -118,7 +118,7 @@ func (s *Store) DefineTerm(t Term) error {
 
 // DefineInterface adds an interface, or replaces the interface with the same
 // name.
-func (s *Store) DefineInterface(in Interface) error {
+func (s *File) DefineInterface(in Interface) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" || strings.TrimSpace(in.Description) == "" {
 		return errors.New("an interface needs a name and a description")
@@ -137,7 +137,7 @@ func (s *Store) DefineInterface(in Interface) error {
 }
 
 // Remove removes the term or the interface called name.
-func (s *Store) Remove(name string) error {
+func (s *File) Remove(name string) error {
 	return s.change(func(v *Vocabulary) error {
 		n := len(v.Terms) + len(v.Interfaces)
 		v.Terms = slices.DeleteFunc(v.Terms, func(t Term) bool { return t.Term == name })
@@ -149,7 +149,7 @@ func (s *Store) Remove(name string) error {
 	})
 }
 
-func (s *Store) change(fn func(*Vocabulary) error) error {
+func (s *File) change(fn func(*Vocabulary) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := s.v
@@ -166,7 +166,7 @@ func (s *Store) change(fn func(*Vocabulary) error) error {
 	return nil
 }
 
-func (s *Store) save(v Vocabulary) error {
+func (s *File) save(v Vocabulary) error {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
@@ -199,7 +199,7 @@ func (s *Store) save(v Vocabulary) error {
 	return os.Rename(tmp.Name(), s.path)
 }
 
-// Flag is a problem with an interface of a system, as the orchestrator sees
+// Flag is a problem with an interface of a partition, as the orchestration agent sees
 // it.
 type Flag struct {
 	Interface string `yaml:"interface" json:"interface"`
@@ -208,12 +208,12 @@ type Flag struct {
 
 const (
 	NotInVocabulary = "not in the vocabulary"
-	NoProvider      = "consumed, but no visible system provides it"
+	NoProvider      = "consumed, but no visible partition provides it"
 )
 
-// Check returns the flags V6 and V7 for a system that provides and consumes
-// the given interfaces. known holds the names in the orchestrator's
-// vocabularies, and provided the names that visible systems provide.
+// Check returns the flags V6 and V7 for a partition that provides and consumes
+// the given interfaces. known holds the names in the orchestration agent's
+// vocabularies, and provided the names that visible partitions provide.
 func Check(provides, consumes []string, known, provided map[string]bool) []Flag {
 	var flags []Flag
 	seen := map[string]bool{}

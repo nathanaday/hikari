@@ -1,4 +1,4 @@
-// Package topoedit changes a compose file through operations, such as
+// Package topoedit changes a topology file through operations, such as
 // rename or set_orchestration, and splices each change into the text so that
 // every byte outside the changed nodes stays (rule TE1 of the topology API
 // spec). It also reads the source model, lints a text, and finds the
@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// doc is a compose file's text with its node tree. Every primitive edit
+// doc is a topology file's text with its node tree. Every primitive edit
 // returns a new text, and the next edit parses it again.
 type doc struct {
 	text  []byte
@@ -42,7 +42,7 @@ func parse(text []byte) (*doc, error) {
 		d.root = n.Content[0]
 	}
 	if d.root.Kind != yaml.MappingNode {
-		return nil, errors.New("the compose file is not a mapping")
+		return nil, errors.New("the topology file is not a mapping")
 	}
 	return d, nil
 }

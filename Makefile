@@ -1,7 +1,7 @@
 -include .env
 export
 
-COMPOSE ?= examples/shop/compose.yaml
+TOPOLOGY ?= examples/shop/topology.yaml
 LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
@@ -32,10 +32,10 @@ image:
 	docker build -t hikari-agent .
 
 up: build image
-	@if [ "$(COMPOSE)" = examples/shop/compose.yaml ] && [ ! -d .hikari/demo/shop ]; then \
+	@if [ "$(TOPOLOGY)" = examples/shop/topology.yaml ] && [ ! -d .hikari/demo/shop ]; then \
 		echo "the shop's repo is missing: run make demo-repo first"; exit 1; \
 	fi
-	bin/hikari up $(COMPOSE)
+	bin/hikari up $(TOPOLOGY)
 
 # Serve the UI with hot reload on http://localhost:5173 against a running `make up`.
 dev-ui: web/node_modules
@@ -45,7 +45,7 @@ test: web/node_modules
 	go test -race ./...
 	cd web && npm test
 
-# Create the repo of examples/shop in .hikari/demo/shop, and reset its store
+# Create the repo of examples/shop in .hikari/demo/shop, and reset its vault
 # in examples/shop/store with a sample shared policy.
 demo-repo:
 	examples/shop/make-repo.sh .hikari/demo/shop

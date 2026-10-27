@@ -77,7 +77,7 @@ func (r Results) FollowChange(renamed map[string]string, removed []string) bool 
 }
 
 // LoadResults reads the results file. A missing file is no results. An
-// invalid file is no results and an error, which the owner view shows
+// invalid file is no results and an error, which the partition agent's view shows
 // (rule J8).
 func LoadResults(path string) (Results, error) {
 	empty := Results{Version: version, Runs: map[string]Run{}}

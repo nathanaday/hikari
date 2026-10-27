@@ -1,6 +1,6 @@
 {
   "revision": "c0459b66bcb3190e3c47acf1db49f53162bd5d08d2ad08a036d4c668239ca343",
-  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {name: chief, description: Leads the demo.}\n  dev:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Builds it., system: {repo: project, scope: app}}\n",
+  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {name: chief, description: Leads the demo.}\n  dev:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Builds it., partition: {repo: project, scope: app}}\n",
   "diff": [
     {
       "op": " ",
@@ -95,7 +95,7 @@
     },
     {
       "op": "+",
-      "text": "    x-hikari: {description: Builds it., system: {repo: project, scope: app}}",
+      "text": "    x-hikari: {description: Builds it., partition: {repo: project, scope: app}}",
       "new": 16
     }
   ],
@@ -126,13 +126,13 @@
   "summary": [
     "rename agent lead to chief",
     "add agent dev",
-    "give dev a system"
+    "give dev a partition"
   ],
   "model": {
     "project": {
       "id": "demo",
       "name": "demo",
-      "store": "",
+      "vault": "",
       "repo": true,
       "branch": "main",
       "orchestration": "lead"
@@ -145,7 +145,7 @@
         "description": "Builds it.",
         "instructions": "",
         "model": "",
-        "system": {
+        "partition": {
           "repo": "project",
           "scope": "app",
           "read": [],
@@ -169,7 +169,7 @@
         "description": "Leads the demo.",
         "instructions": "",
         "model": "",
-        "system": null,
+        "partition": null,
         "releases": [],
         "deliverables": [],
         "image": "hikari-agent",

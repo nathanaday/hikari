@@ -8,17 +8,17 @@ import (
 	"testing"
 )
 
-func writeStore(t *testing.T, files map[string]string) string {
+func writeVault(t *testing.T, files map[string]string) string {
 	t.Helper()
-	store := t.TempDir()
+	vault := t.TempDir()
 	for name, content := range files {
-		p := filepath.Join(store, filepath.FromSlash(name))
+		p := filepath.Join(vault, filepath.FromSlash(name))
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	return store
+	return vault
 }
 
 const story = `---
@@ -33,14 +33,14 @@ Ask @dev and @qa, not @dev-ops or #dev.
 `
 
 func TestOccurrences(t *testing.T) {
-	store := writeStore(t, map[string]string{
+	vault := writeVault(t, map[string]string{
 		"shared/wiki/order-items.md":   story,
 		"shared/vocabulary/terms.yaml": "version: 1\nterms:\n  - term: dev\n    definition: What @dev builds for @qa.\ninterfaces: []\n",
 		"shared/vocabulary/eng.yaml":   "version: 1\nterms:\n  - term: dev\n    definition: What @dev builds.\ninterfaces: []\n",
-		"systems/dev/map.yaml":         "version: 4\nsystem:\n  name: dev\n  summary: Built by @dev.\nfeatures: []\n",
+		"systems/dev/map.yaml":         "version: 4\npartition:\n  name: dev\n  summary: Built by @dev.\nfeatures: []\n",
 	})
 	renames := []Rename{{"agent", "dev", "builder"}, {"agent", "qa", "checker"}}
-	occ := Occurrences(store, renames)
+	occ := Occurrences(vault, renames)
 	var keys []string
 	var unkeyed int
 	for _, o := range occ {
@@ -64,14 +64,14 @@ func TestOccurrences(t *testing.T) {
 		t.Errorf("TP4: the map summary is listed without a key: %+v", occ)
 	}
 
-	changed, skipped, err := Propagate(store, renames, []string{"shared/wiki/order-items.md:8:5", "shared/wiki/order-items.md:8:14", "gone.md:1:1"})
+	changed, skipped, err := Propagate(vault, renames, []string{"shared/wiki/order-items.md:8:5", "shared/wiki/order-items.md:8:14", "gone.md:1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(changed, []string{"shared/wiki/order-items.md"}) || !slices.Equal(skipped, []string{"gone.md:1:1"}) {
 		t.Errorf("TP3: changed %v, skipped %v", changed, skipped)
 	}
-	data, _ := os.ReadFile(filepath.Join(store, "shared/wiki/order-items.md"))
+	data, _ := os.ReadFile(filepath.Join(vault, "shared/wiki/order-items.md"))
 	if !strings.Contains(string(data), "Ask @builder and @checker, not @dev-ops or #dev.\n@dev, then @qa.") ||
 		!strings.Contains(string(data), `name: "@dev and @qa"`) {
 		t.Errorf("TP3: only the chosen places change, and never the header:\n%s", data)

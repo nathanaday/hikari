@@ -1,13 +1,13 @@
 # Analysis brief
 
-Send this brief to one fresh subagent for each repository, with `<repo>`, its system `<system>`, and the paths below. The subagent reads, and writes one file.
+Send this brief to one fresh subagent for each repository, with `<repo>`, its partition `<partition>`, and the paths below. The subagent reads, and writes one file.
 
 ---
 
-Analyze the repository `<repo>` of a hikari project, for a refactor into isolated systems. Read:
+Analyze the repository `<repo>` of a hikari project, for a refactor into isolated partitions. Read:
 
 - the code in `repos/<repo>`;
-- its owner's map, `store/systems/<system>/map.yaml`, and wiki, `store/systems/<system>/wiki/`;
+- its partition agent's map, `store/systems/<partition>/map.yaml`, and wiki, `store/systems/<partition>/wiki/`;
 - the baseline, `onboarding/baseline.md`, and the survey in `onboarding/state.md`;
 - the names and purposes of the other repositories, in `onboarding/state.md`. Read the code of another repository only to compare a piece of code that this one copies.
 

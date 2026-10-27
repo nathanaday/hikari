@@ -2,29 +2,48 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	iofs "io/fs"
 	"os"
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/onboard"
+	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// composeArg parses the flags of a command that takes one compose file.
-func composeArg(fs *flag.FlagSet, args []string, usage string) string {
+// topologyArg parses the flags of a command that takes one topology file.
+func topologyArg(fs *flag.FlagSet, args []string, usage string) (string, error) {
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: "+usage)
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
-	if fs.NArg() != 1 {
+	return fileArg(fs)
+}
+
+// fileArg returns the topology file that the command names, or
+// topology.yaml when it names none. A directory that has only the old
+// compose.yaml is told to rename it.
+func fileArg(fs *flag.FlagSet) (string, error) {
+	switch fs.NArg() {
+	case 0:
+	case 1:
+		return fs.Arg(0), nil
+	default:
 		fs.Usage()
 		os.Exit(2)
 	}
-	return fs.Arg(0)
+	if _, err := os.Stat(scaffold.TopologyFile); errors.Is(err, iofs.ErrNotExist) {
+		if _, err := os.Stat("compose.yaml"); err == nil {
+			return "", fmt.Errorf("%s does not exist; hikari now opens %s by default, so rename compose.yaml to %s", scaffold.TopologyFile, scaffold.TopologyFile, scaffold.TopologyFile)
+		}
+	}
+	return scaffold.TopologyFile, nil
 }
 
 // loadShown loads a topology, and shows its errors one to a line.
@@ -58,7 +77,10 @@ func showLoaded(con *console.Console, load func(context.Context, string) (*topol
 func check(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	draft := fs.Bool("draft", false, "check a target topology: repos and scopes that do not exist yet are allowed, and the running project is not checked")
-	file := composeArg(fs, args, "hikari check [flags] <compose.yaml>")
+	file, err := topologyArg(fs, args, "hikari check [flags] [topology.yaml]")
+	if err != nil {
+		return err
+	}
 	con := console.New(os.Stdout)
 	if *draft {
 		topo, err := showLoaded(con, topology.LoadDraft, ctx, file)
@@ -98,7 +120,10 @@ func showFindings(con *console.Console, findings []linked.Finding) bool {
 func syncProject(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	from := fs.String("from", "", "start your branch from this branch of the remote, where yours does not exist yet")
-	file := composeArg(fs, args, "hikari sync [flags] <compose.yaml>")
+	file, err := topologyArg(fs, args, "hikari sync [flags] [topology.yaml]")
+	if err != nil {
+		return err
+	}
 	con := console.New(os.Stdout)
 	topo, err := loadShown(ctx, con, file)
 	if err != nil {
@@ -109,7 +134,10 @@ func syncProject(ctx context.Context, args []string) error {
 
 // push pushes your branches (rules PS1 to PS5).
 func push(ctx context.Context, args []string) error {
-	file := composeArg(flag.NewFlagSet("push", flag.ExitOnError), args, "hikari push <compose.yaml>")
+	file, err := topologyArg(flag.NewFlagSet("push", flag.ExitOnError), args, "hikari push [topology.yaml]")
+	if err != nil {
+		return err
+	}
 	con := console.New(os.Stdout)
 	topo, err := loadShown(ctx, con, file)
 	if err != nil {
@@ -139,12 +167,15 @@ func showResults(con *console.Console, results []linked.Result) error {
 	return nil
 }
 
-// status prints what the files say of each system (rules SU1 to SU4 of
+// status prints what the files say of each partition (rules SU1 to SU4 of
 // the containerize spec).
 func status(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	tests := fs.Bool("tests", false, "print each test of each suite, with its outcome")
-	file := composeArg(fs, args, "hikari status [flags] <compose.yaml>")
+	file, err := topologyArg(fs, args, "hikari status [flags] [topology.yaml]")
+	if err != nil {
+		return err
+	}
 	con := console.New(os.Stdout)
 	topo, err := loadShown(ctx, con, file)
 	if err != nil {
@@ -156,10 +187,10 @@ func status(ctx context.Context, args []string) error {
 	return nil
 }
 
-// statusLines renders the status of each system as plain lines.
-func statusLines(systems []linked.SystemStatus, tests bool) []string {
+// statusLines renders the status of each partition as plain lines.
+func statusLines(partitions []linked.PartitionStatus, tests bool) []string {
 	var out []string
-	for _, s := range systems {
+	for _, s := range partitions {
 		head := s.Name + "  "
 		switch {
 		case !s.Cloned:

@@ -332,7 +332,7 @@ func TestWarnings(t *testing.T) {
 	}
 }
 
-func TestStoreWritesReloadsAndKeepsTheLastValidWiki(t *testing.T) {
+func TestFilesWriteReloadAndKeepTheLastValidWiki(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "wiki")
 	s, err := Open(dir, nil)
 	if err != nil {

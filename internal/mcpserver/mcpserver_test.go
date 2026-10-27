@@ -36,9 +36,9 @@ func toolNames(t *testing.T, self api.Self) []string {
 }
 
 var (
-	everyone     = []string{"check_inbox", "get_document", "get_vocabulary", "list_agents", "post", "search_wiki", "send_direct_message"}
-	ownerOnly    = []string{"change_wiki", "check_release", "commit_changes", "get_my_system", "mark_map_current", "publish_release", "record_test_run", "set_system_info"}
-	orchestrator = []string{"change_public_wiki", "define_interface", "define_term", "get_system", "list_systems", "remove_entry"}
+	everyone           = []string{"check_inbox", "get_document", "get_vocabulary", "list_agents", "post", "search_wiki", "send_direct_message"}
+	partitionAgentOnly = []string{"change_wiki", "check_release", "apply", "get_my_partition", "mark_map_current", "publish_release", "record_test_run", "set_partition_info"}
+	orchestration      = []string{"change_public_wiki", "define_interface", "define_term", "get_partition", "list_partitions", "remove_entry"}
 )
 
 func sorted(lists ...[]string) []string {
@@ -55,8 +55,8 @@ func TestToolsByRole(t *testing.T) {
 		self api.Self
 		want []string
 	}{
-		"owner":        {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
-		"orchestrator": {api.Self{Name: "lead", Orchestrator: true}, sorted(everyone, orchestrator)},
+		"owner":        {api.Self{Name: "orders", Partition: &api.SelfPartition{}}, sorted(everyone, partitionAgentOnly)},
+		"orchestrator": {api.Self{Name: "lead", Orchestration: true}, sorted(everyone, orchestration)},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
