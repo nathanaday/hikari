@@ -1,6 +1,18 @@
 # Spec: the names of the shared language
 
-Status: approved.
+Status: built. Docker was not running, so the live check of 2026-10-26 ran without containers: `hikari check examples/shop/topology.yaml` passed, and with `hikari up -no-launch`, `hikari mcp` with each agent's token stood in for the agents. orders called `get_my_partition` and `apply`, which committed as `orders (hikari)`; the orchestration agent called `list_partitions` and `get_partition`; a `map.yaml` with `system:` was rewritten at the next start. Headless Chrome showed Partitions in the sidebar, the Structure tab's Project, Repositories, Agents, Sidecars, and Vault, and "partition agent" under orders, with no console error. No agent turn ran, and no image was built.
+
+Changes made during the build:
+
+1. **The wire fields take the table's words.** `Self` has `partition` and `orchestration`, and `partition_agent_grants` and `partition_agent_deliverables`; a partition's view names its agent in `partition_agent`; the private code map is `code_map`; a status or activity event names its `agent`; the event of a partition is `partition`, and a wiki's scope is `partition` or `public`.
+2. **The routes follow.** `set_partition_info` is `PATCH /api/agent/map/partition`, the orchestration agent's reads are `/api/agent/partitions`, a release is `/api/ui/vault/releases/{partition}/...`, and the UI's partition page is `#/partition/<name>`.
+3. **`sync`, `push`, `check`, and `status` take the file as optional** (N5). Before, they required it. `scaffold.TopologyFile` names `topology.yaml` for them, for `hikari init`, and for the editor's new project.
+4. **A map from a teammate's branch is read loosely.** `featuremap.Decode` reads the old `system:` key too, for `hikari status` and the commit check of `hikari sync`, which read maps that `hikari up` has not rewritten.
+5. **Names that the spec did not list follow the table.** The skill reference `layout.md` is `code-map.md`, hikify's draft is `topology.target.yaml`, `NodeAvatar` is `ParticipantAvatar`, the stop commit says `vault changes left when hikari stopped`, and the wake fixture's keys are `orchestration` and `partition_agents`.
+6. **The UI shows roles in words.** `roleLabel` maps `orchestration` and `partition` to "orchestration agent" and "partition agent". The Structure tab's group is Repositories, and a partition's private section is Code map.
+7. **The lint test is `internal/driver/lint_test.go`** (N11). It builds the system prompt of each kind of agent, and reads the embedded skills and agents, the host skills, and the string literals and JSX text of the components; tests and the vendored `ui/` components are left out. Its allow list keeps paths under `store/`, `store.ts`, "Docker Compose file", a verb, and the graph's nodes.
+8. **Some old words stay where they mean something else.** YAML and graph nodes (`yaml.Node`, `nodeTaken`), Docker Compose (`ComposeError`, `composeKeys`, the `compose` method), the deliverable's `layout` rules, the system prompt, and the abbreviations `sys` and `orch`. The service id `orchestrator` and the agent name `lead` in tests are names.
+9. **The first commit carries the UI's file moves.** `git mv` staged them with the Go change, so the UI's tests pass from the next commit.
 
 Sources: `docs/brainstorm/shared-language.md` (questions C1 to C3 and C5) and `shared-language-answers.md`. This is step 3 of the seven steps of the shared language.
 
