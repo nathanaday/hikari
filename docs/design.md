@@ -113,13 +113,13 @@ each partition agent left when a turn ends and when hikari stops.
 ## A public map and private documents
 
 The map is the boundary of a container. Other agents never see the code, so
-the map holds only what they need: what the partition does, its interfaces, and
-whether each feature exists and is tested. A file path or a test command in
-the map would invite them to reason about code that they cannot see. The
-partition agent still needs that knowledge, so it lives in two private documents in
-the same directory: `layout.yaml`, which says where each feature lives in the
-code, and `tests.yaml`, a test map that says which features each test
-touches.
+the map holds only what they need: what the partition does, its interfaces,
+and whether each feature exists and is tested. A file path or a test command
+in the map would invite them to reason about code that they cannot see. The
+partition agent still needs that knowledge, so it lives in two private
+documents in the same directory: `code-map.yaml`, the code map, which says
+where each feature lives in the code, and `tests.yaml`, a test map that says
+which features each test touches.
 
 Only the partition agent can describe its partition accurately, so it writes all three
 documents. It changes the map through tools, not by editing the file: the
@@ -132,26 +132,27 @@ when it computes health, and it refuses to record a test run or to mark
 the map current while they are invalid, so that they stay true. A skill in
 the container, not a file in your repo, teaches the partition agent their formats.
 
-All three documents live in the scope, so they are versioned and reviewed
+The private documents live in the scope, so they are versioned and reviewed
 with the code that they describe.
 
 ## The feature wiki
 
 Each feature is one markdown document in the vault, beside the map, and the
 map's feature list is written from those documents. A map entry of a few
-fields had no room for the reasons behind a feature, and nothing said when
-one feature's description was last true. A document has a header that the
-server checks and a body for people and agents: why the feature exists, what
-it promises, and what it refuses. The body cites no code, so the document is
-the same for every reader; nothing in it is hidden from one reader and shown
-to another. The code paths of a feature stay in the partition agent's code map,
-`layout.yaml`, which only the partition agent needs.
+fields had no room for the reasons behind a feature, and nothing said when one
+feature's description was last true. A document has a header that the server
+checks and a body for people and agents: why the feature exists, what it
+promises, and what it refuses. The body cites no code, so the document is the
+same for every reader; nothing in it is hidden from one reader and shown to
+another. The code paths of a feature stay in the partition agent's code map,
+`code-map.yaml`, which only the partition agent needs.
 
 The documents live in the vault, not in the repo, because they are the public
-surface: orchestration agents already mount each partition's vault directory, a release
-copies them with the map, and the vault opens as one Obsidian vault of every
-partition. Each document records the commit it describes, so staleness needs no
-git history.
+surface: the map and the documents share one directory, `features/`, in the
+partition's read-only part, which the orchestration agent already mounts; a
+release copies that directory whole; and the vault opens as one Obsidian vault
+of every partition. Each document records the commit it describes, so
+staleness needs no git history.
 
 Links are the only structure. A document links the features it works with as
 `[[id]]`, anywhere in its text. A link has no direction, so the partition agent writes
@@ -207,15 +208,15 @@ A change reads the ids of every wiki and can rewrite the links of all of
 them, so hikari applies one wiki change at a time. Every tool change is
 committed when it is made, so an uncommitted change in a wiki is always the
 user's, and hikari commits it with the user's identity: before an agent's
-next change of that wiki, at stop, and at start. Configuration in the shared
+next change of that wiki, at stop, and at start. Configuration in the public
 area stays the user's to commit, because it changes how agents behave.
 
 Every agent reads the public wiki, because its rules and principles apply to
 every agent, and only the orchestration agent writes it. It lives in
-`store/shared/wiki/`, which every container already mounts read-only, so it
-needs no mount of its own. The orchestration agent also reads every feature map.
-Before each turn, an agent learns which documents of the wikis it reads
-someone else changed.
+`vault/public/wiki/`, in the public area that every container already mounts
+read-only, so it needs no mount of its own. The orchestration agent also reads
+every feature map. Before each turn, an agent learns which documents of the
+wikis it reads someone else changed.
 
 ## Tests and health
 
@@ -267,7 +268,7 @@ another partition, it asks the orchestration agent.
 
 Partition agents cannot read each other's maps, so they cannot agree on names by
 themselves. The orchestration agent keeps the project's vocabulary of terms and
-interface names in `store/shared/vocabulary/terms.yaml`, which every agent
+interface names in `vault/public/vocabulary/terms.yaml`, which every agent
 reads. hikari reads only `terms.yaml` and ignores the other files of the
 directory. Matching interface names is how the orchestration agent connects
 partitions: "orders consumes `Stock.reserve`, which inventory provides". The
@@ -284,6 +285,25 @@ documents are the exception: they describe the code at a commit, so they
 stay in the repo and change in the same commits as the code. Releases are
 versioned by their immutable version directories, and they can hold large
 binaries, which git handles badly, so git never holds them.
+
+The vault is laid out by who reads a file and who writes it. `public/` holds
+what every agent reads: the vocabulary, the public wiki, the policies, and
+the deliverables. Each partition has a `read-only/` part, with its feature
+map, its releases, and the files you grant it in `granted/`; a `can-edit/`
+part, which its partition agent can change; and a staging area. The
+orchestration agent has its own `read-only/` and `can-edit/` parts in
+`orchestration/`, beside `partitions/` because it has no code and no
+releases. Your skills sit in `skills/`, outside `public/`, because the
+topology grants each one to the agents that use it.
+
+Policies, deliverables, and skills stay yours. A policy changes every
+agent's system prompt, so an agent that could change one would rewrite its
+own rules. The orchestration agent's tools write only the vocabulary and the
+public wiki, and hikari writes no `granted/`. An agent's changes in its
+`can-edit/` are committed with its apply, so they are reviewed like its code.
+
+hikari moves no file from an earlier layout. It refuses to start on one and
+names the move that fixes it, because a silent start would show empty maps.
 
 ## The project repository
 
@@ -308,6 +328,12 @@ for each run would bury the changes of the wiki in noise, so the health
 goes into the partition's next commit. For the same reason, a time in a
 document keeps whole seconds: a finer time in memory would rewrite the map
 on each start.
+
+An apply also commits the agent's changes in its `can-edit/`, with the agent
+as author, and the orchestration agent's changes there are committed at the
+end of each of its turns. Your own changes in a `can-edit/` or a `granted/`
+are committed with your identity at start and at stop, as your wiki edits
+are.
 
 In a project repository, a compose service may bind mount a config
 directory next to the topology file. The guard covers only what hikari
@@ -390,9 +416,30 @@ directory on the host for every mount point, so mount points inside the
 scope would leave directories in your repo. The scope's own `.hikari`
 directory is hidden, so the private documents appear at one path only.
 
-A partition agent can write only its staging area. Its map stays read-only, so it
-keeps the checks of the map tools, and its published releases stay
-read-only, so they never change.
+Each container mounts the vault in a few fixed places, one directory each:
+
+| Container path | Partition agent | Orchestration agent | Mode |
+|---|---|---|---|
+| `/hikari/public` | `public/` | `public/` | read-only |
+| `/hikari/self` | `partitions/<id>/read-only/` | `orchestration/read-only/` | read-only |
+| `/hikari/can-edit` | `partitions/<id>/can-edit/` | `orchestration/can-edit/` | writable |
+| `/hikari/staging` | `partitions/<id>/staging/` | none | writable |
+| `/hikari/private` | its private documents | none | writable |
+| `/hikari/partitions/<name>` | none | each partition's `read-only/` | read-only |
+| `/hikari/grants/<name>/releases` | each granted partition's releases | none | read-only |
+| `/hikari/skills/<name>` | each granted skill | each granted skill | read-only |
+
+The directory decides the mode. A file is read-only to an agent because it
+sits in a `read-only/` or in `public/`, and writable because it sits in a
+`can-edit/` or a staging area, so one mount for each directory needs no rule
+for each file, and a file changes its mode by moving. No mount contains
+another mount's directory, so no empty directory has to hide a staging area
+inside a read-only mount, and no container mounts another partition's
+`can-edit/`, staging area, or private documents. A partition agent's map
+stays read-only, so it keeps the checks of the map tools, and its published
+releases stay read-only, so they never change. The Structure tab shows each
+agent's mounts from the function that writes the override file, so the table
+cannot disagree with the container.
 
 ## Releases connect isolated partitions
 
@@ -415,12 +462,13 @@ files. The skill tells the partition agent how to make the product, and hikari s
 none of its frontmatter, so its author decides whether it forks its
 context.
 
-Deliverables live in the shared area, which every container already
-mounts, so an orchestration agent can check a release against its deliverable and
-a change applies from the next turn. The grant, not the mount, decides who
-publishes a deliverable: only a holder gets its skill and can call the
-publish tools, and only a partition agent can hold one, because a partition agent has code
-to build from, a map and a commit for provenance, and a place in the vault.
+Deliverables live in the public area, which every container already mounts, so
+an orchestration agent can check a release against its deliverable and a
+change applies from the next turn. The grant, not the mount, decides who
+publishes a deliverable: only a holder gets its skill and can call the publish
+tools, and only a partition agent can hold one, because a partition agent has
+code to build from, a map and a commit for provenance, and a place in the
+vault.
 
 hikari writes the whole manifest. The partition agent writes nothing in it, so the
 manifest is a record that hikari vouches for: who published, when, from
@@ -447,13 +495,18 @@ covers every version of a partition, and the consumer chooses a version.
 
 ## Shared knowledge reaches agents as Claude Code expects it
 
-Shared skills and agent definitions are linked into `~/.claude` in each
-container, where Claude Code finds them. Policies are rules, so they go into
-every system prompt; a skill applies only when an agent loads it. The
-driver connects the shared area again before each turn, so a change applies
-from the next turn without a restart. hikari's own `hikari-partition` skill
-and its `hikari-` agents always come from the binary, so that they match the
-binary's version; a shared agent cannot take their names.
+Your skills are linked into `~/.claude/skills` in each container that is
+granted them, where Claude Code finds them, and so is the skill of each
+deliverable that the agent holds. A skill is granted, not shared with every
+agent: a copy in each partition's `granted/` would drift, and the grant
+shows in the topology who has which skill. The grant also bounds what the
+container can read, because only granted skills are mounted. Policies are
+rules, so they go into every system prompt; a skill applies only when an
+agent loads it. The driver connects the vault again before each turn, so a
+change applies from the next turn without a restart. hikari's own skills and
+its `hikari-` agents always come from the binary, so that they match the
+binary's version; no skill of the vault can take their names. Shared agent
+definitions are gone: no project defined one.
 
 The skill of a deliverable can run in its own context (`context: fork`), so
 that building a product does not fill the partition agent's context; it must then

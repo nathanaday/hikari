@@ -12,7 +12,7 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Topology file.** The Docker Compose file with `x-hikari` keys that defines a project. Every Compose feature keeps working; only hikari's keys are its own. hikari opens `topology.yaml` when you name no file.
 
-**Vault.** The directory of every hikari file that is not code: the shared knowledge, the feature maps, the health, and the releases. It holds the public files that every container can see, and a part for each partition. Private knowledge, the code map and the test map, stays inside the partition, so that only the partition agent sees it. Today the vault is `store/` next to the topology file; step 4 of the shared language gives it the layout of public, read-only, and writable parts.
+**Vault.** The directory of every hikari file that is not code: the shared knowledge, the feature maps, the health, and the releases. It is `vault/` next to the topology file. Its public files, in `public/`, reach every container; each partition has a read-only part, a part its agent can edit, and a staging area; and the directory a file is in decides who mounts it and how. Private knowledge, the code map and the test map, stays inside the partition, so that only the partition agent sees it. [guides/vault.md](guides/vault.md) shows each file of an example on the host and in each container.
 
 **Vocabulary.** The project's shared dictionary, so that every agent maps features with the same names. Every agent reads it, and only the orchestration agent changes it, through tools. It is a directory, `vocabulary/`, whose file `terms.yaml` holds the terms and the interfaces; hikari reads only that file, so that later vocabulary-like files can join it.
 
@@ -36,7 +36,7 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Feature map.** A partition's public description: its feature documents and `map.yaml`, which hikari writes from them. Every agent that may read the partition reads it; only its partition agent writes it, through tools.
 
-**Code map.** Private to the partition: where each feature lives in the code. Today it is `layout.yaml` in the partition's `.hikari/private/`.
+**Code map.** Private to the partition: where each feature lives in the code, in `code-map.yaml` in the partition's `.hikari/private/`.
 
 **Test map.** Private to the partition: how its suites run and which features each test touches, in `tests.yaml`.
 

@@ -159,16 +159,16 @@ When `hikari up` starts, it checks that each repo has no uncommitted changes, th
 
 Four documents describe each partition, and the partition agent is the only author of all four. The first two are the feature map, which every agent can read; the last two are private:
 
-- `store/systems/<partition>/wiki/<id>.md` holds the documents of the feature map: one markdown document for each feature, principle, and rule of the partition, with a property header that hikari checks and a body that says why it exists and what it promises. Documents link the documents that work together with `[[id]]` links. A link has no direction and no kind, and there are no groups: the links are the structure. The partition agent changes the wiki only through `change_wiki`, which applies a set of writes as a whole or not at all.
-- `store/systems/<partition>/map.yaml` is the rest of the feature map: a summary, the interfaces the partition provides and consumes, written through `set_partition_info`, and a list of the features that hikari writes from the wiki, with the health and state of each. It holds no file paths and no commands.
-- `<scope>/.hikari/private/layout.yaml` is the code map: where each feature lives in the code.
+- `vault/partitions/<id>/read-only/features/<doc>.md` holds the documents of the feature map: one markdown document for each feature, principle, and rule of the partition, with a property header that hikari checks and a body that says why it exists and what it promises. Documents link the documents that work together with `[[id]]` links. A link has no direction and no kind, and there are no groups: the links are the structure. The partition agent changes the wiki only through `change_wiki`, which applies a set of writes as a whole or not at all.
+- `vault/partitions/<id>/read-only/features/map.yaml` is the rest of the feature map: a summary, the interfaces the partition provides and consumes, written through `set_partition_info`, and a list of the features that hikari writes from the wiki, with the health and state of each. It holds no file paths and no commands.
+- `<scope>/.hikari/private/code-map.yaml` is the code map: where each feature lives in the code.
 - `<scope>/.hikari/private/tests.yaml` is the test map: the suites that run tests, the features that each test touches, and what no test checks. Each suite's command writes a JUnit XML report to `/hikari/private/reports/<suite>.xml`, and `record_test_run` hands it to hikari. hikari keeps the last result of each test in `results.yaml` beside it. Results and reports are never committed.
 
 The partition agent edits the private documents directly. The `hikari-partition` skill in its container explains each document, what counts as a feature, and how to link; it comes with three read-only agents, `hikari-feature-survey`, `hikari-feature-review`, and `hikari-test-survey`, that read the code for a partition agent. Health is computed from the tests that touch each feature: `failing` when one of them failed, `pending` when one has not run since its file or the code it tests changed, `untested` when no test touches the feature, and otherwise `passing`. The partition agent never reports a count: the test runner writes the results. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, a partition agent reads its code and builds the documents. When the code changes, hikari tells the partition agent which features are stale and which changed paths belong to no feature, and the partition agent updates them and marks the map current. You can open the vault in Obsidian: every link resolves.
 
-The orchestration agent reads the feature map of every partition, and it keeps the project's one vocabulary in `store/shared/vocabulary/terms.yaml`: the names that every agent uses for domain terms and interfaces. Every agent reads it with `get_vocabulary`, and the orchestration agent changes it with `define_term`, `define_interface`, and `remove_entry`. With no orchestration agent, only you change it. hikari reads only `terms.yaml` and ignores the other files of the directory. The orchestration agent's view flags interface names that are not in the vocabulary, and consumed interfaces that no partition provides.
+The orchestration agent reads the feature map of every partition, and it keeps the project's one vocabulary in `vault/public/vocabulary/terms.yaml`: the names that every agent uses for domain terms and interfaces. Every agent reads it with `get_vocabulary`, and the orchestration agent changes it with `define_term`, `define_interface`, and `remove_entry`. With no orchestration agent, only you change it. hikari reads only `terms.yaml` and ignores the other files of the directory. The orchestration agent's view flags interface names that are not in the vocabulary, and consumed interfaces that no partition provides.
 
-The UI shows each partition with its feature map, health, flags, and releases, and, marked private, its code map and test map. It also shows the vocabulary on the room's page, and the shared area, with each deliverable's rules and holders.
+The UI shows each partition with its feature map, health, flags, and releases, and, marked private, its code map and test map. It also shows the vocabulary on the room's page, and the Vault page: the policies and deliverables of the public area, with each deliverable's rules and holders, and your skills, with the agents they are granted to. Each agent's inspector in the Structure tab shows its mounts.
 
 ### Wikis
 
@@ -183,7 +183,7 @@ Every partition's feature map has a wiki, and the project has one public wiki: o
 | `plan` | partition, public | you | work you intend, with a `status` |
 | `note` | partition, public | you | anything else; a file with no `kind` is a note |
 
-The public wiki is `store/shared/wiki/`, and the UI and the API call it `public`. The orchestration agent writes it through `change_public_wiki` and the `hikari-orchestration` skill. Every agent reads it at `/hikari/public/readonly/shared/wiki/`, and the orchestration agent also reads every feature map. Ids are unique across the vault, so `[[reserve-stock]]` names one document wherever it is written: a story links the features of the partitions, and a feature can link the rules and principles of the public wiki. The links across wikis show how the project fits together. A rename rewrites every link to the document in every wiki.
+The public wiki is `vault/public/wiki/`, and the UI and the API call it `public`. The orchestration agent writes it through `change_public_wiki` and the `hikari-orchestration` skill. Every agent reads it at `/hikari/public/wiki/`, and the orchestration agent also reads every feature map. Ids are unique across the vault, so `[[reserve-stock]]` names one document wherever it is written: a story links the features of the partitions, and a feature can link the rules and principles of the public wiki. The links across wikis show how the project fits together. A rename rewrites every link to the document in every wiki.
 
 Plans and notes are yours. Write them in Obsidian, where the vault is one vault, or in the UI. Agents read them and never change them, and the prompts say to act on a plan only when you ask. You can write any document by hand; one of an agent's kinds must keep the rules of its kind. A hand edit that breaks one document affects only that document: hikari keeps its last valid version and shows the problem. Before each turn, an agent is told which documents of the wikis it reads were changed by someone else.
 
@@ -210,46 +210,57 @@ hikari sets an agent's `entrypoint`, `command`, `working_dir`, and networks, and
 
 ### The vault and releases
 
-The vault is one directory, `store/` next to the topology file unless `x-hikari` sets `vault:`. It holds every hikari document that is not code, so you can see your whole ecosystem in one place:
+The vault is one directory, `vault/` next to the topology file unless `x-hikari` sets `vault:`. It holds every hikari document that is not code, so you can see your whole ecosystem in one place. The directory a file is in decides which containers mount it and whether they can change it. [docs/guides/vault.md](docs/guides/vault.md) shows where each file of the shop example lives on the host and where each agent sees it.
 
 ```
-store/
-  shared/                    every agent reads this
-    wiki/<id>.md             the public wiki: stories, rules, principles, and your plans and notes
-    vocabulary/terms.yaml    the names the project agreed on
-    policies/<name>.md       your rules for every agent; they go into every system prompt
-    skills/<name>/SKILL.md   your Claude Code skills for every agent
-    agents/<name>.md         your Claude Code subagent definitions
-    deliverables/<name>/     what a release must contain and how to make it
-  systems/<partition>/
-    map.yaml                 the feature map's summary; hikari writes it from the wiki
-    wiki/<id>.md             the feature map's documents: features, principles, rules, and your plans and notes
-    staging/<deliverable>/   where the partition agent builds the product of its next release
-    releases/<deliverable>/<x.y.z>/   published releases, which never change
-    releases/<deliverable>/latest     the newest release of that deliverable
+vault/
+  public/                      every agent reads it
+    vocabulary/terms.yaml      the names the project agreed on; the orchestration agent writes it
+    wiki/<id>.md               the public wiki: stories, rules, principles, and your plans and notes
+    policies/<name>.md         your rules for every agent; they go into every system prompt
+    deliverables/<name>/       what a release must contain and how to make it
+  skills/<name>/SKILL.md       your Claude Code skills, granted with grants.skills
+  partitions/<id>/
+    read-only/                 its partition agent and the orchestration agent read it
+      features/                the feature map: map.yaml, which hikari writes, and the documents
+      releases/<deliverable>/<x.y.z>/   published releases, which never change
+      releases/<deliverable>/latest     the newest release of that deliverable
+      granted/                 files you give the partition to read
+    can-edit/                  files you give the partition, which its agent can change
+    staging/<deliverable>/     where the partition agent builds the product of its next release
+  orchestration/               only when the project has an orchestration agent
+    read-only/features/        the orchestration feature map
+    read-only/granted/         files you give the orchestration agent to read
+    can-edit/                  files the orchestration agent can change
 ```
 
-A deliverable is a named package that says what a release must contain and how its partition agent makes it. You write it, in `store/shared/deliverables/<name>/`, and grant it to a partition agent with `grants.deliverables`. It holds two files:
+A partition's directory is named by its partition agent's id, so a rename keeps it. hikari writes `README.md` once, makes every directory the topology needs at start, and never writes `policies/`, `deliverables/`, `skills/`, or a `granted/`. The orchestration agent's tools write only the vocabulary and the public wiki.
+
+A deliverable is a named package that says what a release must contain and how its partition agent makes it. You write it, in `vault/public/deliverables/<name>/`, and grant it to a partition agent with `grants.deliverables`. It holds two files:
 
 - `deliverable.yaml`: a description, optional layout rules on the files of the product as glob lists `require`, `allow`, and `forbid`, and optional targets, which promise that the product is also published to `github-release`, `dockerhub`, or `huggingface`.
 - `SKILL.md`: a Claude Code skill that tells the partition agent how to build the product. hikari installs it under the deliverable's name in each holder's container.
 
-A partition agent can hold several deliverables, so one partition can publish, for example, a library and a container image. To publish, the partition agent loads the deliverable's skill, builds the product in `staging/<deliverable>/`, calls `check_release` to check it against the layout rules, then calls `publish_release` with a version and notes. When the deliverable has targets, the partition agent publishes there first, with the tools and credentials that compose gives its container, and gives one certificate for each target in the same call; hikari checks each certificate's shape and never uploads anything. hikari then writes the manifest, `release.yaml`, with who published, when, from which commit, with which hikari version, the certificates, and the digest of the product, writes `SHA256SUMS`, moves the product into `releases/<deliverable>/<version>/product/` with a copy of the map, and announces the release in the room. An older manifest can still have a `hubs:` field, which hikari ignores, and a `system:` field, which hikari reads as `partition:`. The shop example's `python-library` deliverable shows the format.
+A partition agent can hold several deliverables, so one partition can publish, for example, a library and a container image. To publish, the partition agent loads the deliverable's skill, builds the product in `/hikari/staging/<deliverable>/`, calls `check_release` to check it against the layout rules, then calls `publish_release` with a version and notes. When the deliverable has targets, the partition agent publishes there first, with the tools and credentials that compose gives its container, and gives one certificate for each target in the same call; hikari checks each certificate's shape and never uploads anything. hikari then writes the manifest, `release.yaml`, with who published, when, from which commit, with which hikari version, the certificates, and the digest of the product, writes `SHA256SUMS`, moves the product into `releases/<deliverable>/<version>/product/` with a copy of the feature map in `features/`, and announces the release in the room. An older manifest can still have a `hubs:` field, which hikari ignores, and a `system:` field, which hikari reads as `partition:`. The shop example's `python-library` deliverable shows the format.
 
-The orchestration agent reads the maps and releases of every partition, and the deliverables in the shared area, so it can check each release against its deliverable. Grant any agent read-only access to another partition's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
+Your own skills live in `vault/skills/<name>/`, each with a `SKILL.md`. Grant one to any agent with `grants.skills: [name]`: its container mounts the skill, and Claude Code loads it as one of the agent's skills. `hikari check` refuses a granted skill that does not exist, that has no `SKILL.md`, whose name is a deliverable's, or whose name starts with `hikari-`.
 
-Every container sees its hikari documents at the same paths:
+The orchestration agent reads the feature maps and releases of every partition, and the deliverables in the public area, so it can check each release against its deliverable. Grant a partition agent read-only access to another partition's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
 
-```
-/hikari/private/                                 a partition agent's private documents
-/hikari/public/export/map.yaml                   its feature map's summary (read-only)
-/hikari/public/export/wiki/                      its feature map's documents (read-only; changed through a tool)
-/hikari/public/readonly/shared/wiki/             the public wiki
-/hikari/public/export/staging/                   its next release (read-write)
-/hikari/public/export/releases/                  its published releases (read-only)
-/hikari/public/readonly/shared/                  the shared area
-/hikari/public/readonly/systems/<p>/releases/    releases it can read
-```
+Each container mounts a few directories of the vault at fixed paths, and nothing else of it:
+
+| Container path | Partition agent | Orchestration agent | Mode |
+|---|---|---|---|
+| `/hikari/public` | `public/` | `public/` | read-only |
+| `/hikari/self` | `partitions/<id>/read-only/` | `orchestration/read-only/` | read-only |
+| `/hikari/can-edit` | `partitions/<id>/can-edit/` | `orchestration/can-edit/` | writable |
+| `/hikari/staging` | `partitions/<id>/staging/` | none | writable |
+| `/hikari/private` | its private documents, `<scope>/.hikari/private/` | none | writable |
+| `/hikari/partitions/<name>` | none | each partition's `read-only/` | read-only |
+| `/hikari/grants/<name>/releases` | each granted partition's `read-only/releases/` | none | read-only |
+| `/hikari/skills/<name>` | each granted skill | each granted skill | read-only |
+
+No container mounts another partition's `can-edit/`, `staging/`, or private documents.
 
 ### Project repositories
 
@@ -263,9 +274,9 @@ This writes a starter `topology.yaml`, a `.gitignore`, an `.env.example`, and th
 
 The key `x-hikari.project: {branch: hikari}` makes the topology file's directory a project repository. Then:
 
-- The vault is versioned: the maps, the wikis, the vocabulary, and your shared area. Releases and staging areas are not, and `store/.gitignore` keeps them out.
-- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the partition's next commit. At stop, hikari commits what each agent's paths still hold.
-- hikari never commits your own files in `store/shared`: policies, skills, agents, and deliverables. Commit them yourself. Your edits in the wikis are committed with your git identity: before an agent changes the same wiki, when you make them in the UI, at stop, and at start when the project branch is checked out and only the wikis changed.
+- The vault is versioned: the feature maps, the wikis, the vocabulary, your public files and skills, and every `granted/` and `can-edit/`. Releases and staging areas are not, and `vault/.gitignore` keeps them out.
+- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the partition's next commit. An apply also commits the agent's changes in its `can-edit/`, and the orchestration agent's changes there are committed at the end of each of its turns. At stop, hikari commits what each agent's paths still hold.
+- hikari never commits your policies, deliverables, or skills. Commit them yourself. Your edits in the wikis are committed with your git identity: before an agent changes the same wiki, when you make them in the UI, at stop, and at start when the project branch is checked out and only the wikis changed. Your changes in a `can-edit/` or a `granted/` are committed the same way at start and at stop.
 - The project repository follows the rules of every repo: it must be clean when hikari starts, and agents commit only to the project branch, which you merge. When the checkout of the branch changes the topology file, hikari reads it again.
 - A partition's code can live in the project repository too: `partition: {repo: project, scope: app}`. The scope cannot overlap the vault.
 - The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each scope.
