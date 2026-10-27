@@ -23,8 +23,7 @@ function Node({ name, role, me, onClick }: { name: string; role?: string; me?: b
 // spec). The lines are the hub: everyone in it reads every post.
 export function HubDiagram({ hub, model, onAgent }: { hub: TopologyHub; model: TopologyModel; onAgent: (id: string) => void }) {
   const nameOf = (id: string) => model.agents.find((a) => a.id === id)?.name ?? id
-  const tester = model.agents.find((a) => a.tests === hub.id)?.id
-  const member = (m: string) => (m === tester ? 'tester' : model.agents.find((a) => a.id === m)?.system ? 'owner' : 'member')
+  const member = (m: string) => (model.agents.find((a) => a.id === m)?.system ? 'owner' : 'member')
   const slot = 7 // rem: the width of each member's column, so that the rail meets their centers
   return (
     <div className="relative rounded-md border bg-neutral-50/60 px-4 pt-4 pb-3" data-testid="hub-diagram">

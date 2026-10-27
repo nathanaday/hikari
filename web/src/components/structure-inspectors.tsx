@@ -189,7 +189,6 @@ export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
 export function HubInspector({ id, ...p }: InspectorProps & { id: string }) {
   const h = p.model.hubs.find((x) => x.id === id)!
   const agent = (a: string) => p.model.agents.find((x) => x.id === a)
-  const tester = p.model.agents.find((a) => a.tests === id)
   const candidates = p.model.agents.filter((a) => a.id !== h.orchestrator && !h.members.includes(a.id))
   return (
     <div className="space-y-6">
@@ -215,14 +214,6 @@ export function HubInspector({ id, ...p }: InspectorProps & { id: string }) {
           empty="No members"
         />
       </Field>
-      {tester && (
-        <p className="text-sm text-muted-foreground">
-          <button type="button" className="underline underline-offset-2" onClick={() => p.select({ kind: 'agent', id: tester.id })}>
-            {tester.name}
-          </button>{' '}
-          tests the stories of #{h.name}.
-        </p>
-      )}
       <RemoveButton
         label="Remove the hub"
         onRemove={async () => {
@@ -308,20 +299,6 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
               empty={p.options.deliverables.length ? 'None' : 'None; the store defines no deliverable yet.'}
             />
           </Field>
-          <Field label="Tests" hint="A tester proves a hub's stories against its systems' releases.">
-            <Select
-              value={a.tests}
-              placeholder="Tests no hub"
-              options={memberOf.map((h) => ({ value: h.id, label: `#${h.name}` }))}
-              onChange={(v) => p.add({ op: 'set_agent', id, tests: v })}
-            />
-          </Field>
-          {a.tests && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextField label="CPUs of each test service" value={a.e2e?.cpus ?? ''} placeholder="no limit" mono onCommit={(v) => p.add({ op: 'set_e2e', id, cpus: v, memory: a.e2e?.memory ?? '' })} />
-              <TextField label="Memory of each test service" value={a.e2e?.memory ?? ''} placeholder="no limit" mono onCommit={(v) => p.add({ op: 'set_e2e', id, memory: v, cpus: a.e2e?.cpus ?? '' })} />
-            </div>
-          )}
         </Section>
       )}
 

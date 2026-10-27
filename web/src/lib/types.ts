@@ -224,75 +224,6 @@ export type WikiView = {
   documents: WikiDoc[]
   problems?: string[]
   warnings?: string[]
-  // tests is the E2E test plan of a hub that has a tester.
-  tests?: TestPlan
-}
-
-export type Component = { release?: string; image?: string; fixture?: boolean; simulates?: string; substitutes?: string; note?: string }
-export type Actor = { runs: string; count: number; note?: string }
-export type Scenario = { stories: string[]; actors: Record<string, number> | null; minutes?: number }
-export type Gap = { id: string; what: string; why: string; touches: string[]; approved: boolean }
-export type LockedRelease = { system: string; deliverable: string; version: string; digest: string }
-
-export type StoryHealth = {
-  id: string
-  kind: DocKind
-  name?: string
-  key?: boolean
-  health: Health
-  passed: number
-  failed: number
-  pending: number
-  support?: Health
-  suspects?: string[]
-  gaps?: string[]
-  bench?: string[]
-}
-
-// TestPlan is the plan of a tested hub as hikari reads it (rule PL7 of the
-// tester spec).
-export type TestPlan = {
-  hub: string
-  tester: string
-  plan: {
-    components: Record<string, Component> | null
-    actors: Record<string, Actor> | null
-    scenarios: Record<string, Scenario> | null
-    gaps: Record<string, Omit<Gap, 'id' | 'approved'>> | null
-  }
-  body?: string
-  lock: { version: number; releases: LockedRelease[] | null }
-  problems?: string[]
-  warnings?: string[]
-  gaps: Gap[]
-  bench?: BenchProcedure[]
-  stories: StoryHealth[]
-  environment?: EnvironmentStatus
-}
-
-// BenchProcedure is a check the user runs on hardware, with the last result
-// (rule BR4 of the bench spec).
-export type BenchProcedure = {
-  id: string
-  title: string
-  touches: string[]
-  procedure: string
-  result?: { passed: boolean; note?: string; at: string; current: boolean }
-}
-
-export type EnvironmentService = { name: string; state: string; health?: string; image: string; platform?: string; replicas: number; emulated?: boolean }
-
-// EnvironmentStatus is the state of a hub's environment (rule ST6 of the
-// environments spec).
-export type EnvironmentStatus = {
-  state: 'none' | 'starting' | 'running' | 'failed' | 'stopped'
-  scenario?: string
-  reason?: string
-  services?: EnvironmentService[]
-  started?: string
-  stops?: string
-  logs?: string
-  connected: boolean
 }
 
 export type Mode = 'editing' | 'starting' | 'running' | 'stopping'
@@ -369,8 +300,6 @@ export type TopologyAgent = {
   system: TopologySystem | null
   releases: string[]
   deliverables: string[]
-  tests: string
-  e2e: { cpus: string; memory: string } | null
   image: string
   build: string
   template: string

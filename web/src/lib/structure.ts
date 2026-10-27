@@ -71,14 +71,12 @@ export function worst(fs: Finding[]): Finding['severity'] | null {
 // roles says what an agent does, by the names of its hubs (decision 2 of
 // the structure view spec).
 export function roles(a: TopologyAgent, m: TopologyModel): string {
-  const hubName = (id: string) => m.hubs.find((h) => h.id === id)?.name ?? id
   const parts: string[] = []
   const orchestrates = m.hubs.filter((h) => h.orchestrator === a.id).map((h) => `#${h.name}`)
   const member = m.hubs.filter((h) => h.members.includes(a.id)).map((h) => `#${h.name}`)
   if (orchestrates.length) parts.push(`orchestrates ${orchestrates.join(', ')}`)
   if (member.length) parts.push(`member of ${member.join(', ')}`)
   if (a.system) parts.push(`owns ${m.repos.find((r) => r.id === a.system!.repo)?.name ?? a.system.repo}${a.system.scope ? '/' + a.system.scope : ''}`)
-  if (a.tests) parts.push(`tests #${hubName(a.tests)}`)
   if (!parts.length) parts.push('in no hub')
   return parts.join(', ')
 }
