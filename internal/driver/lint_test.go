@@ -26,16 +26,12 @@ var retired = []struct {
 	{regexp.MustCompile(`(?i)\bcompose files?\b`), "the topology file"},
 }
 
-// allowed lists each place where a retired word stays, with its reason. A
-// path is where a file is on disk today: step 4 of the shared language
-// moves the vault's directories.
+// allowed lists each place where a retired word stays, with its reason.
 var allowed = []struct{ file, text, reason string }{
-	{"", "store/", "the vault's directory on disk keeps its name until step 4"},
 	{"", "Docker Compose file", "Docker Compose keeps its own name"},
 	{"", "store.ts", "the UI's reducer, a standard name in React (decision 6)"},
 	{"hikify/references/synthesis.md", "the cloud stores", "a verb in an example"},
 	{"hikify/references/analysis.md", "Compose files, Dockerfiles", "the Docker Compose files of a repository"},
-	{"components/structure-inspectors.tsx", `"store"`, "the default directory of the vault on disk, until step 4"},
 	{"components/graph-canvas.tsx", "node", "a node of the drawn graph"},
 	{"components/graph-engine.ts", "node", "a node of the drawn graph"},
 	{"components/map-view.tsx", "node", "a node of the drawn graph"},
@@ -98,7 +94,7 @@ func lintSelves() map[string]api.Self {
 		},
 		"the orchestration agent of an empty project": {Name: "conductor", Orchestration: true, Participants: room},
 		"a partition agent": {
-			Name: "orders", Participants: room, Releases: []string{"inventory"}, Deliverables: deliverable,
+			Name: "orders", Participants: room, Releases: []string{"inventory"}, Deliverables: deliverable, Skills: []string{"style"},
 			Partition: &api.SelfPartition{Repo: "shop", Branch: "hikari", Scope: "services/orders", Read: []string{"proto"}, WorkDir: "/workspace/services/orders"},
 		},
 		"a partition agent with no orchestration agent": {

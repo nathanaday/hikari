@@ -33,7 +33,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	shared, err := newSharedArea(builtinSkills(self), deliverableNames(self))
+	shared, err := newSharedArea(builtinSkills(self), deliverableNames(self), self.Skills)
 	if err != nil {
 		return err
 	}
@@ -91,14 +91,14 @@ type driver struct {
 	session   string
 }
 
-// turn runs one Claude Code turn while the agent shows state. After an
-// partition agent's turn, it asks the server to commit what the turn left, even when
-// the turn failed.
+// turn runs one Claude Code turn while the agent shows state. After the
+// turn of a partition agent or the orchestration agent, it asks the server
+// to commit what the turn left, even when the turn failed.
 func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 	report(ctx, d.c, api.Status{State: state})
 	d.tap.begin(why)
-	// The shared area can change between turns, so the skills, agents, and
-	// policies are connected again before each one.
+	// The vault can change between turns, so the skills and the policies
+	// are connected again before each one.
 	partition := systemPrompt(d.self) + d.shared.sync()
 	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, partition: partition, tap: d.tap}
 	res, err := t.run(ctx)
@@ -106,7 +106,7 @@ func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 	if res.session != "" {
 		d.session = res.session
 	}
-	if d.self.Partition != nil && ctx.Err() == nil {
+	if (d.self.Partition != nil || d.self.Orchestration) && ctx.Err() == nil {
 		if commit, cerr := d.c.Commit(ctx, ""); cerr != nil {
 			log.Printf("automatic commit: %v", cerr)
 		} else if commit != "" {
@@ -172,7 +172,7 @@ func systemPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " Your role: %s", self.Description)
 	}
 	b.WriteString(roomPrompt(self))
-	b.WriteString(sharedPrompt())
+	b.WriteString(sharedPrompt(self))
 	b.WriteString(wikisPrompt(self))
 	if self.Partition != nil {
 		b.WriteString(partitionAgentPrompt(self))

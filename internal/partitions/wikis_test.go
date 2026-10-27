@@ -29,7 +29,7 @@ func TestPublicWikiAccess(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
 	f.story(t)
-	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "wiki", "order-items.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.dir, "vault", "public", "wiki", "order-items.md")); err != nil {
 		t.Errorf("L1: the story is in the public wiki: %v", err)
 	}
 	write := []wiki.Write{{Op: "create", ID: "x", Kind: wiki.Story, Name: "X", Description: "X.", Body: body("x")}}
@@ -71,7 +71,7 @@ func TestRenameAcrossWikisAndSupport(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
 	f.story(t)
-	publicWiki := filepath.Join(f.dir, "store", "shared", "wiki")
+	publicWiki := filepath.Join(f.dir, "vault", "public", "wiki")
 	os.WriteFile(filepath.Join(publicWiki, "Roadmap.md"), []byte("---\nkind: plan\nstatus: idea\n---\nGrow [[create-order]].\n"), 0o644)
 	f.m.wikis[api.PublicWikiRef].files.Reload()
 
@@ -105,7 +105,7 @@ func TestRenameAcrossWikisAndSupport(t *testing.T) {
 		t.Errorf("T4: support = %q", hit.Support)
 	}
 	sys, _ := f.m.WikiView(api.FeatureMapRef("orders"))
-	if len(sys.Documents) != 1 || sys.Documents[0].Health != "failing" || sys.Documents[0].File != "systems/orders/wiki/place-order.md" || sys.Documents[0].Hash == "" {
+	if len(sys.Documents) != 1 || sys.Documents[0].Health != "failing" || sys.Documents[0].File != "partitions/orders/read-only/features/place-order.md" || sys.Documents[0].Hash == "" {
 		t.Errorf("U: the feature map view = %+v", sys.Documents)
 	}
 }
@@ -178,15 +178,15 @@ func TestReleaseCopiesAgentDocuments(t *testing.T) {
 	must(t, f.m.WriteDocument(api.FeatureMapRef("orders"), "Ideas", "Refunds?\n"))
 	_, err := f.m.MarkCurrent("orders")
 	must(t, err)
-	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging", "python-library")
+	staging := filepath.Join(f.dir, "vault", "partitions", "orders", "staging", "python-library")
 	write(t, staging, "README.md", "# Orders\n")
 	write(t, staging, "orders/create.py", "def create(): pass\n")
 	if _, err := f.m.PublishRelease("orders", api.PublishRequest{Deliverable: "python-library", Version: "1.0.0", Notes: "First."}); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", vault.Wiki)
+	dir := filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", vault.FeaturesDir)
 	entries, _ := os.ReadDir(dir)
-	if len(entries) != 1 || entries[0].Name() != "create-order.md" {
+	if len(entries) != 2 || entries[0].Name() != "create-order.md" || entries[1].Name() != "map.yaml" {
 		t.Errorf("L2: the release's wiki holds %v", entries)
 	}
 }

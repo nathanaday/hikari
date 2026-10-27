@@ -1,6 +1,6 @@
-# layout.yaml: the code map
+# code-map.yaml: the code map
 
-`/hikari/private/layout.yaml` says where things are in your code. Only you and the human operator read it. hikari reads it to tell which features a changed path touches, and to hash a feature's files when you record test results.
+`/hikari/private/code-map.yaml` says where things are in your code. Only you and the human operator read it. hikari reads it to tell which features a changed path touches, and to hash a feature's files when you record test results.
 
 ```yaml
 version: 1

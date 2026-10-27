@@ -106,7 +106,7 @@ func TestPrivateRules(t *testing.T) {
 	m := New("orders")
 	describe(m)
 
-	writeFile(t, root, ".hikari/private/layout.yaml", codeMapDoc)
+	writeFile(t, root, ".hikari/private/code-map.yaml", codeMapDoc)
 	writeFile(t, root, ".hikari/private/tests.yaml", testDoc)
 	p, err := LoadPrivate(root)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestPrivateRules(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			writeFile(t, root, ".hikari/private/layout.yaml", c.codeMap)
+			writeFile(t, root, ".hikari/private/code-map.yaml", c.codeMap)
 			writeFile(t, root, ".hikari/private/tests.yaml", c.tests)
 			p, err := LoadPrivate(root)
 			if err == nil {
@@ -152,7 +152,7 @@ func TestPrivateRules(t *testing.T) {
 
 func TestEmptyPrivateDocumentsAreValid(t *testing.T) {
 	root := newScope(t, nil)
-	writeFile(t, root, ".hikari/private/layout.yaml", "")
+	writeFile(t, root, ".hikari/private/code-map.yaml", "")
 	if _, err := LoadPrivate(root); err != nil {
 		t.Errorf("an empty file: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestOpenWritesSkeletons(t *testing.T) {
 	}
 
 	// Open keeps documents that exist.
-	writeFile(t, root, ".hikari/private/layout.yaml", "version: 1\nparts: [{path: orders/, description: kept}]\nfeatures: {}\n")
+	writeFile(t, root, ".hikari/private/code-map.yaml", "version: 1\nparts: [{path: orders/, description: kept}]\nfeatures: {}\n")
 	if _, _, err := Open(root, filepath.Join(root, ".hikari", "map.yaml"), "orders", "other"); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestOpenDeletesOldVersions(t *testing.T) {
 
 func TestFeatureStates(t *testing.T) {
 	root := newScope(t, orderFiles)
-	writeFile(t, root, ".hikari/private/layout.yaml", codeMapDoc)
+	writeFile(t, root, ".hikari/private/code-map.yaml", codeMapDoc)
 	priv, _ := LoadPrivate(root)
 	paths := func(id string) []string {
 		if id == "create-order" {
@@ -395,7 +395,7 @@ func TestFeatureStates(t *testing.T) {
 		t.Errorf("S20: nothing changed: %v", st.ByID)
 	}
 	// A directory in the code map covers the files below it.
-	writeFile(t, root, ".hikari/private/layout.yaml", "version: 1\nparts: []\nfeatures:\n  create-order: {code: [orders/]}\n")
+	writeFile(t, root, ".hikari/private/code-map.yaml", "version: 1\nparts: []\nfeatures:\n  create-order: {code: [orders/]}\n")
 	priv, _ = LoadPrivate(root)
 	if st := FeatureStates([]string{"create-order"}, described, priv.Code, nil, []string{"orders/create.py"}); st.ByID["create-order"] != Stale {
 		t.Errorf("S19: a directory covers its files: %v", st.ByID)

@@ -25,7 +25,7 @@ type Props = {
 export function StructureTab({ data, mode, reload, show, select: selectKey, onPending }: Props) {
   const [ops, setOps] = useState<Op[]>([])
   const [plan, setPlan] = useState<Plan | null>(null)
-  const [options, setOptions] = useState<Options>({ deliverables: [], models: ['sonnet', 'opus', 'haiku'], templates: [] })
+  const [options, setOptions] = useState<Options>({ deliverables: [], skills: [], models: ['sonnet', 'opus', 'haiku'], templates: [] })
   const [review, setReview] = useState(false)
   const [conflict, setConflict] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -61,6 +61,7 @@ export function StructureTab({ data, mode, reload, show, select: selectKey, onPe
 
   const model: TopologyModel = (plan?.model ?? data.model)!
   const findings: Finding[] = plan?.findings ?? data.findings
+  const mounts = plan ? plan.mounts : data.mounts
   let selection = parseSelection(selectKey) ?? { kind: 'project' }
   if (!exists(selection, model)) selection = { kind: 'project' }
   const select = useCallback((s: Selection) => show({ kind: 'topology', select: selectionKey(s) }), [show])
@@ -100,7 +101,7 @@ export function StructureTab({ data, mode, reload, show, select: selectKey, onPe
     if (ops.length) setReview(true)
     else show({ kind: 'topology', tab: 'yaml', line })
   }
-  const inspector: InspectorProps = { model, findings, options, add, select, editYAML }
+  const inspector: InspectorProps = { model, findings, mounts, options, add, select, editYAML }
   const key = selectionKey(selection)
 
   return (

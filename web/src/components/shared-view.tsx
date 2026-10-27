@@ -6,7 +6,7 @@ import type { Deliverable, SharedListing } from '@/lib/types'
 
 const noNames = new Set<string>()
 
-function Entry({ name, path }: { name: string; path: string }) {
+function Entry({ name, path, note }: { name: string; path: string; note?: string }) {
   const [open, setOpen] = useState(false)
   const { data, error } = useFetch(open ? vaultFileURL(path) : null, asText)
   return (
@@ -15,6 +15,7 @@ function Entry({ name, path }: { name: string; path: string }) {
         <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
         <span className="font-medium">{name}</span>
         <code className="text-xs text-muted-foreground">{path}</code>
+        {note && <span className="ml-auto text-xs text-muted-foreground">{note}</span>}
       </summary>
       <div className="pb-3 pl-5.5">
         {error ? <p className="text-sm text-muted-foreground">{error}</p> : data !== undefined && <Markdown text={data} names={noNames} />}
@@ -23,7 +24,7 @@ function Entry({ name, path }: { name: string; path: string }) {
   )
 }
 
-function Group({ title, hint, entries }: { title: string; hint: string; entries: { name: string; path: string }[] }) {
+function Group({ title, hint, entries }: { title: string; hint: string; entries: { name: string; path: string; note?: string }[] }) {
   return (
     <section className="space-y-2">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -102,7 +103,7 @@ export function DeliverableEntry({ d }: { d: Deliverable }) {
 
 export function SharedView() {
   const parse = useCallback((r: Response) => asJSON<SharedListing>(r), [])
-  const { data, error } = useFetch('/api/ui/vault/shared', parse)
+  const { data, error } = useFetch('/api/ui/vault/public', parse)
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
   return (
@@ -118,13 +119,16 @@ export function SharedView() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Add a deliverable as store/shared/deliverables/&lt;name&gt;/ with deliverable.yaml and SKILL.md, and grant it to a partition agent in the topology.
+              Add a deliverable as vault/public/deliverables/&lt;name&gt;/ with deliverable.yaml and SKILL.md, and grant it to a partition agent in the topology.
             </p>
           )}
         </section>
-        <Group title="Policies" hint="Add rules for every agent as Markdown files in store/shared/policies/." entries={data.policies} />
-        <Group title="Skills" hint="Add Claude Code skills in store/shared/skills/<name>/SKILL.md." entries={data.skills} />
-        <Group title="Agents" hint="Add Claude Code subagent definitions in store/shared/agents/<name>.md." entries={data.agents} />
+        <Group title="Policies" hint="Add rules for every agent as Markdown files in vault/public/policies/." entries={data.policies} />
+        <Group
+          title="Skills"
+          hint="Add Claude Code skills in vault/skills/<name>/SKILL.md, and grant each to agents with grants.skills in the topology."
+          entries={data.skills.map((s) => ({ name: s.name, path: s.path, note: s.holders.length ? `granted to ${s.holders.join(', ')}` : 'granted to no agent' }))}
+        />
       </div>
     </div>
   )

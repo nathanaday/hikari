@@ -16,11 +16,14 @@ import (
 )
 
 // The private documents live in <scope>/.hikari/private. The partition agent edits
-// layout.yaml and tests.yaml directly. The server writes results.yaml, and
+// code-map.yaml and tests.yaml directly. The server writes results.yaml, and
 // runs write their reports into reports/.
 const (
 	PrivateDir  = "private"
-	CodeMapFile = "layout.yaml"
+	CodeMapFile = "code-map.yaml"
+	// OldCodeMapFile is the code map of earlier versions, which hikari
+	// refuses to start on (rule V11 of the vault layout spec).
+	OldCodeMapFile = "layout.yaml"
 	// OldTestFile is the test plan of earlier versions, which the server
 	// deletes (rule O8).
 	OldTestFile = "test.yaml"

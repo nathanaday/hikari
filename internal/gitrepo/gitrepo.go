@@ -128,7 +128,8 @@ func (r *Repo) Commit(branch, scope, agent, message string) (string, error) {
 }
 
 // CommitPaths is Commit for several paths, relative to the repo. A path
-// that neither exists nor is tracked is skipped. An empty agent commits
+// that neither exists nor is tracked is skipped, and a path that starts
+// with :(exclude) leaves its files out. An empty agent commits
 // with the user's own git identity.
 func (r *Repo) CommitPaths(branch string, paths []string, agent, message string) (string, error) {
 	r.mu.Lock()
@@ -137,9 +138,11 @@ func (r *Repo) CommitPaths(branch string, paths []string, agent, message string)
 	if err != nil || current != branch {
 		return "", fmt.Errorf("branch %q is not checked out in %s (HEAD is %q); hikari commits only to %q", branch, r.Path, current, branch)
 	}
-	var specs []string
+	var specs, excludes []string
 	for _, p := range paths {
-		if _, err := os.Lstat(filepath.Join(r.Path, filepath.FromSlash(p))); err == nil {
+		if strings.HasPrefix(p, ":(exclude)") {
+			excludes = append(excludes, p)
+		} else if _, err := os.Lstat(filepath.Join(r.Path, filepath.FromSlash(p))); err == nil {
 			specs = append(specs, p)
 		} else if tracked, _ := r.git("ls-files", "--", p); tracked != "" {
 			specs = append(specs, p)
@@ -148,6 +151,7 @@ func (r *Repo) CommitPaths(branch string, paths []string, agent, message string)
 	if len(specs) == 0 {
 		return "", nil
 	}
+	specs = append(specs, excludes...)
 	if _, err := r.git(append([]string{"add", "--all", "--"}, specs...)...); err != nil {
 		return "", err
 	}

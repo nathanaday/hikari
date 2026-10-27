@@ -70,15 +70,15 @@ export function ReleaseView({ partition, deliverable, version }: { partition: st
   const { data, error } = useFetch(`/api/ui/vault/releases/${partition}/${deliverable}/${version}`, parse)
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
-  return <ReleaseBody partition={partition} deliverable={deliverable} version={version} data={data} />
+  return <ReleaseBody data={data} />
 }
 
 // ReleaseBody shows a loaded release: its manifest, certificates, and files,
 // with the product's README as the main page when there is one.
-export function ReleaseBody({ partition, deliverable, version, data }: { partition: string; deliverable: string; version: string; data: ReleaseDetail }) {
+export function ReleaseBody({ data }: { data: ReleaseDetail }) {
   const [open, setOpen] = useState<string | null>(null)
   const m = data.manifest
-  const base = `systems/${partition}/releases/${deliverable}/${version}/`
+  const base = data.dir + '/'
   const readme = base + 'product/README.md'
   const shown = open ?? (data.files.includes(readme) ? readme : base + 'release.yaml')
   return (

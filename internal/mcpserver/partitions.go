@@ -151,7 +151,7 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "change_wiki",
-		Description: "Change your partition's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/public/export/wiki/. hikari checks every write against the rules of the hikari-partition skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of the public wiki. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
+		Description: "Change your partition's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/self/features/. hikari checks every write against the rules of the hikari-partition skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of the public wiki. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := c.ChangeWiki(ctx, false, wikiWrites(a.Writes))
 		if err != nil {
@@ -192,7 +192,7 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "check_release",
-		Description: "Check the product you staged in /hikari/public/export/staging/<deliverable>/ against the deliverable's layout rules, and check that your map is current and your private documents are valid. It reports every problem and changes nothing. Run it before publish_release.",
+		Description: "Check the product you staged in /hikari/staging/<deliverable>/ against the deliverable's layout rules, and check that your map is current and your private documents are valid. It reports every problem and changes nothing. Run it before publish_release.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a checkArgs) (*mcp.CallToolResult, any, error) {
 		check, err := c.CheckRelease(ctx, a.Deliverable)
 		if err != nil {
@@ -203,13 +203,13 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "publish_release",
-		Description: "Publish the product you staged in /hikari/public/export/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in the room.",
+		Description: "Publish the product you staged in /hikari/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in the room.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
 		rel, err := c.PublishRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Certificates: a.Certificates})
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Published %s %s %s from commit %s: %d file(s). It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, short(rel.SourceCommit), rel.Product.Files, api.ExportDir, rel.Deliverable, rel.Version)), nil, nil
+		return text(fmt.Sprintf("Published %s %s %s from commit %s: %d file(s). It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, short(rel.SourceCommit), rel.Product.Files, api.SelfDir, rel.Deliverable, rel.Version)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -315,7 +315,7 @@ func addOrchestrationTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "change_public_wiki",
-		Description: "Change the public wiki as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/readonly/shared/wiki/. hikari checks every write against the rules of the hikari-orchestration skill and applies all of them or none. A document can link the documents of every feature map. A rename rewrites every link to the document in every wiki. The user's plans and notes are not yours to change.",
+		Description: "Change the public wiki as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/wiki/. hikari checks every write against the rules of the hikari-orchestration skill and applies all of them or none. A document can link the documents of every feature map. A rename rewrites every link to the document in every wiki. The user's plans and notes are not yours to change.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := c.ChangeWiki(ctx, true, wikiWrites(a.Writes))
 		if err != nil {

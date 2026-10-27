@@ -12,7 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathanaday/hikari/internal/topology"
-	"github.com/nathanaday/hikari/internal/vault"
 )
 
 func TestPartitionMounts(t *testing.T) {
@@ -46,33 +45,85 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 	}
 }
 
-func TestVaultMounts(t *testing.T) {
-	st := vault.Vault{Root: "/s"}
-	partitionAgent := VaultMounts(st, "orders", true, nil, []string{"inventory"}, "/tmp/empty")
-	wantPartitionAgent := []Mount{
-		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
-		{Source: "/s/systems/orders", Target: "/hikari/public/export", ReadOnly: true},
-		{Source: "/s/systems/orders/staging", Target: "/hikari/public/export/staging"},
-		{Source: "/s/systems/inventory/releases", Target: "/hikari/public/readonly/systems/inventory/releases", ReadOnly: true},
+// TestOverrideVaultMounts checks the vault mounts of the override file
+// against the table of rule V3: a partition agent with a release grant and
+// a skill grant, a partition agent with neither, and the orchestration
+// agent.
+func TestOverrideVaultMounts(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	for _, d := range []string{".git", "services/orders", "services/inventory"} {
+		os.MkdirAll(filepath.Join(repo, d), 0o755)
 	}
-	if !slices.Equal(partitionAgent, wantPartitionAgent) {
-		t.Errorf("partition agent mounts:\n got %+v\nwant %+v", partitionAgent, wantPartitionAgent)
+	src := `name: shop
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari}}
+  orchestration: lead
+services:
+  lead: {image: hikari-agent, x-hikari: {grants: {skills: [style]}}}
+  orders: {image: hikari-agent, x-hikari: {partition: {repo: shop, scope: services/orders}, grants: {releases: [inventory], skills: [style]}}}
+  inventory: {image: hikari-agent, x-hikari: {partition: {repo: shop, scope: services/inventory}}}
+`
+	topo, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	lead := VaultMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, "/tmp/empty")
-	wantLead := []Mount{
-		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
-		{Source: "/s/systems/orders", Target: "/hikari/public/readonly/systems/orders", ReadOnly: true},
-		{Source: "/tmp/empty", Target: "/hikari/public/readonly/systems/orders/staging", ReadOnly: true},
-		{Source: "/s/systems/billing/releases", Target: "/hikari/public/readonly/systems/billing/releases", ReadOnly: true},
+	data, err := Override(topo, OverrideInput{RunID: "r1", EmptyDir: "/tmp/empty"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !slices.Equal(lead, wantLead) {
-		t.Errorf("orchestration agent mounts:\n got %+v\nwant %+v", lead, wantLead)
+	var f overrideFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
 	}
-
-	partitionAgent = VaultMounts(st, "inventory", true, nil, nil, "/tmp/empty")
-	if len(partitionAgent) != 3 || partitionAgent[0].Target != "/hikari/public/readonly/shared" {
-		t.Errorf("a partition agent without grants sees shared and its own directory: %+v", partitionAgent)
+	vault := filepath.Join(dir, "vault")
+	hikari := func(service string) []composeMount {
+		var out []composeMount
+		for _, m := range f.Services[service].Volumes {
+			if strings.HasPrefix(m.Target, "/hikari/") && m.Target != "/hikari/bin/hikari" {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	bind := func(source, target string, readOnly bool) composeMount {
+		return composeMount{Type: "bind", Source: source, Target: target, ReadOnly: readOnly}
+	}
+	want := map[string][]composeMount{
+		"orders": {
+			bind(filepath.Join(repo, "services/orders/.hikari/private"), "/hikari/private", false),
+			bind(filepath.Join(vault, "public"), "/hikari/public", true),
+			bind(filepath.Join(vault, "partitions/orders/read-only"), "/hikari/self", true),
+			bind(filepath.Join(vault, "partitions/orders/can-edit"), "/hikari/can-edit", false),
+			bind(filepath.Join(vault, "partitions/orders/staging"), "/hikari/staging", false),
+			bind(filepath.Join(vault, "partitions/inventory/read-only/releases"), "/hikari/grants/inventory/releases", true),
+			bind(filepath.Join(vault, "skills/style"), "/hikari/skills/style", true),
+		},
+		"inventory": {
+			bind(filepath.Join(repo, "services/inventory/.hikari/private"), "/hikari/private", false),
+			bind(filepath.Join(vault, "public"), "/hikari/public", true),
+			bind(filepath.Join(vault, "partitions/inventory/read-only"), "/hikari/self", true),
+			bind(filepath.Join(vault, "partitions/inventory/can-edit"), "/hikari/can-edit", false),
+			bind(filepath.Join(vault, "partitions/inventory/staging"), "/hikari/staging", false),
+		},
+		"lead": {
+			bind(filepath.Join(vault, "public"), "/hikari/public", true),
+			bind(filepath.Join(vault, "orchestration/read-only"), "/hikari/self", true),
+			bind(filepath.Join(vault, "orchestration/can-edit"), "/hikari/can-edit", false),
+			bind(filepath.Join(vault, "partitions/inventory/read-only"), "/hikari/partitions/inventory", true),
+			bind(filepath.Join(vault, "partitions/orders/read-only"), "/hikari/partitions/orders", true),
+			bind(filepath.Join(vault, "skills/style"), "/hikari/skills/style", true),
+		},
+	}
+	for service, w := range want {
+		if got := hikari(service); !slices.Equal(got, w) {
+			t.Errorf("V3: the mounts of %s:\n got %+v\nwant %+v", service, got, w)
+		}
+	}
+	for _, m := range f.Services["orders"].Volumes {
+		if strings.Contains(m.Source, "partitions/inventory/can-edit") || strings.Contains(m.Source, "partitions/inventory/staging") || m.Source == "/tmp/empty" && strings.HasPrefix(m.Target, "/hikari/") {
+			t.Errorf("V4: orders mounts %+v", m)
+		}
 	}
 }
 
@@ -80,7 +131,7 @@ func TestVaultMounts(t *testing.T) {
 // in the repo path.
 const userTopology = `name: shop
 x-hikari:
-  vault: store
+  vault: vault
   repos: {shop: {path: REPO, branch: hikari/work}}
   orchestration: lead
 services:
@@ -101,7 +152,7 @@ volumes: {venv: {}}
 // resolved is userCompose as compose resolves it.
 const resolved = `name: shop
 x-hikari:
-  vault: store
+  vault: vault
   repos: {shop: {path: REPO, branch: hikari/work}}
   orchestration: lead
 services:
@@ -171,7 +222,7 @@ func TestOverride(t *testing.T) {
 	if m := targets["/workspace/services/orders"]; m.Source != filepath.Join(repo, "services/orders") || m.ReadOnly {
 		t.Errorf("O1 scope: %+v", m)
 	}
-	if _, ok := targets["/hikari/public/export/staging"]; !ok {
+	if _, ok := targets["/hikari/staging"]; !ok {
 		t.Errorf("O1 vault mounts missing: %v", targets)
 	}
 	prepare := f.Services["orders-prepare"]
@@ -314,21 +365,21 @@ services:
 	for _, m := range orders.Volumes {
 		targets[m.Target] = m.Source
 	}
-	vault := filepath.Join(dir, "store")
+	vault := filepath.Join(dir, "vault")
 	if targets["/hikari/bin/hikari"] != "/bin/a" {
 		t.Errorf("the binary of intake: %v", targets)
 	}
-	if targets["/hikari/public/export"] != filepath.Join(vault, "systems", "orders") {
+	if targets["/hikari/self"] != filepath.Join(vault, "partitions", "orders", "read-only") {
 		t.Errorf("ID6: the partition agent's vault directory by id: %v", targets)
 	}
-	if targets["/hikari/public/readonly/shared"] != filepath.Join(vault, "shared") {
-		t.Errorf("the public wiki is in the shared area: %v", targets)
+	if targets["/hikari/public"] != filepath.Join(vault, "public") {
+		t.Errorf("the public wiki is in the public area: %v", targets)
 	}
 	billing := map[string]string{}
 	for _, m := range f.Services["billing"].Volumes {
 		billing[m.Target] = m.Source
 	}
-	if billing["/hikari/public/readonly/systems/intake/releases"] != filepath.Join(vault, "systems", "orders", "releases") {
+	if billing["/hikari/grants/intake/releases"] != filepath.Join(vault, "partitions", "orders", "read-only", "releases") {
 		t.Errorf("ID12: a granted release mounts at the partition's name: %v", billing)
 	}
 }

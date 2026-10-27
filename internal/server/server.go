@@ -398,6 +398,7 @@ func (s *Server) Self(agent string) api.Self {
 	self.VisiblePartitions = s.topo.VisiblePartitions(agent)
 	self.Releases = s.topo.ReadableReleases(agent)
 	self.Deliverables = s.sys.Deliverables(agent)
+	self.Skills = a.Grants.Skills
 	for _, m := range self.VisiblePartitions {
 		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
 			if self.PartitionAgentGrants == nil {

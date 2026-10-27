@@ -17,7 +17,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The files of a deliverable package in store/shared/deliverables/<name>/.
+// The files of a deliverable package in public/deliverables/<name>/, and
+// of a skill in skills/<name>/.
 const (
 	DeliverableFile = "deliverable.yaml"
 	SkillFile       = "SKILL.md"
@@ -90,13 +91,13 @@ var (
 // ValidDeliverableName reports whether name can name a deliverable.
 func ValidDeliverableName(name string) bool { return validDeliverableName.MatchString(name) }
 
-func (s Vault) DeliverablesDir() string { return s.Shared(Deliverables) }
+func (s Vault) DeliverablesDir() string { return s.Public(Deliverables) }
 
 func (s Vault) DeliverableDir(name string) string {
 	return filepath.Join(s.DeliverablesDir(), name)
 }
 
-// DeliverableNames returns the names of the directories in the shared
+// DeliverableNames returns the names of the directories in the public
 // deliverables area, sorted, valid or not.
 func (s Vault) DeliverableNames() ([]string, error) {
 	entries, err := os.ReadDir(s.DeliverablesDir())
@@ -112,6 +113,19 @@ func (s Vault) DeliverableNames() ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// SkillNames returns the names of the skills of skills/ that hold a
+// SKILL.md, sorted.
+func (s Vault) SkillNames() []string {
+	entries, _ := os.ReadDir(s.SkillsRoot())
+	var out []string
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(s.SkillDir(e.Name()), SkillFile)); err == nil {
+			out = append(out, e.Name())
+		}
+	}
+	return out
 }
 
 // LoadDeliverable reads and checks a deliverable (rules D1 to D5, T13). On

@@ -47,8 +47,7 @@ func AgentMounts(t *topology.Topology, agent, emptyDir string) []Mount {
 	if s := a.Partition; s != nil {
 		mounts = PartitionMounts(t.Repos[s.Repo].Path, s.Scope, s.Read, emptyDir)
 	}
-	st := t.VaultOf()
-	return append(mounts, VaultMounts(st, agent, a.Partition != nil, t.VisiblePartitions(agent), t.ReadableReleases(agent), emptyDir)...)
+	return append(mounts, VaultMounts(t, agent)...)
 }
 
 type overrideFile struct {

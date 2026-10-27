@@ -25,7 +25,7 @@ export function partition(partitionAgent: string, features: Feature[] = [], extr
     flags: null,
     providers: null,
     dirty: false,
-    grants: { releases: [], deliverables: [] },
+    grants: { releases: [], deliverables: [], skills: [] },
     ...extra,
   }
 }

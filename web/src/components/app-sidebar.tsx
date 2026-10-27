@@ -69,7 +69,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
               <SidebarMenu>
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
                 {state.partitions.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
-                {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
+                {item({ kind: 'shared' }, 'Vault', <BookOpen />)}
                 {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}
               </SidebarMenu>
             </SidebarGroup>

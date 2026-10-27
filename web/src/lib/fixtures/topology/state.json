@@ -23,6 +23,7 @@
         "partition": null,
         "releases": [],
         "deliverables": [],
+        "skills": [],
         "image": "hikari-agent",
         "build": "",
         "template": "",
@@ -43,6 +44,25 @@
       "message": "agent lead has neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN set"
     }
   ],
+  "mounts": {
+    "lead": [
+      {
+        "container": "/hikari/public",
+        "host": "vault/public",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/self",
+        "host": "vault/orchestration/read-only",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/can-edit",
+        "host": "vault/orchestration/can-edit",
+        "mode": "writable"
+      }
+    ]
+  },
   "mode": "editing",
   "commits": true
 }

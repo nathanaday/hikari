@@ -117,7 +117,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 		m.repos[name], m.start[name] = repo, start
 	}
-	if err := m.vault.Prepare(topo.PartitionAgents()); err != nil {
+	if err := m.vault.Prepare(topo.PartitionAgents(), topo.Orchestration != ""); err != nil {
 		return nil, fmt.Errorf("vault %s: %w", m.vault.Root, err)
 	}
 	if topo.Project != nil {
@@ -159,9 +159,6 @@ func New(topo *topology.Topology) (*Manager, error) {
 	if err := m.checkDeliverables(); err != nil {
 		return nil, err
 	}
-	if err := m.checkAgents(); err != nil {
-		return nil, err
-	}
 	vs, err := vocab.Open(m.vault.VocabularyFile())
 	if err != nil {
 		return nil, err
@@ -189,6 +186,9 @@ func (m *Manager) mapPath(partitionAgent string) string {
 // vocabularyPath is the vault path of the vocabulary.
 func (m *Manager) vocabularyPath() string { return m.vault.Rel(m.vault.VocabularyFile()) }
 
+// excludeSpec starts a vault path that a commit leaves out.
+const excludeSpec = ":(exclude)"
+
 // commitVault commits the vault paths of agent in the project repository
 // (rules PR14 to PR17). It returns a note when the commit failed, and does
 // nothing outside a project repository.
@@ -198,7 +198,11 @@ func (m *Manager) commitVault(agent, message string, paths ...string) string {
 	}
 	specs := make([]string, len(paths))
 	for i, p := range paths {
-		specs[i] = m.vaultPath(p)
+		if rest, ok := strings.CutPrefix(p, excludeSpec); ok {
+			specs[i] = excludeSpec + m.vaultPath(rest)
+		} else {
+			specs[i] = m.vaultPath(p)
+		}
 	}
 	if _, err := m.projectRepo.CommitPaths(m.topo.Project.Branch, specs, agent, message); err != nil {
 		log.Printf("vault commit for %s: %v", agent, err)
@@ -266,25 +270,37 @@ func (m *Manager) checkDeliverables() error {
 			}
 			if slices.Contains(api.BuiltinSkills, d) {
 				errs = append(errs, fmt.Errorf("deliverable %q has the name of hikari's own skill", d))
-			} else if exists(filepath.Join(m.vault.Shared(vault.Skills), d, vault.SkillFile)) {
-				errs = append(errs, fmt.Errorf("deliverable %q has the name of a shared skill; rename one of them", d))
+			} else if exists(m.vault.SkillDir(d)) {
+				errs = append(errs, fmt.Errorf("deliverable %q has the name of the skill %s; rename one of them", d, m.vault.Rel(m.vault.SkillDir(d))))
 			}
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// checkAgents refuses a shared agent whose name starts with hikari-, which
-// is reserved for hikari's own agents (rule T17).
-func (m *Manager) checkAgents() error {
-	entries, _ := os.ReadDir(m.vault.Shared(vault.Agents))
-	var errs []error
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), api.AgentPrefix) {
-			errs = append(errs, fmt.Errorf("shared agent %q: the prefix %s is reserved for hikari's own agents; rename it", e.Name(), api.AgentPrefix))
-		}
+// canEditPath is the vault path of an agent's can-edit/, or "" when the
+// agent has none.
+func (m *Manager) canEditPath(agent string) string {
+	switch {
+	case m.topo.Agents[agent].Partition != nil:
+		return m.vault.Rel(m.vault.CanEdit(agent))
+	case agent != "" && agent == m.topo.Orchestration:
+		return m.vault.Rel(m.vault.OrchestrationCanEdit())
 	}
-	return errors.Join(errs...)
+	return ""
+}
+
+// userDirs are the vault paths that hold only your files and the agents'
+// changes in can-edit/: every can-edit/ and granted/ (rule V10).
+func (m *Manager) userDirs() []string {
+	var out []string
+	for _, name := range m.topo.PartitionAgents() {
+		out = append(out, m.canEditPath(name), m.vault.Rel(m.vault.Granted(name)))
+	}
+	if o := m.topo.Orchestration; o != "" {
+		out = append(out, m.canEditPath(o), m.vault.Rel(filepath.Join(m.vault.OrchestrationReadOnly(), vault.GrantedDir)))
+	}
+	return out
 }
 
 // project writes the features of o's wiki into its map, with the health of
@@ -576,6 +592,7 @@ func (m *Manager) CommitAll() []error {
 		all = append(all, m.wikis[ref])
 	}
 	m.commitUserEdits("user: wiki edits left when hikari stopped", all...)
+	m.commitVault("", "user: vault edits left when hikari stopped", m.userDirs()...)
 	if orch := m.topo.Orchestration; orch != "" {
 		if note := m.commitVault(orch, orch+": vault changes left when hikari stopped", m.vocabularyPath()); note != "" {
 			errs = append(errs, fmt.Errorf("%s: %s", orch, note))
@@ -876,18 +893,29 @@ func (m *Manager) MarkCurrent(agent string) (string, error) {
 	return head, nil
 }
 
-// Commit commits the changes in agent's scope. An empty message makes the
-// automatic commit at the end of a turn (rule G13). It returns the new
-// commit, or "" when the scope had no changes.
+// Commit commits the changes in agent's scope, and in a project
+// repository its changes in can-edit/ (rule V10). An empty message makes
+// the automatic commit at the end of a turn (rule G13). It returns the new
+// commit of the scope, or "" when the scope had no changes. For the
+// orchestration agent, which has no scope, it commits only can-edit/.
 func (m *Manager) Commit(agent, message string) (string, error) {
+	if strings.TrimSpace(message) == "" {
+		message = agent + ": changes left at the end of a turn"
+	}
+	if agent != "" && agent == m.topo.Orchestration {
+		if note := m.commitVault(agent, message, m.canEditPath(agent)); note != "" {
+			return "", errors.New(note)
+		}
+		return "", nil
+	}
 	o, err := m.partitionAgent(agent)
 	if err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(message) == "" {
-		message = agent + ": changes left at the end of a turn"
-	}
 	commit, err := o.repo.Commit(o.branch, o.scope, agent, message)
+	if note := m.commitVault(agent, message, m.canEditPath(agent)); note != "" {
+		log.Printf("%s: %s", agent, note)
+	}
 	if err == nil && commit != "" {
 		m.checkDirty(o)
 		m.changed(Change{Partition: agent})
@@ -914,7 +942,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (vault.Ma
 	rel, err := m.vault.Publish(vault.PublishInput{
 		Partition: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommit: v.Partition.DescribedState.Commit, Map: public,
-		Wiki: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),
+		Features: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
 		return vault.Manifest{}, err
@@ -1084,7 +1112,7 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 	return api.PartitionView{
 		PartitionAgentView: v,
 		Dirty:              dirty,
-		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables)},
+		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills)},
 		Private:            priv,
 		Releases:           releases,
 		PartitionAgent:     name,

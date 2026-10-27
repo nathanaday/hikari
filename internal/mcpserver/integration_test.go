@@ -114,7 +114,7 @@ services:
 		t.Errorf("a run before the test map has the suite: %q", out)
 	}
 	// The partition agent writes its private documents directly, as the skill says.
-	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "layout.yaml"), []byte("version: 1\nparts: [{path: create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [create.py]}\n  validate-order: {code: [create.py]}\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "code-map.yaml"), []byte("version: 1\nparts: [{path: create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [create.py]}\n  validate-order: {code: [create.py]}\n"), 0o644)
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "tests.yaml"), []byte("version: 1\nsuites:\n  unit: {command: python3 -m pytest}\ntests:\n  tests/test_create.py: [\"[[create-order]]\"]\n"), 0o644)
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "reports", "unit.xml"), []byte(`<testsuite><testcase classname="tests.test_create.T" name="test_a" file="tests/test_create.py"/><testcase classname="tests.test_create.T" name="test_b" file="tests/test_create.py"/><testcase classname="tests.other.T" name="test_c"/></testsuite>`), 0o644)
 	if out, isErr := call(t, orders, "record_test_run", map[string]any{"suite": "unit"}); isErr || !strings.Contains(out, "Recorded suite unit: 3 passed, 0 failed, 0 skipped. 1 test(s) touch no feature yet") || !strings.Contains(out, "create-order: was pending, now passing") {

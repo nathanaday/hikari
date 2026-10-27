@@ -262,9 +262,13 @@ func (m *Manager) docFiles(w *wikiOf, ids []string) []string {
 // commitUserEdits commits what the wikis hold that no tool wrote: the
 // user's edits, with the user's git identity (rules C1 and C3).
 func (m *Manager) commitUserEdits(message string, ws ...*wikiOf) {
-	dirs := make([]string, len(ws))
-	for i, w := range ws {
-		dirs[i] = w.dir
+	var dirs []string
+	for _, w := range ws {
+		dirs = append(dirs, w.dir)
+		if w.scope == "partition" {
+			// hikari writes the map beside the documents.
+			dirs = append(dirs, excludeSpec+path.Join(w.dir, vault.MapName))
+		}
 	}
 	m.commitVault("", message, dirs...)
 }
@@ -493,19 +497,27 @@ func (m *Manager) wikiChanges(agent string) []api.WikiChange {
 	return out
 }
 
-// isProjectWiki reports whether a path of the project repository is in a
-// wiki folder of the vault (rule C5).
-func IsWikiPath(vaultRel, p string) bool {
+// IsUserPath reports whether a path of the project repository holds what
+// you change in the vault: a document of a wiki, or a file of a can-edit/
+// or a granted/ (rule C5 of the wikis spec, and V10 of the vault layout
+// spec). hikari up commits these as yours.
+func IsUserPath(vaultRel, p string) bool {
 	rel, ok := strings.CutPrefix(p, vaultRel+"/")
 	if !ok {
 		return false
 	}
 	parts := strings.Split(rel, "/")
 	switch {
-	case len(parts) >= 4 && parts[0] == "systems":
-		return parts[2] == vault.Wiki
-	case len(parts) >= 3 && parts[0] == "shared":
+	case len(parts) >= 3 && parts[0] == vault.PublicDir:
 		return parts[1] == vault.Wiki
+	case len(parts) >= 4 && parts[0] == vault.PartitionsDir:
+		if parts[2] == vault.CanEditDir {
+			return true
+		}
+		return len(parts) >= 5 && parts[2] == vault.ReadOnlyDir &&
+			(parts[3] == vault.GrantedDir || parts[3] == vault.FeaturesDir && len(parts) == 5 && strings.HasSuffix(parts[4], ".md"))
+	case len(parts) >= 3 && parts[0] == vault.OrchestrationDir:
+		return parts[1] == vault.CanEditDir || len(parts) >= 4 && parts[1] == vault.ReadOnlyDir && parts[2] == vault.GrantedDir
 	}
 	return false
 }

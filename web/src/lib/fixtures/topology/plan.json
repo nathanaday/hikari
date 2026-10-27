@@ -114,8 +114,8 @@
   "effects": [],
   "occurrences": [
     {
-      "key": "shared/wiki/plan.md:5:20",
-      "file": "shared/wiki/plan.md",
+      "key": "public/wiki/plan.md:5:20",
+      "file": "public/wiki/plan.md",
       "line": 5,
       "text": "Ship it soon, with @lead.",
       "replace": "Ship it soon, with @chief.",
@@ -153,6 +153,7 @@
         },
         "releases": [],
         "deliverables": [],
+        "skills": [],
         "image": "hikari-agent",
         "build": "",
         "template": "",
@@ -172,6 +173,7 @@
         "partition": null,
         "releases": [],
         "deliverables": [],
+        "skills": [],
         "image": "hikari-agent",
         "build": "",
         "template": "",
@@ -184,6 +186,67 @@
       }
     ],
     "sidecars": []
+  },
+  "mounts": {
+    "dev": [
+      {
+        "container": "/workspace/app",
+        "host": "app",
+        "mode": "writable"
+      },
+      {
+        "container": "/workspace/app/.hikari",
+        "host": "",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/private",
+        "host": "app/.hikari/private",
+        "mode": "writable"
+      },
+      {
+        "container": "/hikari/public",
+        "host": "vault/public",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/self",
+        "host": "vault/partitions/dev/read-only",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/can-edit",
+        "host": "vault/partitions/dev/can-edit",
+        "mode": "writable"
+      },
+      {
+        "container": "/hikari/staging",
+        "host": "vault/partitions/dev/staging",
+        "mode": "writable"
+      }
+    ],
+    "lead": [
+      {
+        "container": "/hikari/public",
+        "host": "vault/public",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/self",
+        "host": "vault/orchestration/read-only",
+        "mode": "read-only"
+      },
+      {
+        "container": "/hikari/can-edit",
+        "host": "vault/orchestration/can-edit",
+        "mode": "writable"
+      },
+      {
+        "container": "/hikari/partitions/dev",
+        "host": "vault/partitions/dev/read-only",
+        "mode": "read-only"
+      }
+    ]
   },
   "applies_at_start": false
 }

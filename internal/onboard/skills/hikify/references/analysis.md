@@ -7,7 +7,7 @@ Send this brief to one fresh subagent for each repository, with `<repo>`, its pa
 Analyze the repository `<repo>` of a hikari project, for a refactor into isolated partitions. Read:
 
 - the code in `repos/<repo>`;
-- its partition agent's map, `store/systems/<partition>/map.yaml`, and wiki, `store/systems/<partition>/wiki/`;
+- its partition agent's feature map, `vault/partitions/<partition>/read-only/features/`: `map.yaml` and the documents;
 - the baseline, `onboarding/baseline.md`, and the survey in `onboarding/state.md`;
 - the names and purposes of the other repositories, in `onboarding/state.md`. Read the code of another repository only to compare a piece of code that this one copies.
 

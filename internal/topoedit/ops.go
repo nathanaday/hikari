@@ -42,6 +42,7 @@ type Op struct {
 	Read         *[]string `json:"read,omitempty"`
 	Releases     *[]string `json:"releases,omitempty"`
 	Deliverables *[]string `json:"deliverables,omitempty"`
+	Skills       *[]string `json:"skills,omitempty"`
 }
 
 // Rename is a change of the name of an agent, which a plan can
@@ -343,7 +344,7 @@ func (e *editor) apply(op Op) error {
 		if a.Partition == nil {
 			return fmt.Errorf("%q has no partition", a.ID)
 		}
-		e.leaves("systems/" + a.ID)
+		e.leaves("partitions/" + a.ID)
 		e.summary = append(e.summary, "clear the partition of "+a.Name)
 		return e.deleteKey("services."+a.ID+".x-hikari", "partition")
 	case "set_grants":
@@ -364,9 +365,12 @@ func (e *editor) apply(op Op) error {
 		if err := e.setList(p, "deliverables", op.Deliverables); err != nil {
 			return err
 		}
+		if err := e.setList(p, "skills", op.Skills); err != nil {
+			return err
+		}
 		if m := ReadModel(e.text, e.dir); m != nil {
 			for _, x := range m.Agents {
-				if x.ID == a.ID && len(x.Releases) == 0 && len(x.Deliverables) == 0 {
+				if x.ID == a.ID && len(x.Releases) == 0 && len(x.Deliverables) == 0 && len(x.Skills) == 0 {
 					if err := e.deleteKey("services."+a.ID+".x-hikari", "grants"); err != nil {
 						return err
 					}
@@ -678,7 +682,7 @@ func (e *editor) removeAgent(op Op) error {
 		}
 	}
 	if a.Partition != nil {
-		e.leaves("systems/" + a.ID)
+		e.leaves("partitions/" + a.ID)
 	}
 	e.summary = append(e.summary, "remove agent "+a.Name)
 	return e.deleteKey("services", a.ID)

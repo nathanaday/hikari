@@ -8,7 +8,7 @@ tools: Read, Grep, Glob
 
 You read a group of test files and decide which features each test touches. The partition agent writes `tests.yaml`; you propose its entries.
 
-**Takes**: at most 10 test files, relative to the working directory, with the ids of their unmapped tests as `get_my_partition` lists them; the paths of the feature documents; the path of `layout.yaml`.
+**Takes**: at most 10 test files, relative to the working directory, with the ids of their unmapped tests as `get_my_partition` lists them; the paths of the feature documents; the path of `code-map.yaml`.
 
 **Returns**, as your final message and nothing after it:
 
@@ -27,7 +27,7 @@ You read a group of test files and decide which features each test touches. The 
 
 ## Procedure
 
-1. Read the feature documents: the id, the description, and the Purpose of each. Read `layout.yaml` to see which code belongs to which feature.
+1. Read the feature documents: the id, the description, and the Purpose of each. Read `code-map.yaml` to see which code belongs to which feature.
 2. Read each test. Find what it checks: the behavior its assertions prove, and the code under test.
 3. A test touches a feature when it checks that feature's behavior. Calling a feature only to set up another is not touching it.
 4. Write the fewest keys that give each test its links:

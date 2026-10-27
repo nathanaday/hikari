@@ -6,13 +6,16 @@ import { Chips, Field, Select, TextField } from '@/components/topology-fields'
 import { Button } from '@/components/ui/button'
 import { findingsOf, partitionAgents, partitionsIn, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { branchProblem, nameProblem, urlProblem, validProjectName } from '@/lib/topology-rules'
-import type { Finding, TopologyAgent, TopologyModel } from '@/lib/types'
+import type { Finding, Mount, TopologyAgent, TopologyModel } from '@/lib/types'
 
-export type Options = { deliverables: string[]; models: string[]; templates: string[] }
+export type Options = { deliverables: string[]; skills: string[]; models: string[]; templates: string[] }
 
 export type InspectorProps = {
   model: TopologyModel
   findings: Finding[]
+  // mounts maps each agent's id to its mounts, or is null when the text
+  // does not pass the checks.
+  mounts: Record<string, Mount[]> | null
   options: Options
   // add plans one more operation, and returns the refusal, if any.
   add: (op: Op) => Promise<string | null>
@@ -141,7 +144,7 @@ export function ProjectInspector(p: InspectorProps) {
         </Field>
       </Section>
       <Section title="Vault">
-        <TextField label="Directory" value={pr.vault} mono placeholder="store" onCommit={(v) => p.add({ op: 'set_project', vault: v })} hint="Relative to the topology file. Empty means store/." />
+        <TextField label="Directory" value={pr.vault} mono placeholder="vault" onCommit={(v) => p.add({ op: 'set_project', vault: v })} hint="Relative to the topology file. Empty means vault/." />
       </Section>
     </div>
   )
@@ -215,8 +218,8 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
 
       <PartitionSection a={a} orchestration={orchestration} p={p} />
 
-      {a.partition && (
-        <Section title="Grants">
+      <Section title="Grants">
+        {a.partition && (
           <Field label="Releases it reads" hint="It reads these partitions' releases; a container gets new grants when it starts.">
             <Chips
               items={a.releases.map((r) => ({ value: r, label: p.model.agents.find((x) => x.id === r)?.name ?? r }))}
@@ -228,6 +231,8 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
               addLabel="Grant the releases of…"
             />
           </Field>
+        )}
+        {a.partition && (
           <Field label="Deliverables it publishes">
             <Chips
               items={a.deliverables.map((d) => ({ value: d, label: d }))}
@@ -238,8 +243,20 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
               empty={p.options.deliverables.length ? 'None' : 'None; the vault defines no deliverable yet.'}
             />
           </Field>
-        </Section>
-      )}
+        )}
+        <Field label="Skills it uses" hint="Your skills in the vault's skills/, which its container reads at /hikari/skills/<name>.">
+          <Chips
+            items={a.skills.map((s) => ({ value: s, label: s }))}
+            onRemove={(s) => p.add({ op: 'set_grants', id, skills: a.skills.filter((x) => x !== s) })}
+            onAdd={(s) => p.add({ op: 'set_grants', id, skills: [...a.skills, s] })}
+            choices={p.options.skills.filter((s) => !a.skills.includes(s) && !a.deliverables.includes(s)).map((s) => ({ value: s, label: s }))}
+            addLabel="Grant a skill…"
+            empty={p.options.skills.length ? 'None' : 'None; the vault has no skill yet.'}
+          />
+        </Field>
+      </Section>
+
+      <Mounts mounts={p.mounts?.[id]} />
 
       <Section title="Container">
         <ContainerSummary a={a} />
@@ -255,6 +272,39 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
         }}
       />
     </div>
+  )
+}
+
+// Mounts shows what the agent's container mounts, from the function that
+// writes the override file (rule V14).
+function Mounts({ mounts }: { mounts: Mount[] | undefined }) {
+  return (
+    <Section title="Mounts">
+      {mounts ? (
+        <table className="w-full text-sm" data-testid="mounts">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="py-1 pr-3 font-normal">In the container</th>
+              <th className="py-1 pr-3 font-normal">On the host</th>
+              <th className="py-1 font-normal">Mode</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mounts.map((m) => (
+              <tr key={m.container} className="border-t align-top">
+                <td className="py-1 pr-3">
+                  <code className="text-xs break-all">{m.container}</code>
+                </td>
+                <td className="py-1 pr-3">{m.host ? <code className="text-xs break-all">{m.host}</code> : <span className="text-xs text-muted-foreground">an empty directory, which hides it</span>}</td>
+                <td className="py-1 text-xs whitespace-nowrap">{m.mode}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-sm text-muted-foreground">The topology has errors, so hikari cannot say what this container mounts. Fix the errors to see its mounts.</p>
+      )}
+    </Section>
   )
 }
 

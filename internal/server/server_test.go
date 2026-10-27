@@ -366,7 +366,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	deliverable := filepath.Join(dir, "store", "shared", "deliverables", "lib")
+	deliverable := filepath.Join(dir, "vault", "public", "deliverables", "lib")
 	os.MkdirAll(deliverable, 0o755)
 	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
@@ -489,7 +489,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	deliverable := filepath.Join(dir, "store", "shared", "deliverables", "lib")
+	deliverable := filepath.Join(dir, "vault", "public", "deliverables", "lib")
 	os.MkdirAll(deliverable, 0o755)
 	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
@@ -506,7 +506,7 @@ services:
 	if _, err := orders.MarkMapCurrent(ctx); err != nil {
 		t.Fatal(err)
 	}
-	staging := filepath.Join(dir, "store", "systems", "orders", "staging", "lib")
+	staging := filepath.Join(dir, "vault", "partitions", "orders", "staging", "lib")
 	os.MkdirAll(staging, 0o755)
 	if _, err := orders.CheckRelease(ctx, "lib"); err == nil || !strings.Contains(err.Error(), `no file matches "README.md"`) {
 		t.Errorf("R15 check of an empty product: %v", err)
@@ -549,18 +549,18 @@ func TestVaultRoutes(t *testing.T) {
 	srv := httptest.NewServer(s.Handler("ui-secret"))
 	defer srv.Close()
 	root := sys.Vault().Root
-	os.MkdirAll(filepath.Join(root, "shared", "skills", "style"), 0o755)
-	os.WriteFile(filepath.Join(root, "shared", "skills", "style", "SKILL.md"), []byte("# style\n"), 0o644)
-	os.WriteFile(filepath.Join(root, "shared", "policies", "security.md"), []byte("Never log secrets.\n"), 0o644)
-	os.WriteFile(filepath.Join(root, "shared", "policies", "logo.png"), []byte{0x89, 0x50, 0x00}, 0o644)
-	os.WriteFile(filepath.Join(root, "shared", "agents", "binary.md"), []byte{0x00, 0x01}, 0o644)
+	os.MkdirAll(filepath.Join(root, "skills", "style"), 0o755)
+	os.WriteFile(filepath.Join(root, "skills", "style", "SKILL.md"), []byte("# style\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "public", "policies", "security.md"), []byte("Never log secrets.\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "public", "policies", "logo.png"), []byte{0x89, 0x50, 0x00}, 0o644)
+	os.WriteFile(filepath.Join(root, "public", "policies", "binary.md"), []byte{0x00, 0x01}, 0o644)
 	outside := filepath.Join(t.TempDir(), "secret.txt")
 	os.WriteFile(outside, []byte("secret"), 0o644)
-	os.Symlink(outside, filepath.Join(root, "shared", "policies", "escape.md"))
-	os.MkdirAll(filepath.Join(root, "shared", "deliverables", "docs-site"), 0o755)
-	os.WriteFile(filepath.Join(root, "shared", "deliverables", "docs-site", "deliverable.yaml"), []byte("version: 1\ndescription: A site.\ntargets: [{type: dockerhub}]\n"), 0o644)
-	os.WriteFile(filepath.Join(root, "shared", "deliverables", "docs-site", "SKILL.md"), []byte("# site\n"), 0o644)
-	os.MkdirAll(filepath.Join(root, "shared", "deliverables", "broken"), 0o755)
+	os.Symlink(outside, filepath.Join(root, "public", "policies", "escape.md"))
+	os.MkdirAll(filepath.Join(root, "public", "deliverables", "docs-site"), 0o755)
+	os.WriteFile(filepath.Join(root, "public", "deliverables", "docs-site", "deliverable.yaml"), []byte("version: 1\ndescription: A site.\ntargets: [{type: dockerhub}]\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "public", "deliverables", "docs-site", "SKILL.md"), []byte("# site\n"), 0o644)
+	os.MkdirAll(filepath.Join(root, "public", "deliverables", "broken"), 0o755)
 
 	jar, _ := cookiejar.New(nil)
 	browser := &http.Client{Jar: jar}
@@ -575,24 +575,24 @@ func TestVaultRoutes(t *testing.T) {
 		return resp.StatusCode, string(b)
 	}
 
-	code, body := get("/api/ui/vault/shared")
-	if code != 200 || !strings.Contains(body, `"name":"style"`) || !strings.Contains(body, `"path":"shared/policies/security.md"`) || strings.Contains(body, "logo") {
-		t.Errorf("shared listing = %d %s", code, body)
+	code, body := get("/api/ui/vault/public")
+	if code != 200 || !strings.Contains(body, `"name":"style","path":"skills/style/SKILL.md","holders":[]`) || !strings.Contains(body, `"path":"public/policies/security.md"`) || strings.Contains(body, "logo") {
+		t.Errorf("V13 public listing = %d %s", code, body)
 	}
-	if !strings.Contains(body, `"name":"docs-site","path":"shared/deliverables/docs-site","skill":"shared/deliverables/docs-site/SKILL.md","description":"A site."`) ||
+	if !strings.Contains(body, `"name":"docs-site","path":"public/deliverables/docs-site","skill":"public/deliverables/docs-site/SKILL.md","description":"A site."`) ||
 		!strings.Contains(body, `"targets":[{"type":"dockerhub"}],"holders":[]`) || !strings.Contains(body, `"name":"broken"`) || !strings.Contains(body, `"error":"deliverable \"broken\" has no deliverable.yaml`) {
 		t.Errorf("U12 deliverables listing = %s", body)
 	}
-	if code, body := get("/api/ui/vault/file?path=shared/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
+	if code, body := get("/api/ui/vault/file?path=public/policies/security.md"); code != 200 || body != "Never log secrets.\n" {
 		t.Errorf("text file = %d %q", code, body)
 	}
 	for path, want := range map[string]int{
 		"../../etc/passwd":           400,
 		"/etc/passwd":                400,
-		"shared/policies/escape.md":  400,
-		"shared/agents/binary.md":    415,
-		"shared/policies/missing.md": 404,
-		"shared/policies":            404,
+		"public/policies/escape.md":  400,
+		"public/policies/binary.md":  415,
+		"public/policies/missing.md": 404,
+		"public/policies":            404,
 	} {
 		if code, _ := get("/api/ui/vault/file?path=" + path); code != want {
 			t.Errorf("U10: %s = %d, want %d", path, code, want)
@@ -601,7 +601,7 @@ func TestVaultRoutes(t *testing.T) {
 	if code, _ := get("/api/ui/vault/releases/nope/lib/1.0.0"); code != 404 {
 		t.Errorf("unknown release = %d", code)
 	}
-	resp, _ := http.Get(srv.URL + "/api/ui/vault/shared")
+	resp, _ := http.Get(srv.URL + "/api/ui/vault/public")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("the vault needs the UI token: %s", resp.Status)
 	}

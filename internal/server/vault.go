@@ -18,6 +18,8 @@ const maxVaultFile = 512 << 10
 
 type releaseDetail struct {
 	Manifest vault.Manifest `json:"manifest"`
+	// Dir is the release's directory, relative to the vault.
+	Dir string `json:"dir"`
 	// Files lists the release's files, relative to the vault.
 	Files []string `json:"files"`
 	// Digests maps each product file, relative to the release, to its
@@ -28,6 +30,12 @@ type releaseDetail struct {
 type sharedEntry struct {
 	Name string `json:"name"`
 	Path string `json:"path"` // relative to the vault
+}
+
+// skillEntry is a skill of the vault with the agents it is granted to.
+type skillEntry struct {
+	sharedEntry
+	Holders []string `json:"holders"`
 }
 
 // deliverableEntry is a deliverable as the UI shows it (rule U12).
@@ -42,15 +50,15 @@ type deliverableEntry struct {
 	Error       string         `json:"error,omitempty"`
 }
 
+// sharedListing is the public area and your skills (rule V13).
 type sharedListing struct {
 	Policies     []sharedEntry      `json:"policies"`
-	Skills       []sharedEntry      `json:"skills"`
-	Agents       []sharedEntry      `json:"agents"`
+	Skills       []skillEntry       `json:"skills"`
 	Deliverables []deliverableEntry `json:"deliverables"`
 }
 
-// vaultRoutes serves the vault to the UI: a release, the shared area, and
-// single text files (rule U10).
+// vaultRoutes serves the vault to the UI: a release, the public area and
+// your skills, and single text files (rule U10).
 func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.HandlerFunc) {
 	st := s.sys.Vault()
 
@@ -66,8 +74,8 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 			writeError(w, http.StatusNotFound, "no release "+deliverable+" "+version+" of "+partition)
 			return
 		}
-		detail := releaseDetail{Manifest: releases[i], Files: []string{}, Digests: map[string]string{}}
 		dir := st.ReleaseDir(partition, deliverable, version)
+		detail := releaseDetail{Manifest: releases[i], Dir: st.Rel(dir), Files: []string{}, Digests: map[string]string{}}
 		filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
 				rel, _ := filepath.Rel(st.Root, p)
@@ -84,18 +92,22 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		writeJSON(w, http.StatusOK, detail)
 	}))
 
-	mux.HandleFunc("GET /api/ui/vault/shared", ui(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/ui/vault/public", ui(func(w http.ResponseWriter, r *http.Request) {
 		listing := sharedListing{
-			Policies: sharedFiles(st, vault.Policies, ".md"),
-			Agents:   sharedFiles(st, vault.Agents, ".md"),
-			Skills:   []sharedEntry{},
+			Policies: sharedFiles(st, st.Public(vault.Policies), ".md"),
+			Skills:   []skillEntry{},
 		}
-		entries, _ := os.ReadDir(st.Shared(vault.Skills))
+		entries, _ := os.ReadDir(st.SkillsRoot())
 		for _, e := range entries {
-			skill := filepath.Join(st.Shared(vault.Skills), e.Name(), "SKILL.md")
+			skill := filepath.Join(st.SkillDir(e.Name()), vault.SkillFile)
 			if _, err := os.Stat(skill); err == nil {
-				rel, _ := filepath.Rel(st.Root, skill)
-				listing.Skills = append(listing.Skills, sharedEntry{Name: e.Name(), Path: filepath.ToSlash(rel)})
+				entry := skillEntry{sharedEntry{Name: e.Name(), Path: st.Rel(skill)}, []string{}}
+				for _, agent := range s.topo.AgentNames() {
+					if slices.Contains(s.topo.Agents[agent].Grants.Skills, e.Name()) {
+						entry.Holders = append(entry.Holders, agent)
+					}
+				}
+				listing.Skills = append(listing.Skills, entry)
 			}
 		}
 		listing.Deliverables = s.deliverables(st)
@@ -143,13 +155,12 @@ func (s *Server) deliverables(st vault.Vault) []deliverableEntry {
 	return out
 }
 
-func sharedFiles(st vault.Vault, kind, ext string) []sharedEntry {
+func sharedFiles(st vault.Vault, dir, ext string) []sharedEntry {
 	out := []sharedEntry{}
-	entries, _ := os.ReadDir(st.Shared(kind))
+	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ext) {
-			rel, _ := filepath.Rel(st.Root, filepath.Join(st.Shared(kind), e.Name()))
-			out = append(out, sharedEntry{Name: strings.TrimSuffix(e.Name(), ext), Path: filepath.ToSlash(rel)})
+			out = append(out, sharedEntry{Name: strings.TrimSuffix(e.Name(), ext), Path: st.Rel(filepath.Join(dir, e.Name()))})
 		}
 	}
 	return out

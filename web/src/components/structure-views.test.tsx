@@ -16,7 +16,8 @@ const findings: Finding[] = [
 const props: InspectorProps = {
   model,
   findings,
-  options: { deliverables: [], models: ['sonnet', 'opus', 'haiku'], templates: ['lead', 'dev'] },
+  mounts: p.mounts,
+  options: { deliverables: [], skills: ['python-style'], models: ['sonnet', 'opus', 'haiku'], templates: ['lead', 'dev'] },
   add: async () => null,
   select: () => {},
   editYAML: () => {},
@@ -77,11 +78,23 @@ describe('the inspectors', () => {
     expect(html).toContain('It can change until hikari keeps something under it')
     expect(html).toContain('Builds it.')
   })
+  it('shows an agent’s mounts, or why it cannot (V14)', () => {
+    const html = renderToStaticMarkup(<AgentInspector {...props} id="dev" />)
+    expect(html).toContain('data-testid="mounts"')
+    expect(html).toContain('/hikari/self')
+    expect(html).toContain('vault/partitions/dev/read-only')
+    expect(html).toContain('an empty directory, which hides it')
+    expect(html).toContain('Skills it uses')
+    const lead = renderToStaticMarkup(<AgentInspector {...props} id="lead" />)
+    expect(lead).toContain('/hikari/partitions/dev')
+    const broken = renderToStaticMarkup(<AgentInspector {...props} mounts={null} id="dev" />)
+    expect(broken).toContain('The topology has errors, so hikari cannot say what this container mounts')
+  })
 })
 
 describe('Occurrences', () => {
   it('puts each place under a checkbox, and an unkeyed one without (SR2)', () => {
-    const occ = [...p.occurrences, { file: 'systems/dev/map.yaml', line: 3, text: 'summary: for @lead', replace: 'summary: for @chief', from: '@lead', to: '@chief' }]
+    const occ = [...p.occurrences, { file: 'partitions/dev/read-only/features/map.yaml', line: 3, text: 'summary: for @lead', replace: 'summary: for @chief', from: '@lead', to: '@chief' }]
     const html = renderToStaticMarkup(<Occurrences occurrences={occ} chosen={new Set([p.occurrences[0].key!])} toggle={() => {}} />)
     expect(html.match(/type="checkbox"/g)).toHaveLength(1)
     expect(html).toContain('checked=""')

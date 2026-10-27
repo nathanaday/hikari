@@ -1,7 +1,7 @@
 // Package featuremap holds the documents of one partition. The map (map.yaml) is
 // the public surface of the partition: its purpose, its interfaces, and its
 // features with their test health. It holds no paths into the code. The
-// private documents (private/layout.yaml and private/tests.yaml) hold where
+// private documents (private/code-map.yaml and private/tests.yaml) hold where
 // each feature lives in the code and which tests touch it; only the partition agent
 // and the user read them.
 //

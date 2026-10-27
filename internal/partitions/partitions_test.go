@@ -47,7 +47,7 @@ layout:
 // defineDeliverable writes a deliverable into the vault under dir.
 func defineDeliverable(t *testing.T, dir, name, yaml string) {
 	t.Helper()
-	d := filepath.Join(dir, "store", "shared", "deliverables", name)
+	d := filepath.Join(dir, "vault", "public", "deliverables", name)
 	write(t, d, "deliverable.yaml", yaml)
 	write(t, d, "SKILL.md", "# Make the library\n")
 }
@@ -124,7 +124,7 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Interfaces: []string{"POST /orders", "inventory.reserve"}, Body: body("A customer places an order, and the shop stores it."),
 	}})
 	must(t, err)
-	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", `version: 1
+	write(t, f.repo, "services/orders/.hikari/private/code-map.yaml", `version: 1
 parts: [{path: create.py, description: Order creation.}]
 features:
   create-order: {code: [create.py]}
@@ -180,14 +180,16 @@ func TestNewPreparesReposAndMaps(t *testing.T) {
 	if got := git(t, f.repo, "branch", "--show-current"); got != "hikari/work" {
 		t.Errorf("G2: checked out %q", got)
 	}
-	st := filepath.Join(f.dir, "store")
+	st := filepath.Join(f.dir, "vault")
 	for _, p := range []string{
-		"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents",
-		"systems/orders/map.yaml", "systems/orders/staging", "systems/orders/releases",
-		"systems/inventory/map.yaml",
+		"README.md", "public/vocabulary", "public/policies", "public/deliverables", "public/wiki", "skills",
+		"partitions/orders/read-only/features/map.yaml", "partitions/orders/read-only/releases", "partitions/orders/read-only/granted",
+		"partitions/orders/can-edit", "partitions/orders/staging",
+		"partitions/inventory/read-only/features/map.yaml",
+		"orchestration/read-only/features", "orchestration/read-only/granted", "orchestration/can-edit",
 	} {
 		if _, err := os.Stat(filepath.Join(st, p)); err != nil {
-			t.Errorf("L1/L3: store lacks %s: %v", p, err)
+			t.Errorf("V1: the vault lacks %s: %v", p, err)
 		}
 	}
 	for _, scope := range []string{"services/orders", "services/inventory"} {
@@ -259,7 +261,7 @@ func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	if _, err := f.m.RecordRun("orders", "unit"); err == nil || !strings.Contains(err.Error(), "no test case") {
 		t.Errorf("J2: an empty report: %v", err)
 	}
-	write(t, f.repo, "services/orders/.hikari/private/layout.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [create.py]}\n")
+	write(t, f.repo, "services/orders/.hikari/private/code-map.yaml", "version: 1\nparts: []\nfeatures:\n  ghost: {code: [create.py]}\n")
 	if _, err := f.m.MarkCurrent("orders"); err == nil || !strings.Contains(err.Error(), "P2") {
 		t.Errorf("mark current with invalid documents: %v", err)
 	}
@@ -366,7 +368,9 @@ func TestAccess(t *testing.T) {
 	// A1: a partition agent changes only its own map; non-partition agents have no map.
 	_, err := f.m.OwnView("lead")
 	forbidden("A1 orchestration agent has no own map", err)
-	forbidden("A1 orchestration agent cannot commit", func() error { _, err := f.m.Commit("lead", "x"); return err }())
+	if _, err := f.m.Commit("lead", "x"); err != nil {
+		t.Errorf("V10: the orchestration agent's commit, of its can-edit/ only: %v", err)
+	}
 
 	// A2: the orchestration agent sees every partition.
 	if s, err := f.m.ListPartitions("lead"); err != nil || len(s) != 2 {
@@ -457,7 +461,7 @@ func TestTurnContextReportsVocabularyChangesOnce(t *testing.T) {
 	if tc := f.m.TurnContext("inventory"); !tc.VocabularyChanged {
 		t.Errorf("every agent hears of the change: %+v", tc)
 	}
-	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "vocabulary", "terms.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.dir, "vault", "public", "vocabulary", "terms.yaml")); err != nil {
 		t.Errorf("V1 vocabulary file: %v", err)
 	}
 }
@@ -510,7 +514,7 @@ func TestCommitAllLeavesTheRepoClean(t *testing.T) {
 
 func TestPrepareKeepsAnExistingReadme(t *testing.T) {
 	f := newFixture(t)
-	readme := filepath.Join(f.dir, "store", "README.md")
+	readme := filepath.Join(f.dir, "vault", "README.md")
 	os.WriteFile(readme, []byte("mine\n"), 0o644)
 	f.m.CommitAll()
 	topo, _ := topology.Parse([]byte(testTopology), f.dir)
@@ -524,7 +528,7 @@ func TestPrepareKeepsAnExistingReadme(t *testing.T) {
 
 func TestPublishRelease(t *testing.T) {
 	f := newFixture(t)
-	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging", "python-library")
+	staging := filepath.Join(f.dir, "vault", "partitions", "orders", "staging", "python-library")
 	write(t, staging, "README.md", "# orders\n")
 	write(t, staging, "orders/create.py", "def create(): pass\n")
 	publish := func(agent, deliverable, version string) (vault.Manifest, error) {
@@ -571,11 +575,11 @@ func TestPublishRelease(t *testing.T) {
 	if rel.SourceCommit != head || rel.Hikari == "" {
 		t.Errorf("release %+v; HEAD is %s", rel, head)
 	}
-	copied, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "map.yaml"))
+	copied, _ := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", "features", "map.yaml"))
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
 		t.Errorf("the copied map must be the public view:\n%s", copied)
 	}
-	if doc, err := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "wiki", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
+	if doc, err := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "releases", "python-library", "1.0.0", "features", "create-order.md")); err != nil || !strings.Contains(string(doc), "described_commit: "+head) {
 		t.Errorf("L11: the release holds the wiki: %v\n%s", err, doc)
 	}
 	if len(changes) == 0 || changes[0].Partition != "orders" {
@@ -630,11 +634,11 @@ func TestDeliverableChecksAtStartup(t *testing.T) {
 			t.Errorf("error = %v", err)
 		}
 	})
-	t.Run("T16 shared skill", func(t *testing.T) {
+	t.Run("T16 skill", func(t *testing.T) {
 		dir := newRepo(t)
 		defineDeliverable(t, dir, "python-library", pythonLibrary)
-		write(t, filepath.Join(dir, "store", "shared", "skills", "python-library"), "SKILL.md", "# mine\n")
-		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), "has the name of a shared skill") {
+		write(t, filepath.Join(dir, "vault", "skills", "python-library"), "SKILL.md", "# mine\n")
+		if _, err := start(t, dir); err == nil || !strings.Contains(err.Error(), "has the name of the skill skills/python-library") {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -643,7 +647,7 @@ func TestDeliverableChecksAtStartup(t *testing.T) {
 func TestChangeFeatures(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	features := filepath.Join(f.dir, "store", "systems", "orders", "wiki")
+	features := filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features")
 	if _, err := os.Stat(filepath.Join(features, "create-order.md")); err != nil {
 		t.Fatalf("L10, W7: the document is in the vault: %v", err)
 	}
@@ -727,7 +731,7 @@ func TestChangeFeatures(t *testing.T) {
 	if len(v.UnmappedTests) != 1 || len(v.UnmappedTests[0].Tests) != 3 {
 		t.Errorf("E8: the removed feature's tests are unmapped: %+v", v.UnmappedTests)
 	}
-	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `layout.yaml still names the removed feature "place-order"`) {
+	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `code-map.yaml still names the removed feature "place-order"`) {
 		t.Errorf("E10: notes %v", res.Notes)
 	}
 	if _, err := f.m.ChangeWiki("lead", false, nil); !errors.Is(err, ErrForbidden) {
@@ -742,7 +746,7 @@ func TestMarkCurrentDescribesEveryDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "wiki", "create-order.md"))
+	doc, _ := os.ReadFile(filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features", "create-order.md"))
 	if !strings.Contains(string(doc), "described_commit: "+commit) || !strings.Contains(string(doc), "described_at: ") {
 		t.Errorf("S22: the document records the commit:\n%s", doc)
 	}
@@ -755,7 +759,7 @@ func TestHandEditsOfTheWikiReachTheMap(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
 	o := f.m.partitionAgents["orders"]
-	path := filepath.Join(f.dir, "store", "systems", "orders", "wiki", "create-order.md")
+	path := filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features", "create-order.md")
 	doc, _ := os.ReadFile(path)
 	edited := strings.Replace(string(doc), "description: Stores a new order.", "description: Stores a new order for a customer.", 1)
 	os.WriteFile(path, []byte(edited), 0o644)
@@ -783,7 +787,7 @@ func TestOldMapsAreDeleted(t *testing.T) {
 	f.describeOrders(t)
 	git(t, f.repo, "add", "--all")
 	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
-	mapPath := filepath.Join(f.dir, "store", "systems", "orders", "map.yaml")
+	mapPath := filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features", "map.yaml")
 	os.WriteFile(mapPath, []byte("version: 2\npartition:\n  name: orders\nfeatures:\n  - {id: x, name: X}\n"), 0o644)
 	topo, err := topology.Parse([]byte(testTopology), f.dir)
 	if err != nil {
@@ -810,17 +814,6 @@ func TestOldMapsAreDeleted(t *testing.T) {
 	}
 }
 
-func TestSharedAgentPrefixIsRefused(t *testing.T) {
-	f := newFixture(t)
-	git(t, f.repo, "add", "--all")
-	git(t, f.repo, "commit", "--quiet", "-m", "skeletons")
-	write(t, filepath.Join(f.dir, "store", "shared", "agents"), "hikari-feature-survey.md", "---\nname: x\n---\n")
-	topo, _ := topology.Parse([]byte(testTopology), f.dir)
-	if _, err := New(topo); err == nil || !strings.Contains(err.Error(), "reserved") {
-		t.Errorf("T17: %v", err)
-	}
-}
-
 func TestTestHealth(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
@@ -839,7 +832,7 @@ func TestTestHealth(t *testing.T) {
 	if len(tc.FailingFeatures) != 1 || tc.FailingFeatures[0].ID != "create-order" || tc.FailingFeatures[0].Tests[0] != "tests.test_create.CreateTest > test_1" {
 		t.Errorf("P20: %+v", tc.FailingFeatures)
 	}
-	public, _ := os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	public, _ := os.ReadFile(filepath.Join(f.dir, "vault/partitions/orders/read-only/features/map.yaml"))
 	if !strings.Contains(string(public), "health: failing") || !strings.Contains(string(public), "pending: 1") {
 		t.Errorf("Q6: the map file holds the new health:\n%s", public)
 	}
@@ -898,7 +891,7 @@ func TestHealthWithoutLocalResults(t *testing.T) {
 	if err := f.m.project(o); err != nil {
 		t.Fatal(err)
 	}
-	public, _ := os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	public, _ := os.ReadFile(filepath.Join(f.dir, "vault/partitions/orders/read-only/features/map.yaml"))
 	if !strings.Contains(string(public), "health: passing") || !strings.Contains(string(public), "passed: 1") {
 		t.Errorf("SY10 the map keeps the recorded health:\n%s", public)
 	}
@@ -906,7 +899,7 @@ func TestHealthWithoutLocalResults(t *testing.T) {
 		t.Error("SY10 the partition agent is told that this machine has no results")
 	}
 	f.runOrders(t, testmap.Failed)
-	public, _ = os.ReadFile(filepath.Join(f.dir, "store/systems/orders/map.yaml"))
+	public, _ = os.ReadFile(filepath.Join(f.dir, "vault/partitions/orders/read-only/features/map.yaml"))
 	if !strings.Contains(string(public), "health: failing") || f.m.TurnContext("orders").NoLocalResults {
 		t.Errorf("SY10 a run on this machine decides again:\n%s", public)
 	}

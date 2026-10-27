@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/topoedit"
@@ -94,12 +95,18 @@ func (e *Editor) Lint(ctx context.Context, text []byte) []topology.Finding {
 
 // Lint runs the stages of rules TL1 to TL3 on a text of file.
 func Lint(ctx context.Context, text []byte, file string) []topology.Finding {
+	out, _ := lint(ctx, text, file)
+	return out
+}
+
+// lint is Lint, and returns the topology when the text loads.
+func lint(ctx context.Context, text []byte, file string) ([]topology.Finding, *topology.Topology) {
 	if f := topology.SyntaxFinding(text); f != nil {
-		return []topology.Finding{*f}
+		return []topology.Finding{*f}, nil
 	}
 	topo, err := topology.LoadText(ctx, text, file)
 	if err != nil {
-		return topology.Findings(err, text)
+		return topology.Findings(err, text), nil
 	}
 	out := []topology.Finding{}
 	for _, w := range topo.Warnings {
@@ -107,6 +114,46 @@ func Lint(ctx context.Context, text []byte, file string) []topology.Finding {
 	}
 	for _, f := range linked.Check(topo, true) {
 		out = append(out, topology.Finding{Severity: topology.SeverityWarning, Stage: topology.StageStart, Message: f.Text})
+	}
+	return out, topo
+}
+
+// MountView is one mount of an agent's container, as its inspector shows
+// it (rule V14 of the vault layout spec).
+type MountView struct {
+	Container string `json:"container"`
+	// Host is relative to the project when it is inside it, and "" for
+	// the empty directory that hides a path.
+	Host string `json:"host"`
+	Mode string `json:"mode"`
+}
+
+const (
+	ModeReadOnly = "read-only"
+	ModeWritable = "writable"
+)
+
+// mounts returns the hikari mounts of each agent, by service id, from the
+// function that writes the override file. It is nil when the text has
+// errors.
+func (e *Editor) mounts(findings []topology.Finding, topo *topology.Topology) map[string][]MountView {
+	if topo == nil || HasError(findings) {
+		return nil
+	}
+	out := map[string][]MountView{}
+	for _, name := range topo.AgentNames() {
+		views := []MountView{}
+		for _, m := range launcher.AgentMounts(topo, name, "") {
+			v := MountView{Container: m.Target, Host: m.Source, Mode: ModeWritable}
+			if m.ReadOnly {
+				v.Mode = ModeReadOnly
+			}
+			if rel, err := filepath.Rel(e.dir(), m.Source); m.Source != "" && err == nil && filepath.IsLocal(rel) {
+				v.Host = filepath.ToSlash(rel)
+			}
+			views = append(views, v)
+		}
+		out[topo.Agents[name].ID] = views
 	}
 	return out
 }
@@ -129,8 +176,11 @@ type State struct {
 	Text     string             `json:"text"`
 	Model    *topoedit.Model    `json:"model"`
 	Findings []topology.Finding `json:"findings"`
-	Mode     string             `json:"mode"`
-	Commits  bool               `json:"commits"`
+	// Mounts maps each agent's service id to its mounts, when the text
+	// passes the checks.
+	Mounts  map[string][]MountView `json:"mounts"`
+	Mode    string                 `json:"mode"`
+	Commits bool                   `json:"commits"`
 }
 
 func (e *Editor) State(ctx context.Context) (State, error) {
@@ -141,7 +191,9 @@ func (e *Editor) State(ctx context.Context) (State, error) {
 	s := State{File: linked.Shown(e.File), Exists: ok, Revision: Revision(text, ok), Text: string(text), Findings: []topology.Finding{}, Mode: e.mode()}
 	if ok {
 		s.Model = topoedit.ReadModel(text, e.dir())
-		s.Findings = e.Lint(ctx, text)
+		var topo *topology.Topology
+		s.Findings, topo = lint(ctx, text, e.File)
+		s.Mounts = e.mounts(s.Findings, topo)
 		s.Commits = e.commits(s.Model)
 	}
 	return s, nil
@@ -176,8 +228,11 @@ type Plan struct {
 	Summary     []string              `json:"summary"`
 	// Model is the model of the new text, which the Structure tab shows
 	// (decision 1 of the structure view spec).
-	Model          *topoedit.Model `json:"model"`
-	AppliesAtStart bool            `json:"applies_at_start"`
+	Model *topoedit.Model `json:"model"`
+	// Mounts maps each agent's service id to its mounts, when the planned
+	// text passes the checks (rule V14).
+	Mounts         map[string][]MountView `json:"mounts"`
+	AppliesAtStart bool                   `json:"applies_at_start"`
 }
 
 // ConflictError is a write whose revision is not the file's (rule TA2).
@@ -209,7 +264,7 @@ func (e *Editor) vault(m *topoedit.Model) string {
 		return ""
 	}
 	if m.Project.Vault == "" {
-		return filepath.Join(e.dir(), "store")
+		return filepath.Join(e.dir(), topology.DefaultVault)
 	}
 	if topoedit.IsExpression(m.Project.Vault) {
 		return ""
@@ -230,11 +285,12 @@ func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (
 		return Plan{}, err
 	}
 	m := topoedit.ReadModel(text, e.dir())
+	findings, topo := lint(ctx, res.Text, e.File)
 	return Plan{
 		Revision: revision, Text: string(res.Text), Diff: topoedit.Diff(string(text), string(res.Text)),
-		Findings: e.Lint(ctx, res.Text), Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
+		Findings: findings, Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
 		Occurrences: topoedit.Occurrences(e.vault(m), res.Renames), AppliesAtStart: e.mode() == "running",
-		Model: topoedit.ReadModel(res.Text, e.dir()),
+		Model: topoedit.ReadModel(res.Text, e.dir()), Mounts: e.mounts(findings, topo),
 	}, nil
 }
 
@@ -395,12 +451,13 @@ func projectName(dir string) string {
 // Options is the answer of GET /api/ui/topology/options (rule TA7).
 type Options struct {
 	Deliverables []string `json:"deliverables"`
+	Skills       []string `json:"skills"`
 	Models       []string `json:"models"`
 	Templates    []string `json:"templates"`
 }
 
 func (e *Editor) Options() Options {
-	o := Options{Deliverables: []string{}, Models: []string{"sonnet", "opus", "haiku"}, Templates: []string{}}
+	o := Options{Deliverables: []string{}, Skills: []string{}, Models: []string{"sonnet", "opus", "haiku"}, Templates: []string{}}
 	text, ok, _ := e.read()
 	if !ok {
 		return o
@@ -410,8 +467,12 @@ func (e *Editor) Options() Options {
 		return o
 	}
 	if root := e.vault(m); root != "" {
-		if names, err := (vault.Vault{Root: root}).DeliverableNames(); err == nil && names != nil {
+		st := vault.Vault{Root: root}
+		if names, err := st.DeliverableNames(); err == nil && names != nil {
 			o.Deliverables = names
+		}
+		if names := st.SkillNames(); names != nil {
+			o.Skills = names
 		}
 	}
 	for _, a := range m.Agents {

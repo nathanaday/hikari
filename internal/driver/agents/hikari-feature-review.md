@@ -8,7 +8,7 @@ tools: Read, Grep, Glob
 
 You check a partition's feature map against its code and report what no longer holds. The partition agent decides what to change; you find.
 
-**Takes**: the directory of the feature documents (`/hikari/public/export/wiki/`), the code map (`/hikari/private/layout.yaml`), the working directory, and, when the partition agent gives them, the paths that changed.
+**Takes**: the directory of the feature documents (`/hikari/self/features/`), the code map (`/hikari/private/code-map.yaml`), the working directory, and, when the partition agent gives them, the paths that changed.
 
 **Returns**, as your final message and nothing after it:
 
@@ -33,7 +33,7 @@ You check a partition's feature map against its code and report what no longer h
 | Kind | Finding | Suggested change |
 |---|---|---|
 | `description` | the code no longer supports the description or the Purpose | a `modify` write |
-| `code` | the code map misses a file of the feature, or lists one that is gone | the new `code` list for `layout.yaml`, in `layout` |
+| `code` | the code map misses a file of the feature, or lists one that is gone | the new `code` list for `code-map.yaml`, in `code_map` |
 | `missing` | a behavior that someone outside the code relies on has no document | a `create` write, with `code` for the code map |
 | `link` | one feature calls another, and no document links them | a `modify` write that adds the id to `related` |
 | `split` | a document describes two things | the two `create` writes and the `remove` with a redirect |

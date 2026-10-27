@@ -56,6 +56,8 @@ type Self struct {
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that a partition agent publishes.
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
+	// Skills lists the skills of the vault that the agent is granted.
+	Skills []string `json:"skills,omitempty"`
 	// PartitionAgentGrants maps each partition agent, for the orchestration agent, to the partitions
 	// whose releases it is granted.
 	PartitionAgentGrants map[string][]string `json:"partition_agent_grants,omitempty"`
@@ -72,8 +74,8 @@ type DeliverableInfo struct {
 }
 
 // PartitionSkill and OrchestrationSkill are hikari's own skills, which always come from
-// the binary: one for partition agents, one for orchestration agents. No shared skill or
-// deliverable may use their names.
+// the binary: one for partition agents, one for orchestration agents. No skill of the
+// vault or deliverable may use their names.
 const (
 	PartitionSkill     = "hikari-partition"
 	OrchestrationSkill = "hikari-orchestration"
@@ -82,8 +84,8 @@ const (
 // BuiltinSkills are hikari's own skills.
 var BuiltinSkills = []string{PartitionSkill, OrchestrationSkill}
 
-// AgentPrefix starts the name of each of hikari's own agents. No shared
-// agent may use it.
+// AgentPrefix starts the name of each of hikari's own skills and agents.
+// No skill of the vault may use it.
 const AgentPrefix = "hikari-"
 
 // SendRequest posts to the room, or sends a direct message when To is set.

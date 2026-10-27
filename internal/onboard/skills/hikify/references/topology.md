@@ -42,7 +42,7 @@ services:
         releases: [units]                   # reads units' releases, read-only
 ```
 
-A consumer finds a release at `/hikari/public/readonly/systems/<library>/releases/<deliverable>/<version>/product/`, or `latest/product/`. For a Python library, it adds that folder to `PYTHONPATH` in its test command.
+A consumer finds a release at `/hikari/grants/<library>/releases/<deliverable>/<version>/product/`, or `latest/product/`. For a Python library, it adds that folder to `PYTHONPATH` in its test command.
 
 Two partitions in one repository, each with its own scope (scopes in one repository never overlap):
 
@@ -53,7 +53,7 @@ Two partitions in one repository, each with its own scope (scopes in one reposit
 
 ## Deliverables
 
-A library publishes a release of a deliverable: a kind of product, with rules for its files. The topology grants it with `grants.deliverables`. Draft each new deliverable in `onboarding/shared/deliverables/<name>/`. Execution copies it to `store/shared/deliverables/<name>/`. A deliverable that the vault already has needs no draft.
+A library publishes a release of a deliverable: a kind of product, with rules for its files. The topology grants it with `grants.deliverables`. Draft each new deliverable in `onboarding/shared/deliverables/<name>/`. Execution copies it to `vault/public/deliverables/<name>/`. A deliverable that the vault already has needs no draft.
 
 `deliverable.yaml`:
 
@@ -66,7 +66,7 @@ layout:
   forbid: ["**/__pycache__/**", "**/*.pyc", "**/tests/**", "**/test_*.py"]
 ```
 
-`SKILL.md` beside it tells the partition agent how to make the product in `/hikari/public/export/staging/<name>/`: what to copy there, the docs to write for a reader who cannot see the code, and to run `check_release` and then `publish_release`. Give it front matter with `name: <name>` and a `description` that says when to load it.
+`SKILL.md` beside it tells the partition agent how to make the product in `/hikari/staging/<name>/`: what to copy there, the docs to write for a reader who cannot see the code, and to run `check_release` and then `publish_release`. Give it front matter with `name: <name>` and a `description` that says when to load it.
 
 ## Checks
 

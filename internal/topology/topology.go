@@ -22,6 +22,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/vault"
 )
 
@@ -47,13 +48,15 @@ type Agent struct {
 }
 
 // Grants bind an agent to parts of the vault: the releases it can read,
-// and the deliverables it publishes.
+// the deliverables it publishes, and the skills it uses.
 type Grants struct {
 	// Releases lists the partitions whose releases the agent can read.
 	Releases []string `yaml:"releases"`
-	// Deliverables lists the deliverables that the agent publishes. Only an
+	// Deliverables lists the deliverables that the agent publishes. Only a
 	// partition agent can hold deliverables (rule T14).
 	Deliverables []string `yaml:"deliverables"`
+	// Skills lists skills of the vault's skills/ (rule V7).
+	Skills []string `yaml:"skills"`
 }
 
 // Partition is the code that one agent owns: a scope inside a repo.
@@ -115,8 +118,10 @@ type Topology struct {
 	ID   string
 	Name string
 	// Vault is the directory of the vault. It is absolute; the
-	// default is store/ next to the topology file.
+	// default is vault/ next to the topology file.
 	Vault string
+	// VaultDefault is whether x-hikari.vault is unset.
+	VaultDefault bool
 	// Repos holds every repo, the project repository included under
 	// ProjectRepo.
 	Repos map[string]Repo
@@ -146,6 +151,10 @@ type Topology struct {
 	// (rule DR1 of the hikify design spec).
 	draft bool
 }
+
+// DefaultVault is the vault's directory, next to the topology file, when
+// x-hikari.vault is unset.
+const DefaultVault = "vault"
 
 var (
 	validName   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -186,7 +195,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && len(a.Grants.Skills) == 0
 }
 
 // Load reads a topology file through `docker compose config`, so that hikari
@@ -391,7 +400,7 @@ func setKeys(raw map[string]any) map[string]bool {
 
 func (t *Topology) normalize() {
 	if t.Vault == "" {
-		t.Vault = "store"
+		t.Vault, t.VaultDefault = DefaultVault, true
 	}
 	t.Vault = resolvePath(t.Vault, t.Dir)
 	if t.Project != nil {
@@ -760,6 +769,18 @@ func (t *Topology) validatePartitions() []error {
 				fail(name, "grants.deliverables", "cannot hold the deliverable %q: only an agent with a partition can hold deliverables", d)
 			}
 			seen[d] = true
+		}
+		seen = map[string]bool{}
+		for _, sk := range a.Grants.Skills {
+			switch {
+			case !validName.MatchString(sk):
+				fail(name, "grants.skills", "skill %q is not a valid name (a-z, 0-9, -, up to 32 characters)", sk)
+			case seen[sk]:
+				fail(name, "grants.skills", "skill %q is granted twice", sk)
+			case strings.HasPrefix(sk, api.AgentPrefix):
+				fail(name, "grants.skills", "skill %q: the prefix %s is reserved for hikari's own skills; rename it", sk, api.AgentPrefix)
+			}
+			seen[sk] = true
 		}
 		s := a.Partition
 		if s == nil {

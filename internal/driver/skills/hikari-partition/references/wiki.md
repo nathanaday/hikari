@@ -1,6 +1,6 @@
 # The feature map
 
-One markdown document for each feature, principle, and rule of your partition, in `/hikari/public/export/wiki/<id>.md`. You read the files; you change your documents only with `change_wiki`. The user's plans and notes are in the same folder.
+One markdown document for each feature, principle, and rule of your partition, in `/hikari/self/features/<id>.md`. You read the files; you change your documents only with `change_wiki`. The user's plans and notes are in the same folder.
 
 ## The kinds
 
@@ -64,11 +64,11 @@ hikari refuses a change that breaks one of these and names the write and the rul
 - **K1.** A link is `[[id]]` or `[[id|text]]`. A link to a heading, `[[id#heading]]`, is refused.
 - **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a story, rule, or principle of the public wiki. A document does not link itself.
 
-Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `layout.yaml`; a Purpose that names a path in your scope; more than 60 features.
+Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `code-map.yaml`; a Purpose that names a path in your scope; more than 60 features.
 
 ## The public wiki
 
-The public wiki is in `/hikari/public/readonly/shared/wiki/`. Its stories say which flows use your features, its rules say what must always hold across the partitions, and its principles guide how the partitions work together. Keep them: a rule of the public wiki is a rule of your partition. When a story needs a feature you do not have, or your feature cannot keep a rule of the public wiki, tell the orchestration agent. Only the orchestration agent changes the public wiki.
+The public wiki is in `/hikari/public/wiki/`. Its stories say which flows use your features, its rules say what must always hold across the partitions, and its principles guide how the partitions work together. Keep them: a rule of the public wiki is a rule of your partition. When a story needs a feature you do not have, or your feature cannot keep a rule of the public wiki, tell the orchestration agent. Only the orchestration agent changes the public wiki.
 
 ## The change
 
@@ -85,7 +85,7 @@ An empty list in `fields` clears `interfaces` or `related`. After a rename or a 
 
 ## What a feature is
 
-- A feature is one thing the partition does that someone outside the code relies on: a user, another partition, or the operator. Name who relies on it. If no one outside the code would notice it gone, it is not a feature; it is a part, and it belongs in `layout.yaml`.
+- A feature is one thing the partition does that someone outside the code relies on: a user, another partition, or the operator. Name who relies on it. If no one outside the code would notice it gone, it is not a feature; it is a part, and it belongs in `code-map.yaml`.
 - State it in one sentence with one verb and one object: "Reserve stock for an order". If the sentence needs "and", consider two features.
 - It can be tested on its own: you can say what proves that it works.
 - Not a feature: a file, a package, a class, a helper, a dependency, a refactor, a build step, a test suite, a configuration value. A library's public function is usually a feature; its internal helper is not.

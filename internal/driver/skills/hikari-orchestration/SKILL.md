@@ -5,7 +5,7 @@ description: How the orchestration agent keeps the public wiki - the stories, ru
 
 # The public wiki
 
-The public wiki is in `/hikari/public/readonly/shared/wiki/`: one markdown document for each story, rule, principle, plan, and note of the project. You write its stories, rules, and principles, only with `change_public_wiki`. The user writes the plans and notes. Every agent reads the public wiki: the partition agents learn from it why their features matter and which rules they must keep.
+The public wiki is in `/hikari/public/wiki/`: one markdown document for each story, rule, principle, plan, and note of the project. You write its stories, rules, and principles, only with `change_public_wiki`. The user writes the plans and notes. Every agent reads the public wiki: the partition agents learn from it why their features matter and which rules they must keep.
 
 A feature map holds what one partition does: its features, and its own principles and rules. The public wiki holds what the partitions do together, and what the user needs from them. Its documents link the documents of the partitions, so the links across the wikis show how the project fits together.
 
@@ -60,7 +60,7 @@ The rules are those of the feature maps, with the kind added:
 
 ## The vocabulary
 
-The vocabulary, `/hikari/public/readonly/shared/vocabulary/terms.yaml`, holds the names that everyone in the project uses: each domain term with its definition and the names to avoid, and each interface between partitions with its kind. You are its only author: `define_term`, `define_interface`, and `remove_entry` change it, and every agent reads it with `get_vocabulary`. `get_partition` flags each interface of a partition that the vocabulary lacks. When a partition agent uses another name for something that the vocabulary defines, ask the partition agent to rename it.
+The vocabulary, `/hikari/public/vocabulary/terms.yaml`, holds the names that everyone in the project uses: each domain term with its definition and the names to avoid, and each interface between partitions with its kind. You are its only author: `define_term`, `define_interface`, and `remove_entry` change it, and every agent reads it with `get_vocabulary`. `get_partition` flags each interface of a partition that the vocabulary lacks. When a partition agent uses another name for something that the vocabulary defines, ask the partition agent to rename it.
 
 ## Plans and notes
 

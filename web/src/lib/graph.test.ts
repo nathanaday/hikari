@@ -6,10 +6,10 @@ import { wikiIndex } from './wikis'
 const shop = () => ({
   partitions: [
     partition('orders', [feature('a'), feature('b'), feature('c'), feature('d')], {
-      grants: { releases: ['inventory'], deliverables: ['python-library'] },
+      grants: { releases: ['inventory'], deliverables: ['python-library'], skills: [] },
       providers: { 'Stock.reserve': ['inventory'] },
     }),
-    partition('inventory', [feature('x')], { grants: { releases: [], deliverables: ['python-library'] }, providers: {} }),
+    partition('inventory', [feature('x')], { grants: { releases: [], deliverables: ['python-library'], skills: [] }, providers: {} }),
   ],
   repos: [{ name: 'shop', branch: 'hikari/demo', partitions: ['inventory', 'orders'] }],
   deliverables: [

@@ -54,6 +54,7 @@ type Agent struct {
 	Partition    *Partition `json:"partition"`
 	Releases     []string   `json:"releases"`
 	Deliverables []string   `json:"deliverables"`
+	Skills       []string   `json:"skills"`
 	// Image and Build describe the container: the image key, and the
 	// build's context and Dockerfile.
 	Image string `json:"image"`
@@ -117,6 +118,7 @@ type srcService struct {
 		Grants       struct {
 			Releases     []string `yaml:"releases"`
 			Deliverables []string `yaml:"deliverables"`
+			Skills       []string `yaml:"skills"`
 		} `yaml:"grants"`
 		Serves string `yaml:"serves"`
 	} `yaml:"x-hikari"`
@@ -159,17 +161,17 @@ func ReadModel(text []byte, dir string) *Model {
 			continue
 		}
 		a := Agent{ID: id, Name: id, Image: s.Image, Build: buildText(&s.Build), Line: line("services." + id),
-			Releases: []string{}, Deliverables: []string{}, Compose: composeKeys(d, id), Template: template(d, id)}
+			Releases: []string{}, Deliverables: []string{}, Skills: []string{}, Compose: composeKeys(d, id), Template: template(d, id)}
 		if h != nil {
 			a.Name = nameOr(h.Name, id)
 			a.Description, a.Instructions, a.Model = freeText(h.Description), freeText(h.Instructions), h.Model
 			a.Partition = h.Partition
-			a.Releases, a.Deliverables = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables)
+			a.Releases, a.Deliverables, a.Skills = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables), nonNil(h.Grants.Skills)
 			if a.Partition != nil {
 				a.Partition.Read = nonNil(a.Partition.Read)
 			}
 		}
-		a.IDLocked = vault != "" && exists(filepath.Join(vault, "systems", id))
+		a.IDLocked = vault != "" && exists(filepath.Join(vault, "partitions", id))
 		m.Agents = append(m.Agents, a)
 	}
 	return m
@@ -179,7 +181,7 @@ func ReadModel(text []byte, dir string) *Model {
 // it is an expression.
 func vaultDir(vault, dir string) string {
 	if vault == "" {
-		vault = "store"
+		vault = topology.DefaultVault
 	}
 	if strings.Contains(vault, "$") {
 		return ""

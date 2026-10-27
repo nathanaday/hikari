@@ -32,7 +32,7 @@ features:
 func TestRewriteIDsOnRename(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".hikari/private/tests.yaml", rewriteTests)
-	writeFile(t, root, ".hikari/private/layout.yaml", rewriteCodeMap)
+	writeFile(t, root, ".hikari/private/code-map.yaml", rewriteCodeMap)
 	notes := RewriteIDs(root, map[string]string{"reserve-stock": "hold-stock"}, nil)
 	if len(notes) != 0 {
 		t.Fatal(notes)
@@ -51,7 +51,7 @@ func TestRewriteIDsOnRename(t *testing.T) {
 		t.Errorf("E7: layout %v", p.CodeMap.Features)
 	}
 	data, _ := os.ReadFile(filepath.Join(root, ".hikari/private/tests.yaml"))
-	codeMap, _ := os.ReadFile(filepath.Join(root, ".hikari/private/layout.yaml"))
+	codeMap, _ := os.ReadFile(filepath.Join(root, ".hikari/private/code-map.yaml"))
 	for _, want := range []string{"# The suites of the partition.", "# The stock tests."} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("E9: comment %q lost:\n%s", want, data)
@@ -68,7 +68,7 @@ func TestRewriteIDsOnRename(t *testing.T) {
 func TestRewriteIDsOnRemove(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".hikari/private/tests.yaml", rewriteTests)
-	writeFile(t, root, ".hikari/private/layout.yaml", rewriteCodeMap)
+	writeFile(t, root, ".hikari/private/code-map.yaml", rewriteCodeMap)
 	RewriteIDs(root, nil, map[string]string{"release-stock": ""})
 	p, _ := LoadPrivate(root)
 	if _, ok := p.Tests.Tests["tests/test_release.py"]; ok {
@@ -84,7 +84,7 @@ func TestRewriteIDsOnRemove(t *testing.T) {
 		t.Errorf("E8: gaps of a removed feature go: %v", p.Tests.Gaps)
 	}
 	if p.CodeMap.Features["release-stock"].Code == nil {
-		t.Error("E8: a remove leaves layout.yaml to the partition agent")
+		t.Error("E8: a remove leaves code-map.yaml to the partition agent")
 	}
 
 	writeFile(t, root, ".hikari/private/tests.yaml", rewriteTests)

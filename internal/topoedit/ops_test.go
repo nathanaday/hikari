@@ -212,18 +212,18 @@ func TestPartitionsAndGrants(t *testing.T) {
 	shop := readExample(t, "shop")
 	res, m := apply(t, shop,
 		Op{Op: "set_partition", ID: "orders", Scope: ptr("services/intake"), Read: &[]string{"proto", "docs"}},
-		Op{Op: "set_grants", ID: "orders", Releases: &[]string{"inventory"}},
+		Op{Op: "set_grants", ID: "orders", Releases: &[]string{"inventory"}, Skills: &[]string{"python-style", "reviews"}},
 		Op{Op: "rename", Kind: "repo", ID: "shop", Name: ptr("storefront")},
 	)
 	a := agentOf(m, "orders")
-	if a.Partition.Scope != "services/intake" || !slices.Equal(a.Partition.Read, []string{"proto", "docs"}) || !slices.Equal(a.Releases, []string{"inventory"}) {
+	if a.Partition.Scope != "services/intake" || !slices.Equal(a.Partition.Read, []string{"proto", "docs"}) || !slices.Equal(a.Releases, []string{"inventory"}) || !slices.Equal(a.Skills, []string{"python-style", "reviews"}) {
 		t.Errorf("%+v %+v\n%s", a, a.Partition, res.Text)
 	}
 	if m.Repos[0].Name != "storefront" {
 		t.Errorf("%+v", m.Repos)
 	}
-	res, m = apply(t, string(res.Text), Op{Op: "set_grants", ID: "orders", Releases: &[]string{}}, Op{Op: "clear_partition", ID: "orders"})
-	if a := agentOf(m, "orders"); a.Partition != nil || len(a.Releases) != 0 {
+	res, m = apply(t, string(res.Text), Op{Op: "set_grants", ID: "orders", Releases: &[]string{}, Skills: &[]string{}}, Op{Op: "clear_partition", ID: "orders"})
+	if a := agentOf(m, "orders"); a.Partition != nil || len(a.Releases) != 0 || len(a.Skills) != 0 {
 		t.Errorf("%+v\n%s", a, res.Text)
 	}
 }
@@ -303,7 +303,7 @@ func TestRefusals(t *testing.T) {
 
 func TestIDLocked(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "store", "systems", "dev"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "vault", "partitions", "dev"), 0o755)
 	text := room(t)
 	_, err := Apply([]byte(text), []Op{{Op: "change_id", Kind: "agent", ID: "dev", NewID: "builder"}}, dir)
 	if err == nil || !strings.Contains(err.Error(), "cannot change") {

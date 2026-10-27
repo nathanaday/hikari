@@ -44,17 +44,17 @@ func TestRenamedEntities(t *testing.T) {
 	must(t, err)
 	f.m, err = New(topo)
 	must(t, err)
-	partitions := filepath.Join(f.dir, "store", "systems")
+	partitions := filepath.Join(f.dir, "vault", "partitions")
 
 	must(t, f.m.SetPartitionInfo("intake", featuremap.PartitionPatch{Summary: ptr("Takes orders.")}))
 	_, err = f.m.ChangeWiki("intake", false, []wiki.Write{{
 		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.", Body: body("A customer places an order."),
 	}})
 	must(t, err)
-	if got := read(t, filepath.Join(partitions, "orders", "map.yaml")); !strings.Contains(got, "name: intake") {
+	if got := read(t, filepath.Join(partitions, "orders", "read-only", "features", "map.yaml")); !strings.Contains(got, "name: intake") {
 		t.Errorf("ID6: the map of intake is in the directory of its id, and names the partition:\n%s", got)
 	}
-	if _, err := os.Stat(filepath.Join(partitions, "orders", "wiki", "create-order.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(partitions, "orders", "read-only", "features", "create-order.md")); err != nil {
 		t.Errorf("ID6: the wiki of intake: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(partitions, "intake")); !os.IsNotExist(err) {
@@ -68,7 +68,7 @@ func TestRenamedEntities(t *testing.T) {
 		{Op: "create", ID: "order-items", Kind: wiki.Story, Name: "Order items", Description: "A customer orders items.", Body: body("Through [[create-order]].")},
 	})
 	must(t, err)
-	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "wiki", "order-items.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.dir, "vault", "public", "wiki", "order-items.md")); err != nil {
 		t.Errorf("the renamed orchestration agent writes the public wiki: %v", err)
 	}
 	must(t, f.m.DefineTerm("chief", vocab.Term{Term: "order", Definition: "A request to buy items."}))
@@ -86,7 +86,7 @@ func TestRenamedEntities(t *testing.T) {
 	if rel.Partition != "intake" {
 		t.Errorf("ID7: the release names the partition by name: %+v", rel)
 	}
-	manifest := read(t, filepath.Join(partitions, "orders", "releases", "python-library", "1.0.0", "release.yaml"))
+	manifest := read(t, filepath.Join(partitions, "orders", "read-only", "releases", "python-library", "1.0.0", "release.yaml"))
 	if !strings.Contains(manifest, "partition: orders") || strings.Contains(manifest, "hubs:") {
 		t.Errorf("ID7: the manifest holds ids:\n%s", manifest)
 	}
@@ -109,7 +109,7 @@ func TestMapAdoptsNewName(t *testing.T) {
 	if v, err := m.OwnView("intake"); err != nil || v.Partition.Name != "intake" || len(v.Features) != 1 {
 		t.Errorf("the renamed partition agent keeps its map: %+v, %v", v, err)
 	}
-	if got := read(t, filepath.Join(f.dir, "store", "systems", "orders", "map.yaml")); !strings.Contains(got, "name: intake") {
+	if got := read(t, filepath.Join(f.dir, "vault", "partitions", "orders", "read-only", "features", "map.yaml")); !strings.Contains(got, "name: intake") {
 		t.Errorf("the map takes the new name:\n%s", got)
 	}
 }

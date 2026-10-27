@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/vault"
 )
 
@@ -128,8 +129,8 @@ func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, e
 			return false, err
 		}
 	}
-	st := vault.Vault{Root: filepath.Join(dir, "store")}
-	if err := st.Prepare(nil); err != nil {
+	st := vault.Vault{Root: filepath.Join(dir, topology.DefaultVault)}
+	if err := st.Prepare(nil, true); err != nil {
 		return false, err
 	}
 	if _, err := st.WriteIgnore(); err != nil {

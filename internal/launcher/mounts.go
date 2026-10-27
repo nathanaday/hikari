@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/vault"
+	"github.com/nathanaday/hikari/internal/topology"
 )
 
 // Mount is a bind mount of a host path.
@@ -37,30 +37,38 @@ func PartitionMounts(repoPath, scope string, read []string, emptyDir string) []M
 	return mounts
 }
 
-// VaultMounts returns the vault mounts of an agent (section 3 of the shared
-// store spec). Every agent reads the shared area. A partition agent gets its own
-// partition directory read-only with its staging area read-write. Each
-// visible partition is mounted read-only with its staging area hidden, and
-// each other granted partition gets its releases read-only. The public wiki
-// is in the shared area (rule A1 of the wikis spec).
-func VaultMounts(st vault.Vault, agent string, partitionAgent bool, visible, readable []string, emptyDir string) []Mount {
-	mounts := []Mount{{Source: st.SharedDir(), Target: api.SharedDir, ReadOnly: true}}
-	if partitionAgent {
+// VaultMounts returns the vault mounts of an agent (rule V3 of the vault
+// layout spec). Each mount is one directory, whose place in the vault
+// decides its mode: the public area and the agent's read-only part are
+// read-only, and its can-edit part and staging area are writable. The
+// orchestration agent reads every partition's read-only part, and a
+// partition agent reads the releases of each partition it is granted.
+func VaultMounts(t *topology.Topology, agent string) []Mount {
+	st := t.VaultOf()
+	mounts := []Mount{{Source: st.PublicRoot(), Target: api.PublicDir, ReadOnly: true}}
+	if t.Agents[agent].Partition != nil {
 		mounts = append(mounts,
-			Mount{Source: st.PartitionDir(agent), Target: api.ExportDir, ReadOnly: true},
-			Mount{Source: st.Staging(agent), Target: path.Join(api.ExportDir, "staging")},
+			Mount{Source: st.ReadOnly(agent), Target: api.SelfDir, ReadOnly: true},
+			Mount{Source: st.CanEdit(agent), Target: api.CanEditDir},
+			Mount{Source: st.Staging(agent), Target: api.StagingDir},
+		)
+	} else if agent == t.Orchestration {
+		mounts = append(mounts,
+			Mount{Source: st.OrchestrationReadOnly(), Target: api.SelfDir, ReadOnly: true},
+			Mount{Source: st.OrchestrationCanEdit(), Target: api.CanEditDir},
 		)
 	}
-	for _, sys := range readable {
-		if slices.Contains(visible, sys) {
-			target := path.Join(api.ReadonlyDir, "systems", sys)
-			mounts = append(mounts,
-				Mount{Source: st.PartitionDir(sys), Target: target, ReadOnly: true},
-				Mount{Source: emptyDir, Target: path.Join(target, "staging"), ReadOnly: true},
-			)
-		} else {
-			mounts = append(mounts, Mount{Source: st.ReleasesDir(sys), Target: api.ReleasesPath(sys), ReadOnly: true})
+	visible := t.VisiblePartitions(agent)
+	for _, p := range visible {
+		mounts = append(mounts, Mount{Source: st.ReadOnly(p), Target: api.PartitionPath(p), ReadOnly: true})
+	}
+	for _, p := range t.ReadableReleases(agent) {
+		if !slices.Contains(visible, p) {
+			mounts = append(mounts, Mount{Source: st.ReleasesOf(p), Target: api.ReleasesPath(p), ReadOnly: true})
 		}
+	}
+	for _, sk := range t.Agents[agent].Grants.Skills {
+		mounts = append(mounts, Mount{Source: st.SkillDir(sk), Target: api.SkillPath(sk), ReadOnly: true})
 	}
 	return mounts
 }

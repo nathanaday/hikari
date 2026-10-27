@@ -76,17 +76,17 @@ type propagationFile struct {
 
 func propagationFiles(vault string) []propagationFile {
 	var out []propagationFile
-	for _, pattern := range []string{"systems/*/wiki/*.md", "shared/wiki/*.md"} {
+	for _, pattern := range []string{"partitions/*/read-only/features/*.md", "public/wiki/*.md"} {
 		matches, _ := filepath.Glob(filepath.Join(vault, filepath.FromSlash(pattern)))
 		for _, m := range matches {
 			rel, _ := filepath.Rel(vault, m)
 			out = append(out, propagationFile{rel: filepath.ToSlash(rel), keyed: true, regions: bodyRegion})
 		}
 	}
-	if _, err := os.Stat(filepath.Join(vault, "shared", "vocabulary", "terms.yaml")); err == nil {
-		out = append(out, propagationFile{rel: "shared/vocabulary/terms.yaml", keyed: true, regions: yamlRegions("definition", "description")})
+	if _, err := os.Stat(filepath.Join(vault, "public", "vocabulary", "terms.yaml")); err == nil {
+		out = append(out, propagationFile{rel: "public/vocabulary/terms.yaml", keyed: true, regions: yamlRegions("definition", "description")})
 	}
-	maps, _ := filepath.Glob(filepath.Join(vault, "systems", "*", "map.yaml"))
+	maps, _ := filepath.Glob(filepath.Join(vault, "partitions", "*", "read-only", "features", "map.yaml"))
 	for _, m := range maps {
 		rel, _ := filepath.Rel(vault, m)
 		out = append(out, propagationFile{rel: filepath.ToSlash(rel), regions: yamlRegions("summary")})

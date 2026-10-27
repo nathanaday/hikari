@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -114,8 +115,8 @@ func newProjectDir(t *testing.T) (string, string) {
 	file := filepath.Join(dir, "topology.yaml")
 	os.WriteFile(file, []byte(projectTopology), 0o644)
 	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".env\n/.hikari/\n"), 0o644)
-	os.MkdirAll(filepath.Join(dir, "store", "shared", "wiki"), 0o755)
-	os.WriteFile(filepath.Join(dir, "store", "shared", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it soon, with @lead.\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "vault", "public", "wiki"), 0o755)
+	os.WriteFile(filepath.Join(dir, "vault", "public", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it soon, with @lead.\n"), 0o644)
 	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
 	os.WriteFile(filepath.Join(dir, "app", "main.py"), []byte("x\n"), 0o644)
 	run(t, dir, "init", "--quiet", "--initial-branch=main")
@@ -140,6 +141,9 @@ func TestTopologyAPI(t *testing.T) {
 	if editor.HasError(state.Findings) {
 		t.Errorf("TL1: a valid file has no error: %+v", state.Findings)
 	}
+	if len(state.Mounts["lead"]) == 0 {
+		t.Errorf("V14: the state gives the mounts: %+v", state.Mounts)
+	}
 	writeFixture(t, "state", state)
 
 	// The cookie guards every endpoint; the run's endpoints wait for a run.
@@ -160,8 +164,14 @@ func TestTopologyAPI(t *testing.T) {
 		t.Fatalf("plan: %d %+v", code, plan)
 	}
 	if plan.AppliesAtStart || len(plan.Summary) != 3 || editor.HasError(plan.Findings) || !strings.Contains(plan.Text, "name: chief") ||
-		plan.Model == nil || plan.Model.Agents[1].Name != "chief" || len(plan.Occurrences) != 1 || plan.Occurrences[0].Key != "shared/wiki/plan.md:5:20" {
+		plan.Model == nil || plan.Model.Agents[1].Name != "chief" || len(plan.Occurrences) != 1 || plan.Occurrences[0].Key != "public/wiki/plan.md:5:20" {
 		t.Errorf("plan: %+v", plan)
+	}
+	// V14: each agent's mounts, from the function that writes the
+	// override file.
+	if m := plan.Mounts["dev"]; len(m) == 0 || !slices.Contains(m, editor.MountView{Container: "/hikari/self", Host: "vault/partitions/dev/read-only", Mode: editor.ModeReadOnly}) ||
+		!slices.Contains(plan.Mounts["lead"], editor.MountView{Container: "/hikari/partitions/dev", Host: "vault/partitions/dev/read-only", Mode: editor.ModeReadOnly}) {
+		t.Errorf("V14 mounts: %+v", plan.Mounts)
 	}
 	added := 0
 	for _, l := range plan.Diff {

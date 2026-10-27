@@ -92,9 +92,9 @@ type PublishInput struct {
 	SourceCommit string
 	// Map is the public map at release time, as YAML.
 	Map []byte
-	// Wiki holds the agent documents of the feature map at release time,
-	// by file name (rule L2 of the wikis spec).
-	Wiki map[string][]byte
+	// Features holds the agent documents of the feature map at release
+	// time, by file name (rule L2 of the wikis spec).
+	Features map[string][]byte
 	// Hikari is the version of the server.
 	Hikari string
 	Now    time.Time
@@ -283,7 +283,7 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		},
-		Map: "map.yaml", Certificates: certs,
+		Map: FeaturesDir + "/" + MapName, Certificates: certs,
 	}
 	data, err := yaml.Marshal(s.onDisk(m))
 	if err != nil {
@@ -292,14 +292,15 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 	if err := os.WriteFile(filepath.Join(dest, ManifestFile), data, 0o644); err != nil {
 		return Manifest{}, err
 	}
-	if err := os.WriteFile(filepath.Join(dest, "map.yaml"), in.Map, 0o644); err != nil {
+	features := filepath.Join(dest, FeaturesDir)
+	if err := os.Mkdir(features, 0o755); err != nil {
 		return Manifest{}, err
 	}
-	if err := os.Mkdir(filepath.Join(dest, Wiki), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(features, MapName), in.Map, 0o644); err != nil {
 		return Manifest{}, err
 	}
-	for name, data := range in.Wiki {
-		if err := os.WriteFile(filepath.Join(dest, Wiki, name), data, 0o644); err != nil {
+	for name, data := range in.Features {
+		if err := os.WriteFile(filepath.Join(features, name), data, 0o644); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -353,7 +354,7 @@ func (s Vault) Versions(partition, deliverable string) ([]string, error) {
 // ReleasedDeliverables returns the deliverables of a partition that have
 // releases, sorted by name.
 func (s Vault) ReleasedDeliverables(partition string) ([]string, error) {
-	entries, err := os.ReadDir(s.ReleasesDir(partition))
+	entries, err := os.ReadDir(s.ReleasesOf(partition))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	} else if err != nil {

@@ -23,8 +23,9 @@ func partitionAgentPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Your feature map is your partition's public description. Its documents are in /hikari/public/export/wiki/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes its map, /hikari/public/export/map.yaml, from the features and from set_partition_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestration agent plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-partition skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
-- Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
+	b.WriteString(`- Your feature map is your partition's public description. Its documents are in /hikari/self/features/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes its map, /hikari/self/features/map.yaml, from the features and from set_partition_info. Your private /hikari/private/code-map.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestration agent plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-partition skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
+- Releases follow your deliverables, listed below. Your published releases are in /hikari/self/releases/ and never change.
+- /hikari/self/granted/ holds files that the user gives you to read, and /hikari/can-edit/ files that the user gives you to change. hikari commits your changes in /hikari/can-edit/ with your code.
 - For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
@@ -38,7 +39,7 @@ func orchestrationPrompt(self api.Self) string {
 	if len(self.VisiblePartitions) > 0 {
 		fmt.Fprintf(&b, "\n## Your partitions\n\nThese are the project's partitions, each named after its partition agent: %s. You have no code and cannot read any. You plan from their feature maps.\n\n",
 			strings.Join(self.VisiblePartitions, ", "))
-		b.WriteString(`- mcp__hikari__list_partitions and get_partition read the maps: what each partition does, its interfaces, and the health and state of its features. The documents of each partition's feature map are in /hikari/public/readonly/systems/<partition>/wiki/: one document for each feature, principle, and rule. get_document returns a document with the documents that link it, and search_wiki searches every wiki you can read.
+		b.WriteString(`- mcp__hikari__list_partitions and get_partition read the maps: what each partition does, its interfaces, and the health and state of its features. The documents of each partition's feature map are in /hikari/partitions/<partition>/features/: one document for each feature, principle, and rule. get_document returns a document with the documents that link it, and search_wiki searches every wiki you can read.
 - When a map does not answer a question, ask the partition agent.
 - Ask partition agents for changes in terms of features and interfaces, not code. The partition agent decides how to make a change, and can push back with a reason.
 - Partition agents cannot see each other's code. A partition can test against another partition only through that partition's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each partition agent test its side against it, and tell the participant who asked that the partitions were tested separately.
@@ -50,10 +51,11 @@ func orchestrationPrompt(self api.Self) string {
 		fmt.Fprintf(&b, `
 ## Releases of your partitions
 
-The map and the releases of each of your partitions are in /hikari/public/readonly/systems/<partition>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the partition agent makes it (SKILL.md). When a partition announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the partition agent what is missing. You cannot change deliverables or who holds them; ask the user.
-`, api.SharedDir)
+The map and the releases of each of your partitions are in /hikari/partitions/<partition>/: features/map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and features/, the feature map at release time. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the partition agent makes it (SKILL.md). When a partition announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the partition agent what is missing. You cannot change deliverables or who holds them; ask the user.
+`, api.PublicDir)
 	}
 	fmt.Fprintf(&b, "\n## The public wiki\n\nYou keep the public wiki, %s: the stories, rules, and principles that say what the partitions must do together. Change it only with mcp__hikari__change_public_wiki, and link each story to the features of the partitions that carry it out. Before you write or change the public wiki, load the %s skill.\n", api.PublicWikiPath, api.OrchestrationSkill)
+	fmt.Fprintf(&b, "\n## Your files\n\n%s/granted/ holds files that the user gives you to read, and %s files that the user gives you to change. hikari commits your changes there at the end of each turn.\n", api.SelfDir, api.CanEditDir)
 	b.WriteString("\n## The vocabulary\n\nYou keep the vocabulary: the names that everyone in the project uses for domain terms and for the interfaces between partitions. Use mcp__hikari__define_term, define_interface, and remove_entry. When a partition agent uses a different name for something that the vocabulary defines, ask the partition agent to rename it.")
 	if len(self.VisiblePartitions) > 0 {
 		b.WriteString(" get_partition flags interface names that are not in the vocabulary, and consumed interfaces that no partition provides.")
@@ -74,9 +76,9 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 	} else {
 		b.WriteString(`Your partition documents are not built yet. Load the hikari-partition skill and follow its Build procedure:
 
-1. Read the code in your scope to learn what the partition does, and write the parts of layout.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
+1. Read the code in your scope to learn what the partition does, and write the parts of code-map.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
 2. Describe the partition with set_partition_info, then write one feature document for each feature with change_wiki, linked to the features it works with, and a principle or a rule where the code shows one.
-3. Write the code map of each feature in /hikari/private/layout.yaml.
+3. Write the code map of each feature in /hikari/private/code-map.yaml.
 4. Write the suites of /hikari/private/tests.yaml, each with a command that writes a JUnit XML report to /hikari/private/reports/<suite>.xml. Run each suite and call record_test_run for it.
 5. Map the unmapped tests that get_my_partition lists to the features they touch, in tests.yaml; send the hikari-test-survey agent when there are many.
 6. Call mark_map_current.
@@ -277,8 +279,13 @@ func scopeName(scope string) string {
 	return scope
 }
 
-func sharedPrompt() string {
-	return fmt.Sprintf("\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and skills and agents that you can use. It is read-only.\n", api.SharedDir)
+func sharedPrompt(self api.Self) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and the deliverables in deliverables/. It is read-only.\n", api.PublicDir)
+	if len(self.Skills) > 0 {
+		fmt.Fprintf(&b, "\nThe user grants you these skills, in %s/: %s. Load one when its description fits the task.\n", api.SkillsDir, strings.Join(self.Skills, ", "))
+	}
+	return b.String()
 }
 
 // grantsPrompt lists the partitions whose releases the agent can read beyond
@@ -298,7 +305,7 @@ func grantsPrompt(self api.Self) string {
 	for _, sys := range granted {
 		fmt.Fprintf(&b, "- %s: %s\n", sys, api.ReleasesPath(sys))
 	}
-	b.WriteString("\nEach release is releases/<deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and map.yaml (the partition's feature map at release time). releases/<deliverable>/latest is the newest release of that deliverable. Read the product's docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
+	b.WriteString("\nEach release is <deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and features/ (the partition's feature map at release time, with its map.yaml). <deliverable>/latest is the newest release of that deliverable. Read the product's docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
 	if self.Partition != nil {
 		b.WriteString(" When your tests use a release, name its partition and version in the description of the suite in tests.yaml that runs them.")
 	}
@@ -317,10 +324,10 @@ func deliverablesPrompt(self api.Self) string {
 	}
 	b.WriteString("A deliverable is a named package that says what a product must contain, where it must also be published, and how you make it. You hold these:\n\n")
 	for _, d := range self.Deliverables {
-		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/staging/%s/.\n", d.Name, d.Description, api.SharedDir, d.Name, api.ExportDir, d.Name)
+		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/%s/.\n", d.Name, d.Description, api.PublicDir, d.Name, api.StagingDir, d.Name)
 	}
 	b.WriteString(`
-To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/public/export/releases/<deliverable>/<version>/, and announces the release in the room.
+To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/self/releases/<deliverable>/<version>/, and announces the release in the room.
 `)
 	return b.String()
 }

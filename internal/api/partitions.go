@@ -16,31 +16,50 @@ import (
 // WorkspaceRoot is where a partition agent's container sees its repo.
 const WorkspaceRoot = "/workspace"
 
-// Where every container sees hikari: its documents, and the hikari binary.
+// Where every container sees hikari: its documents, and the hikari binary
+// (rule V3 of the vault layout spec).
 const (
-	HikariRoot  = "/hikari"
-	BinaryPath  = "/hikari/bin/hikari"
-	PrivateDir  = "/hikari/private"
-	ExportDir   = "/hikari/public/export"
-	ReadonlyDir = "/hikari/public/readonly"
+	HikariRoot = "/hikari"
+	BinaryPath = "/hikari/bin/hikari"
+	// PublicDir is the vault's public area.
+	PublicDir = "/hikari/public"
+	// SelfDir is the agent's own read-only part of the vault.
+	SelfDir = "/hikari/self"
+	// CanEditDir is the agent's part of the vault that it can change.
+	CanEditDir = "/hikari/can-edit"
+	// StagingDir is where a partition agent builds its products.
+	StagingDir = "/hikari/staging"
+	// PrivateDir holds a partition agent's code map and test map.
+	PrivateDir = "/hikari/private"
+	// PartitionsDir holds each partition's read-only part, for the
+	// orchestration agent.
+	PartitionsDir = "/hikari/partitions"
+	// GrantsDir holds the releases granted to a partition agent.
+	GrantsDir = "/hikari/grants"
+	// SkillsDir holds the skills granted to an agent.
+	SkillsDir = "/hikari/skills"
 )
 
-// SharedDir is the shared area of the vault in a container.
-var SharedDir = path.Join(ReadonlyDir, "shared")
-
 // PublicWikiPath is where every container sees the public wiki.
-var PublicWikiPath = path.Join(SharedDir, "wiki")
+var PublicWikiPath = path.Join(PublicDir, "wiki")
 
 // FeatureMapRef and PublicWikiRef name a wiki.
 func FeatureMapRef(partition string) string { return "partition:" + partition }
 
 const PublicWikiRef = "public"
 
-// ReleasesPath returns where a container sees the releases of a partition that
-// it can read.
+// PartitionPath returns where the orchestration agent sees the read-only
+// part of a partition.
+func PartitionPath(partition string) string { return path.Join(PartitionsDir, partition) }
+
+// ReleasesPath returns where a container sees the releases of a partition
+// that it is granted.
 func ReleasesPath(partition string) string {
-	return path.Join(ReadonlyDir, "systems", partition, "releases")
+	return path.Join(GrantsDir, partition, "releases")
 }
+
+// SkillPath returns where a container sees a granted skill.
+func SkillPath(skill string) string { return path.Join(SkillsDir, skill) }
 
 // WorkDir returns the container path of a scope.
 func WorkDir(scope string) string {
@@ -226,10 +245,11 @@ type PartitionView struct {
 }
 
 // Grants are what the topology grants a partition agent: the partitions whose releases
-// it reads, and the deliverables it holds.
+// it reads, the deliverables it holds, and the skills it uses.
 type Grants struct {
 	Releases     []string `json:"releases"`
 	Deliverables []string `json:"deliverables"`
+	Skills       []string `json:"skills"`
 }
 
 // RepoInfo is one repository of the topology, for the UI: its hikari

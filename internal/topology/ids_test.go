@@ -85,13 +85,13 @@ func TestNames(t *testing.T) {
 	}
 
 	st := topo.VaultOf()
-	if got := st.PartitionDir("intake"); got != filepath.Join(topo.Vault, "systems", "orders") {
+	if got := st.PartitionDir("intake"); got != filepath.Join(topo.Vault, "partitions", "orders") {
 		t.Errorf("SystemDir(intake) = %s", got)
 	}
-	if got := st.PublicWiki(); got != filepath.Join(topo.Vault, "shared", "wiki") {
+	if got := st.PublicWiki(); got != filepath.Join(topo.Vault, "public", "wiki") {
 		t.Errorf("PublicWiki() = %s", got)
 	}
-	if got := st.VocabularyFile(); got != filepath.Join(topo.Vault, "shared", "vocabulary", "terms.yaml") {
+	if got := st.VocabularyFile(); got != filepath.Join(topo.Vault, "public", "vocabulary", "terms.yaml") {
 		t.Errorf("VocabularyFile() = %s", got)
 	}
 	if st.PartitionName("orders") != "intake" {

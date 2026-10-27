@@ -51,7 +51,7 @@ func TestWriteProject(t *testing.T) {
 		t.Errorf("PR24 the new repository is not clean: %s", out)
 	}
 	files, _ := exec.Command("git", "-C", dir, "ls-files").Output()
-	for _, f := range []string{".gitignore", ".env.example", "topology.yaml", "store/README.md", "store/.gitignore"} {
+	for _, f := range []string{".gitignore", ".env.example", "topology.yaml", "vault/README.md", "vault/.gitignore"} {
 		if !strings.Contains(string(files), f+"\n") {
 			t.Errorf("PR23 %s is not committed:\n%s", f, files)
 		}

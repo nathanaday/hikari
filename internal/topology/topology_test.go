@@ -229,7 +229,7 @@ func TestVaultAndGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if topo.Vault != filepath.Join(dir, "store") {
+	if topo.Vault != filepath.Join(dir, "vault") {
 		t.Errorf("T10 default vault = %q", topo.Vault)
 	}
 	if got := topo.ReadableReleases("orders"); !slices.Equal(got, []string{"inventory"}) {
@@ -276,6 +276,9 @@ func TestDeliverableGrants(t *testing.T) {
 		"T13 bad name":            {strings.Replace(validPartitionAgents, "services/orders}", "services/orders}, grants: {deliverables: [Python_Lib]}", 1), `deliverable "Python_Lib" is not a valid name`},
 		"T13 twice":               {strings.Replace(validPartitionAgents, "services/orders}", "services/orders}, grants: {deliverables: [lib, lib]}", 1), `deliverable "lib" is granted twice`},
 		"T14 not partition agent": {validPartitionAgents + "  writer: {x-hikari: {grants: {deliverables: [lib]}}}\n", `only an agent with a partition can hold deliverables`},
+		"V7 skill name":           {strings.Replace(validPartitionAgents, "services/orders}", "services/orders}, grants: {skills: [Style]}", 1), `skill "Style" is not a valid name`},
+		"V7 skill twice":          {strings.Replace(validPartitionAgents, "services/orders}", "services/orders}, grants: {skills: [style, style]}", 1), `skill "style" is granted twice`},
+		"V7 hikari skill":         {strings.Replace(validPartitionAgents, "services/orders}", "services/orders}, grants: {skills: [hikari-mine]}", 1), `the prefix hikari- is reserved`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Parse([]byte(partitionsTopology(repo, c.services)), dir)
@@ -419,8 +422,8 @@ func TestProject(t *testing.T) {
 	if r := topo.Repos[ProjectRepo]; r.Path != dir || r.Branch != "hikari" {
 		t.Errorf("the project is not among the repos: %+v", topo.Repos)
 	}
-	if got := topo.VaultInProject(); got != "store" {
-		t.Errorf("StoreInProject() = %q", got)
+	if got := topo.VaultInProject(); got != "vault" {
+		t.Errorf("VaultInProject() = %q", got)
 	}
 
 	// PR6: the project repository need not hold a partition.
@@ -435,7 +438,7 @@ func TestProject(t *testing.T) {
 }
 
 func TestProjectErrors(t *testing.T) {
-	dir := fakeRepo(t, "site", "store/x")
+	dir := fakeRepo(t, "site", "vault/x")
 	outside := t.TempDir()
 	cases := map[string]struct{ src, dir, want string }{
 		"PR1 bad branch":       {strings.Replace(projectTopology("", projectSite), "branch: hikari", "branch: a..b", 1), dir, `"a..b" is not a valid branch name`},
@@ -446,7 +449,7 @@ func TestProjectErrors(t *testing.T) {
 		"PR4 reserved name":    {projectTopology("\n  repos: {project: {path: "+dir+", branch: x}}", projectSite), dir, `"project" is reserved`},
 		"PR4 no project key":   {strings.Replace(projectTopology("", projectSite), "  project: {branch: hikari}", "  vault: s", 1), dir, "which needs x-hikari.project"},
 		"PR5 whole repo":       {projectTopology("", "  site: {x-hikari: {partition: {repo: project, scope: .}}}\n"), dir, "needs a scope that does not overlap the vault"},
-		"PR5 in the vault":     {projectTopology("", "  site: {x-hikari: {partition: {repo: project, scope: store/x}}}\n"), dir, "needs a scope that does not overlap the vault"},
+		"PR5 in the vault":     {projectTopology("", "  site: {x-hikari: {partition: {repo: project, scope: vault/x}}}\n"), dir, "needs a scope that does not overlap the vault"},
 		"PR7 scope":            {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+"/site, target: /e}], x-hikari: {serves: site}}\n"), dir, "hikari mounts the repos and the vault itself"},
 		"PR7 git":              {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+"/.git, target: /g}], x-hikari: {serves: site}}\n"), dir, "overlaps"},
 		"PR7 whole project":    {projectTopology("", projectSite+"  db: {volumes: [{type: bind, source: "+dir+", target: /p}], x-hikari: {serves: site}}\n"), dir, "overlaps"},

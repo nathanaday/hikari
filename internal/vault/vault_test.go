@@ -30,8 +30,8 @@ func TestCompareVersions(t *testing.T) {
 
 func newVault(t *testing.T) Vault {
 	t.Helper()
-	s := Vault{Root: filepath.Join(t.TempDir(), "store")}
-	if err := s.Prepare([]string{"inventory"}); err != nil {
+	s := Vault{Root: filepath.Join(t.TempDir(), "vault")}
+	if err := s.Prepare([]string{"inventory"}, false); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -77,7 +77,7 @@ func stage(t *testing.T, s Vault, deliverable string, files map[string]string) {
 func input(version string) PublishInput {
 	return PublishInput{
 		Partition: "inventory", Deliverable: "python-library", Version: version, Notes: "First release.",
-		SourceCommit: "abc123", Map: []byte("version: 3\n"), Wiki: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hikari: "0.0.1",
+		SourceCommit: "abc123", Map: []byte("version: 3\n"), Features: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hikari: "0.0.1",
 		Now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC),
 	}
 }
@@ -227,12 +227,12 @@ func TestPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m.Deliverable != "python-library" || m.Version != "1.0.0" || m.Partition != "inventory" || m.SourceCommit != "abc123" ||
-		m.Notes != "First release." || m.Map != "map.yaml" || m.Hikari != "0.0.1" ||
+		m.Notes != "First release." || m.Map != "features/map.yaml" || m.Hikari != "0.0.1" ||
 		m.Product.Files != 4 || m.Product.Path != "product/" || !strings.HasPrefix(m.Product.Digest, "sha256:") || m.Certificates == nil {
 		t.Errorf("R14 manifest: %+v", m)
 	}
 	dir := s.ReleaseDir("inventory", "python-library", "1.0.0")
-	for _, p := range []string{"product/README.md", "product/src/inventory/stock.py", "product/src/empty", "release.yaml", "SHA256SUMS", "map.yaml", "wiki/reserve-stock.md"} {
+	for _, p := range []string{"product/README.md", "product/src/inventory/stock.py", "product/src/empty", "release.yaml", "SHA256SUMS", "features/map.yaml", "features/reserve-stock.md"} {
 		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
 			t.Errorf("R17: release lacks %s", p)
 		}
@@ -397,13 +397,39 @@ func TestPublishChecks(t *testing.T) {
 
 func TestPrepare(t *testing.T) {
 	s := newVault(t)
-	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases", "systems/inventory/wiki", "shared/wiki"} {
+	for _, p := range []string{"README.md", "public/vocabulary", "public/policies", "public/deliverables", "public/wiki", "skills",
+		"partitions/inventory/read-only/features", "partitions/inventory/read-only/releases", "partitions/inventory/read-only/granted",
+		"partitions/inventory/can-edit", "partitions/inventory/staging"} {
 		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
-			t.Errorf("L7: missing %s", p)
+			t.Errorf("V1: missing %s", p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(s.Root, "orchestration")); err == nil {
+		t.Error("V2: orchestration/ exists only when the topology names an orchestration agent")
+	}
+	if err := s.Prepare([]string{"inventory"}, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"orchestration/read-only/features", "orchestration/read-only/granted", "orchestration/can-edit"} {
+		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
+			t.Errorf("V2: missing %s", p)
 		}
 	}
 	if versions, err := s.Versions("ghost", "x"); err != nil || versions != nil {
 		t.Errorf("Versions of an unknown partition: %v, %v", versions, err)
+	}
+}
+
+func TestOldLayout(t *testing.T) {
+	s := newVault(t)
+	if got := s.OldLayout(); len(got) != 0 {
+		t.Errorf("a new vault: %v", got)
+	}
+	os.MkdirAll(filepath.Join(s.Root, "shared", "vocabulary"), 0o755)
+	os.MkdirAll(filepath.Join(s.Root, "systems", "inventory"), 0o755)
+	got := s.OldLayout()
+	if len(got) != 2 || !strings.Contains(got[0], "move shared/vocabulary") || !strings.Contains(got[1], "partitions/<id>/read-only/features/") || !strings.Contains(got[1], MigratingGuide) {
+		t.Errorf("V11: %q", got)
 	}
 }
 

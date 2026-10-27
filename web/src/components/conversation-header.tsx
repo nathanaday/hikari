@@ -80,10 +80,10 @@ export function ConversationHeader({ state, show, onMention }: Props) {
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <BookOpen className="size-4 text-muted-foreground" />
-          Shared
+          Vault
         </h1>
         <p className="text-sm text-muted-foreground">
-          What every agent can read in store/shared: your policies, skills, agent definitions, and deliverables. The vocabulary and the public wiki are in the room.
+          Your files in the vault: the policies and deliverables of vault/public, which every agent reads, and the skills of vault/skills, which the topology grants to agents. The vocabulary and the public wiki are in the room.
         </p>
       </>
     )
@@ -99,9 +99,17 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'partition', name: v.name })}>
             {v.name}
           </button>
-          . It never changes. Agents with access read it at{' '}
+          . It never changes. {v.name} reads it at{' '}
           <code className="text-xs">
-            /hikari/public/readonly/systems/{v.name}/releases/{v.deliverable}/{v.version}
+            /hikari/self/releases/{v.deliverable}/{v.version}
+          </code>
+          , the orchestration agent at{' '}
+          <code className="text-xs">
+            /hikari/partitions/{v.name}/releases/{v.deliverable}/{v.version}
+          </code>
+          , and each agent granted its releases at{' '}
+          <code className="text-xs">
+            /hikari/grants/{v.name}/releases/{v.deliverable}/{v.version}
           </code>
           .
         </p>

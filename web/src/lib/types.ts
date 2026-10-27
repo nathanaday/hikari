@@ -124,7 +124,8 @@ export type Manifest = {
 
 // ReleaseDetail is a release for the viewer: its files, relative to the
 // store, and the digest of each product file, relative to the release.
-export type ReleaseDetail = { manifest: Manifest; files: string[]; digests: Record<string, string> }
+// dir is the release's directory, relative to the vault.
+export type ReleaseDetail = { manifest: Manifest; dir: string; files: string[]; digests: Record<string, string> }
 
 export type Layout = { require?: string[]; allow?: string[]; forbid?: string[] }
 
@@ -141,10 +142,11 @@ export type Deliverable = {
   error?: string
 }
 
+// SharedListing is the vault's public area and your skills (rule V13 of
+// the vault layout spec).
 export type SharedListing = {
   policies: { name: string; path: string }[]
-  skills: { name: string; path: string }[]
-  agents: { name: string; path: string }[]
+  skills: { name: string; path: string; holders: string[] }[]
   deliverables: Deliverable[]
 }
 
@@ -172,7 +174,7 @@ export type PartitionView = {
   branch: string
   // dirty says whether the scope has uncommitted changes.
   dirty?: boolean
-  grants?: { releases: string[]; deliverables: string[] }
+  grants?: { releases: string[]; deliverables: string[]; skills: string[] }
   flags: Flag[] | null
   providers: Record<string, string[]> | null
 }
@@ -286,6 +288,7 @@ export type TopologyAgent = {
   partition: TopologyPartition | null
   releases: string[]
   deliverables: string[]
+  skills: string[]
   image: string
   build: string
   template: string
@@ -308,9 +311,17 @@ export type TopologyState = {
   text: string
   model: TopologyModel | null
   findings: Finding[]
+  // mounts maps each agent's service id to its mounts, when the text
+  // passes the checks (rule V14).
+  mounts: Record<string, Mount[]> | null
   mode: Mode
   commits: boolean
 }
+
+// Mount is one mount of an agent's container. host is relative to the
+// project when it is inside it, and "" for an empty directory that hides a
+// path.
+export type Mount = { container: string; host: string; mode: 'read-only' | 'writable' }
 
 export type DiffLine = { op: ' ' | '+' | '-'; text: string; old?: number; new?: number }
 
@@ -328,6 +339,7 @@ export type Plan = {
   // model is the model of the new text (decision 1 of the structure view
   // spec).
   model: TopologyModel | null
+  mounts: Record<string, Mount[]> | null
 }
 
 export type Saved = { revision: string; commit?: string; note?: string; skipped: string[] }

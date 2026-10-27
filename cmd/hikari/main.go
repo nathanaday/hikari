@@ -167,7 +167,7 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	// configuration, so hikari commits them as yours (rule C5 of the wikis
 	// spec).
 	if repo.Branch() == p.Branch {
-		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !partitions.IsWikiPath(topo.VaultInProject(), path) }) {
+		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !partitions.IsUserPath(topo.VaultInProject(), path) }) {
 			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: wiki edits made while hikari was stopped"); err != nil {
 				return nil, fmt.Errorf("the project repository: commit your wiki edits: %w", err)
 			}

@@ -82,8 +82,8 @@ services:
 var projectFiles = map[string]string{
 	".gitignore":           ".env\n/.hikari/\n/repos/\n",
 	"topology.yaml":        "# see topo()\n",
-	"store/README.md":      "store\n",
-	"store/shared/note.md": "x\n",
+	"vault/README.md":      "store\n",
+	"vault/public/note.md": "x\n",
 }
 
 // clone clones a URL into a new directory.
@@ -137,8 +137,8 @@ func work(t *testing.T, project string, tp *topology.Topology, file string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, project, "store/systems/dev/map.yaml", "version: 4\npartition:\n  name: dev\n  described_state: {commit: "+commit+"}\nfeatures: []\n")
-	if _, err := pr.CommitPaths(tp.Project.Branch, []string{"store"}, "dev", "dev: map"); err != nil {
+	write(t, project, "vault/partitions/dev/read-only/features/map.yaml", "version: 4\npartition:\n  name: dev\n  described_state: {commit: "+commit+"}\nfeatures: []\n")
+	if _, err := pr.CommitPaths(tp.Project.Branch, []string{"vault"}, "dev", "dev: map"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -265,7 +265,7 @@ func TestCheck(t *testing.T) {
 	if _, err := gitrepo.Open(dir).Prepare("hikari"); err != nil {
 		t.Fatal(err)
 	}
-	write(t, dir, "store/systems/dev/wiki/plan.md", "# plan\n")
+	write(t, dir, "vault/partitions/dev/read-only/features/plan.md", "# plan\n")
 	if f := Check(tp, false); len(f) != 0 {
 		t.Errorf("CK1 wiki edits on the project branch: %+v", f)
 	}
@@ -317,4 +317,57 @@ func skills(dir string) Result {
 		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
 	}
 	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
+}
+
+// TestOldLayout checks rule V11: each old layout fails the start checks,
+// with the move that fixes it.
+func TestOldLayout(t *testing.T) {
+	isolate(t)
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "shop")
+	git(t, dir, "init", "--quiet", "shop")
+	write(t, repo, "orders/.hikari/private/layout.yaml", "version: 1\n")
+	write(t, dir, "store/shared/vocabulary/terms.yaml", "version: 1\n")
+	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {repo: shop, scope: orders}}}\n"
+	tp, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := OldLayout(tp)
+	if len(got) != 2 || !strings.Contains(got[0], "rename store/ to vault/") || !strings.Contains(got[1], "rename layout.yaml to code-map.yaml") || !strings.Contains(got[1], "docs/guides/migrating.md") {
+		t.Errorf("V11 store/ and layout.yaml: %q", got)
+	}
+	os.Rename(filepath.Join(dir, "store"), filepath.Join(dir, "vault"))
+	write(t, repo, "orders/.hikari/private/code-map.yaml", "version: 1\n")
+	got = OldLayout(tp)
+	if len(got) != 1 || !strings.Contains(got[0], "holds shared/, the old layout: move shared/vocabulary") {
+		t.Errorf("V11 shared/: %q", got)
+	}
+	os.RemoveAll(filepath.Join(dir, "vault", "shared"))
+	if got := OldLayout(tp); len(got) != 0 {
+		t.Errorf("V11 the new layout: %q", got)
+	}
+}
+
+// TestCheckSkills checks rule V7.
+func TestCheckSkills(t *testing.T) {
+	dir := t.TempDir()
+	git(t, dir, "init", "--quiet", "shop")
+	os.MkdirAll(filepath.Join(dir, "shop", "orders"), 0o755)
+	write(t, dir, "vault/skills/style/SKILL.md", "# style\n")
+	write(t, dir, "vault/skills/empty/notes.md", "x\n")
+	write(t, dir, "vault/skills/lib/SKILL.md", "# lib\n")
+	src := "name: shop\nx-hikari:\n  repos: {shop: {path: shop, branch: hikari}}\nservices:\n  orders: {x-hikari: {partition: {repo: shop, scope: orders}, grants: {deliverables: [lib], skills: [style, empty, ghost, lib]}}}\n"
+	tp, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, f := range checkSkills(tp) {
+		texts = append(texts, f.Text)
+	}
+	all := strings.Join(texts, "\n")
+	if len(texts) != 3 || !strings.Contains(all, "skill empty, which has no SKILL.md") || !strings.Contains(all, "skill ghost, which does not exist") || !strings.Contains(all, "skill lib, which has the name of a deliverable") {
+		t.Errorf("V7: %s", all)
+	}
 }

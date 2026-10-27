@@ -75,7 +75,7 @@ hikari computes each feature's health from its touching tests, in this order. Th
 3. `untested`: no recorded test touches the feature.
 4. `passing`: every touching test passed in a run that is still current.
 
-The code of a feature is its `code` entry in `layout.yaml`. A test's result stays current while its test file and the code of every feature it touches are unchanged.
+The code of a feature is its `code` entry in `code-map.yaml`. A test's result stays current while its test file and the code of every feature it touches are unchanged.
 
 Health is not the feature's state. `stale` is a state: the feature's document is behind the code, and `mark_map_current` clears it. `pending` is a health: the tests are behind the code, and only a run clears it.
 
