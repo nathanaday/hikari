@@ -9,6 +9,7 @@ Answers to `shared-language.md`, 2026-10-26.
 | E2 | "Yes I think that's right." |
 | E5 | "Yes." |
 | E7 | "Yes env is the structure for now, an established secret system is held out for future work." |
+| The rest | "The rest of round 1 stands, I agree, go ahead and build." Every other recommendation stands. |
 
 ## What the answers set
 
