@@ -209,9 +209,12 @@ func TestOrchestrationFeatureMap(t *testing.T) {
 	f.TurnContext(t)
 
 	// K4, decision 2: change_wiki writes the orchestration agent's own map.
-	_, err = f.m.ChangeWiki("lead", false, []wiki.Write{{Op: "create", ID: "customer-orders", Name: "A customer orders", Description: "A customer orders items, and stock is held for each.",
+	created, err := f.m.ChangeWiki("lead", false, []wiki.Write{{Op: "create", ID: "customer-orders", Name: "A customer orders", Description: "A customer orders items, and stock is held for each.",
 		Related: []string{"stock-never-negative"}, Body: body("The customer orders through [[create-order]], which holds stock with [[reserve-stock]].")}})
 	must(t, err)
+	if strings.Contains(strings.Join(created.Warnings, "\n"), "no neighbor") {
+		t.Errorf("N7: the partition features it links are its neighbors: %v", created.Warnings)
+	}
 	if _, err := os.Stat(filepath.Join(f.dir, "vault", "orchestration", "read-only", "features", "customer-orders.md")); err != nil {
 		t.Errorf("K4: the feature is in the orchestration feature map: %v", err)
 	}

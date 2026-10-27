@@ -245,7 +245,7 @@ func (w Wiki) Warnings(c Check) []string {
 			continue
 		case d.KindOf() == Feature:
 			features++
-			if !w.linksAgentDoc(id) {
+			if !w.linksAgentDoc(id, c) {
 				out = append(out, fmt.Sprintf("feature %q has no neighbor; link it to the features it works with, or check the feature set", id))
 			}
 			if c.Exists != nil {
@@ -271,10 +271,11 @@ func (w Wiki) Warnings(c Check) []string {
 }
 
 // linksAgentDoc reports whether id links, or is linked by, another agent
-// document of w (rule N7).
-func (w Wiki) linksAgentDoc(id string) bool {
+// document of w, or links one of another wiki that w can link (rule N7). An
+// orchestration feature's neighbors are the partition features it links.
+func (w Wiki) linksAgentDoc(id string, c Check) bool {
 	for _, n := range w[id].Neighbors() {
-		if d := w[n]; d != nil && n != id && !d.User() {
+		if d := w[n]; d != nil && n != id && !d.User() || d == nil && c.Linkable != nil && c.Linkable(n) {
 			return true
 		}
 	}
