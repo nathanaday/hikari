@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Boxes, FileCode2, FolderGit2, Package } from 'lucide-react'
+import { ArrowDown, ArrowUp, Boxes, FileCode2, FolderGit2, Package, X } from 'lucide-react'
 import { FindingsList } from '@/components/findings-list'
 import { Section } from '@/components/partition-detail'
 import { Chips, Field, Select, TextField } from '@/components/topology-fields'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { findingsOf, partitionAgents, partitionsIn, type AddKind, type Op, type Selection } from '@/lib/structure'
+import { findingsOf, partitionAgents, partitionsIn, placeOf, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { branchProblem, nameProblem, urlProblem, validProjectName } from '@/lib/topology-rules'
-import type { Finding, Mount, TopologyAgent, TopologyModel } from '@/lib/types'
+import type { Finding, Mount, TopologyAgent, TopologyFolder, TopologyModel } from '@/lib/types'
 
 export type Options = { deliverables: string[]; skills: string[]; models: string[]; templates: string[] }
 
@@ -177,7 +178,12 @@ export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
                 <button type="button" className="underline underline-offset-2" onClick={() => p.select({ kind: 'agent', id: a.id })}>
                   {a.name}
                 </button>{' '}
-                <span className="text-muted-foreground">{a.partition!.scope || 'the whole repo'}</span>
+                <span className="text-muted-foreground">
+                  {a
+                    .partition!.folders.filter((f) => f.repo === id)
+                    .map((f) => (f.path || 'the whole repo') + (f.read_only ? ', read-only' : ''))
+                    .join('; ')}
+                </span>
               </li>
             ))}
           </ul>
@@ -341,17 +347,31 @@ function ContainerSummary({ a }: { a: TopologyAgent }) {
   )
 }
 
+function repoOptions(m: TopologyModel) {
+  return [...(m.project.repo ? [{ value: 'project', label: 'the project repository' }] : []), ...m.repos.map((r) => ({ value: r.id, label: r.name }))]
+}
+
+const relativeProblem = (v: string) => (v.startsWith('/') || v.split('/').includes('..') ? 'A relative path.' : null)
+
 function PartitionSection({ a, orchestration, p }: { a: TopologyAgent; orchestration: boolean; p: InspectorProps }) {
-  const repos = [...(p.model.project.repo ? [{ value: 'project', label: 'the project repository' }] : []), ...p.model.repos.map((r) => ({ value: r.id, label: r.name }))]
+  const repos = repoOptions(p.model)
   if (!a.partition) {
     return (
       <Section title="Partition">
         <p className="text-sm text-muted-foreground">
-          {orchestration ? 'The orchestration agent owns no code: it plans from the feature maps of the partitions.' : 'It owns no code yet. Every agent but the orchestration agent has a partition: the part of a repo that only it reads and changes.'}
+          {orchestration
+            ? 'The orchestration agent owns no code: it plans from the feature maps of the partitions.'
+            : 'It owns no code yet. Every agent but the orchestration agent has a partition: the folders of the repos that only it changes, which it sees as one workspace.'}
         </p>
         {!orchestration &&
           (repos.length ? (
-            <Select value="" placeholder="Own a partition in…" options={repos} onChange={(v) => v && p.add({ op: 'set_partition', id: a.id, repo: v })} className="w-auto text-xs text-muted-foreground" />
+            <Select
+              value=""
+              placeholder="Own a partition in…"
+              options={repos}
+              onChange={(v) => v && p.add({ op: 'set_partition', id: a.id, folders: [{ repo: v, path: '', read_only: false, at: '' }] })}
+              className="w-auto text-xs text-muted-foreground"
+            />
           ) : (
             <p className="text-sm text-muted-foreground">Add a repo first.</p>
           ))}
@@ -361,26 +381,75 @@ function PartitionSection({ a, orchestration, p }: { a: TopologyAgent; orchestra
   const s = a.partition
   return (
     <Section title="Partition">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Repo">
-          <Select value={s.repo} options={repos} onChange={(v) => p.add({ op: 'set_partition', id: a.id, repo: v })} />
-        </Field>
-        <TextField label="Scope" value={s.scope} mono placeholder="the whole repo" onCommit={(v) => p.add({ op: 'set_partition', id: a.id, scope: v })} hint="The directory it owns, relative to the repo." />
-      </div>
-      <TextField label="Test command" value={s.test} mono placeholder="none" onCommit={(v) => p.add({ op: 'set_partition', id: a.id, test: v })} hint="Seeds its first suite when it has no tests.yaml." />
-      <Field label="Read-only paths" hint="Directories outside every scope that it may read.">
-        <Chips
-          items={s.read.map((r) => ({ value: r, label: r }))}
-          onRemove={(r) => p.add({ op: 'set_partition', id: a.id, read: s.read.filter((x) => x !== r) })}
-          onAdd={(r) => p.add({ op: 'set_partition', id: a.id, read: [...s.read, r] })}
-          addLabel="Add a path and press Enter"
-          check={(v) => (v.startsWith('/') || v.includes('..') ? 'A relative path inside the repo.' : null)}
-        />
-      </Field>
+      {s.old && <p className="text-xs text-muted-foreground">The file writes this partition with repo, scope, and read. A change here writes it as folders.</p>}
+      <FolderList a={a} p={p} />
+      <TextField label="Test command" value={s.test} mono placeholder="none" onCommit={(v) => p.add({ op: 'set_partition', id: a.id, test: v })} hint="Runs in /workspace. Seeds its first suite when it has no tests.yaml." />
       <Button size="sm" variant="ghost" onClick={() => p.add({ op: 'clear_partition', id: a.id })}>
         Clear the partition
       </Button>
     </Section>
+  )
+}
+
+// FolderList edits the folders of a partition (rule F14): a row for each
+// folder with its repo, path, place, and mode, and buttons to add, remove,
+// and reorder rows. The first writable folder holds the private files.
+function FolderList({ a, p }: { a: TopologyAgent; p: InspectorProps }) {
+  const folders = a.partition!.folders
+  const repos = repoOptions(p.model)
+  const set = (next: TopologyFolder[]) => p.add({ op: 'set_partition', id: a.id, folders: next })
+  const change = (i: number, patch: Partial<TopologyFolder>) => set(folders.map((f, j) => (j === i ? { ...f, ...patch } : f)))
+  const move = (i: number, by: number) => {
+    const next = [...folders]
+    ;[next[i], next[i + by]] = [next[i + by], next[i]]
+    set(next)
+  }
+  const home = folders.findIndex((f) => !f.read_only)
+  return (
+    <div className="space-y-2" data-testid="folders">
+      <span className="text-xs font-medium text-muted-foreground">Folders</span>
+      {folders.map((f, i) => (
+        <div key={`${i}:${f.repo}:${f.path}`} className="space-y-2 rounded-md border p-2" data-testid="folder-row">
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate text-xs">/workspace/{placeOf(f, p.model)}</code>
+            {i === home && (
+              <Badge variant="secondary" className="font-normal" title="Its .hikari/private holds the code map and the test map.">
+                private files
+              </Badge>
+            )}
+            <Button size="icon-xs" variant="ghost" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+              <ArrowUp />
+            </Button>
+            <Button size="icon-xs" variant="ghost" aria-label="Move down" disabled={i === folders.length - 1} onClick={() => move(i, 1)}>
+              <ArrowDown />
+            </Button>
+            <Button size="icon-xs" variant="ghost" aria-label="Remove the folder" disabled={folders.length === 1} onClick={() => set(folders.filter((_, j) => j !== i))}>
+              <X />
+            </Button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Field label="Repo">
+              <Select value={f.repo} options={repos} onChange={(v) => change(i, { repo: v })} />
+            </Field>
+            <TextField label="Path" value={f.path} mono placeholder="the whole repo" check={relativeProblem} onCommit={(v) => change(i, { path: v })} />
+            <TextField label="At" value={f.at} mono placeholder={placeOf({ ...f, at: '' }, p.model)} check={relativeProblem} onCommit={(v) => change(i, { at: v })} />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={f.read_only} onChange={(e) => change(i, { read_only: e.target.checked })} />
+            Read-only
+          </label>
+        </div>
+      ))}
+      {repos.length > 0 && (
+        <Select
+          value=""
+          placeholder="Add a folder in…"
+          options={repos}
+          onChange={(v) => v && set([...folders, { repo: v, path: '', read_only: true, at: '' }])}
+          className="w-auto text-xs text-muted-foreground"
+        />
+      )}
+    </div>
   )
 }
 

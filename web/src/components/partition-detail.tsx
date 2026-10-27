@@ -1,6 +1,7 @@
 import { ChevronRight, Lock, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
+import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import type { Feature, Interface, Manifest, Private, PartitionView } from '@/lib/types'
 
@@ -162,6 +163,34 @@ function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
 
 // openFeature opens and shows a related feature without changing the view in
 // the URL.
+// Workspace shows the folders of a partition by place, and the branch of
+// each repo it commits to, with its uncommitted changes (rule F15).
+function Workspace({ v }: { v: PartitionView }) {
+  return (
+    <Section title="Workspace">
+      <ul className="space-y-1 text-sm" data-testid="workspace">
+        {v.folders.map((f) => (
+          <li key={f.place} className="flex flex-wrap items-baseline gap-x-2">
+            <code className="text-xs">/workspace/{f.place}</code>
+            <span className="text-muted-foreground">
+              {f.path || 'the whole repo'} of {f.repo}
+              {f.read_only ? ', read-only' : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <ul className="mt-2 space-y-0.5 text-sm text-muted-foreground" data-testid="workspace-repos">
+        {v.repos.map((r) => (
+          <li key={r.name}>
+            {r.name} on <code className="text-xs">{r.branch}</code>
+            {r.dirty ? ', with uncommitted changes' : ', clean'}
+          </li>
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
 function openFeature(e: React.MouseEvent, id: string) {
   e.preventDefault()
   const el = document.getElementById(`feature-${id}`) as HTMLDetailsElement | null
@@ -204,6 +233,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
             <span className="text-muted-foreground">{v.changed?.join(', ')}</span>
           </p>
         )}
+        <Workspace v={v} />
         {v.state === 'unbuilt' && !s.summary && v.features.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {partitionAgent?.status.state === 'indexing'
@@ -268,7 +298,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                             <span className="min-w-0 flex-1">{r.notes}</span>
                             <span className="text-xs text-muted-foreground">
                               {r.product.files} file{r.product.files === 1 ? '' : 's'}
-                              {r.certificates?.length ? ` · ${r.certificates.map((c) => c.type).join(', ')}` : ''} · {r.source_commit?.slice(0, 7)} ·{' '}
+                              {r.certificates?.length ? ` · ${r.certificates.map((c) => c.type).join(', ')}` : ''} · {releaseCommits(r)} ·{' '}
                               {ago(r.released)}
                             </span>
                           </li>

@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
 import { asJSON, asText, vaultFileURL, useFetch } from '@/hooks/use-vault-file'
 import type { Certificate, ReleaseDetail } from '@/lib/types'
+import { releaseCommits } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 
 const noNames = new Set<string>()
@@ -88,8 +89,8 @@ export function ReleaseBody({ data }: { data: ReleaseDetail }) {
           <div className="space-y-1.5">
             {m.notes && <p className="text-sm">{m.notes}</p>}
             <Field label="released">{m.released ? new Date(m.released).toLocaleString() : '—'}</Field>
-            <Field label="commit">
-              <code className="text-xs">{m.source_commit?.slice(0, 7)}</code>
+            <Field label="commits">
+              <code className="text-xs">{releaseCommits(m)}</code>
             </Field>
             <Field label="product">
               {m.product.files} file{m.product.files === 1 ? '' : 's'}, {m.product.bytes} bytes

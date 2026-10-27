@@ -75,7 +75,7 @@ export function topologyPaint(lens: TopologyLens, node: GraphNode, ctx: Topology
   }
   if (node.kind === 'orchestration' && lens === 'activity') return activityPaint(ctx.agents.get(node.ref)?.status.state)
   if (node.kind === 'repo' && lens === 'git') {
-    const dirty = [...ctx.partitions.values()].some((s) => s.repo === node.ref && s.dirty)
+    const dirty = [...ctx.partitions.values()].some((s) => s.repos.some((r) => r.name === node.ref && r.dirty))
     return dirty ? filled('dirty') : neutral
   }
   return neutral

@@ -116,6 +116,9 @@ export type Manifest = {
   released: string
   notes: string
   hikari: string
+  // source_commits are the commits that the map describes, as
+  // <repo>@<commit>; source_commit is the one commit of an older release.
+  source_commits?: string[]
   source_commit?: string
   product: { path: string; files: number; bytes: number; digest: string }
   map: string
@@ -150,6 +153,14 @@ export type SharedListing = {
   deliverables: Deliverable[]
 }
 
+// Folder is one folder of a partition's workspace, by its place under
+// /workspace.
+export type Folder = { place: string; repo: string; path: string; read_only: boolean }
+
+// RepoState is a repo that a partition commits to: its branch, and whether
+// the partition's folders in it hold uncommitted changes.
+export type RepoState = { name: string; branch: string; dirty: boolean }
+
 // PartitionView is everything about one partition: the public map as the partition agent
 // sees it, its private documents, and its repo details.
 export type PartitionView = {
@@ -159,7 +170,9 @@ export type PartitionView = {
     summary?: string
     responsibilities?: string[]
     interfaces: { provides: Interface[]; consumes: Interface[] }
-    described_state: { commit?: string; updated?: string }
+    // commits holds one <repo>@<commit> for each repo of the writable
+    // folders.
+    described_state: { commits?: string[]; updated?: string }
   }
   features: Feature[]
   state: MapState
@@ -169,10 +182,9 @@ export type PartitionView = {
   private: Private
   releases: Manifest[] | null
   partition_agent: string
-  repo: string
-  scope: string
-  branch: string
-  // dirty says whether the scope has uncommitted changes.
+  folders: Folder[]
+  repos: RepoState[]
+  // dirty says whether a writable folder has uncommitted changes.
   dirty?: boolean
   grants?: { releases: string[]; deliverables: string[]; skills: string[] }
   flags: Flag[] | null
@@ -278,7 +290,10 @@ export type Finding = {
 // orchestration is the service id of the orchestration agent, or "".
 export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string }
 export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
-export type TopologyPartition = { repo: string; scope: string; read: string[]; test: string }
+// TopologyFolder is a folder as the file writes it: repo is the repo's id.
+export type TopologyFolder = { repo: string; path: string; read_only: boolean; at: string }
+// old says that the file writes the form before folders.
+export type TopologyPartition = { folders: TopologyFolder[]; test: string; old?: boolean }
 export type TopologyAgent = {
   id: string
   name: string

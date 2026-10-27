@@ -4,7 +4,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
 import { ParticipantAvatar } from '@/components/participant-avatar'
 import { StatusDot } from '@/components/status-dot'
-import { mapStateLabel, roleLabel } from '@/lib/labels'
+import { mapStateLabel, roleLabel, shortCommit } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { RoomTab, View } from '@/lib/view'
@@ -186,14 +186,13 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'dm', name: sys.partition_agent })}>
             {sys.partition_agent}
           </button>{' '}
-          · <code className="text-xs">{sys.scope ? `${sys.repo}/${sys.scope}` : sys.repo}</code> · branch{' '}
-          <code className="text-xs">{sys.branch}</code>
-          {described.commit && (
+          · <code className="text-xs">{sys.folders.filter((f) => !f.read_only).map((f) => f.place).join(', ')}</code>
+          {described.commits?.length ? (
             <>
               {' '}
-              · describes <code className="text-xs">{described.commit.slice(0, 7)}</code>
+              · describes <code className="text-xs">{described.commits.map(shortCommit).join(', ')}</code>
             </>
-          )}{' '}
+          ) : null}{' '}
           ·{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', partition: sys.partition_agent })}>
             Feature map

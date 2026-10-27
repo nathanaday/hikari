@@ -12,16 +12,15 @@ export function withHealth(id: string, health: Health, extra: Partial<Feature> =
 
 export function partition(partitionAgent: string, features: Feature[] = [], extra: Partial<PartitionView> = {}): PartitionView {
   return {
-    version: 4,
+    version: 5,
     partition: { name: partitionAgent, interfaces: { provides: [], consumes: [] }, described_state: {} },
     features,
     state: 'current',
     private: { code_map: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, tests: {} } },
     releases: [],
     partition_agent: partitionAgent,
-    repo: 'shop',
-    scope: `services/${partitionAgent}`,
-    branch: 'hikari/demo',
+    folders: [{ place: `shop/services/${partitionAgent}`, repo: 'shop', path: `services/${partitionAgent}`, read_only: false }],
+    repos: [{ name: 'shop', branch: 'hikari/demo', dirty: false }],
     flags: null,
     providers: null,
     dirty: false,

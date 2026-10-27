@@ -86,9 +86,8 @@ const partitionView = (partitionAgent: string, state: 'unbuilt' | 'current' = 'u
   private: { code_map: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, tests: {} } },
   releases: [],
   partition_agent: partitionAgent,
-  repo: 'shop',
-  scope: `services/${partitionAgent}`,
-  branch: 'hikari/work',
+  folders: [{ place: `shop/services/${partitionAgent}`, repo: 'shop', path: `services/${partitionAgent}`, read_only: false }],
+  repos: [{ name: 'shop', branch: 'hikari/work', dirty: false }],
   flags: null,
   providers: null,
 })

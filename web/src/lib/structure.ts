@@ -1,4 +1,4 @@
-import type { Finding, TopologyAgent, TopologyModel } from './types'
+import type { Finding, TopologyAgent, TopologyFolder, TopologyModel } from './types'
 
 // An entity of the Structure tab: its kind and its id. The project has no
 // id.
@@ -68,13 +68,28 @@ export function worst(fs: Finding[]): Finding['severity'] | null {
 export function roles(a: TopologyAgent, m: TopologyModel): string {
   const parts: string[] = []
   if (m.project.orchestration === a.id) parts.push('orchestration agent')
-  if (a.partition) parts.push(`owns ${m.repos.find((r) => r.id === a.partition!.repo)?.name ?? a.partition.repo}${a.partition.scope ? '/' + a.partition.scope : ''}`)
+  if (a.partition) {
+    const writable = a.partition.folders.filter((f) => !f.read_only)
+    parts.push(`owns ${writable.map((f) => placeOf(f, m)).join(', ') || 'no writable folder'}`)
+  }
   if (!parts.length) parts.push('has no partition')
   return parts.join(', ')
 }
 
-// partitionsIn returns the agents whose partition is in a repo.
-export const partitionsIn = (repo: string, m: TopologyModel) => m.agents.filter((a) => a.partition?.repo === repo)
+// partitionsIn returns the agents with a folder in a repo.
+export const partitionsIn = (repo: string, m: TopologyModel) => m.agents.filter((a) => a.partition?.folders.some((f) => f.repo === repo))
+
+// repoName returns the name of the repo with an id: project for the project
+// repository.
+export const repoName = (id: string, m: TopologyModel) => (id === 'project' ? 'project' : (m.repos.find((r) => r.id === id)?.name ?? id))
+
+// placeOf returns where a folder mounts, relative to /workspace: its at,
+// or the repo's name and its path (decision 1 of the partition folders
+// spec).
+export function placeOf(f: TopologyFolder, m: TopologyModel): string {
+  if (f.at) return f.at
+  return f.path ? `${repoName(f.repo, m)}/${f.path}` : repoName(f.repo, m)
+}
 
 // partitionAgents returns the agents that have a partition.
 export const partitionAgents = (m: TopologyModel) => m.agents.filter((a) => a.partition)

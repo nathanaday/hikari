@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { DeliverableEntry } from '@/components/shared-view'
+import { PartitionDetail } from '@/components/partition-detail'
 import { ReleaseBody } from '@/components/release-view'
+import { partition } from '@/lib/fixtures'
+import { initialState } from '@/lib/store'
 import type { Deliverable, ReleaseDetail } from '@/lib/types'
 
 const deliverable: Deliverable = {
@@ -24,7 +27,7 @@ const release: ReleaseDetail = {
     released: '2026-10-22T20:17:05Z',
     notes: 'First release.',
     hikari: '0.0.1',
-    source_commit: '23732d5585d3cec9b4798f825ba99c519488b2e0',
+    source_commits: ['shop@23732d5585d3cec9b4798f825ba99c519488b2e0'],
     product: { path: 'product/', files: 3, bytes: 2569, digest: 'sha256:d8c523f2' },
     map: 'features/map.yaml',
     certificates: [
@@ -74,5 +77,22 @@ describe('ReleaseBody', () => {
     const data = { ...release, files: release.files.filter((f) => !f.endsWith('README.md')) }
     const html = renderToStaticMarkup(<ReleaseBody data={data} />)
     expect(marked(html)).toContain('release.yaml')
+  })
+})
+
+describe('PartitionDetail', () => {
+  it('shows the folders by place and each repo with its branch and changes (F15)', () => {
+    const v = partition('orders', [], {
+      folders: [
+        { place: 'shop/services/orders', repo: 'shop', path: 'services/orders', read_only: false },
+        { place: 'protos', repo: 'protos', path: 'orders', read_only: true },
+      ],
+      repos: [
+        { name: 'shop', branch: 'hikari/work', dirty: true },
+        { name: 'protos', branch: 'hikari/work', dirty: false },
+      ],
+    })
+    const html = renderToStaticMarkup(<PartitionDetail state={initialState({ kind: 'room' })} partition={v} />)
+    for (const text of ['/workspace/shop/services/orders', 'services/orders of shop', '/workspace/protos', 'orders of protos, read-only', 'with uncommitted changes', ', clean']) expect(html).toContain(text)
   })
 })

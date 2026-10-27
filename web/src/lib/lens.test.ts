@@ -46,9 +46,9 @@ describe('tests lens (U34, U40)', () => {
 
 describe('topology lenses', () => {
   const partitions = [
-    partition('orders', [withHealth('a', 'failing')], { dirty: true, repo: 'shop' }),
-    partition('inventory', [withHealth('b', 'passing')], { repo: 'shop' }),
-    partition('docs', [], { repo: 'site' }),
+    partition('orders', [withHealth('a', 'failing')], { dirty: true, repos: [{ name: 'shop', branch: 'h', dirty: true }] }),
+    partition('inventory', [withHealth('b', 'passing')], { repos: [{ name: 'shop', branch: 'h', dirty: false }] }),
+    partition('docs', [], { repos: [{ name: 'site', branch: 'h', dirty: false }] }),
   ]
   const g = topologyGraph({
     partitions,

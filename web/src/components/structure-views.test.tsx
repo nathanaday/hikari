@@ -78,6 +78,22 @@ describe('the inspectors', () => {
     expect(html).toContain('It can change until hikari keeps something under it')
     expect(html).toContain('Builds it.')
   })
+  it('edits the folders of a partition, and marks the home of the private files (F14)', () => {
+    const folders = [
+      { repo: 'project', path: 'libs', read_only: true, at: '' },
+      { repo: 'project', path: 'app', read_only: false, at: '' },
+      { repo: 'project', path: 'proto', read_only: false, at: 'protos' },
+    ]
+    const two = { ...model, agents: model.agents.map((a) => (a.id === 'dev' ? { ...a, partition: { folders, test: '' } } : a)) }
+    const html = renderToStaticMarkup(<AgentInspector {...props} model={two} id="dev" />)
+    expect(html.match(/data-testid="folder-row"/g)).toHaveLength(3)
+    for (const text of ['/workspace/project/libs', '/workspace/project/app', '/workspace/protos', 'Add a folder in…', 'aria-label="Move up"', 'aria-label="Remove the folder"', 'Runs in /workspace.']) expect(html).toContain(text)
+    expect(html.match(/private files/g)).toHaveLength(1)
+    expect(html.indexOf('private files')).toBeGreaterThan(html.indexOf('/workspace/project/app'))
+    expect(html.indexOf('private files')).toBeLessThan(html.indexOf('/workspace/protos'))
+    expect(html.match(/type="checkbox" checked=""/g)).toHaveLength(1)
+    expect(roles(two.agents.find((a) => a.id === 'dev')!, two)).toBe('owns project/app, protos')
+  })
   it('shows an agent’s mounts, or why it cannot (V14)', () => {
     const html = renderToStaticMarkup(<AgentInspector {...props} id="dev" />)
     expect(html).toContain('data-testid="mounts"')
