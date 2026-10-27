@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/mcpserver"
 )
 
 func ownerPrompt(self api.Self) string {
@@ -22,44 +23,40 @@ func ownerPrompt(self api.Self) string {
 		fmt.Fprintf(&b, " You can also read, but not change, %s.", strings.Join(paths, ", "))
 	}
 	b.WriteString(" You cannot see the rest of the repo, and you have no git: hikari commits for you.\n\n")
-	b.WriteString(`- Your system's wiki is /hikari/public/export/wiki/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes the public map, /hikari/public/export/map.yaml, from the features and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. Your orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
+	b.WriteString(`- Your system's wiki is /hikari/public/export/wiki/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes the public map, /hikari/public/export/map.yaml, from the features and from set_system_info. Your private /hikari/private/layout.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestrator plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-system skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/public/export/releases/ and never change.
-- For domain terms and interface names, use the names in the vocabularies of your hubs (mcp__hikari__get_vocabulary).
+- For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__commit_changes with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. Commits go to the branch %q. hikari also commits what you leave at the end of each turn.\n", s.Branch)
 	b.WriteString("- After a change, run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
-	b.WriteString("- If a task needs a change outside your system, tell your orchestrator what you need and why. Do not work around it.\n")
+	b.WriteString("- If a task needs a change outside your system, tell the orchestrator, or the owner of that system, what you need and why. Do not work around it.\n")
 	return b.String()
 }
 
 func orchestratorPrompt(self api.Self) string {
 	var b strings.Builder
-	hubs := make([]string, len(self.Orchestrates))
-	for i, h := range self.Orchestrates {
-		hubs[i] = "#" + h
-	}
 	if len(self.VisibleSystems) > 0 {
-		fmt.Fprintf(&b, "\n## Your systems\n\nThe members of %s own these systems: %s. You have no code and cannot read any. You plan from their system maps.\n\n",
-			strings.Join(hubs, ", "), strings.Join(self.VisibleSystems, ", "))
+		fmt.Fprintf(&b, "\n## Your systems\n\nThe owners own these systems: %s. You have no code and cannot read any. You plan from their system maps.\n\n",
+			strings.Join(self.VisibleSystems, ", "))
 		b.WriteString(`- mcp__hikari__list_systems and get_system read the maps: what each system does, its interfaces, and the health and state of its features. Each system's wiki is in /hikari/public/readonly/systems/<system>/wiki/: one document for each feature, principle, and rule. get_document returns a document with the documents that link it, and search_wiki searches every wiki you can read.
 - When a map does not answer a question, ask the owner.
 - Ask owners for changes in terms of features and interfaces, not code. The owner decides how to make a change, and can push back with a reason.
 - Owners cannot see each other's code. A system can test against another system only through that system's published releases, and only when the topology grants it those releases. Otherwise, agree each interface precisely, have each owner test its side against it, and tell the participant who asked that the systems were tested separately.
 `)
-		b.WriteString(memberGrants(self))
-		b.WriteString(memberDeliverables(self))
+		b.WriteString(ownerGrants(self))
+		b.WriteString(ownerDeliverables(self))
 	}
 	if len(self.VisibleSystems) > 0 {
 		fmt.Fprintf(&b, `
 ## Releases of your systems
 
-The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the owner makes it (SKILL.md). When a system announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the hub agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the owner what is missing. You cannot change deliverables or who holds them; ask the user.
+The map and the releases of each of your systems are in /hikari/public/readonly/systems/<system>/: map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and map.yaml. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the owner makes it (SKILL.md). When a system announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the owner what is missing. You cannot change deliverables or who holds them; ask the user.
 `, api.SharedDir)
 	}
-	fmt.Fprintf(&b, "\n## Your hub wikis\n\nYou keep the wiki of %s: the stories, rules, and principles that say what the hub's systems must do together. Change it only with mcp__hikari__change_hub_wiki, and link each story to the features of the systems that carry it out. Before you write or change a hub wiki, load the hikari-hub skill. A story that the user marked key is part of the integration test that matters most to the user.\n", strings.Join(hubs, ", "))
-	fmt.Fprintf(&b, "\n## Your vocabularies\n\nYou keep the vocabulary of %s: the names that everyone in the hub uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.", strings.Join(hubs, ", "))
+	fmt.Fprintf(&b, "\n## The public wiki\n\nYou keep the public wiki, %s: the stories, rules, and principles that say what the systems must do together. Change it only with mcp__hikari__change_public_wiki, and link each story to the features of the systems that carry it out. Before you write or change the public wiki, load the %s skill.\n", api.PublicWikiPath, api.OrchestrationSkill)
+	b.WriteString("\n## The vocabulary\n\nYou keep the vocabulary: the names that everyone in the project uses for domain terms and for the interfaces between systems. Use mcp__hikari__define_term, define_interface, and remove_entry. When an owner uses a different name for something that the vocabulary defines, ask the owner to rename it.")
 	if len(self.VisibleSystems) > 0 {
-		b.WriteString(" get_system flags interface names that are not in your vocabularies, and consumed interfaces that no system provides.")
+		b.WriteString(" get_system flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.")
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -85,7 +82,7 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 6. Call mark_map_current.
 `)
 	}
-	b.WriteString("\nUse the names in your hubs' vocabularies where they exist. Send no messages in this turn.\n")
+	b.WriteString("\nUse the names in the vocabulary where they exist. Send no messages in this turn.\n")
 	return b.String()
 }
 
@@ -234,13 +231,16 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 			}
 		}
 		where := "The wiki of " + w.Wiki
-		if !strings.HasPrefix(w.Wiki, "#") && w.Wiki == self.Name {
+		switch w.Wiki {
+		case api.PublicWikiRef:
+			where = "The public wiki"
+		case self.Name:
 			where = "Your wiki"
 		}
 		notes = append(notes, fmt.Sprintf("%s changed: %s. Read the documents that concern your work.", where, capped(items, maxNoticeFeatures)))
 	}
-	for _, hub := range tc.VocabularyChanged {
-		note := fmt.Sprintf("The vocabulary of #%s changed. Call get_vocabulary to read it.", hub)
+	if tc.VocabularyChanged {
+		note := "The vocabulary changed. Call get_vocabulary to read it."
 		if self.System != nil {
 			note += " Rename entries in your map and feature documents that use other names for its terms or interfaces."
 		}
@@ -257,20 +257,14 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 	return b.String()
 }
 
-// wikisPrompt names the hub wikis that the agent reads (rules A1, E2, and
-// S3 of the wikis spec).
+// wikisPrompt names the public wiki, which every agent reads (rules A1, E2,
+// and S3 of the wikis spec).
 func wikisPrompt(self api.Self) string {
-	if len(self.HubWikis) == 0 {
-		return ""
-	}
 	var b strings.Builder
-	b.WriteString("\n## The wikis of your hubs\n\nEach hub has a wiki: its stories, which say what the hub's systems must do together and for whom, its rules, which must always hold, and its principles, which guide how the systems work together. You read these, read-only:\n\n")
-	for _, hub := range self.HubWikis {
-		fmt.Fprintf(&b, "- #%s: %s\n", hub, api.HubWikiPath(hub))
-	}
-	b.WriteString("\nA document links others as [[id]]; an id is unique in every wiki, and mcp__hikari__get_document reads any document you can read, with the documents that link it. Plans and notes in a wiki are the user's: read them for context, and act on a plan only when the user asks you to.")
+	fmt.Fprintf(&b, "\n## The public wiki\n\nThe public wiki, %s, holds the stories, which say what the systems must do together and for whom, the rules, which must always hold, and the principles, which guide how the systems work together. You read it, read-only.", api.PublicWikiPath)
+	b.WriteString(" A document links others as [[id]]; an id is unique in every wiki, and mcp__hikari__get_document reads any document you can read, with the documents that link it. Plans and notes in a wiki are the user's: read them for context, and act on a plan only when the user asks you to.")
 	if self.System != nil {
-		b.WriteString(" The rules and principles of your hubs apply to your system. When a story needs a feature your system lacks, or a feature cannot keep a hub rule, tell your orchestrator.")
+		b.WriteString(" The rules and principles of the public wiki apply to your system. When a story needs a feature your system lacks, or a feature cannot keep a rule, tell the orchestrator.")
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -284,7 +278,7 @@ func scopeName(scope string) string {
 }
 
 func sharedPrompt() string {
-	return fmt.Sprintf("\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabularies of the hubs in vocabulary/, the policies in policies/, which apply to you below when there are any, and skills and agents that you can use. It is read-only.\n", api.SharedDir)
+	return fmt.Sprintf("\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and skills and agents that you can use. It is read-only.\n", api.SharedDir)
 }
 
 // grantsPrompt lists the systems whose releases the agent can read beyond
@@ -326,7 +320,7 @@ func deliverablesPrompt(self api.Self) string {
 		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/staging/%s/.\n", d.Name, d.Description, api.SharedDir, d.Name, api.ExportDir, d.Name)
 	}
 	b.WriteString(`
-To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/public/export/releases/<deliverable>/<version>/, and announces the release in your hubs.
+To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/public/export/releases/<deliverable>/<version>/, and announces the release in the room.
 `)
 	return b.String()
 }
@@ -340,17 +334,17 @@ func deliverableNames(self api.Self) []string {
 	return names
 }
 
-// memberDeliverables lists the deliverables of an orchestrator's members
-// (rule P14).
-func memberDeliverables(self api.Self) string {
-	if len(self.MemberDeliverables) == 0 {
-		return "- No member of your hubs holds a deliverable, so none can publish a release. You cannot change that; if a release is needed, ask the user to grant a deliverable.\n"
+// ownerDeliverables lists the deliverables of the owners, for the
+// orchestrator (rule P14).
+func ownerDeliverables(self api.Self) string {
+	if len(self.OwnerDeliverables) == 0 {
+		return "- No owner holds a deliverable, so none can publish a release. You cannot change that; if a release is needed, ask the user to grant a deliverable.\n"
 	}
 	var b strings.Builder
-	b.WriteString("- Deliverables of your members:")
-	for _, m := range slices.Sorted(maps.Keys(self.MemberDeliverables)) {
+	b.WriteString("- Deliverables of the owners:")
+	for _, m := range slices.Sorted(maps.Keys(self.OwnerDeliverables)) {
 		var names []string
-		for _, d := range self.MemberDeliverables[m] {
+		for _, d := range self.OwnerDeliverables[m] {
 			names = append(names, fmt.Sprintf("%s (%s)", d.Name, d.Description))
 		}
 		fmt.Fprintf(&b, " %s publishes %s;", m, strings.Join(names, ", "))
@@ -359,16 +353,52 @@ func memberDeliverables(self api.Self) string {
 	return b.String()
 }
 
-// memberGrants lists the release grants of an orchestrator's members.
-func memberGrants(self api.Self) string {
-	if len(self.MemberGrants) == 0 {
-		return "- No member of your hubs is granted another system's releases. You cannot change grants; if a system needs another system's releases, ask the user to grant them.\n"
+// ownerGrants lists the release grants of the owners, for the orchestrator.
+func ownerGrants(self api.Self) string {
+	if len(self.OwnerGrants) == 0 {
+		return "- No owner is granted another system's releases. You cannot change grants; if a system needs another system's releases, ask the user to grant them.\n"
 	}
 	var b strings.Builder
-	b.WriteString("- Release grants of your members:")
-	for _, m := range slices.Sorted(maps.Keys(self.MemberGrants)) {
-		fmt.Fprintf(&b, " %s reads the releases of %s;", m, strings.Join(self.MemberGrants[m], ", "))
+	b.WriteString("- Release grants of the owners:")
+	for _, m := range slices.Sorted(maps.Keys(self.OwnerGrants)) {
+		fmt.Fprintf(&b, " %s reads the releases of %s;", m, strings.Join(self.OwnerGrants[m], ", "))
 	}
 	b.WriteString(" you cannot change grants; if a system needs others, ask the user.\n")
+	return b.String()
+}
+
+// roomPrompt lists everyone in the room and states the message and wake
+// rules (rule H19 of the remove-hubs spec).
+func roomPrompt(self api.Self) string {
+	orchestrator := ""
+	for _, p := range self.Participants {
+		if p.Role == api.RoleOrchestrator {
+			orchestrator = p.Name
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n## The room\n\nEvery agent and the user are in one room:\n\n%s", mcpserver.DescribeRoom(self))
+	b.WriteString(`
+- mcp__hikari__post sends a message to the room. Everyone in the room receives it.
+- mcp__hikari__send_direct_message sends a private message to one agent or to the user. Only they receive it.
+- mcp__hikari__list_agents lists everyone in the room.
+- Messages arrive as your prompt inside <message> tags. The channel attribute is "room" or "direct".
+- Nobody reads your text output. Only the hikari tools deliver information.
+- Answer in the channel the message came from: a direct message with a direct message, a post in the room.
+- After you send what is needed, end your turn. Replies arrive as a new turn.
+- Send a message only when it contains information or a request. Do not send messages that only acknowledge or thank. If a message needs nothing from you, end your turn without sending anything.
+- During a long turn, call mcp__hikari__check_inbox to read messages that arrived meanwhile.
+
+`)
+	b.WriteString("Everyone in the room receives every post, and you read the posts that did not start a turn for you at the start of your next turn. A direct message always starts a turn. ")
+	switch {
+	case orchestrator == "":
+		b.WriteString("The project has no orchestrator: a post starts a turn at once for each agent that it mentions as @name, and for every agent when it mentions nobody. Mention only the agents you need.\n")
+	case orchestrator == self.Name:
+		b.WriteString("A post starts a turn at once for you, the orchestrator, for each agent that it mentions as @name, and for every owner when you post without mentions.\n\nYou are the orchestrator. Coordinate the owners: give each owner a clear task with @name, collect the results, and report to whoever asked. A post from you without mentions starts a turn for every owner, so mention only the owners you need.\n")
+	default:
+		fmt.Fprintf(&b, "A post starts a turn at once for %[1]s, the orchestrator, for each agent that it mentions as @name, and for every owner when %[1]s posts without mentions.\n\nYou are an owner. %[1]s coordinates the work. Do the tasks that mention you, and post the results in the room. A post from you starts a turn for %[1]s and for each agent you mention.\n", orchestrator)
+	}
+	b.WriteString("\nThe room and direct messages are the only way to reach anyone. The text you write at the end of a turn is not a message: nobody reads it. When you need a decision or an answer from someone, send it to them with the message tools, then end the turn; their reply starts your next turn.\n")
 	return b.String()
 }

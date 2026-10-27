@@ -12,12 +12,11 @@ import (
 )
 
 type postArgs struct {
-	Hub  string `json:"hub" jsonschema:"name of the hub to post to, without the #"`
 	Body string `json:"body" jsonschema:"the message text; write @name to wake a specific participant"`
 }
 
 type directArgs struct {
-	To   string `json:"to" jsonschema:"name of a node that shares a hub with you"`
+	To   string `json:"to" jsonschema:"name of an agent, or user"`
 	Body string `json:"body" jsonschema:"the message text"`
 }
 
@@ -25,7 +24,7 @@ type noArgs struct{}
 
 // New returns the MCP server of the agent described by self. Every agent
 // gets the messaging tools and get_vocabulary. Owners also get the map
-// tools, and orchestrators the system and vocabulary tools.
+// tools, and the orchestrator the system and vocabulary tools.
 func New(c *api.Client, self api.Self) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.3.0"}, nil)
 	addVocabularyReader(s, c)
@@ -33,24 +32,24 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	if self.System != nil {
 		addOwnerTools(s, c)
 	}
-	if len(self.Orchestrates) > 0 {
+	if self.Orchestrator {
 		addOrchestratorTools(s, c)
 	}
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "post_to_hub",
-		Description: "Post a message to a hub. Every participant of the hub receives it.",
+		Name:        "post",
+		Description: "Post a message to the room. Every agent and the user receive it.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a postArgs) (*mcp.CallToolResult, any, error) {
-		m, err := c.Send(ctx, api.SendRequest{Hub: strings.TrimPrefix(a.Hub, "#"), Body: a.Body})
+		m, err := c.Send(ctx, api.SendRequest{Body: a.Body})
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Posted message %d to #%s.%s", m.ID, m.Hub, wokeNote(m))), nil, nil
+		return text(fmt.Sprintf("Posted message %d to the room.%s", m.ID, wokeNote(m))), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "send_direct_message",
-		Description: "Send a private message to one node that shares a hub with you. Only that node receives it.",
+		Description: "Send a private message to one agent or the user. Only that one receives it, and it starts a turn for an agent.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a directArgs) (*mcp.CallToolResult, any, error) {
 		m, err := c.Send(ctx, api.SendRequest{To: a.To, Body: a.Body})
 		if err != nil {
@@ -60,14 +59,14 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "list_hubs",
-		Description: "List your hubs, your role in each, and their participants.",
+		Name:        "list_agents",
+		Description: "List everyone in the room: each agent and the user, with their role and description.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		self, err := c.Self(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(DescribeHubs(self)), nil, nil
+		return text(DescribeRoom(self)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -87,29 +86,19 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	return s
 }
 
-// DescribeHubs lists the hubs of self with the role of each participant.
-func DescribeHubs(self api.Self) string {
+// DescribeRoom lists everyone in the room with their role.
+func DescribeRoom(self api.Self) string {
 	var b strings.Builder
-	for i, h := range self.Hubs {
-		if i > 0 {
-			b.WriteString("\n")
+	for _, p := range self.Participants {
+		name := p.Name
+		if name == self.Name {
+			name += " (you)"
 		}
-		fmt.Fprintf(&b, "#%s", h.Name)
-		if h.Description != "" {
-			fmt.Fprintf(&b, ": %s", h.Description)
+		fmt.Fprintf(&b, "- %s, %s", name, p.Role)
+		if p.Description != "" {
+			fmt.Fprintf(&b, ": %s", p.Description)
 		}
 		b.WriteString("\n")
-		for _, p := range h.Participants {
-			name := p.Name
-			if name == self.Name {
-				name += " (you)"
-			}
-			fmt.Fprintf(&b, "- %s, %s", name, p.Role)
-			if p.Description != "" {
-				fmt.Fprintf(&b, ": %s", p.Description)
-			}
-			b.WriteString("\n")
-		}
 	}
 	return b.String()
 }
@@ -122,9 +111,9 @@ func FormatMessages(msgs []api.Message) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		channel := "direct"
-		if m.Hub != "" {
-			channel = "#" + m.Hub
+		channel := "room"
+		if m.To != "" {
+			channel = "direct"
 		}
 		fmt.Fprintf(&b, "<message id=\"%d\" from=%q channel=%q time=%q>\n%s\n</message>\n",
 			m.ID, m.From, channel, m.Time.Format("2006-01-02T15:04:05Z"), m.Body)

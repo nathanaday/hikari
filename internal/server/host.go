@@ -241,11 +241,11 @@ func (h *Host) events(w http.ResponseWriter, r *http.Request) {
 }
 
 // editingSnapshot is the snapshot of a mode without agents: no agents, no
-// hubs, and no messages.
+// participants, and no messages.
 func (h *Host) editingSnapshot(mode string, findings []topology.Finding) Snapshot {
 	snap := Snapshot{
 		Version: version.Version, Mode: mode, Me: topology.User, File: linked.Shown(h.editor.File),
-		Agents: []NodeView{}, Hubs: []api.HubInfo{}, Messages: []api.Message{}, Systems: []api.SystemView{},
+		Agents: []NodeView{}, Participants: []api.Peer{}, Messages: []api.Message{}, Systems: []api.SystemView{},
 		Repos: []api.RepoInfo{}, Deliverables: []deliverableEntry{}, Wikis: []api.WikiView{},
 		Activity: map[string][]api.Activity{}, StartFindings: findings,
 	}

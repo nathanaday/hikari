@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Wiki is the documents of one system or one hub, by id. A user
+// Wiki is the documents of one wiki, by id. A user
 // document's id is its file name.
 type Wiki map[string]*Document
 
@@ -193,9 +193,6 @@ func (w Wiki) validateDoc(id string, c Check, strict bool) []error {
 				fail("W3", "feature %q uses interface %q, which the system neither provides nor consumes", id, name)
 			}
 		}
-	}
-	if d.Key && kind != Story {
-		fail("K3", "document %q is a %s; only a story can be key", id, kind)
 	}
 	if text, ok := section(d.Body, Purpose); !ok {
 		fail("W4", "document %q has no ## Purpose section", id)

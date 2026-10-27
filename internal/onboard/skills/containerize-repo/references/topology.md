@@ -1,6 +1,6 @@
 # The compose file of a containerized project
 
-`compose.yaml` is a Docker compose file. Its `x-hikari` keys tell hikari the repositories, the systems, and the hubs. Compose interpolates `${...}` everywhere, so write `$$` for a literal `$` in instructions.
+`compose.yaml` is a Docker compose file. Its `x-hikari` keys tell hikari the repositories, the systems, and the orchestrator. Compose interpolates `${...}` everywhere, so write `$$` for a literal `$` in instructions.
 
 ```yaml
 name: myproject
@@ -10,11 +10,7 @@ x-hikari:
   repos:
     server: {url: https://github.com/acme/server.git}
     cli:    {url: https://github.com/acme/cli.git}
-  hubs:
-    main:
-      description: Builds the acme product.
-      orchestrator: orchestrator
-      members: [server, cli]
+  orchestration: orchestrator
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
@@ -24,7 +20,7 @@ services:
     <<: *agent
     image: hikari-agent
     x-hikari:
-      description: Orchestrates the project. Plans from the system maps and reports to the user.
+      description: Orchestrates the acme product. Plans from the system maps and reports to the user.
 
   server:
     <<: *agent
@@ -45,8 +41,8 @@ volumes:
 
 ## Rules that hikari checks
 
-- Names of services, repos, and hubs: lowercase letters, digits, and dashes, at most 32 characters.
-- Every agent is in a hub. The orchestrator runs the hub and owns no system.
+- Names of services and repos: lowercase letters, digits, and dashes, at most 32 characters.
+- `x-hikari.orchestration` names the service of the orchestrator, which owns no system. Every other agent owns a system.
 - A system without `scope` owns the whole repository. Its container sees it at `/workspace`.
 - A service sets no `networks`, `ports`, `privileged`, `network_mode`, or bind mount of a repository. hikari mounts the repositories and the store itself.
 - Under `/workspace`, only named volumes and tmpfs inside the agent's own scope are allowed. Use them for dependency folders such as `node_modules` or `.venv`, so that installs do not land in git.

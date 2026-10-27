@@ -1,6 +1,6 @@
-// Package vocab holds the vocabulary of a hub: the shared names of domain
-// terms and of the interfaces between systems. The hub's orchestrator is its
-// only author.
+// Package vocab holds the project's vocabulary: the shared names of domain
+// terms and of the interfaces between systems. The orchestrator is its only
+// author.
 package vocab
 
 import (
@@ -22,7 +22,6 @@ const version = 1
 
 type Vocabulary struct {
 	Version    int         `yaml:"version" json:"version"`
-	Hub        string      `yaml:"hub" json:"hub"`
 	Terms      []Term      `yaml:"terms" json:"terms"`
 	Interfaces []Interface `yaml:"interfaces" json:"interfaces"`
 }
@@ -48,13 +47,13 @@ func (v Vocabulary) Names() []string {
 	return out
 }
 
-const header = `# The vocabulary of #%s. hikari writes this file for the orchestrator of
-# the hub; the orchestrator changes it through the vocabulary tools.
+const header = `# The vocabulary of the project. hikari writes this file for the
+# orchestrator, who changes it through the vocabulary tools.
 `
 
 var validKind = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// Store holds the vocabulary of one hub. The file is created at the first
+// Store holds the vocabulary. The file is created at the first
 // change.
 type Store struct {
 	path string
@@ -64,10 +63,10 @@ type Store struct {
 	version int
 }
 
-// Open loads the vocabulary of hub from path, or starts an empty one if the
-// file does not exist.
-func Open(path, hub string) (*Store, error) {
-	s := &Store{path: path, v: Vocabulary{Version: version, Hub: hub}, version: 1}
+// Open loads the vocabulary from path, or starts an empty one if the file
+// does not exist.
+func Open(path string) (*Store, error) {
+	s := &Store{path: path, v: Vocabulary{Version: version}, version: 1}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return s, nil
@@ -79,9 +78,6 @@ func Open(path, hub string) (*Store, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("vocabulary %s: %w", path, err)
-	}
-	if v.Hub != hub {
-		return nil, fmt.Errorf("vocabulary %s is for hub %q, not %q", path, v.Hub, hub)
 	}
 	s.v = v
 	return s, nil
@@ -147,7 +143,7 @@ func (s *Store) Remove(name string) error {
 		v.Terms = slices.DeleteFunc(v.Terms, func(t Term) bool { return t.Term == name })
 		v.Interfaces = slices.DeleteFunc(v.Interfaces, func(in Interface) bool { return in.Name == name })
 		if len(v.Terms)+len(v.Interfaces) == n {
-			return fmt.Errorf("the vocabulary of #%s has no term or interface %q", v.Hub, name)
+			return fmt.Errorf("the vocabulary has no term or interface %q", name)
 		}
 		return nil
 	})
@@ -181,7 +177,7 @@ func (s *Store) save(v Vocabulary) error {
 		return err
 	}
 	data := buf.Bytes()
-	data = append([]byte(fmt.Sprintf(header, v.Hub)), data...)
+	data = append([]byte(header), data...)
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}

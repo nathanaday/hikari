@@ -20,18 +20,20 @@ const (
 	Deliverables = "deliverables"
 )
 
-// Wiki is the directory of a wiki, in a system's directory, in a hub's
-// directory, and in each release.
+// Wiki is the directory of a wiki, in a system's directory, in the shared
+// area, and in each release.
 const Wiki = "wiki"
 
-// Store is a store on the host. Its functions take the names of systems
-// and hubs, and its directories are keyed by their ids (rule ID6 of the
-// ids spec). Systems and Hubs map each name to its id; a name that they
-// lack is its own id.
+// VocabularyName is the file of the vocabulary in its directory. hikari
+// ignores every other file there.
+const VocabularyName = "terms.yaml"
+
+// Store is a store on the host. Its functions take the names of systems,
+// and its directories are keyed by their ids (rule ID6 of the ids spec).
+// Systems maps each name to its id; a name that it lacks is its own id.
 type Store struct {
 	Root    string
 	Systems map[string]string
-	Hubs    map[string]string
 }
 
 func idOf(ids map[string]string, name string) string {
@@ -50,24 +52,22 @@ func nameOf(ids map[string]string, id string) string {
 	return id
 }
 
-// SystemID and HubID return the id of a system and of a hub.
+// SystemID returns the id of a system.
 func (s Store) SystemID(system string) string { return idOf(s.Systems, system) }
 
-func (s Store) HubID(hub string) string { return idOf(s.Hubs, hub) }
-
-// SystemName and HubName return the name of the system and the hub whose
-// id is id.
+// SystemName returns the name of the system whose id is id.
 func (s Store) SystemName(id string) string { return nameOf(s.Systems, id) }
-
-func (s Store) HubName(id string) string { return nameOf(s.Hubs, id) }
 
 func (s Store) SharedDir() string { return filepath.Join(s.Root, "shared") }
 
 func (s Store) Shared(kind string) string { return filepath.Join(s.SharedDir(), kind) }
 
-func (s Store) VocabularyFile(hub string) string {
-	return filepath.Join(s.Shared(Vocabulary), s.HubID(hub)+".yaml")
-}
+// VocabularyFile is the project's vocabulary.
+func (s Store) VocabularyFile() string { return filepath.Join(s.Shared(Vocabulary), VocabularyName) }
+
+// PublicWiki is the wiki that every agent reads and the orchestrator
+// writes.
+func (s Store) PublicWiki() string { return s.Shared(Wiki) }
 
 func (s Store) SystemDir(system string) string {
 	return filepath.Join(s.Root, "systems", s.SystemID(system))
@@ -78,8 +78,6 @@ func (s Store) MapFile(system string) string { return filepath.Join(s.SystemDir(
 // SystemWiki is the wiki of a system.
 func (s Store) SystemWiki(system string) string { return filepath.Join(s.SystemDir(system), Wiki) }
 
-func (s Store) HubDir(hub string) string { return filepath.Join(s.Root, "hubs", s.HubID(hub)) }
-
 // Rel returns a path of the store relative to its root, with slashes.
 func (s Store) Rel(p string) string {
 	rel, err := filepath.Rel(s.Root, p)
@@ -88,9 +86,6 @@ func (s Store) Rel(p string) string {
 	}
 	return filepath.ToSlash(rel)
 }
-
-// HubWiki is the wiki of a hub.
-func (s Store) HubWiki(hub string) string { return filepath.Join(s.HubDir(hub), Wiki) }
 
 func (s Store) Staging(system string) string { return filepath.Join(s.SystemDir(system), "staging") }
 
@@ -113,13 +108,10 @@ func (s Store) ReleaseDir(system, deliverable, version string) string {
 
 // Prepare creates the directories of the store that do not exist (rule L1)
 // and writes its README once.
-func (s Store) Prepare(systems, hubs []string) error {
-	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents), s.Shared(Deliverables)}
+func (s Store) Prepare(systems []string) error {
+	dirs := []string{s.Shared(Vocabulary), s.Shared(Policies), s.Shared(Skills), s.Shared(Agents), s.Shared(Deliverables), s.PublicWiki()}
 	for _, sys := range systems {
 		dirs = append(dirs, s.Staging(sys), s.ReleasesDir(sys), s.SystemWiki(sys))
-	}
-	for _, hub := range hubs {
-		dirs = append(dirs, s.HubWiki(hub))
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -155,16 +147,15 @@ This directory holds every hikari document that is not code. hikari wrote
 this file once; you can change it.
 
     shared/
-      vocabulary/<hub>.yaml     the names each hub agreed on; its orchestrator writes it
+      vocabulary/terms.yaml     the names the project agreed on; the orchestrator writes it
+      wiki/<id>.md              the public wiki: stories, rules, and principles that the
+                                orchestrator writes through hikari, and your plans and notes
       policies/<name>.md        rules for every agent; you write them
       skills/<name>/SKILL.md    Claude Code skills for every agent; you write them
       agents/<name>.md          Claude Code subagent definitions; you write them
       deliverables/<name>/      what a release must contain and how to make it; you write them
         deliverable.yaml        the description, the layout rules, and the cloud targets
         SKILL.md                the skill that tells the owner how to make the product
-    hubs/<hub>/
-      wiki/<id>.md              the hub wiki: stories, rules, and principles that its orchestrator
-                                writes through hikari, and your plans and notes
     systems/<system>/
       map.yaml                  the public map of the system; hikari writes it from the wiki
       wiki/<id>.md              the system wiki: features, principles, and rules that its owner
@@ -182,7 +173,7 @@ In a project repository, git ignores staging/ and releases/: products
 stay out of git, and hikari commits what agents change in the store.
 
 Every container can read shared/. An owner writes only its own staging/, and
-publishes only the deliverables that the topology grants it. An orchestrator
-reads the maps and releases of the systems in its hubs, and the topology can
-grant any agent read-only access to other systems' releases.
+publishes only the deliverables that the topology grants it. The orchestrator
+reads the maps and releases of every system, and the topology can grant any
+agent read-only access to other systems' releases.
 `

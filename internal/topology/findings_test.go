@@ -8,13 +8,12 @@ import (
 
 func TestFindingPaths(t *testing.T) {
 	cases := map[string]struct{ hikari, services, path string }{
-		"member":       {"  hubs: {h: {orchestrator: a, members: [a, ghost]}}", "  a: {x-hikari: {}}", "x-hikari.hubs.h.members[1]"},
-		"orchestrator": {"  hubs: {h: {orchestrator: ghost, members: [a]}}", "  a: {x-hikari: {}}", "x-hikari.hubs.h.orchestrator"},
-		"name":         {"  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {name: A}}", "services.a.x-hikari.name"},
-		"unreachable":  {"  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {}}\n  b: {x-hikari: {}}", "services.b"},
-		"system repo":  {"  hubs: {h: {orchestrator: a, members: [b]}}", "  a: {x-hikari: {}}\n  b: {x-hikari: {system: {repo: ghost}}}", "services.b.x-hikari.system.repo"},
-		"service key":  {"  hubs: {h: {orchestrator: a}}", "  a: {privileged: true, x-hikari: {}}", "services.a.privileged"},
-		"repo url":     {"  repos: {r: {url: -x}}\n  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {}}", "x-hikari.repos.r.url"},
+		"orchestrator": {"  orchestration: ghost", "  a: {x-hikari: {}}", "x-hikari.orchestration"},
+		"name":         {"  orchestration: a", "  a: {x-hikari: {name: A}}", "services.a.x-hikari.name"},
+		"unreachable":  {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {}}", "services.b"},
+		"system repo":  {"  orchestration: a", "  a: {x-hikari: {}}\n  b: {x-hikari: {system: {repo: ghost}}}", "services.b.x-hikari.system.repo"},
+		"service key":  {"  orchestration: a", "  a: {privileged: true, x-hikari: {}}", "services.a.privileged"},
+		"repo url":     {"  repos: {r: {url: -x}}\n  orchestration: a", "  a: {x-hikari: {}}", "x-hikari.repos.r.url"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

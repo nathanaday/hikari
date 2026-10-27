@@ -1,7 +1,6 @@
 // Package server routes messages between agents and records every message in
-// one log. It is the only authority on the topology: a node can post only to
-// hubs it is in, and can send direct messages only to nodes it shares a hub
-// with.
+// one log. Every agent and the user are in one room: a post reaches everyone,
+// and anyone can send a direct message to anyone else.
 package server
 
 import (
@@ -48,7 +47,7 @@ type Event struct {
 type NodeView struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
-	Hubs        []string   `json:"hubs"`
+	Role        string     `json:"role"`
 	Status      api.Status `json:"status"`
 }
 
@@ -66,14 +65,16 @@ type Snapshot struct {
 	StartFindings []topology.Finding `json:"start_findings,omitempty"`
 	Me            string             `json:"me"`
 	Agents        []NodeView         `json:"agents"`
-	Hubs          []api.HubInfo      `json:"hubs"`
-	Messages      []api.Message      `json:"messages"`
-	Systems       []api.SystemView   `json:"systems"`
-	Vocabularies  []vocab.Vocabulary `json:"vocabularies"`
+	// Participants lists everyone in the room: the orchestrator first and
+	// the user last.
+	Participants []api.Peer       `json:"participants"`
+	Messages     []api.Message    `json:"messages"`
+	Systems      []api.SystemView `json:"systems"`
+	Vocabulary   vocab.Vocabulary `json:"vocabulary"`
 	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
 	Repos        []api.RepoInfo     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
-	// Wikis holds every wiki of the systems and the hubs.
+	// Wikis holds the public wiki and every system wiki.
 	Wikis []api.WikiView `json:"wikis"`
 	// Activity holds the recent steps of each agent.
 	Activity map[string][]api.Activity `json:"activity"`
@@ -145,21 +146,21 @@ func (s *Server) systemChanged(c systems.Change) {
 		v := s.sys.SystemView(c.System)
 		s.publish(Event{Type: "system", System: &v})
 	}
-	// A system's health is the support of the stories of its hubs.
+	// A system's health is the support of the public wiki's documents.
 	refs := []string{}
 	if c.Wiki != "" {
 		refs = append(refs, c.Wiki)
 	}
-	if c.System != "" {
-		refs = append(refs, s.sys.HubRefsOf(c.System)...)
+	if c.System != "" && c.Wiki != api.PublicWikiRef {
+		refs = append(refs, api.PublicWikiRef)
 	}
 	for _, ref := range refs {
 		if v, ok := s.sys.WikiView(ref); ok {
 			s.publish(Event{Type: "wiki", Wiki: &v})
 		}
 	}
-	if c.Hub != "" {
-		v := s.sys.Vocabulary(c.Hub)
+	if c.Vocabulary {
+		v := s.sys.Vocabulary()
 		s.publish(Event{Type: "vocabulary", Vocabulary: &v})
 	}
 }
@@ -190,7 +191,7 @@ func (s *Server) nodeForToken(token string) (string, bool) {
 
 var errForbidden = errors.New("not allowed")
 
-// Send posts to a hub or sends a direct message, as req says.
+// Send posts to the room, or sends a direct message when req.To is set.
 func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 	if strings.TrimSpace(req.Body) == "" {
 		return api.Message{}, errors.New("message body is empty")
@@ -198,48 +199,42 @@ func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 	if len(req.Body) > maxBodyBytes {
 		return api.Message{}, fmt.Errorf("message body exceeds %d bytes", maxBodyBytes)
 	}
-	switch {
-	case req.Hub != "" && req.To != "":
-		return api.Message{}, errors.New("set either hub or to, not both")
-	case req.Hub != "":
-		return s.post(from, req.Hub, req.Body)
-	case req.To != "":
+	if req.To != "" {
 		return s.direct(from, req.To, req.Body)
-	default:
-		return api.Message{}, errors.New("set hub to post to a hub, or to to send a direct message")
 	}
+	return s.post(from, req.Body), nil
 }
 
-func (s *Server) post(from, hub, body string) (api.Message, error) {
-	if !s.topo.InHub(from, hub) {
-		return api.Message{}, fmt.Errorf("%w: %q is not in hub %q; hubs of %q are %s",
-			errForbidden, from, hub, from, list(s.topo.HubsOf(from)))
-	}
-	h := s.topo.Hubs[hub]
-	participants := s.topo.Participants(hub)
+// post sends body to the room. It wakes the orchestrator, every agent it
+// mentions, and every agent when the orchestrator sends it without
+// mentions. Without an orchestrator, a post without mentions wakes every
+// agent.
+func (s *Server) post(from, body string) api.Message {
+	participants := s.topo.Participants()
 	mentioned := map[string]bool{}
 	for name := range mentions(body) {
 		if slices.Contains(participants, name) {
 			mentioned[name] = true
 		}
 	}
+	orch := s.topo.Orchestrator
 	var recipients []recipient
 	for _, p := range participants {
 		if p == from || p == topology.User {
 			continue
 		}
-		wake := p == h.Orchestrator ||
-			mentioned[p] ||
-			(from == h.Orchestrator && len(mentioned) == 0)
+		wake := mentioned[p] || (orch != "" && p == orch) ||
+			(len(mentioned) == 0 && (orch == "" || from == orch))
 		recipients = append(recipients, recipient{name: p, wake: wake})
 	}
-	return s.deliver(api.Message{From: from, Hub: hub, Body: body}, recipients), nil
+	return s.deliver(api.Message{From: from, Body: body}, recipients)
 }
 
 func (s *Server) direct(from, to, body string) (api.Message, error) {
-	if !s.topo.CanDirect(from, to) {
-		return api.Message{}, fmt.Errorf("%w: %q shares no hub with %q; %q can send direct messages to %s",
-			errForbidden, from, to, from, list(s.topo.Contacts(from)))
+	others := slices.DeleteFunc(s.topo.Participants(), func(p string) bool { return p == from })
+	if !slices.Contains(others, to) {
+		return api.Message{}, fmt.Errorf("%w: %q cannot send a direct message to %q; the room is %s",
+			errForbidden, from, to, list(others))
 	}
 	var recipients []recipient
 	if to != topology.User {
@@ -396,49 +391,41 @@ func (s *Server) Self(node string) api.Self {
 		Description:  a.Description,
 		Instructions: a.Instructions,
 		Model:        a.Model,
+		Participants: s.participants(),
+		System:       s.sys.Self(node),
+		Orchestrator: node == s.topo.Orchestrator,
 	}
-	for _, h := range s.topo.HubsOf(node) {
-		self.Hubs = append(self.Hubs, s.hubInfo(h))
-	}
-	self.System, self.Orchestrates = s.sys.Self(node)
 	self.VisibleSystems = s.topo.VisibleSystems(node)
-	self.HubWikis = s.topo.ReadableHubWikis(node)
 	self.Releases = s.topo.ReadableReleases(node)
 	self.Deliverables = s.sys.Deliverables(node)
-	for _, hub := range s.topo.OrchestratedHubs(node) {
-		for _, m := range s.topo.Hubs[hub].Members {
-			if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
-				if self.MemberGrants == nil {
-					self.MemberGrants = map[string][]string{}
-				}
-				self.MemberGrants[m] = g
+	for _, m := range self.VisibleSystems {
+		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
+			if self.OwnerGrants == nil {
+				self.OwnerGrants = map[string][]string{}
 			}
-			if d := s.sys.Deliverables(m); len(d) > 0 {
-				if self.MemberDeliverables == nil {
-					self.MemberDeliverables = map[string][]api.DeliverableInfo{}
-				}
-				self.MemberDeliverables[m] = d
+			self.OwnerGrants[m] = g
+		}
+		if d := s.sys.Deliverables(m); len(d) > 0 {
+			if self.OwnerDeliverables == nil {
+				self.OwnerDeliverables = map[string][]api.DeliverableInfo{}
 			}
+			self.OwnerDeliverables[m] = d
 		}
 	}
 	return self
 }
 
-func (s *Server) hubInfo(hub string) api.HubInfo {
-	h := s.topo.Hubs[hub]
-	info := api.HubInfo{Name: hub, Description: h.Description}
-	for _, p := range s.topo.Participants(hub) {
-		peer := api.Peer{Name: p, Role: api.RoleMember, Description: s.topo.Agents[p].Description}
-		switch p {
-		case h.Orchestrator:
-			peer.Role = api.RoleOrchestrator
-		case topology.User:
-			peer.Role = api.RoleOperator
+// participants lists everyone in the room with a role.
+func (s *Server) participants() []api.Peer {
+	var out []api.Peer
+	for _, p := range s.topo.Participants() {
+		peer := api.Peer{Name: p, Role: s.topo.Role(p), Description: s.topo.Agents[p].Description}
+		if p == topology.User {
 			peer.Description = "The human operator."
 		}
-		info.Participants = append(info.Participants, peer)
+		out = append(out, peer)
 	}
-	return info
+	return out
 }
 
 // Subscribe returns a channel that first receives a snapshot of the server
@@ -492,15 +479,13 @@ func (s *Server) snapshot() Snapshot {
 		snap.Agents = append(snap.Agents, NodeView{
 			Name:        n,
 			Description: s.topo.Agents[n].Description,
-			Hubs:        s.topo.HubsOf(n),
+			Role:        s.topo.Role(n),
 			Status:      s.status[n],
 		})
 	}
-	for _, h := range s.topo.HubNames() {
-		snap.Hubs = append(snap.Hubs, s.hubInfo(h))
-	}
+	snap.Participants = s.participants()
 	snap.Systems = s.sys.Systems()
-	snap.Vocabularies = s.sys.Vocabularies()
+	snap.Vocabulary = s.sys.Vocabulary()
 	snap.Repos = s.sys.Repos()
 	snap.Deliverables = s.deliverables(s.sys.Store())
 	snap.Wikis = s.sys.Wikis()

@@ -31,7 +31,7 @@ func TestCompareVersions(t *testing.T) {
 func newStore(t *testing.T) Store {
 	t.Helper()
 	s := Store{Root: filepath.Join(t.TempDir(), "store")}
-	if err := s.Prepare([]string{"inventory"}, []string{"shop"}); err != nil {
+	if err := s.Prepare([]string{"inventory"}); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -77,7 +77,7 @@ func stage(t *testing.T, s Store, deliverable string, files map[string]string) {
 func input(version string) PublishInput {
 	return PublishInput{
 		System: "inventory", Deliverable: "python-library", Version: version, Notes: "First release.",
-		SourceCommit: "abc123", Map: []byte("version: 3\n"), Wiki: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hubs: []string{"shop"}, Hikari: "0.0.1",
+		SourceCommit: "abc123", Map: []byte("version: 3\n"), Wiki: map[string][]byte{"reserve-stock.md": []byte("---\nid: reserve-stock\n---\n")}, Hikari: "0.0.1",
 		Now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC),
 	}
 }
@@ -227,7 +227,7 @@ func TestPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m.Deliverable != "python-library" || m.Version != "1.0.0" || m.System != "inventory" || m.SourceCommit != "abc123" ||
-		m.Notes != "First release." || m.Map != "map.yaml" || m.Hikari != "0.0.1" || !slices.Equal(m.Hubs, []string{"shop"}) ||
+		m.Notes != "First release." || m.Map != "map.yaml" || m.Hikari != "0.0.1" ||
 		m.Product.Files != 4 || m.Product.Path != "product/" || !strings.HasPrefix(m.Product.Digest, "sha256:") || m.Certificates == nil {
 		t.Errorf("R14 manifest: %+v", m)
 	}
@@ -265,6 +265,12 @@ func TestPublish(t *testing.T) {
 	}
 	if old, err := ParseManifest(append(data, "image: {tag: x, id: y, platform: linux/amd64}\n"...)); err != nil || old.Version != "1.0.0" {
 		t.Errorf("the image key of an older release is ignored: %+v, %v", old, err)
+	}
+	if old, err := ParseManifest(append(data, "hubs: [shop]\n"...)); err != nil || old.Version != "1.0.0" {
+		t.Errorf("the hubs key of an older release is ignored: %+v, %v", old, err)
+	}
+	if strings.Contains(string(data), "hubs:") {
+		t.Errorf("a new manifest has no hubs:\n%s", data)
 	}
 	if _, err := ParseManifest(append(data, "extra: 1\n"...)); err == nil {
 		t.Error("an unknown key of a manifest is an error")
@@ -385,7 +391,7 @@ func TestPublishChecks(t *testing.T) {
 
 func TestPrepare(t *testing.T) {
 	s := newStore(t)
-	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases", "systems/inventory/wiki", "hubs/shop/wiki"} {
+	for _, p := range []string{"README.md", "shared/vocabulary", "shared/policies", "shared/skills", "shared/agents", "shared/deliverables", "systems/inventory/staging", "systems/inventory/releases", "systems/inventory/wiki", "shared/wiki"} {
 		if _, err := os.Stat(filepath.Join(s.Root, p)); err != nil {
 			t.Errorf("L7: missing %s", p)
 		}

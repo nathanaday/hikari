@@ -14,67 +14,52 @@ func compose(hikari, services string) string {
 	return "name: test\nx-hikari:\n" + hikari + "\nservices:\n" + services
 }
 
-// company: ceo orchestrates eng-lead. eng: eng-lead orchestrates dev.
-var tree = compose(`
-  hubs:
-    company: {orchestrator: ceo, members: [eng-lead]}
-    eng: {orchestrator: eng-lead, members: [dev]}`, `
-  ceo: {image: hikari-agent, x-hikari: {description: runs the company}}
-  eng-lead: {image: hikari-agent, x-hikari: {}}
-  dev: {image: hikari-agent, x-hikari: {}}
-`)
-
 func TestParse(t *testing.T) {
-	topo, err := Parse([]byte(tree), t.TempDir())
+	repo := fakeRepo(t, "services/orders", "services/inventory", "proto")
+	topo, err := Parse([]byte(systemsTopology(repo, twoOwners)), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if topo.Name != "test" || topo.Agents["ceo"].Description != "runs the company" {
-		t.Errorf("name %q, ceo %+v", topo.Name, topo.Agents["ceo"])
+	if topo.Name != "test" || topo.Orchestrator != "lead" {
+		t.Errorf("name %q, orchestrator %q", topo.Name, topo.Orchestrator)
 	}
-	if got := topo.Participants("eng"); !slices.Equal(got, []string{"eng-lead", "dev", "user"}) {
-		t.Errorf("Participants(eng) = %v", got)
+	if got := topo.Participants(); !slices.Equal(got, []string{"lead", "inventory", "orders", "user"}) {
+		t.Errorf("Participants() = %v", got)
 	}
-	if got := topo.HubsOf("eng-lead"); !slices.Equal(got, []string{"company", "eng"}) {
-		t.Errorf("HubsOf(eng-lead) = %v", got)
+	if topo.Role("lead") != "orchestrator" || topo.Role("orders") != "owner" || topo.Role(User) != "operator" {
+		t.Error("roles")
 	}
-	if got := topo.HubsOf(User); !slices.Equal(got, []string{"company", "eng"}) {
-		t.Errorf("the user must be in every hub, got %v", got)
+
+	// Without an orchestrator, every agent owns a system.
+	src := strings.Replace(systemsTopology(repo, twoOwners), "  orchestration: lead\n", "", 1)
+	src = strings.Replace(src, "  lead: {x-hikari: {}}\n", "", 1)
+	topo, err = Parse([]byte(src), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := topo.Contacts("eng-lead"); !slices.Equal(got, []string{"ceo", "dev", "user"}) {
-		t.Errorf("Contacts(eng-lead) = %v", got)
-	}
-	if topo.CanDirect("dev", "ceo") {
-		t.Error("dev and ceo share no hub")
-	}
-	if !topo.CanDirect(User, "dev") {
-		t.Error("the user can reach every agent")
-	}
-	if topo.InHub("dev", "company") {
-		t.Error("dev is not in company")
+	if got := topo.Participants(); topo.Orchestrator != "" || !slices.Equal(got, []string{"inventory", "orders", "user"}) {
+		t.Errorf("Participants() = %v", got)
 	}
 }
 
 func TestParseErrors(t *testing.T) {
-	hub := "  hubs: {h: {orchestrator: a}}"
+	orch := "  orchestration: a"
 	cases := map[string]struct{ src, want string }{
+		"hubs":             {compose("  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {}}"), "field hubs not found"},
+		"sidecar":          {compose("  orchestration: db", "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a}}"), `"db" is not an agent's service id`},
+		"user":             {compose("  orchestration: user", "  a: {x-hikari: {}}"), `"user" is not an agent's service id`},
 		"empty":            {``, "is empty"},
-		"C1 no name":       {strings.Replace(compose(hub, "  a: {x-hikari: {}}"), "name: test\n", "", 1), "no top-level name"},
+		"C1 no name":       {strings.Replace(compose(orch, "  a: {x-hikari: {}}"), "name: test\n", "", 1), "no top-level name"},
 		"no x-hikari":      {"name: t\nservices: {a: {x-hikari: {}}}", "no top-level x-hikari"},
-		"unknown key":      {compose(hub+"\n  agents: {}", "  a: {x-hikari: {}}"), "field agents not found"},
-		"C2 plain service": {compose(hub, "  a: {x-hikari: {}}\n  db: {image: postgres}"), `service "db" has no x-hikari key`},
-		"C2 both":          {compose(hub, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a, description: x}}"), "its x-hikari holds only serves"},
-		"unknown field":    {compose(hub, "  a: {x-hikari: {packages: [python3]}}"), "field packages not found"},
-		"C6 serves":        {compose(hub, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: ghost}}"), `serves "ghost", which is not an agent`},
-		"no hubs":          {compose("  store: s", "  a: {x-hikari: {}}"), "no hubs"},
-		"reserved name":    {compose("  hubs: {h: {orchestrator: user}}", "  user: {x-hikari: {}}"), "reserved"},
-		"C3 bad name":      {compose("  hubs: {h: {orchestrator: a_b}}", "  a_b: {x-hikari: {}}"), `invalid agent name "a_b"`},
-		"no orchestrator":  {compose("  hubs: {h: {members: [a]}}", "  a: {x-hikari: {}}"), "no orchestrator"},
-		"unknown member":   {compose("  hubs: {h: {orchestrator: a, members: [b]}}", "  a: {x-hikari: {}}"), `unknown agent "b"`},
-		"sidecar member":   {compose("  hubs: {h: {orchestrator: a, members: [db]}}", "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a}}"), `unknown agent "db"`},
-		"duplicate member": {compose("  hubs: {h: {orchestrator: a, members: [a]}}", "  a: {x-hikari: {}}"), "more than once"},
-		"name clash":       {compose("  hubs: {a: {orchestrator: a}}", "  a: {x-hikari: {}}"), "same name as an agent"},
-		"unreachable":      {compose(hub, "  a: {x-hikari: {}}\n  b: {x-hikari: {}}"), `"b" is in no hub`},
+		"unknown key":      {compose(orch+"\n  agents: {}", "  a: {x-hikari: {}}"), "field agents not found"},
+		"C2 plain service": {compose(orch, "  a: {x-hikari: {}}\n  db: {image: postgres}"), `service "db" has no x-hikari key`},
+		"C2 both":          {compose(orch, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a, description: x}}"), "its x-hikari holds only serves"},
+		"unknown field":    {compose(orch, "  a: {x-hikari: {packages: [python3]}}"), "field packages not found"},
+		"C6 serves":        {compose(orch, "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: ghost}}"), `serves "ghost", which is not an agent`},
+		"no system":        {compose("  store: s", "  a: {x-hikari: {}}"), `agent "a" owns no system and is not the orchestrator`},
+		"reserved name":    {compose("  orchestration: user", "  user: {x-hikari: {}}"), "reserved"},
+		"C3 bad name":      {compose("  orchestration: a_b", "  a_b: {x-hikari: {}}"), `invalid agent name "a_b"`},
+		"unreachable":      {compose(orch, "  a: {x-hikari: {}}\n  b: {x-hikari: {}}"), `agent "b" owns no system and is not the orchestrator`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -103,8 +88,7 @@ func systemsTopology(repo, services string) string {
 	return compose(`
   repos:
     shop: {path: `+repo+`, branch: hikari/work}
-  hubs:
-    h: {orchestrator: lead, members: [orders, inventory]}`, `
+  orchestration: lead`, `
   lead: {x-hikari: {}}
 `+services)
 }
@@ -129,9 +113,6 @@ func TestSystems(t *testing.T) {
 	}
 	if got := topo.Agents["inventory"].System.Scope; got != "services/inventory" {
 		t.Errorf("scope is not cleaned: %q", got)
-	}
-	if got := topo.OrchestratedHubs("lead"); !slices.Equal(got, []string{"h"}) {
-		t.Errorf("OrchestratedHubs(lead) = %v", got)
 	}
 	if got := topo.VisibleSystems("lead"); !slices.Equal(got, []string{"inventory", "orders"}) {
 		t.Errorf("VisibleSystems(lead) = %v", got)
@@ -202,7 +183,7 @@ func TestSystemErrors(t *testing.T) {
 		},
 		"T7 orchestrator owns a system": {
 			strings.Replace(systemsTopology(repo, valid), "lead: {x-hikari: {}}", "lead: {x-hikari: {system: {repo: shop, scope: proto}}}", 1),
-			"an orchestrator cannot own a system",
+			"the orchestrator cannot own a system",
 		},
 	}
 	for name, c := range cases {
@@ -225,12 +206,12 @@ func TestUnusedRepo(t *testing.T) {
 }
 
 func TestEveryViolationIsReported(t *testing.T) {
-	src := compose("  hubs: {h: {orchestrator: ok}}", "  Bad: {x-hikari: {}}\n  ok: {x-hikari: {}, privileged: true}")
+	src := compose("  orchestration: ok", "  Bad: {x-hikari: {}}\n  ok: {x-hikari: {}, privileged: true}")
 	_, err := Parse([]byte(src), t.TempDir())
 	if err == nil {
 		t.Fatal("expected errors")
 	}
-	for _, want := range []string{`invalid agent name "Bad"`, `agent "Bad" is in no hub`, `service "ok": sets privileged`} {
+	for _, want := range []string{`invalid agent name "Bad"`, `agent "Bad" owns no system and is not the orchestrator`, `service "ok": sets privileged`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error lacks %q:\n%v", want, err)
 		}
@@ -419,8 +400,7 @@ WARN[0000] plain warning
 func projectTopology(extra, services string) string {
 	return compose(`
   project: {branch: hikari}`+extra+`
-  hubs:
-    h: {orchestrator: lead, members: [site]}`, `
+  orchestration: lead`, `
   lead: {x-hikari: {}}
 `+services)
 }
@@ -444,11 +424,11 @@ func TestProject(t *testing.T) {
 	}
 
 	// PR6: the project repository need not hold a system.
-	if _, err := Parse([]byte(projectTopology("", "  site: {x-hikari: {}}\n")), dir); err != nil {
+	if _, err := Parse([]byte(projectTopology("", "")), dir); err != nil {
 		t.Errorf("PR6: %v", err)
 	}
 	// Without the key there is no project, and the store is anywhere.
-	plain, err := Parse([]byte(tree), dir)
+	plain, err := Parse([]byte(compose("  orchestration: a", "  a: {x-hikari: {}}")), dir)
 	if err != nil || plain.Project != nil || plain.StoreInProject() != "" {
 		t.Errorf("no project key: %+v, %v", plain.Project, err)
 	}
@@ -481,36 +461,13 @@ func TestProjectErrors(t *testing.T) {
 	}
 }
 
-func TestHubRelations(t *testing.T) {
-	topo, err := Parse([]byte(tree), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := topo.ChildHubs("company"); !slices.Equal(got, []string{"eng"}) {
-		t.Errorf("ChildHubs(company) = %v", got)
-	}
-	if got := topo.ParentHubs("eng"); !slices.Equal(got, []string{"company"}) {
-		t.Errorf("ParentHubs(eng) = %v", got)
-	}
-	if got := topo.MemberHubs("eng-lead"); !slices.Equal(got, []string{"company"}) {
-		t.Errorf("MemberHubs(eng-lead) = %v", got)
-	}
-	if got := topo.ReadableHubWikis("ceo"); !slices.Equal(got, []string{"company", "eng"}) {
-		t.Errorf("A2 ReadableHubWikis(ceo) = %v", got)
-	}
-	if got := topo.ReadableHubWikis("dev"); !slices.Equal(got, []string{"eng"}) {
-		t.Errorf("A1 ReadableHubWikis(dev) = %v", got)
-	}
-}
-
 // linkedTopology is a project with the linked repo app, owned by dev.
 func linkedTopology(repo string) string {
 	return compose(`
   project: {branch: hikari-alex}
   repos:
     app: `+repo+`
-  hubs:
-    h: {orchestrator: lead, members: [dev]}`, `
+  orchestration: lead`, `
   lead: {x-hikari: {}}
   dev: {x-hikari: {system: {repo: app, scope: src}}}
 `)
@@ -582,8 +539,7 @@ func TestUnusedLinkedRepoIsAWarning(t *testing.T) {
   project: {branch: hikari}
   repos:
     app: {url: https://example.com/app.git}
-  hubs:
-    h: {orchestrator: lead}`, `
+  orchestration: lead`, `
   lead: {x-hikari: {}}
 `)
 	topo, err := Parse([]byte(src), dir)
@@ -602,8 +558,7 @@ func TestDraft(t *testing.T) {
   repos:
     app: {url: https://example.com/app.git}
     lib: {path: `+filepath.Join(dir, "nowhere")+`, branch: hikari}
-  hubs:
-    h: {orchestrator: lead, members: [api, util]}`, `
+  orchestration: lead`, `
   lead: {x-hikari: {}}
   api: {x-hikari: {system: {repo: app, scope: api}}}
   util: {x-hikari: {system: {repo: lib, scope: src, read: [proto]}}}

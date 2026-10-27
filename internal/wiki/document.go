@@ -1,4 +1,4 @@
-// Package wiki holds the wiki of one system or one hub: one markdown
+// Package wiki holds one wiki, of a system or the public wiki: one markdown
 // document per entry, with a property header that the server checks and a
 // body for people and agents. A document has a kind: agents write features,
 // principles, rules, and stories; the user writes plans and notes.
@@ -46,8 +46,6 @@ type Document struct {
 	Interfaces  []string
 	// Related holds the ids that the related property links.
 	Related []string
-	// Key marks a key story; only the user sets it (rule K3).
-	Key bool
 	// Status is a plan's status, which hikari shows and never reads.
 	Status string
 	// Created is the time of the create write. A document from before the
@@ -132,7 +130,7 @@ func Parse(text string) (*Document, error) {
 		case "kind":
 			d.Kind, err = scalar(val)
 		case "key":
-			d.Key, err = boolean(val)
+			// The key flag of an older story is ignored.
 		case "status":
 			d.Status, err = scalar(val)
 		case "name":
@@ -180,19 +178,6 @@ func scalar(n *yaml.Node) (string, error) {
 		return "", errors.New("must be one value")
 	}
 	return n.Value, nil
-}
-
-func boolean(n *yaml.Node) (bool, error) {
-	s, err := scalar(n)
-	switch {
-	case err != nil:
-		return false, err
-	case s == "true":
-		return true, nil
-	case s == "false" || s == "":
-		return false, nil
-	}
-	return false, fmt.Errorf("%q is not true or false", s)
 }
 
 func list(n *yaml.Node) ([]string, error) {
@@ -292,9 +277,6 @@ func (d *Document) Render() string {
 			links[i] = "[[" + id + "]]"
 		}
 		add("related", flow(links))
-	}
-	if d.Key {
-		add("key", &yaml.Node{Kind: yaml.ScalarNode, Value: "true", Tag: "!!bool"})
 	}
 	if d.Status != "" {
 		add("status", str(d.Status))

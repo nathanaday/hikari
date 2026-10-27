@@ -26,26 +26,63 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// company: ceo orchestrates lead. eng: lead orchestrates writer and critic.
+// testTopology is the room of the tests: lead orchestrates the owners
+// writer and critic, whose code is in the repo REPO.
 const testTopology = `
 name: test
 x-hikari:
-  hubs:
-    company: {orchestrator: ceo, members: [lead]}
-    eng: {orchestrator: lead, members: [writer, critic]}
+  repos: {app: {path: 'REPO', branch: hikari/work}}
+  orchestration: lead
 services:
-  ceo: {x-hikari: {description: runs the company}}
   lead: {x-hikari: {description: leads engineering}}
-  writer: {x-hikari: {description: writes}}
-  critic: {x-hikari: {description: reviews}}
+  writer: {x-hikari: {description: writes, system: {repo: app, scope: writer}}}
+  critic: {x-hikari: {description: reviews, system: {repo: app, scope: critic}}}
 `
 
-func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
+// flatTopology is the room without an orchestrator: lead owns a system too.
+var flatTopology = strings.NewReplacer(
+	"  orchestration: lead\n", "",
+	"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {description: leads engineering, system: {repo: app, scope: lead}}}",
+).Replace(testTopology)
+
+// gitRepo makes a git repo with one file in each of dirs, and returns its
+// path.
+func gitRepo(t *testing.T, dir string, dirs ...string) string {
 	t.Helper()
-	topo, err := topology.Parse([]byte(testTopology), t.TempDir())
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, k := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(k+"_NAME", "Test User")
+		t.Setenv(k+"_EMAIL", "user@example.com")
+	}
+	repo := filepath.Join(dir, "app")
+	for _, d := range dirs {
+		os.MkdirAll(filepath.Join(repo, d), 0o755)
+		os.WriteFile(filepath.Join(repo, d, "main.py"), []byte("x\n"), 0o644)
+	}
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", "--all"}, {"commit", "--quiet", "-m", "initial"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	return repo
+}
+
+// parseRoom parses src, a topology of the tests, with its repo.
+func parseRoom(t *testing.T, src string) *topology.Topology {
+	t.Helper()
+	dir := t.TempDir()
+	repo := gitRepo(t, dir, "writer", "critic", "lead")
+	topo, err := topology.Parse([]byte(strings.ReplaceAll(src, "REPO", repo)), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return topo
+}
+
+func newServerOf(t *testing.T, src string) (*Server, *bytes.Buffer) {
+	t.Helper()
+	topo := parseRoom(t, src)
 	sys, err := systems.New(topo)
 	if err != nil {
 		t.Fatal(err)
@@ -54,34 +91,37 @@ func newTestServer(t *testing.T) (*Server, *bytes.Buffer) {
 	return New(topo, &journal, sys), &journal
 }
 
-func post(hub, body string) api.SendRequest { return api.SendRequest{Hub: hub, Body: body} }
-func dm(to, body string) api.SendRequest    { return api.SendRequest{To: to, Body: body} }
+func newTestServer(t *testing.T) (*Server, *bytes.Buffer) { return newServerOf(t, testTopology) }
 
+func post(body string) api.SendRequest   { return api.SendRequest{Body: body} }
+func dm(to, body string) api.SendRequest { return api.SendRequest{To: to, Body: body} }
+
+// TestWakeRules runs the cases of web/src/lib/fixtures/wake.json, which
+// web/src/lib/rules.test.ts runs too (rule H6 of the remove-hubs spec).
 func TestWakeRules(t *testing.T) {
-	cases := []struct {
-		name string
-		from string
-		body string
-		woke []string
-	}{
-		{"user post wakes only the orchestrator", "user", "hello team", []string{"lead"}},
-		{"a mention also wakes that member", "user", "@writer draft it", []string{"lead", "writer"}},
-		{"orchestrator post without mentions wakes all", "lead", "plan: write then review", []string{"critic", "writer"}},
-		{"orchestrator post with a mention wakes that member", "lead", "@critic review this", []string{"critic"}},
-		{"member post wakes the orchestrator", "writer", "draft done", []string{"lead"}},
-		{"member can wake another member", "writer", "@critic please look", []string{"critic", "lead"}},
-		{"mentions outside the hub do not count", "lead", "I report to @ceo", []string{"critic", "writer"}},
-		{"an email address is not a mention", "lead", "mail a@writer.dev", []string{"critic", "writer"}},
+	data, err := os.ReadFile("../../web/src/lib/fixtures/wake.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			s, _ := newTestServer(t)
-			m, err := s.Send(c.from, post("eng", c.body))
+	var file struct {
+		Cases []struct {
+			Name, Room, From, To, Body string
+			Woke                       []string
+		}
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	rooms := map[string]string{"orchestrated": testTopology, "flat": flatTopology}
+	for _, c := range file.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			s, _ := newServerOf(t, rooms[c.Room])
+			m, err := s.Send(c.From, api.SendRequest{To: c.To, Body: c.Body})
 			if err != nil {
 				t.Fatal(err)
 			}
 			woke := slices.Sorted(slices.Values(m.Woke))
-			if want := slices.Sorted(slices.Values(c.woke)); !slices.Equal(woke, want) {
+			if want := slices.Sorted(slices.Values(c.Woke)); !slices.Equal(woke, want) {
 				t.Errorf("woke %v, want %v", woke, want)
 			}
 		})
@@ -90,14 +130,11 @@ func TestWakeRules(t *testing.T) {
 
 func TestEveryParticipantReceivesPosts(t *testing.T) {
 	s, _ := newTestServer(t)
-	s.Send("user", post("eng", "hello"))
+	s.Send("user", post("hello"))
 	for _, n := range []string{"lead", "writer", "critic"} {
 		if msgs := s.Take(context.Background(), n, 0); len(msgs) != 1 {
 			t.Errorf("%s received %d messages, want 1", n, len(msgs))
 		}
-	}
-	if msgs := s.Take(context.Background(), "ceo", 0); len(msgs) != 0 {
-		t.Errorf("ceo is not in eng but received %+v", msgs)
 	}
 }
 
@@ -107,11 +144,11 @@ func TestAccess(t *testing.T) {
 		req  api.SendRequest
 	}{
 		{"user", dm("writer", "x")},
-		{"user", post("company", "x")},
+		{"user", post("x")},
 		{"writer", dm("critic", "x")},
 		{"writer", dm("user", "x")},
-		{"lead", post("company", "x")},
-		{"lead", dm("ceo", "x")},
+		{"writer", dm("lead", "x")},
+		{"lead", post("x")},
 	}
 	for _, c := range allowed {
 		if _, err := fresh(t).Send(c.from, c.req); err != nil {
@@ -123,13 +160,9 @@ func TestAccess(t *testing.T) {
 		req  api.SendRequest
 	}{
 		{"writer", dm("ceo", "x")},
-		{"writer", post("company", "x")},
-		{"ceo", post("eng", "x")},
 		{"writer", dm("writer", "x")},
-		{"writer", post("nope", "x")},
-		{"writer", api.SendRequest{Hub: "eng", To: "critic", Body: "x"}},
-		{"writer", api.SendRequest{Body: "x"}},
-		{"writer", post("eng", "  ")},
+		{"writer", post("  ")},
+		{"writer", dm("critic", "")},
 	}
 	for _, c := range denied {
 		if _, err := fresh(t).Send(c.from, c.req); err == nil {
@@ -146,7 +179,7 @@ func fresh(t *testing.T) *Server {
 func TestTakeWaitsForWakingMessage(t *testing.T) {
 	s, journal := newTestServer(t)
 	ctx := context.Background()
-	s.Send("writer", post("eng", "draft done")) // reaches critic without waking it
+	s.Send("writer", post("draft done")) // reaches critic without waking it
 	if msgs := s.Take(ctx, "critic", 20*time.Millisecond); msgs != nil {
 		t.Fatalf("Take returned %+v before a waking message", msgs)
 	}
@@ -155,8 +188,8 @@ func TestTakeWaitsForWakingMessage(t *testing.T) {
 		s.Send("writer", dm("critic", "please review"))
 	}()
 	msgs := s.Take(ctx, "critic", time.Second)
-	if len(msgs) != 2 || msgs[0].Hub != "eng" || msgs[1].To != "critic" {
-		t.Fatalf("Take = %+v, want the hub post then the direct message", msgs)
+	if len(msgs) != 2 || msgs[0].To != "" || msgs[1].To != "critic" {
+		t.Fatalf("Take = %+v, want the post then the direct message", msgs)
 	}
 	if n := strings.Count(journal.String(), "\n"); n != 2 {
 		t.Fatalf("journal has %d lines, want 2", n)
@@ -165,7 +198,7 @@ func TestTakeWaitsForWakingMessage(t *testing.T) {
 
 func TestTakeWithoutWaitDrainsInbox(t *testing.T) {
 	s, _ := newTestServer(t)
-	s.Send("writer", post("eng", "draft done"))
+	s.Send("writer", post("draft done"))
 	if msgs := s.Take(context.Background(), "critic", 0); len(msgs) != 1 {
 		t.Fatalf("Take(0) = %+v, want the passive message", msgs)
 	}
@@ -207,22 +240,19 @@ func TestNodeAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(self.Hubs) != 2 || self.Hubs[1].Name != "eng" {
-		t.Fatalf("lead hubs = %+v", self.Hubs)
-	}
-	eng := self.Hubs[1].Participants
-	if eng[0].Name != "lead" || eng[0].Role != api.RoleOrchestrator || eng[len(eng)-1].Role != api.RoleOperator {
-		t.Fatalf("eng participants = %+v", eng)
+	room := self.Participants
+	if !self.Orchestrator || len(room) != 4 || room[0].Name != "lead" || room[0].Role != api.RoleOrchestrator || room[1].Role != api.RoleOwner || room[3].Role != api.RoleOperator {
+		t.Fatalf("lead's room = %+v", room)
 	}
 
-	if _, err := writer.Send(ctx, dm("ceo", "x")); err == nil || !strings.Contains(err.Error(), "can send direct messages to critic, lead, user") {
+	if _, err := writer.Send(ctx, dm("ceo", "x")); err == nil || !strings.Contains(err.Error(), "the room is lead, critic, user") {
 		t.Fatalf("writer->ceo error = %v", err)
 	}
-	if _, err := lead.Send(ctx, post("eng", "@writer go")); err != nil {
+	if _, err := lead.Send(ctx, post("@writer go")); err != nil {
 		t.Fatal(err)
 	}
 	msgs, err := writer.Inbox(ctx, time.Second)
-	if err != nil || len(msgs) != 1 || msgs[0].Hub != "eng" {
+	if err != nil || len(msgs) != 1 || msgs[0].To != "" {
 		t.Fatalf("writer inbox = %+v, %v", msgs, err)
 	}
 
@@ -288,11 +318,11 @@ func TestUIRequiresToken(t *testing.T) {
 		t.Fatal("event stream ended")
 		return Event{}
 	}
-	if e := next(); e.Type != "snapshot" || len(e.Snapshot.Agents) != 4 || len(e.Snapshot.Hubs) != 2 {
+	if e := next(); e.Type != "snapshot" || len(e.Snapshot.Agents) != 3 || len(e.Snapshot.Participants) != 4 {
 		t.Fatalf("first event = %+v", e)
 	}
 
-	for _, body := range []string{`{"hub":"company","body":"hello"}`, `{"to":"critic","body":"hi"}`} {
+	for _, body := range []string{`{"body":"hello"}`, `{"to":"critic","body":"hi"}`} {
 		resp, err = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(body))
 		if err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("UI send %s = %v, %v", body, resp.Status, err)
@@ -302,9 +332,9 @@ func TestUIRequiresToken(t *testing.T) {
 		}
 	}
 
-	resp, _ = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(`{"hub":"nope","body":"hello"}`))
+	resp, _ = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(`{"to":"nope","body":"hello"}`))
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("UI post to unknown hub = %s", resp.Status)
+		t.Fatalf("UI message to an unknown agent = %s", resp.Status)
 	}
 }
 
@@ -328,7 +358,7 @@ func TestSystemRoutes(t *testing.T) {
 name: test
 x-hikari:
   repos: {shop: {path: shop, branch: hikari/work}}
-  hubs: {h: {orchestrator: lead, members: [orders]}}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
   orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
@@ -354,8 +384,8 @@ services:
 	events, cancel := s.Subscribe()
 	defer cancel()
 	snap := (<-events).Snapshot
-	if len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || len(snap.Vocabularies) != 1 {
-		t.Fatalf("snapshot systems = %+v, vocabularies = %+v", snap.Systems, snap.Vocabularies)
+	if len(snap.Systems) != 1 || snap.Systems[0].Owner != "orders" || snap.Vocabulary.Terms == nil {
+		t.Fatalf("snapshot systems = %+v, vocabulary = %+v", snap.Systems, snap.Vocabulary)
 	}
 	if len(snap.Repos) != 1 || snap.Repos[0].Name != "shop" || snap.Repos[0].Branch != "hikari/work" || !slices.Equal(snap.Repos[0].Systems, []string{"orders"}) {
 		t.Errorf("N2: repos = %+v", snap.Repos)
@@ -375,10 +405,11 @@ services:
 		t.Fatalf("owner self = %+v, %v", self.System, err)
 	}
 	purpose := "## Purpose\n\nA customer places an order.\n"
-	if _, err := orders.ChangeWiki(ctx, "", []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
+	if _, err := orders.ChangeWiki(ctx, false, []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
 		t.Fatal(err)
 	}
-	// One change sends the wiki, the system, and the support of its hub.
+	// One change sends the wiki, the system, and the support of the public
+	// wiki.
 	got := map[string]bool{}
 	for range 3 {
 		e := <-events
@@ -387,8 +418,8 @@ services:
 			got["system wiki"] = true
 		case e.Type == "system" && e.System.Owner == "orders" && len(e.System.Features) == 1:
 			got["system"] = true
-		case e.Type == "wiki" && e.Wiki.Ref == "hub:h":
-			got["hub wiki"] = true
+		case e.Type == "wiki" && e.Wiki.Ref == "public":
+			got["public wiki"] = true
 		default:
 			t.Fatalf("event = %+v", e)
 		}
@@ -396,7 +427,7 @@ services:
 	if len(got) != 3 {
 		t.Errorf("events = %v", got)
 	}
-	if _, err := orders.ChangeWiki(ctx, "", []wiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {
+	if _, err := orders.ChangeWiki(ctx, false, []wiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {
 		t.Errorf("invalid feature error = %v", err)
 	}
 
@@ -404,19 +435,22 @@ services:
 	if err != nil || len(systemsList) != 1 || systemsList[0].Features[testmap.Untested] != 1 {
 		t.Errorf("lead list = %+v, %v", systemsList, err)
 	}
-	if _, err := orders.ListSystems(ctx); err == nil || !strings.Contains(err.Error(), "only orchestrators") {
+	if _, err := orders.ListSystems(ctx); err == nil || !strings.Contains(err.Error(), "only \"lead\", the orchestrator") {
 		t.Errorf("owner list error = %v", err)
 	}
 	if _, err := lead.GetSystem(ctx, "ghost"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("unknown system error = %v", err)
 	}
-	if err := lead.ChangeVocabulary(ctx, "h", api.VocabularyChange{Op: "define_term", Term: &vocab.Term{Term: "order", Definition: "A request."}}); err != nil {
+	if err := lead.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_term", Term: &vocab.Term{Term: "order", Definition: "A request."}}); err != nil {
 		t.Fatal(err)
 	}
 	if e := <-events; e.Type != "vocabulary" || len(e.Vocabulary.Terms) != 1 {
 		t.Fatalf("vocabulary event = %+v", e)
 	}
-	if err := orders.ChangeVocabulary(ctx, "h", api.VocabularyChange{Op: "remove", Name: "order"}); err == nil {
+	if v, err := orders.GetVocabulary(ctx); err != nil || len(v.Terms) != 1 {
+		t.Errorf("an owner reads the vocabulary: %+v, %v", v, err)
+	}
+	if err := orders.ChangeVocabulary(ctx, api.VocabularyChange{Op: "remove", Name: "order"}); err == nil {
 		t.Error("an owner changed the vocabulary")
 	}
 	if commit, err := orders.Commit(ctx, "Add the map"); err != nil || commit == "" {
@@ -447,7 +481,7 @@ func TestPublishAnnouncesTheRelease(t *testing.T) {
 name: test
 x-hikari:
   repos: {shop: {path: shop, branch: hikari/work}}
-  hubs: {h: {orchestrator: lead, members: [orders]}}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
   orders: {x-hikari: {system: {repo: shop, scope: orders}, grants: {deliverables: [lib]}}}
@@ -493,23 +527,20 @@ services:
 		t.Errorf("release = %+v", rel)
 	}
 	msgs := s.Take(ctx, "lead", time.Second)
-	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].Hub != "h" || msgs[0].Body != "Released orders lib 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
+	if len(msgs) != 1 || msgs[0].From != "orders" || msgs[0].To != "" || msgs[0].Body != "Released orders lib 1.0.0: First release." || !slices.Contains(msgs[0].Woke, "lead") {
 		t.Errorf("R18 announcement = %+v", msgs)
 	}
 	self := s.Self("orders")
 	if len(self.Deliverables) != 1 || self.Deliverables[0].Description != "The library." {
 		t.Errorf("Self.Deliverables = %+v", self.Deliverables)
 	}
-	if lead := s.Self("lead"); len(lead.MemberDeliverables["orders"]) != 1 {
-		t.Errorf("Self.MemberDeliverables = %+v", lead.MemberDeliverables)
+	if lead := s.Self("lead"); len(lead.OwnerDeliverables["orders"]) != 1 {
+		t.Errorf("Self.OwnerDeliverables = %+v", lead.OwnerDeliverables)
 	}
 }
 
 func TestStoreRoutes(t *testing.T) {
-	topo, err := topology.Parse([]byte(testTopology), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	topo := parseRoom(t, testTopology)
 	sys, err := systems.New(topo)
 	if err != nil {
 		t.Fatal(err)
@@ -582,7 +613,7 @@ func TestActivity(t *testing.T) {
 	defer cancel()
 	<-events // the snapshot
 
-	s.AddActivity("writer", api.Activity{ID: 1, Turn: 1, Kind: api.ActivityTurn, Text: "woken by user in #eng"})
+	s.AddActivity("writer", api.Activity{ID: 1, Turn: 1, Kind: api.ActivityTurn, Text: "woken by user in the room"})
 	s.AddActivity("writer", api.Activity{ID: 2, Turn: 1, Kind: api.ActivityTool, Tool: "Read"})
 	s.AddActivity("writer", api.Activity{ID: 2, Turn: 1, Kind: api.ActivityTool, Tool: "Read", Output: "ok", Done: true})
 	s.AddActivity("writer", api.Activity{ID: 3, Turn: 1, Kind: api.ActivityDone, Text: "Should I add it?", Done: true})
@@ -600,7 +631,7 @@ func TestActivity(t *testing.T) {
 	}
 
 	s.AddActivity("writer", api.Activity{ID: 4, Turn: 2, Kind: api.ActivityTurn})
-	s.Send("writer", post("eng", "done"))
+	s.Send("writer", post("done"))
 	s.AddActivity("writer", api.Activity{ID: 5, Turn: 2, Kind: api.ActivityDone, Text: "Posted the draft.", Done: true})
 	list = s.snapshot().Activity["writer"]
 	if list[len(list)-1].Unheard {
@@ -620,27 +651,22 @@ func TestActivity(t *testing.T) {
 // use names (rule ID12 of the ids spec).
 func TestRenamedNodesRouteByName(t *testing.T) {
 	src := strings.NewReplacer(
-		"eng: {orchestrator: lead", "eng: {name: platform, orchestrator: lead",
-		"writer: {x-hikari: {description: writes}}", "writer: {x-hikari: {name: scribe, description: writes}}",
+		"writer: {x-hikari: {description: writes,", "writer: {x-hikari: {name: scribe, description: writes,",
+		"lead: {x-hikari: {description: leads engineering}}", "lead: {x-hikari: {name: chief, description: leads engineering}}",
 	).Replace(testTopology)
-	topo, err := topology.Parse([]byte(src), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	s, _ := newServerOf(t, src)
+	m, err := s.Send("chief", post("@scribe draft it"))
+	if err != nil || !slices.Equal(m.Woke, []string{"scribe"}) {
+		t.Errorf("a post wakes the renamed agent: %+v, %v", m, err)
 	}
-	sys, err := systems.New(topo)
-	if err != nil {
-		t.Fatal(err)
+	if m, err := s.Send("scribe", post("done")); err != nil || !slices.Equal(m.Woke, []string{"chief"}) {
+		t.Errorf("a post wakes the renamed orchestrator: %+v, %v", m, err)
 	}
-	s := New(topo, nil, sys)
-	m, err := s.Send("lead", post("platform", "@scribe draft it"))
-	if err != nil || m.Hub != "platform" || !slices.Equal(m.Woke, []string{"scribe"}) {
-		t.Errorf("a post to a renamed hub wakes the renamed agent: %+v, %v", m, err)
-	}
-	if _, err := s.Send("lead", dm("writer", "hi")); err == nil {
+	if _, err := s.Send("chief", dm("writer", "hi")); err == nil {
 		t.Error("an agent's id is not an address")
 	}
 	self := s.Self("scribe")
-	if self.Name != "scribe" || len(self.Hubs) != 1 || self.Hubs[0].Name != "platform" {
+	if self.Name != "scribe" || self.Participants[0].Name != "chief" || self.Orchestrator {
 		t.Errorf("Self(scribe) = %+v", self)
 	}
 	if snap := s.snapshot(); snap.Project != "test" {

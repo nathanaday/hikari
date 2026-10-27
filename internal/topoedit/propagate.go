@@ -13,7 +13,7 @@ import (
 )
 
 // Occurrence is one place where a rename can propagate (rule TP2): @name of
-// an agent or #name of a hub in a wiki body or a vocabulary description.
+// an agent in a wiki body or a vocabulary description.
 type Occurrence struct {
 	// Key is <store path>:<line>:<column>. A map summary has no key: its
 	// owner writes it (rule TP4).
@@ -26,15 +26,8 @@ type Occurrence struct {
 	To      string `json:"to"`
 }
 
-func sigil(kind string) string {
-	if kind == "hub" {
-		return "#"
-	}
-	return "@"
-}
-
-func mention(kind, name string) *regexp.Regexp {
-	return regexp.MustCompile(`(^|[^A-Za-z0-9_-])(` + regexp.QuoteMeta(sigil(kind)+name) + `)($|[^A-Za-z0-9_-])`)
+func mention(name string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^A-Za-z0-9_-])(` + regexp.QuoteMeta("@"+name) + `)($|[^A-Za-z0-9_-])`)
 }
 
 // region is the lines of a file that propagation may change: from and to,
@@ -58,11 +51,11 @@ func Occurrences(store string, renames []Rename) []Occurrence {
 			for n := r.from; n <= r.to && n <= len(lines); n++ {
 				line := lines[n-1]
 				for _, rn := range renames {
-					re := mention(rn.Kind, rn.From)
+					re := mention(rn.From)
 					for _, m := range re.FindAllStringSubmatchIndex(line, -1) {
 						start, end := m[4], m[5]
-						o := Occurrence{File: f.rel, Line: n, Text: line, From: sigil(rn.Kind) + rn.From, To: sigil(rn.Kind) + rn.To,
-							Replace: line[:start] + sigil(rn.Kind) + rn.To + line[end:]}
+						o := Occurrence{File: f.rel, Line: n, Text: line, From: "@" + rn.From, To: "@" + rn.To,
+							Replace: line[:start] + "@" + rn.To + line[end:]}
 						if f.keyed {
 							o.Key = fmt.Sprintf("%s:%d:%d", f.rel, n, start+1)
 						}
@@ -83,17 +76,15 @@ type propagationFile struct {
 
 func propagationFiles(store string) []propagationFile {
 	var out []propagationFile
-	for _, pattern := range []string{"systems/*/wiki/*.md", "hubs/*/wiki/*.md"} {
+	for _, pattern := range []string{"systems/*/wiki/*.md", "shared/wiki/*.md"} {
 		matches, _ := filepath.Glob(filepath.Join(store, filepath.FromSlash(pattern)))
 		for _, m := range matches {
 			rel, _ := filepath.Rel(store, m)
 			out = append(out, propagationFile{rel: filepath.ToSlash(rel), keyed: true, regions: bodyRegion})
 		}
 	}
-	vocabs, _ := filepath.Glob(filepath.Join(store, "shared", "vocabulary", "*.yaml"))
-	for _, m := range vocabs {
-		rel, _ := filepath.Rel(store, m)
-		out = append(out, propagationFile{rel: filepath.ToSlash(rel), keyed: true, regions: yamlRegions("definition", "description")})
+	if _, err := os.Stat(filepath.Join(store, "shared", "vocabulary", "terms.yaml")); err == nil {
+		out = append(out, propagationFile{rel: "shared/vocabulary/terms.yaml", keyed: true, regions: yamlRegions("definition", "description")})
 	}
 	maps, _ := filepath.Glob(filepath.Join(store, "systems", "*", "map.yaml"))
 	for _, m := range maps {

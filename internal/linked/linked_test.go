@@ -66,8 +66,7 @@ x-hikari:
   project: {branch: ` + branch + `}
   repos:
     app: {url: "` + url + `"}
-  hubs:
-    h: {orchestrator: lead, members: [dev]}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
   dev: {x-hikari: {system: {repo: app, scope: src}}}

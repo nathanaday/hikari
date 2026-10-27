@@ -1,5 +1,5 @@
 // Package topology reads a hikari topology: a Docker compose file whose
-// x-hikari keys hold the repos, the systems, the grants, and the hubs.
+// x-hikari keys hold the repos, the systems, the grants, and the orchestrator.
 // Compose describes each agent's environment; hikari keeps the boundaries.
 package topology
 
@@ -25,8 +25,8 @@ import (
 	"github.com/nathanaday/hikari/internal/store"
 )
 
-// User is the reserved name of the human operator. The user is a member of
-// every hub and is driven from the web UI instead of a container.
+// User is the reserved name of the human operator. The user is in the room
+// and is driven from the web UI instead of a container.
 const User = "user"
 
 // ProjectRepo is the reserved repo name of the project repository: the git
@@ -80,16 +80,6 @@ type Repo struct {
 // linked repos.
 const CloneDir = "repos"
 
-// Hub is a chat room. Its orchestrator, its members, and the user can post to
-// it, and any two of them can send direct messages to each other.
-type Hub struct {
-	ID           string   `yaml:"-"`
-	Name         string   `yaml:"name"`
-	Description  string   `yaml:"description"`
-	Orchestrator string   `yaml:"orchestrator"`
-	Members      []string `yaml:"members"`
-}
-
 // Service is what hikari reads of a compose service: an agent or a sidecar.
 type Service struct {
 	// Image is the image that the service runs: its image key, or the name
@@ -116,7 +106,7 @@ type Volume struct {
 	ReadOnly bool   `yaml:"read_only"`
 }
 
-// Topology is keyed by name: Agents, Hubs, and Repos map each name to its
+// Topology is keyed by name: Agents and Repos map each name to its
 // entity, and every reference holds a name. Services stays keyed by
 // service key, because it describes compose. Outside the file, hikari keys
 // by id: the store, compose, and the clones (rules ID6 to ID10).
@@ -134,8 +124,10 @@ type Topology struct {
 	// set x-hikari.project.
 	Project  *Repo
 	Agents   map[string]Agent
-	Hubs     map[string]Hub
 	Services map[string]Service
+	// Orchestrator is the name of the agent that x-hikari.orchestration
+	// names, or empty when the project has no orchestrator.
+	Orchestrator string
 
 	// File is the compose file, when the topology came from Load.
 	File string
@@ -171,7 +163,8 @@ type hikariKeys struct {
 	Store   string          `yaml:"store"`
 	Project *projectKeys    `yaml:"project"`
 	Repos   map[string]Repo `yaml:"repos"`
-	Hubs    map[string]Hub  `yaml:"hubs"`
+	// Orchestration is the service id of the orchestrator.
+	Orchestration string `yaml:"orchestration"`
 }
 
 type projectKeys struct {
@@ -298,7 +291,7 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
 		fail("x-hikari", "x-hikari: %v", err)
 	}
-	t.Store, t.Repos, t.Hubs = keys.Store, keys.Repos, keys.Hubs
+	t.Store, t.Repos, t.Orchestrator = keys.Store, keys.Repos, keys.Orchestration
 	if keys.Name != "" {
 		t.Name = keys.Name
 	}
@@ -423,13 +416,6 @@ func (t *Topology) normalize() {
 	if t.Project != nil {
 		t.Repos[ProjectRepo] = *t.Project
 	}
-	for name, h := range t.Hubs {
-		h.ID = name
-		if h.Name == "" {
-			h.Name = name
-		}
-		t.Hubs[name] = h
-	}
 	for name, a := range t.Agents {
 		a.ID = name
 		if a.Name == "" {
@@ -470,11 +456,8 @@ func (t *Topology) rekey() {
 		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
 		agents[a.Name] = a
 	}
-	hubs := map[string]Hub{}
-	for _, h := range t.Hubs {
-		h.Orchestrator = agent(h.Orchestrator)
-		h.Members = mapNames(h.Members, agent)
-		hubs[h.Name] = h
+	if t.Orchestrator != "" {
+		t.Orchestrator = agent(t.Orchestrator)
 	}
 	repos := map[string]Repo{}
 	for _, r := range t.Repos {
@@ -489,7 +472,7 @@ func (t *Topology) rekey() {
 			t.Services[id] = svc
 		}
 	}
-	t.Agents, t.Hubs, t.Repos = agents, hubs, repos
+	t.Agents, t.Repos = agents, repos
 }
 
 func mapNames(ids []string, name func(string) string) []string {
@@ -513,22 +496,14 @@ func (t *Topology) AgentOfService(id string) (string, bool) {
 	return "", false
 }
 
-// SystemIDs and HubIDs map the name of each system and hub to its id, for
-// the store (rule ID6).
+// SystemIDs maps the name of each system to its id, for the store (rule
+// ID6).
 func (t *Topology) SystemIDs() map[string]string {
 	out := map[string]string{}
 	for name, a := range t.Agents {
 		if a.System != nil {
 			out[name] = a.ID
 		}
-	}
-	return out
-}
-
-func (t *Topology) HubIDs() map[string]string {
-	out := map[string]string{}
-	for name, h := range t.Hubs {
-		out[name] = h.ID
 	}
 	return out
 }
@@ -566,8 +541,10 @@ func (t *Topology) validate() error {
 	if len(t.Agents) == 0 {
 		fail("services", "topology has no agents")
 	}
-	if len(t.Hubs) == 0 {
-		fail("x-hikari.hubs", "topology has no hubs")
+	if o := t.Orchestrator; o != "" {
+		if _, ok := t.Agents[o]; !ok {
+			fail("x-hikari.orchestration", "x-hikari.orchestration: %q is not an agent's service id", o)
+		}
 	}
 	for _, name := range t.AgentNames() {
 		if name == User {
@@ -577,40 +554,9 @@ func (t *Topology) validate() error {
 		}
 	}
 
-	inHub := map[string]bool{}
-	for _, name := range t.HubNames() {
-		h := t.Hubs[name]
-		if !validName.MatchString(name) {
-			fail("x-hikari.hubs."+name, "invalid hub name %q: use lowercase letters, digits, and dashes", name)
-		}
-		if _, ok := t.Agents[name]; ok || name == User {
-			fail("x-hikari.hubs."+name, "hub %q has the same name as an agent", name)
-		}
-		if h.Orchestrator == "" {
-			fail("x-hikari.hubs."+name, "hub %q has no orchestrator", name)
-		}
-		seen := map[string]bool{}
-		for i, a := range append([]string{h.Orchestrator}, h.Members...) {
-			if a == "" {
-				continue
-			}
-			refPath := "x-hikari.hubs." + name + ".orchestrator"
-			if i > 0 {
-				refPath = fmt.Sprintf("x-hikari.hubs.%s.members[%d]", name, i-1)
-			}
-			if _, ok := t.Agents[a]; !ok {
-				fail(refPath, "hub %q references unknown agent %q", name, a)
-			}
-			if seen[a] {
-				fail(refPath, "hub %q lists agent %q more than once", name, a)
-			}
-			seen[a] = true
-			inHub[a] = true
-		}
-	}
 	for _, name := range t.AgentNames() {
-		if !inHub[name] {
-			fail("services."+name, "agent %q is in no hub, so nothing can reach it", name)
+		if name != t.Orchestrator && t.Agents[name].System == nil {
+			fail("services."+name, "agent %q owns no system and is not the orchestrator", name)
 		}
 	}
 
@@ -665,9 +611,6 @@ func (t *Topology) validateNames() []error {
 	var nodes []entity
 	for _, id := range sortedKeys(t.Agents) {
 		nodes = append(nodes, entity{"agent", id, t.Agents[id].Name, "services." + id + ".x-hikari.name"})
-	}
-	for _, id := range sortedKeys(t.Hubs) {
-		nodes = append(nodes, entity{"hub", id, t.Hubs[id].Name, "x-hikari.hubs." + id + ".name"})
 	}
 	check(nodes, User)
 	var repos []entity
@@ -822,8 +765,8 @@ func (t *Topology) validateSystems() []error {
 		if s == nil {
 			continue
 		}
-		if len(t.OrchestratedHubs(name)) > 0 {
-			fail(name, "system", "an orchestrator cannot own a system")
+		if name == t.Orchestrator {
+			fail(name, "system", "the orchestrator cannot own a system")
 		}
 		repo, ok := t.Repos[s.Repo]
 		if !ok {
@@ -914,11 +857,6 @@ func (t *Topology) AgentNames() []string {
 	return sortedKeys(t.Agents)
 }
 
-// HubNames returns the hub names in sorted order.
-func (t *Topology) HubNames() []string {
-	return sortedKeys(t.Hubs)
-}
-
 // Owners returns the agents that own a system, in sorted order.
 func (t *Topology) Owners() []string {
 	var out []string
@@ -930,29 +868,13 @@ func (t *Topology) Owners() []string {
 	return out
 }
 
-// OrchestratedHubs returns the hubs that agent orchestrates, in sorted order.
-func (t *Topology) OrchestratedHubs(agent string) []string {
-	var out []string
-	for _, h := range t.HubNames() {
-		if t.Hubs[h].Orchestrator == agent {
-			out = append(out, h)
-		}
+// VisibleSystems returns the systems whose directories agent can read:
+// every system for the orchestrator, and none for any other agent.
+func (t *Topology) VisibleSystems(agent string) []string {
+	if agent == "" || agent != t.Orchestrator {
+		return nil
 	}
-	return out
-}
-
-// VisibleSystems returns the owners that are direct members of the hubs that
-// orchestrator orchestrates, in sorted order.
-func (t *Topology) VisibleSystems(orchestrator string) []string {
-	set := map[string]bool{}
-	for _, h := range t.OrchestratedHubs(orchestrator) {
-		for _, m := range t.Hubs[h].Members {
-			if t.Agents[m].System != nil {
-				set[m] = true
-			}
-		}
-	}
-	return sortedKeys(set)
+	return t.Owners()
 }
 
 // ReadableReleases returns the systems whose releases agent can read: its
@@ -970,47 +892,31 @@ func (t *Topology) ReadableReleases(agent string) []string {
 	return sortedKeys(set)
 }
 
-// Participants returns the orchestrator, then the other members in sorted
-// order, then the user.
-func (t *Topology) Participants(hub string) []string {
-	h, ok := t.Hubs[hub]
-	if !ok {
-		return nil
-	}
-	members := slices.Sorted(slices.Values(h.Members))
-	return append(append([]string{h.Orchestrator}, members...), User)
-}
-
-func (t *Topology) InHub(node, hub string) bool {
-	return slices.Contains(t.Participants(hub), node)
-}
-
-// HubsOf returns the hubs that node is in, in sorted order.
-func (t *Topology) HubsOf(node string) []string {
+// Participants returns everyone in the room: the orchestrator, then the
+// other agents in sorted order, then the user.
+func (t *Topology) Participants() []string {
 	var out []string
-	for _, h := range t.HubNames() {
-		if t.InHub(node, h) {
-			out = append(out, h)
+	if t.Orchestrator != "" {
+		out = append(out, t.Orchestrator)
+	}
+	for _, name := range t.AgentNames() {
+		if name != t.Orchestrator {
+			out = append(out, name)
 		}
 	}
-	return out
+	return append(out, User)
 }
 
-// Contacts returns the nodes that share a hub with node, in sorted order.
-func (t *Topology) Contacts(node string) []string {
-	set := map[string]bool{}
-	for _, h := range t.HubsOf(node) {
-		for _, p := range t.Participants(h) {
-			if p != node {
-				set[p] = true
-			}
-		}
+// Role returns what name is in the room: "orchestrator", "owner", or
+// "operator" for the user.
+func (t *Topology) Role(name string) string {
+	switch {
+	case name == User:
+		return "operator"
+	case name == t.Orchestrator:
+		return "orchestrator"
 	}
-	return sortedKeys(set)
-}
-
-func (t *Topology) CanDirect(from, to string) bool {
-	return slices.Contains(t.Contacts(from), to)
+	return "owner"
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -1022,60 +928,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// ChildHubs returns the hubs whose orchestrator is a member of hub, in
-// sorted order.
-func (t *Topology) ChildHubs(hub string) []string {
-	var out []string
-	for _, h := range t.HubNames() {
-		if h != hub && slices.Contains(t.Hubs[hub].Members, t.Hubs[h].Orchestrator) {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
-// ParentHubs returns the hubs that have the orchestrator of hub as a
-// member, in sorted order.
-func (t *Topology) ParentHubs(hub string) []string {
-	var out []string
-	for _, h := range t.HubNames() {
-		if h != hub && slices.Contains(t.Hubs[h].Members, t.Hubs[hub].Orchestrator) {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
-// MemberHubs returns the hubs that agent is a member of, not the
-// orchestrator of, in sorted order.
-func (t *Topology) MemberHubs(agent string) []string {
-	var out []string
-	for _, h := range t.HubNames() {
-		if slices.Contains(t.Hubs[h].Members, agent) {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
-// ReadableHubWikis returns the hubs whose wikis agent reads (rules A1 and
-// A2 of the wikis spec): the hubs it is in, and the child hubs of the hubs
-// it orchestrates, in sorted order.
-func (t *Topology) ReadableHubWikis(agent string) []string {
-	set := map[string]bool{}
-	for _, h := range t.HubsOf(agent) {
-		set[h] = true
-	}
-	for _, h := range t.OrchestratedHubs(agent) {
-		for _, c := range t.ChildHubs(h) {
-			set[c] = true
-		}
-	}
-	return sortedKeys(set)
-}
-
-// StoreOf returns the topology's store, which maps the names of systems
-// and hubs to their ids.
+// StoreOf returns the topology's store, which maps the names of systems to
+// their ids.
 func (t *Topology) StoreOf() store.Store {
-	return store.Store{Root: t.Store, Systems: t.SystemIDs(), Hubs: t.HubIDs()}
+	return store.Store{Root: t.Store, Systems: t.SystemIDs()}
 }

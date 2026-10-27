@@ -24,7 +24,7 @@ The user is the authority on the project. Propose, show, and ask; do not decide 
 Read `onboarding/state.md` if it exists, and continue from its stage. Otherwise ask the user for:
 
 - each repository: its remote URL, and one sentence on what it does;
-- the project's purpose in one sentence, for the hub's description.
+- the project's purpose in one sentence, for the orchestrator's description.
 
 Write `onboarding/state.md` from `references/state.md`, and commit.
 
@@ -57,7 +57,7 @@ The test command runs every suite that can run in the container, and writes one 
 
 Write `instructions` from the repository's `CLAUDE.md` and contributor docs: the conventions an agent must follow in that code. Leave out what only applies to a person's machine. Add the suites that the owner must not run, and why.
 
-Then write the orchestrator and the hub, as `references/topology.md` shows.
+Then write the orchestrator, and name it in `x-hikari.orchestration`, as `references/topology.md` shows.
 
 ### 6. Check
 

@@ -24,21 +24,22 @@ func writeStore(t *testing.T, files map[string]string) string {
 const story = `---
 id: order-items
 kind: story
-name: "@dev and #eng"
+name: "@dev and @qa"
 ---
 ## Purpose
 
-Ask @dev in #eng, not @dev-ops or #engine.
-@dev, then #eng.
+Ask @dev and @qa, not @dev-ops or #dev.
+@dev, then @qa.
 `
 
 func TestOccurrences(t *testing.T) {
 	store := writeStore(t, map[string]string{
-		"hubs/eng/wiki/order-items.md": story,
-		"shared/vocabulary/eng.yaml":   "version: 1\nhub: eng\nterms:\n  - term: dev\n    definition: What @dev builds in #eng.\ninterfaces: []\n",
+		"shared/wiki/order-items.md":   story,
+		"shared/vocabulary/terms.yaml": "version: 1\nterms:\n  - term: dev\n    definition: What @dev builds for @qa.\ninterfaces: []\n",
+		"shared/vocabulary/eng.yaml":   "version: 1\nterms:\n  - term: dev\n    definition: What @dev builds.\ninterfaces: []\n",
 		"systems/dev/map.yaml":         "version: 4\nsystem:\n  name: dev\n  summary: Built by @dev.\nfeatures: []\n",
 	})
-	renames := []Rename{{"agent", "dev", "builder"}, {"hub", "eng", "platform"}}
+	renames := []Rename{{"agent", "dev", "builder"}, {"agent", "qa", "checker"}}
 	occ := Occurrences(store, renames)
 	var keys []string
 	var unkeyed int
@@ -50,9 +51,9 @@ func TestOccurrences(t *testing.T) {
 		}
 	}
 	want := []string{
-		"hubs/eng/wiki/order-items.md:8:5", "hubs/eng/wiki/order-items.md:8:13",
-		"hubs/eng/wiki/order-items.md:9:1", "hubs/eng/wiki/order-items.md:9:12",
-		"shared/vocabulary/eng.yaml:5:22", "shared/vocabulary/eng.yaml:5:37",
+		"shared/wiki/order-items.md:8:5", "shared/wiki/order-items.md:8:14",
+		"shared/wiki/order-items.md:9:1", "shared/wiki/order-items.md:9:12",
+		"shared/vocabulary/terms.yaml:4:22", "shared/vocabulary/terms.yaml:4:38",
 	}
 	slices.Sort(keys)
 	slices.Sort(want)
@@ -63,16 +64,16 @@ func TestOccurrences(t *testing.T) {
 		t.Errorf("TP4: the map summary is listed without a key: %+v", occ)
 	}
 
-	changed, skipped, err := Propagate(store, renames, []string{"hubs/eng/wiki/order-items.md:8:5", "hubs/eng/wiki/order-items.md:8:13", "gone.md:1:1"})
+	changed, skipped, err := Propagate(store, renames, []string{"shared/wiki/order-items.md:8:5", "shared/wiki/order-items.md:8:14", "gone.md:1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(changed, []string{"hubs/eng/wiki/order-items.md"}) || !slices.Equal(skipped, []string{"gone.md:1:1"}) {
+	if !slices.Equal(changed, []string{"shared/wiki/order-items.md"}) || !slices.Equal(skipped, []string{"gone.md:1:1"}) {
 		t.Errorf("TP3: changed %v, skipped %v", changed, skipped)
 	}
-	data, _ := os.ReadFile(filepath.Join(store, "hubs/eng/wiki/order-items.md"))
-	if !strings.Contains(string(data), "Ask @builder in #platform, not @dev-ops or #engine.\n@dev, then #eng.") ||
-		!strings.Contains(string(data), `name: "@dev and #eng"`) {
+	data, _ := os.ReadFile(filepath.Join(store, "shared/wiki/order-items.md"))
+	if !strings.Contains(string(data), "Ask @builder and @checker, not @dev-ops or #dev.\n@dev, then @qa.") ||
+		!strings.Contains(string(data), `name: "@dev and @qa"`) {
 		t.Errorf("TP3: only the chosen places change, and never the header:\n%s", data)
 	}
 }

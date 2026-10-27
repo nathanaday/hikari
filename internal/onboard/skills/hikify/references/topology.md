@@ -5,7 +5,7 @@
 Each boundary of the target states one reason, of one of three kinds. Propose no boundary without one.
 
 - **Library.** Two or more consumers need the code, or their copies already differ. The library becomes its own system, and the consumers use its releases.
-- **Client and server.** They change at different rates, or a different team owns each. Each becomes a system, and they meet at an interface that the hub's vocabulary names.
+- **Client and server.** They change at different rates, or a different team owns each. Each becomes a system, and they meet at an interface that the vocabulary names.
 - **Scope in a repository.** A repository holds two concerns, but splitting its git history is not worth the cost. Each concern becomes a system with its own `scope` in the same repository.
 
 Also name each split you considered and decided against, and why. Small code with one consumer stays where it is. A library for one consumer adds a release cycle for no gain.
@@ -20,8 +20,7 @@ A new library in a new repository, and a consumer of its releases:
 x-hikari:
   repos:
     units: {url: https://github.com/acme/units.git}   # to create, in execution
-  hubs:
-    main: {orchestrator: orchestrator, members: [units, cloud]}
+  orchestration: orchestrator
 
 services:
   units:

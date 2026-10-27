@@ -1,7 +1,7 @@
 -include .env
 export
 
-COMPOSE ?= examples/studio/compose.yaml
+COMPOSE ?= examples/shop/compose.yaml
 LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
 unexport UI_SRC
@@ -32,6 +32,9 @@ image:
 	docker build -t hikari-agent .
 
 up: build image
+	@if [ "$(COMPOSE)" = examples/shop/compose.yaml ] && [ ! -d .hikari/demo/shop ]; then \
+		echo "the shop's repo is missing: run make demo-repo first"; exit 1; \
+	fi
 	bin/hikari up $(COMPOSE)
 
 # Serve the UI with hot reload on http://localhost:5173 against a running `make up`.

@@ -41,14 +41,14 @@ func newSharedArea(builtins, deliverables []string) (*sharedArea, error) {
 }
 
 // builtinSkills returns hikari's own skills that self's roles need: the
-// system skill for an owner, the hub skill for an orchestrator.
+// system skill for an owner, the orchestration skill for the orchestrator.
 func builtinSkills(self api.Self) []string {
 	var out []string
 	if self.System != nil {
 		out = append(out, api.SystemSkill)
 	}
-	if len(self.Orchestrates) > 0 {
-		out = append(out, api.HubSkill)
+	if self.Orchestrator {
+		out = append(out, api.OrchestrationSkill)
 	}
 	return out
 }

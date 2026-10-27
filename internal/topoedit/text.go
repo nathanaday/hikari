@@ -1,5 +1,5 @@
 // Package topoedit changes a compose file through operations, such as
-// rename_hub or add_member, and splices each change into the text so that
+// rename or set_orchestration, and splices each change into the text so that
 // every byte outside the changed nodes stays (rule TE1 of the topology API
 // spec). It also reads the source model, lints a text, and finds the
 // places that a rename can propagate to.

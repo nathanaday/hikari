@@ -18,7 +18,6 @@ import (
 type Model struct {
 	Project  Project   `json:"project"`
 	Repos    []Repo    `json:"repos"`
-	Hubs     []Hub     `json:"hubs"`
 	Agents   []Agent   `json:"agents"`
 	Sidecars []Sidecar `json:"sidecars"`
 }
@@ -31,6 +30,9 @@ type Project struct {
 	// Repo is whether x-hikari.project is set, and Branch is its branch.
 	Repo   bool   `json:"repo"`
 	Branch string `json:"branch"`
+	// Orchestration is x-hikari.orchestration: the service id of the
+	// orchestrator, or "".
+	Orchestration string `json:"orchestration"`
 }
 
 type Repo struct {
@@ -41,16 +43,6 @@ type Repo struct {
 	Branch   string `json:"branch"`
 	Line     int    `json:"line"`
 	IDLocked bool   `json:"id_locked"`
-}
-
-type Hub struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Orchestrator string   `json:"orchestrator"`
-	Members      []string `json:"members"`
-	Line         int      `json:"line"`
-	IDLocked     bool     `json:"id_locked"`
 }
 
 type Agent struct {
@@ -102,8 +94,8 @@ type srcHikari struct {
 	Project *struct {
 		Branch string `yaml:"branch"`
 	} `yaml:"project"`
-	Repos map[string]srcRepo `yaml:"repos"`
-	Hubs  map[string]srcHub  `yaml:"hubs"`
+	Repos         map[string]srcRepo `yaml:"repos"`
+	Orchestration string             `yaml:"orchestration"`
 }
 
 type srcRepo struct {
@@ -111,13 +103,6 @@ type srcRepo struct {
 	URL    string `yaml:"url"`
 	Path   string `yaml:"path"`
 	Branch string `yaml:"branch"`
-}
-
-type srcHub struct {
-	Name         string   `yaml:"name"`
-	Description  string   `yaml:"description"`
-	Orchestrator string   `yaml:"orchestrator"`
-	Members      []string `yaml:"members"`
 }
 
 type srcService struct {
@@ -148,8 +133,8 @@ func ReadModel(text []byte, dir string) *Model {
 	// that the decoder reports after it read everything else.
 	var f srcFile
 	yaml.Unmarshal(text, &f)
-	m := &Model{Repos: []Repo{}, Hubs: []Hub{}, Agents: []Agent{}, Sidecars: []Sidecar{}}
-	m.Project = Project{ID: f.Name, Name: f.Name, Store: f.Hikari.Store}
+	m := &Model{Repos: []Repo{}, Agents: []Agent{}, Sidecars: []Sidecar{}}
+	m.Project = Project{ID: f.Name, Name: f.Name, Store: f.Hikari.Store, Orchestration: f.Hikari.Orchestration}
 	if f.Hikari.Name != "" {
 		m.Project.Name = f.Hikari.Name
 	}
@@ -164,14 +149,6 @@ func ReadModel(text []byte, dir string) *Model {
 		m.Repos = append(m.Repos, Repo{
 			ID: id, Name: nameOr(r.Name, id), URL: r.URL, Path: r.Path, Branch: r.Branch, Line: line("x-hikari.repos." + id),
 			IDLocked: r.URL != "" && exists(filepath.Join(dir, topology.CloneDir, id)),
-		})
-	}
-	for _, id := range sorted(f.Hikari.Hubs) {
-		h := f.Hikari.Hubs[id]
-		m.Hubs = append(m.Hubs, Hub{
-			ID: id, Name: nameOr(h.Name, id), Description: freeText(h.Description), Orchestrator: h.Orchestrator,
-			Members: nonNil(h.Members), Line: line("x-hikari.hubs." + id),
-			IDLocked: store != "" && (exists(filepath.Join(store, "hubs", id)) || exists(filepath.Join(store, "shared", "vocabulary", id+".yaml"))),
 		})
 	}
 	for _, id := range sorted(f.Services) {

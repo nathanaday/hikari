@@ -48,10 +48,9 @@ func TestWholeRepoScopeHidesGit(t *testing.T) {
 
 func TestStoreMounts(t *testing.T) {
 	st := store.Store{Root: "/s"}
-	owner := StoreMounts(st, "orders", true, nil, []string{"inventory"}, []string{"shop"}, "/tmp/empty")
+	owner := StoreMounts(st, "orders", true, nil, []string{"inventory"}, "/tmp/empty")
 	wantOwner := []Mount{
 		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
-		{Source: "/s/hubs/shop/wiki", Target: "/hikari/public/readonly/hubs/shop/wiki", ReadOnly: true},
 		{Source: "/s/systems/orders", Target: "/hikari/public/export", ReadOnly: true},
 		{Source: "/s/systems/orders/staging", Target: "/hikari/public/export/staging"},
 		{Source: "/s/systems/inventory/releases", Target: "/hikari/public/readonly/systems/inventory/releases", ReadOnly: true},
@@ -60,7 +59,7 @@ func TestStoreMounts(t *testing.T) {
 		t.Errorf("owner mounts:\n got %+v\nwant %+v", owner, wantOwner)
 	}
 
-	lead := StoreMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, nil, "/tmp/empty")
+	lead := StoreMounts(st, "lead", false, []string{"orders"}, []string{"orders", "billing"}, "/tmp/empty")
 	wantLead := []Mount{
 		{Source: "/s/shared", Target: "/hikari/public/readonly/shared", ReadOnly: true},
 		{Source: "/s/systems/orders", Target: "/hikari/public/readonly/systems/orders", ReadOnly: true},
@@ -71,9 +70,9 @@ func TestStoreMounts(t *testing.T) {
 		t.Errorf("orchestrator mounts:\n got %+v\nwant %+v", lead, wantLead)
 	}
 
-	member := StoreMounts(st, "writer", false, nil, nil, nil, "/tmp/empty")
-	if len(member) != 1 || member[0].Target != "/hikari/public/readonly/shared" {
-		t.Errorf("a member without grants sees only shared: %+v", member)
+	owner = StoreMounts(st, "inventory", true, nil, nil, "/tmp/empty")
+	if len(owner) != 3 || owner[0].Target != "/hikari/public/readonly/shared" {
+		t.Errorf("an owner without grants sees shared and its own directory: %+v", owner)
 	}
 }
 
@@ -83,7 +82,7 @@ const userCompose = `name: shop
 x-hikari:
   store: store
   repos: {shop: {path: REPO, branch: hikari/work}}
-  hubs: {h: {orchestrator: lead, members: [orders]}}
+  orchestration: lead
 services:
   lead:
     image: hikari-agent
@@ -104,7 +103,7 @@ const resolved = `name: shop
 x-hikari:
   store: store
   repos: {shop: {path: REPO, branch: hikari/work}}
-  hubs: {h: {orchestrator: lead, members: [orders]}}
+  orchestration: lead
 services:
   lead: {image: hikari-agent, networks: {default: null}, x-hikari: {}}
   orders:
@@ -283,7 +282,7 @@ func TestOverrideOfRenamedEntities(t *testing.T) {
 	src := `name: shop
 x-hikari:
   repos: {shop: {name: store, path: shop, branch: hikari}}
-  hubs: {eng: {name: platform, orchestrator: lead, members: [orders, billing]}}
+  orchestration: lead
 services:
   lead: {image: hikari-agent, x-hikari: {}}
   orders: {image: hikari-agent, x-hikari: {name: intake, system: {repo: shop, scope: services/orders}}}
@@ -322,8 +321,8 @@ services:
 	if targets["/hikari/public/export"] != filepath.Join(store, "systems", "orders") {
 		t.Errorf("ID6: the owner's store directory by id: %v", targets)
 	}
-	if targets["/hikari/public/readonly/hubs/platform/wiki"] != filepath.Join(store, "hubs", "eng", "wiki") {
-		t.Errorf("ID12: the hub wiki mounts at its name from its id's directory: %v", targets)
+	if targets["/hikari/public/readonly/shared"] != filepath.Join(store, "shared") {
+		t.Errorf("the public wiki is in the shared area: %v", targets)
 	}
 	billing := map[string]string{}
 	for _, m := range f.Services["billing"].Volumes {

@@ -23,21 +23,16 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// The tree of the tests: lead orchestrates #product, whose members are
-// eng-lead and writer. eng-lead orchestrates #eng, whose members are the
-// owners orders and inventory.
+// The project of the tests: lead orchestrates the owners orders and
+// inventory.
 const testTopology = `
 name: test
 x-hikari:
   repos:
     shop: {path: shop, branch: hikari/work}
-  hubs:
-    product: {orchestrator: lead, members: [eng-lead, writer]}
-    eng: {orchestrator: eng-lead, members: [orders, inventory]}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
-  writer: {x-hikari: {}}
-  eng-lead: {x-hikari: {}}
   orders: {x-hikari: {system: {repo: shop, scope: services/orders, test: python3 -m unittest}, grants: {deliverables: [python-library]}}}
   inventory: {x-hikari: {system: {repo: shop, scope: services/inventory}}}
 `
@@ -124,7 +119,7 @@ func (f *fixture) describeOrders(t *testing.T) {
 		Provides: ptr([]sysmap.Interface{{Name: "POST /orders", Kind: "http", Description: "Creates an order."}}),
 		Consumes: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function"}}),
 	}))
-	_, err := f.m.ChangeWiki("orders", "", []wiki.Write{{
+	_, err := f.m.ChangeWiki("orders", false, []wiki.Write{{
 		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
 		Interfaces: []string{"POST /orders", "inventory.reserve"}, Body: body("A customer places an order, and the shop stores it."),
 	}})
@@ -252,7 +247,7 @@ func TestNewRefusesUncommittedChanges(t *testing.T) {
 func TestPrivateDocumentsGateResultsAndMarking(t *testing.T) {
 	f := newFixture(t)
 	f.describeOrders(t)
-	_, err := f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
+	_, err := f.m.ChangeWiki("orders", false, []wiki.Write{{Op: "create", ID: "untested-thing", Name: "Untested thing", Description: "Nothing tests it.", Body: body("It exists.")}})
 	must(t, err)
 	if _, err := f.m.RecordRun("orders", "integration"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "its suites are unit") {
 		t.Errorf("J2: a suite that the test map lacks: %v", err)
@@ -369,43 +364,32 @@ func TestAccess(t *testing.T) {
 	}
 
 	// A1: an owner changes only its own map; non-owners have no map.
-	_, err := f.m.OwnView("eng-lead")
+	_, err := f.m.OwnView("lead")
 	forbidden("A1 orchestrator has no own map", err)
-	forbidden("A1 writer cannot commit", func() error { _, err := f.m.Commit("writer", "x"); return err }())
+	forbidden("A1 orchestrator cannot commit", func() error { _, err := f.m.Commit("lead", "x"); return err }())
 
-	// A2: eng-lead sees its direct members' systems; lead sees none (D2).
-	if s, err := f.m.ListSystems("eng-lead"); err != nil || len(s) != 2 {
-		t.Errorf("A2 eng-lead systems = %+v, %v", s, err)
-	}
-	if s, err := f.m.ListSystems("lead"); err != nil || len(s) != 0 {
+	// A2: the orchestrator sees every system.
+	if s, err := f.m.ListSystems("lead"); err != nil || len(s) != 2 {
 		t.Errorf("A2 lead systems = %+v, %v", s, err)
 	}
-	_, err = f.m.GetSystem("lead", "orders")
-	notFound("A2 lead reads orders", err)
+	_, err = f.m.GetSystem("lead", "ghost")
+	notFound("A2 lead reads a system that does not exist", err)
 
 	// A3: no other agent reads any map.
 	_, err = f.m.ListSystems("orders")
 	forbidden("A3 owner lists systems", err)
 	_, err = f.m.GetSystem("inventory", "orders")
 	forbidden("A3 owner reads a peer", err)
-	// A1 of the wikis spec: a member reads its hubs' wikis, not a system's.
-	if hits, err := f.m.SearchWiki("writer", "order"); err != nil || len(hits) != 0 {
-		t.Errorf("A1 member searches = %+v, %v", hits, err)
-	}
-	_, err = f.m.GetDocument("writer", "create-order")
-	notFound("T4 member reads a feature", err)
+	// A1 of the wikis spec: an owner reads its own wiki and the public
+	// wiki, not another system's.
+	_, err = f.m.GetDocument("inventory", "create-order")
+	notFound("T4 owner reads a peer's feature", err)
 
-	// V3: vocabularies.
-	forbidden("V3 member defines a term", f.m.DefineTerm("orders", "eng", vocab.Term{Term: "x", Definition: "y"}))
-	forbidden("V3 orchestrator of another hub", f.m.DefineTerm("lead", "eng", vocab.Term{Term: "x", Definition: "y"}))
-	must(t, f.m.DefineTerm("eng-lead", "eng", vocab.Term{Term: "order", Definition: "A request to buy."}))
-	if v, err := f.m.GetVocabulary("orders", "eng"); err != nil || len(v.Terms) != 1 {
-		t.Errorf("V3 member reads = %+v, %v", v, err)
-	}
-	_, err = f.m.GetVocabulary("orders", "product")
-	forbidden("V3 non-participant reads", err)
-	if _, err := f.m.GetVocabulary("user", "eng"); err != nil {
-		t.Errorf("the user reads every vocabulary: %v", err)
+	// V3: only the orchestrator writes the vocabulary.
+	forbidden("V3 owner defines a term", f.m.DefineTerm("orders", vocab.Term{Term: "x", Definition: "y"}))
+	must(t, f.m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "A request to buy."}))
+	if v := f.m.Vocabulary(); len(v.Terms) != 1 {
+		t.Errorf("V3 vocabulary = %+v", v)
 	}
 }
 
@@ -415,9 +399,9 @@ func TestOrchestratorView(t *testing.T) {
 	must(t, f.m.SetSystemInfo("inventory", sysmap.SystemPatch{
 		Provides: ptr([]sysmap.Interface{{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}}),
 	}))
-	must(t, f.m.DefineInterface("eng-lead", "eng", vocab.Interface{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}))
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}))
 
-	s, err := f.m.GetSystem("eng-lead", "orders")
+	s, err := f.m.GetSystem("lead", "orders")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,21 +421,21 @@ func TestOrchestratorView(t *testing.T) {
 		t.Errorf("features = %+v", s.Features)
 	}
 
-	hits, err := f.m.SearchWiki("eng-lead", "STORES")
+	hits, err := f.m.SearchWiki("lead", "STORES")
 	if err != nil || len(hits) != 1 || hits[0].Wiki != "orders" || hits[0].Kind != "feature" {
 		t.Errorf("T5 search = %+v, %v", hits, err)
 	}
-	if hit, err := f.m.GetDocument("eng-lead", "create-order"); err != nil || hit.Name != "Create an order" || !strings.Contains(hit.Document, "## Purpose") || hit.Health == "" {
+	if hit, err := f.m.GetDocument("lead", "create-order"); err != nil || hit.Name != "Create an order" || !strings.Contains(hit.Document, "## Purpose") || hit.Health == "" {
 		t.Errorf("T4: get document = %+v, %v", hit, err)
 	}
-	if hits, err := f.m.SearchWiki("eng-lead", "customer places"); err != nil || len(hits) != 1 {
+	if hits, err := f.m.SearchWiki("lead", "customer places"); err != nil || len(hits) != 1 {
 		t.Errorf("T5: search matches the document: %+v, %v", hits, err)
 	}
-	if _, err := f.m.GetDocument("eng-lead", "ghost"); !errors.Is(err, ErrNotFound) {
+	if _, err := f.m.GetDocument("lead", "ghost"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown document: %v", err)
 	}
 
-	// The UI view flags the same way from the owner's hubs.
+	// The UI view flags the same way.
 	uv := f.m.SystemView("orders")
 	if uv.Owner != "orders" || uv.Scope != "services/orders" || uv.Branch != "hikari/work" || len(uv.Flags) != 1 {
 		t.Errorf("UI view: %+v", uv)
@@ -460,20 +444,20 @@ func TestOrchestratorView(t *testing.T) {
 
 func TestTurnContextReportsVocabularyChangesOnce(t *testing.T) {
 	f := newFixture(t)
-	if tc := f.m.TurnContext("orders"); len(tc.VocabularyChanged) != 0 {
+	if tc := f.m.TurnContext("orders"); tc.VocabularyChanged {
 		t.Errorf("first turn: %+v", tc)
 	}
-	must(t, f.m.DefineTerm("eng-lead", "eng", vocab.Term{Term: "order", Definition: "A request to buy."}))
-	if tc := f.m.TurnContext("orders"); !slices.Equal(tc.VocabularyChanged, []string{"eng"}) {
+	must(t, f.m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "A request to buy."}))
+	if tc := f.m.TurnContext("orders"); !tc.VocabularyChanged {
 		t.Errorf("after a change: %+v", tc)
 	}
-	if tc := f.m.TurnContext("orders"); len(tc.VocabularyChanged) != 0 {
+	if tc := f.m.TurnContext("orders"); tc.VocabularyChanged {
 		t.Errorf("second turn: %+v", tc)
 	}
-	if tc := f.m.TurnContext("writer"); len(tc.VocabularyChanged) != 0 {
-		t.Errorf("writer is not in #eng: %+v", tc)
+	if tc := f.m.TurnContext("inventory"); !tc.VocabularyChanged {
+		t.Errorf("every agent hears of the change: %+v", tc)
 	}
-	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "vocabulary", "eng.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "vocabulary", "terms.yaml")); err != nil {
 		t.Errorf("V1 vocabulary file: %v", err)
 	}
 }
@@ -483,35 +467,29 @@ func TestChangesNotifyDependentSystems(t *testing.T) {
 	var got []Change
 	f.m.OnChange(func(c Change) { got = append(got, c) })
 
-	// A map change reaches the system and its peer in #eng, whose providers
-	// may depend on it.
+	// A map change reaches the system and every other system, whose
+	// providers may depend on it.
 	must(t, f.m.SetSystemInfo("orders", sysmap.SystemPatch{Summary: ptr("Takes orders.")}))
 	if want := []Change{{System: "orders"}, {System: "inventory"}}; !slices.Equal(got, want) {
 		t.Errorf("map change: %+v, want %+v", got, want)
 	}
 
-	// A vocabulary change reaches the vocabulary and the flags of the hub's
-	// systems.
+	// A vocabulary change reaches the vocabulary and the flags of every
+	// system.
 	got = nil
-	must(t, f.m.DefineTerm("eng-lead", "eng", vocab.Term{Term: "order", Definition: "x"}))
-	if want := []Change{{Hub: "eng"}, {System: "orders"}, {System: "inventory"}}; !slices.Equal(got, want) {
+	must(t, f.m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "x"}))
+	if want := []Change{{Vocabulary: true}, {System: "inventory"}, {System: "orders"}}; !slices.Equal(got, want) {
 		t.Errorf("vocabulary change: %+v, want %+v", got, want)
-	}
-	got = nil
-	must(t, f.m.DefineTerm("lead", "product", vocab.Term{Term: "plan", Definition: "x"}))
-	if want := []Change{{Hub: "product"}}; !slices.Equal(got, want) {
-		t.Errorf("#product has no systems: %+v", got)
 	}
 }
 
 func TestSelf(t *testing.T) {
 	f := newFixture(t)
-	sys, orchestrates := f.m.Self("orders")
-	if sys == nil || sys.WorkDir != "/workspace/services/orders" || len(orchestrates) != 0 {
-		t.Errorf("Self(orders) = %+v, %v", sys, orchestrates)
+	if sys := f.m.Self("orders"); sys == nil || sys.WorkDir != "/workspace/services/orders" {
+		t.Errorf("Self(orders) = %+v", sys)
 	}
-	if sys, orchestrates := f.m.Self("eng-lead"); sys != nil || !slices.Equal(orchestrates, []string{"eng"}) {
-		t.Errorf("Self(eng-lead) = %+v, %v", sys, orchestrates)
+	if sys := f.m.Self("lead"); sys != nil {
+		t.Errorf("Self(lead) = %+v", sys)
 	}
 }
 
@@ -549,23 +527,23 @@ func TestPublishRelease(t *testing.T) {
 	staging := filepath.Join(f.dir, "store", "systems", "orders", "staging", "python-library")
 	write(t, staging, "README.md", "# orders\n")
 	write(t, staging, "orders/create.py", "def create(): pass\n")
-	publish := func(agent, deliverable, version string) (store.Manifest, []string, error) {
+	publish := func(agent, deliverable, version string) (store.Manifest, error) {
 		return f.m.PublishRelease(agent, api.PublishRequest{Deliverable: deliverable, Version: version, Notes: "First."})
 	}
 
-	if _, _, err := publish("orders", "python-library", "1.0.0"); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
+	if _, err := publish("orders", "python-library", "1.0.0"); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
 		t.Errorf("R16: publishing an unbuilt map: %v", err)
 	}
 	if _, err := f.m.CheckRelease("orders", "python-library"); err == nil || !strings.Contains(err.Error(), "the map is unbuilt") {
 		t.Errorf("R15: checking with an unbuilt map: %v", err)
 	}
-	if _, _, err := publish("eng-lead", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) {
+	if _, err := publish("lead", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) {
 		t.Errorf("only owners publish: %v", err)
 	}
-	if _, _, err := publish("inventory", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "hold no deliverable") {
+	if _, err := publish("inventory", "python-library", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "hold no deliverable") {
 		t.Errorf("an owner without deliverables: %v", err)
 	}
-	if _, _, err := publish("orders", "docs", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), `do not hold the deliverable "docs"; you hold python-library`) {
+	if _, err := publish("orders", "docs", "1.0.0"); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), `do not hold the deliverable "docs"; you hold python-library`) {
 		t.Errorf("a deliverable the owner does not hold: %v", err)
 	}
 
@@ -585,13 +563,13 @@ func TestPublishRelease(t *testing.T) {
 
 	var changes []Change
 	f.m.OnChange(func(c Change) { changes = append(changes, c) })
-	rel, hubs, err := publish("orders", "python-library", "1.0.0")
+	rel, err := publish("orders", "python-library", "1.0.0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	head := git(t, f.repo, "rev-parse", "HEAD")
-	if rel.SourceCommit != head || !slices.Equal(hubs, []string{"eng"}) || !slices.Equal(rel.Hubs, []string{"eng"}) || rel.Hikari == "" {
-		t.Errorf("release %+v, hubs %v; HEAD is %s", rel, hubs, head)
+	if rel.SourceCommit != head || rel.Hikari == "" {
+		t.Errorf("release %+v; HEAD is %s", rel, head)
 	}
 	copied, _ := os.ReadFile(filepath.Join(f.dir, "store", "systems", "orders", "releases", "python-library", "1.0.0", "map.yaml"))
 	if !strings.Contains(string(copied), "health: passing") || !strings.Contains(string(copied), "state: current") || strings.Contains(string(copied), "create.py") {
@@ -606,7 +584,7 @@ func TestPublishRelease(t *testing.T) {
 	if v := f.m.SystemView("orders"); len(v.Releases) != 1 || v.Releases[0].Version != "1.0.0" || v.Releases[0].Deliverable != "python-library" {
 		t.Errorf("the UI view must list the release: %+v", v.Releases)
 	}
-	if s, _ := f.m.GetSystem("eng-lead", "orders"); len(s.Releases) != 1 {
+	if s, _ := f.m.GetSystem("lead", "orders"); len(s.Releases) != 1 {
 		t.Errorf("the orchestrator view must list the release: %+v", s.Releases)
 	}
 	if d := f.m.Deliverables("orders"); len(d) != 1 || d[0].Name != "python-library" || !strings.HasPrefix(d[0].Description, "A Python library") {
@@ -672,7 +650,7 @@ func TestChangeFeatures(t *testing.T) {
 	var changes []Change
 	f.m.OnChange(func(c Change) { changes = append(changes, c) })
 
-	res, err := f.m.ChangeWiki("orders", "", []wiki.Write{
+	res, err := f.m.ChangeWiki("orders", false, []wiki.Write{
 		{Op: "create", ID: "cancel-order", Name: "Cancel an order", Description: "Cancel a placed order.", Body: body("After [[create-order]] placed an order, the customer can cancel it.")},
 	})
 	if err != nil || len(res.Applied) != 1 || len(changes) == 0 {
@@ -690,7 +668,7 @@ func TestChangeFeatures(t *testing.T) {
 	}
 
 	// The rules refuse as a whole, and name the rule.
-	_, err = f.m.ChangeWiki("orders", "", []wiki.Write{
+	_, err = f.m.ChangeWiki("orders", false, []wiki.Write{
 		{Op: "create", ID: "ship-order", Name: "Ship", Description: "Ship it.", Body: body("Ships.")},
 		{Op: "create", ID: "bad", Name: "Bad", Description: "Bad.", Interfaces: []string{"GET /nope"}, Body: body("Uses an unknown interface.")},
 	})
@@ -702,7 +680,7 @@ func TestChangeFeatures(t *testing.T) {
 	}
 
 	// Ids are unique across systems.
-	_, err = f.m.ChangeWiki("inventory", "", []wiki.Write{{Op: "create", ID: "create-order", Name: "Create", Description: "Dup.", Body: body("Dup.")}})
+	_, err = f.m.ChangeWiki("inventory", false, []wiki.Write{{Op: "create", ID: "create-order", Name: "Create", Description: "Dup.", Body: body("Dup.")}})
 	if err == nil || !strings.Contains(err.Error(), "W1") || !strings.Contains(err.Error(), "another wiki") {
 		t.Errorf("W1 across systems: %v", err)
 	}
@@ -710,7 +688,7 @@ func TestChangeFeatures(t *testing.T) {
 	// A rename keeps test results and rewrites links in the wiki and the
 	// private documents.
 	f.runOrders(t, testmap.Passed, testmap.Passed, testmap.Passed)
-	res, err = f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
+	res, err = f.m.ChangeWiki("orders", false, []wiki.Write{{Op: "rename", ID: "create-order", To: "place-order"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,14 +709,14 @@ func TestChangeFeatures(t *testing.T) {
 	if !strings.Contains(string(doc), "[[place-order]]") {
 		t.Errorf("K4: links follow the rename:\n%s", doc)
 	}
-	hit, err := f.m.GetDocument("eng-lead", "cancel-order")
+	hit, err := f.m.GetDocument("lead", "cancel-order")
 	if err != nil || hit.Document != string(doc) {
 		t.Errorf("Q3: the document as on disk: %v", err)
 	}
 
 	// A remove drops the feature; its tests become unmapped, and the code
 	// map is left to the owner.
-	res, err = f.m.ChangeWiki("orders", "", []wiki.Write{{Op: "remove", ID: "place-order"}})
+	res, err = f.m.ChangeWiki("orders", false, []wiki.Write{{Op: "remove", ID: "place-order"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -752,7 +730,7 @@ func TestChangeFeatures(t *testing.T) {
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `layout.yaml still names the removed feature "place-order"`) {
 		t.Errorf("E10: notes %v", res.Notes)
 	}
-	if _, err := f.m.ChangeWiki("eng-lead", "", nil); !errors.Is(err, ErrForbidden) {
+	if _, err := f.m.ChangeWiki("lead", false, nil); !errors.Is(err, ErrForbidden) {
 		t.Errorf("only owners change a system wiki: %v", err)
 	}
 }
@@ -870,7 +848,7 @@ func TestTestHealth(t *testing.T) {
 			t.Errorf("Q5: the map holds %q:\n%s", leak, public)
 		}
 	}
-	hit, _ := f.m.GetDocument("eng-lead", "create-order")
+	hit, _ := f.m.GetDocument("lead", "create-order")
 	if hit.Health != testmap.Failing {
 		t.Errorf("E13: orchestrators see the health: %+v", hit)
 	}

@@ -38,7 +38,7 @@ func Run(ctx context.Context, c *api.Client) error {
 		return err
 	}
 	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared, tap: newTap(ctx, c)}
-	log.Printf("connected as %s; hubs: %s", self.Name, hubNames(self.Hubs))
+	log.Printf("connected as %s, %s", self.Name, roleOf(self))
 
 	if self.System != nil {
 		tc, err := c.TurnContext(ctx)
@@ -171,41 +171,13 @@ func systemPrompt(self api.Self) string {
 	if self.Description != "" {
 		fmt.Fprintf(&b, " Your role: %s", self.Description)
 	}
-	fmt.Fprintf(&b, "\n\n## Your hubs\n\n%s", mcpserver.DescribeHubs(self))
-	b.WriteString(`
-## How messages work
-
-- A hub is a chat room. mcp__hikari__post_to_hub sends a message to every participant of a hub.
-- mcp__hikari__send_direct_message sends a private message to one node that shares a hub with you. You cannot reach any other node.
-- Messages arrive as your prompt inside <message> tags. The channel attribute is the hub (#name) or "direct".
-- Nobody reads your text output. Only the hikari tools deliver information.
-- Answer in the channel the message came from: a direct message with a direct message, a hub post in that hub.
-- After you send what is needed, end your turn. Replies arrive as a new turn.
-- Send a message only when it contains information or a request. Do not send messages that only acknowledge or thank. If a message needs nothing from you, end your turn without sending anything.
-- During a long turn, call mcp__hikari__check_inbox to read messages that arrived meanwhile.
-
-## When a message starts a turn for you
-
-Every participant of a hub receives every post. A post starts a turn at once only for the orchestrator of the hub, for each participant that the post mentions as @name, and for all members when the orchestrator posts without mentions. You read other posts at the start of your next turn. A direct message always starts a turn.
-
-## Your role in each hub
-
-`)
-	for _, h := range self.Hubs {
-		orchestrator := h.Participants[0].Name
-		if orchestrator == self.Name {
-			fmt.Fprintf(&b, "- In #%s you are the orchestrator. You receive every post at once. Coordinate the members: give each member a clear task with @name, collect the results, and report to the participant who asked. A post from you without mentions starts a turn for every member, so mention only the members you need.\n", h.Name)
-		} else {
-			fmt.Fprintf(&b, "- In #%s you are a member. %s coordinates the hub. Do the tasks that mention you and post the results in the hub. A post from you starts a turn for %s and for each participant you mention.\n", h.Name, orchestrator, orchestrator)
-		}
-	}
-	b.WriteString("\nYour hubs and direct messages are the only way to reach anyone. The text you write at the end of a turn is not a message: nobody reads it. When you need a decision or an answer from someone, send it to them with the message tools, then end the turn; their reply starts your next turn.\n")
+	b.WriteString(roomPrompt(self))
 	b.WriteString(sharedPrompt())
 	b.WriteString(wikisPrompt(self))
 	if self.System != nil {
 		b.WriteString(ownerPrompt(self))
 	}
-	if len(self.Orchestrates) > 0 {
+	if self.Orchestrator {
 		b.WriteString(orchestratorPrompt(self))
 	}
 	b.WriteString(grantsPrompt(self))
@@ -312,12 +284,12 @@ func clip(s string, n int) string {
 	return s
 }
 
-func hubNames(hubs []api.HubInfo) string {
-	names := make([]string, len(hubs))
-	for i, h := range hubs {
-		names[i] = "#" + h.Name
+// roleOf names the agent's role in the room, for the log.
+func roleOf(self api.Self) string {
+	if self.Orchestrator {
+		return "the orchestrator"
 	}
-	return strings.Join(names, ", ")
+	return "an owner"
 }
 
 func senders(msgs []api.Message) string {

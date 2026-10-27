@@ -35,7 +35,6 @@ type Manifest struct {
 	Notes        string        `yaml:"notes" json:"notes"`
 	Hikari       string        `yaml:"hikari" json:"hikari"`
 	SourceCommit string        `yaml:"source_commit,omitempty" json:"source_commit,omitempty"`
-	Hubs         []string      `yaml:"hubs" json:"hubs"`
 	Product      ProductInfo   `yaml:"product" json:"product"`
 	Map          string        `yaml:"map" json:"map"`
 	Certificates []Certificate `yaml:"certificates" json:"certificates"`
@@ -50,37 +49,24 @@ type ProductInfo struct {
 }
 
 // onDisk and inMemory turn the names of a manifest into ids and back: on
-// disk, a manifest names its system and its hubs by id (rule ID7 of the
-// ids spec).
+// disk, a manifest names its system by id (rule ID7 of the ids spec).
 func (s Store) onDisk(m Manifest) Manifest {
 	m.System = s.SystemID(m.System)
-	m.Hubs = mapSlice(m.Hubs, s.HubID)
 	return m
 }
 
 func (s Store) inMemory(m Manifest) Manifest {
 	m.System = s.SystemName(m.System)
-	m.Hubs = mapSlice(m.Hubs, s.HubName)
 	return m
 }
 
-func mapSlice(in []string, f func(string) string) []string {
-	if in == nil {
-		return nil
-	}
-	out := make([]string, len(in))
-	for i, v := range in {
-		out[i] = f(v)
-	}
-	return out
-}
-
-// ParseManifest reads a manifest, rejecting unknown fields. The image key
-// of an older release is ignored.
+// ParseManifest reads a manifest, rejecting unknown fields. The image and
+// hubs keys of an older release are ignored.
 func ParseManifest(data []byte) (Manifest, error) {
 	var m struct {
 		Manifest `yaml:",inline"`
 		Image    any `yaml:"image"`
+		Hubs     any `yaml:"hubs"`
 	}
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
@@ -104,8 +90,6 @@ type PublishInput struct {
 	// Wiki holds the agent documents of the system wiki at release time,
 	// by file name (rule L2 of the wikis spec).
 	Wiki map[string][]byte
-	// Hubs are the hubs where the release is announced.
-	Hubs []string
 	// Hikari is the version of the server.
 	Hikari string
 	Now    time.Time
@@ -287,14 +271,9 @@ func (s Store) Publish(in PublishInput) (Manifest, error) {
 	if certs == nil {
 		certs = []Certificate{}
 	}
-	hubs := in.Hubs
-	if hubs == nil {
-		hubs = []string{}
-	}
 	m := Manifest{
 		Deliverable: in.Deliverable, Version: in.Version, System: in.System,
 		Released: in.Now.UTC(), Notes: in.Notes, Hikari: in.Hikari, SourceCommit: in.SourceCommit,
-		Hubs: hubs,
 		Product: ProductInfo{
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),

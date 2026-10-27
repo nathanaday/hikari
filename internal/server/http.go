@@ -87,26 +87,17 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	s.storeRoutes(mux, ui)
 	// The user's changes to the wikis (rules U6, U8, and C4 of the wikis
-	// spec). {scope} is hub or system.
-	wikiRef := func(r *http.Request) (string, bool) {
-		scope := r.PathValue("scope")
-		return scope + ":" + r.PathValue("name"), scope == "hub" || scope == "system"
-	}
+	// spec). {ref} is public or system:<name>.
 	userWrite := func(fn func(r *http.Request, ref string) error) http.HandlerFunc {
 		return ui(func(w http.ResponseWriter, r *http.Request) {
-			ref, ok := wikiRef(r)
-			if !ok {
-				writeError(w, http.StatusNotFound, "no such wiki")
-				return
-			}
-			if err := fn(r, ref); err != nil {
+			if err := fn(r, r.PathValue("ref")); err != nil {
 				writeSystemError(w, err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
 	}
-	mux.HandleFunc("PUT /api/ui/wiki/{scope}/{name}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
+	mux.HandleFunc("PUT /api/ui/wiki/{ref}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
 		var req struct {
 			Text string `json:"text"`
 		}
@@ -115,17 +106,8 @@ func (s *Server) Handler(uiToken string) http.Handler {
 		}
 		return s.sys.WriteDocument(ref, r.PathValue("id"), req.Text)
 	}))
-	mux.HandleFunc("DELETE /api/ui/wiki/{scope}/{name}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
+	mux.HandleFunc("DELETE /api/ui/wiki/{ref}/docs/{id}", userWrite(func(r *http.Request, ref string) error {
 		return s.sys.RemoveDocument(ref, r.PathValue("id"))
-	}))
-	mux.HandleFunc("PUT /api/ui/wiki/{scope}/{name}/key/{id}", userWrite(func(r *http.Request, ref string) error {
-		var req struct {
-			Key bool `json:"key"`
-		}
-		if err := decode(r, &req); err != nil {
-			return err
-		}
-		return s.sys.SetKey(ref, r.PathValue("id"), req.Key)
 	}))
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
@@ -169,7 +151,7 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		return sys.ChangeWiki(node, req.Hub, req.Writes)
+		return sys.ChangeWiki(node, req.Public, req.Writes)
 	})
 	handle("GET /api/node/wiki/docs/{id}", func(r *http.Request, node string) (any, error) {
 		return sys.GetDocument(node, r.PathValue("id"))
@@ -208,15 +190,13 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		if err := decode(r, &req); err != nil {
 			return nil, err
 		}
-		rel, hubs, err := sys.PublishRelease(node, req)
+		rel, err := sys.PublishRelease(node, req)
 		if err != nil {
 			return nil, err
 		}
-		for _, hub := range hubs {
-			body := fmt.Sprintf("Released %s %s %s: %s", node, rel.Deliverable, rel.Version, rel.Notes)
-			if _, err := s.Send(node, api.SendRequest{Hub: hub, Body: body}); err != nil {
-				return nil, err
-			}
+		body := fmt.Sprintf("Released %s %s %s: %s", node, rel.Deliverable, rel.Version, rel.Notes)
+		if _, err := s.Send(node, api.SendRequest{Body: body}); err != nil {
+			return nil, err
 		}
 		return rel, nil
 	})
@@ -231,22 +211,21 @@ func (s *Server) systemRoutes(mux *http.ServeMux) {
 		return sys.GetSystem(node, r.PathValue("name"))
 	})
 
-	handle("GET /api/node/vocabulary/{hub}", func(r *http.Request, node string) (any, error) {
-		return sys.GetVocabulary(node, r.PathValue("hub"))
+	handle("GET /api/node/vocabulary", func(r *http.Request, node string) (any, error) {
+		return sys.Vocabulary(), nil
 	})
-	handle("POST /api/node/vocabulary/{hub}", func(r *http.Request, node string) (any, error) {
+	handle("POST /api/node/vocabulary", func(r *http.Request, node string) (any, error) {
 		var ch api.VocabularyChange
 		if err := decode(r, &ch); err != nil {
 			return nil, err
 		}
-		hub := r.PathValue("hub")
 		switch {
 		case ch.Op == "define_term" && ch.Term != nil:
-			return nil, sys.DefineTerm(node, hub, *ch.Term)
+			return nil, sys.DefineTerm(node, *ch.Term)
 		case ch.Op == "define_interface" && ch.Interface != nil:
-			return nil, sys.DefineInterface(node, hub, *ch.Interface)
+			return nil, sys.DefineInterface(node, *ch.Interface)
 		case ch.Op == "remove":
-			return nil, sys.RemoveEntry(node, hub, ch.Name)
+			return nil, sys.RemoveEntry(node, ch.Name)
 		}
 		return nil, errors.New(`op must be "define_term" with a term, "define_interface" with an interface, or "remove" with a name`)
 	})
@@ -285,7 +264,7 @@ func (s *Server) node(next func(http.ResponseWriter, *http.Request, string)) htt
 func (s *Server) send(w http.ResponseWriter, r *http.Request, from string) {
 	var req api.SendRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2*maxBodyBytes)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "body must be {\"hub\" or \"to\": ..., \"body\": ...}")
+		writeError(w, http.StatusBadRequest, "body must be {\"body\": ..., and \"to\" for a direct message}")
 		return
 	}
 	m, err := s.Send(from, req)

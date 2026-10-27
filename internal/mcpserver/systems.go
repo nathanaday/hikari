@@ -15,16 +15,12 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-type hubArgs struct {
-	Hub string `json:"hub" jsonschema:"name of the hub, without the #"`
-}
-
 func addVocabularyReader(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_vocabulary",
-		Description: "Read the vocabulary of a hub you are in: the agreed names of domain terms and of the interfaces between systems.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a hubArgs) (*mcp.CallToolResult, any, error) {
-		v, err := c.GetVocabulary(ctx, hubName(a.Hub))
+		Description: "Read the project's vocabulary: the agreed names of domain terms and of the interfaces between systems.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		v, err := c.GetVocabulary(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -33,7 +29,7 @@ func addVocabularyReader(s *mcp.Server, c *api.Client) {
 }
 
 type interfaceArg struct {
-	Name        string `json:"name" jsonschema:"the interface name, as in the hub vocabulary, for example POST /orders or order.created"`
+	Name        string `json:"name" jsonschema:"the interface name, as in the vocabulary, for example POST /orders or order.created"`
 	Kind        string `json:"kind" jsonschema:"one lowercase word, for example http, grpc, event, function, file, or cli"`
 	Description string `json:"description,omitempty" jsonschema:"what the interface does"`
 }
@@ -55,7 +51,7 @@ type fieldsArgs struct {
 type writeArgs struct {
 	Op          string      `json:"op" jsonschema:"create, modify, rename, or remove"`
 	ID          string      `json:"id" jsonschema:"the document id; for a create, a new id in lowercase letters, digits, and dashes, unique in every wiki, which becomes the file name"`
-	Kind        string      `json:"kind,omitempty" jsonschema:"create: the kind of the document; in a system wiki feature (the default), principle, or rule; in a hub wiki story, rule, or principle"`
+	Kind        string      `json:"kind,omitempty" jsonschema:"create: the kind of the document; in a system wiki feature (the default), principle, or rule; in the public wiki story, rule, or principle"`
 	Name        string      `json:"name,omitempty" jsonschema:"create: two to five words, as a user would say it"`
 	Description string      `json:"description,omitempty" jsonschema:"create: one sentence, at most 200 characters"`
 	Interfaces  []string    `json:"interfaces,omitempty" jsonschema:"create, a feature only: names from your provides or consumes that the feature uses"`
@@ -67,11 +63,6 @@ type writeArgs struct {
 }
 
 type changeArgs struct {
-	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a document that an earlier one creates"`
-}
-
-type hubChangeArgs struct {
-	Hub    string      `json:"hub" jsonschema:"the hub whose wiki to change, without the #"`
 	Writes []writeArgs `json:"writes" jsonschema:"the writes, applied in order as one change; a later write can name a document that an earlier one creates"`
 }
 
@@ -160,9 +151,9 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "change_wiki",
-		Description: "Change your system's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/public/export/wiki/. hikari checks every write against the rules of the hikari-system skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of your hubs' wikis. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
+		Description: "Change your system's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/public/export/wiki/. hikari checks every write against the rules of the hikari-system skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of the public wiki. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
-		res, err := c.ChangeWiki(ctx, "", wikiWrites(a.Writes))
+		res, err := c.ChangeWiki(ctx, false, wikiWrites(a.Writes))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -212,7 +203,7 @@ func addOwnerTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "publish_release",
-		Description: "Publish the product you staged in /hikari/public/export/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in your hubs.",
+		Description: "Publish the product you staged in /hikari/public/export/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in the room.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
 		rel, err := c.PublishRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Certificates: a.Certificates})
 		if err != nil {
@@ -256,7 +247,7 @@ type documentArgs struct {
 func addWikiReaders(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_document",
-		Description: "Read one document of the wikis you can read, by its id: its text, its kind, its wiki, the documents that link it, and a feature's health or a hub story's support.",
+		Description: "Read one document of the wikis you can read, by its id: its text, its kind, its wiki, the documents that link it, and a feature's health or the support of a story, rule, or principle of the public wiki.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a documentArgs) (*mcp.CallToolResult, any, error) {
 		out, err := c.GetDocument(ctx, a.ID)
 		if err != nil {
@@ -281,42 +272,39 @@ func addWikiReaders(s *mcp.Server, c *api.Client) {
 }
 
 type termArgs struct {
-	Hub        string   `json:"hub" jsonschema:"the hub whose vocabulary to change, without the #"`
 	Term       string   `json:"term" jsonschema:"the term"`
-	Definition string   `json:"definition" jsonschema:"what the term means in this hub"`
+	Definition string   `json:"definition" jsonschema:"what the term means in this project"`
 	Avoid      []string `json:"avoid,omitempty" jsonschema:"other names for the same thing that agents must not use"`
 }
 
 type vocabInterfaceArgs struct {
-	Hub         string `json:"hub" jsonschema:"the hub whose vocabulary to change, without the #"`
 	Name        string `json:"name" jsonschema:"the canonical interface name"`
 	Kind        string `json:"kind" jsonschema:"one lowercase word, for example http, grpc, event, function, file, or cli"`
 	Description string `json:"description" jsonschema:"what the interface does"`
 }
 
 type removeEntryArgs struct {
-	Hub  string `json:"hub" jsonschema:"the hub whose vocabulary to change, without the #"`
 	Name string `json:"name" jsonschema:"the term or interface name to remove"`
 }
 
 func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_systems",
-		Description: "List the systems in the hubs you orchestrate, with their summary, map state, and features counted by health.",
+		Description: "List every system, with its summary, map state, and features counted by health.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 		out, err := c.ListSystems(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
 		if len(out) == 0 {
-			return text("No system is in the hubs you orchestrate."), nil, nil
+			return text("The project has no system yet."), nil, nil
 		}
 		return yamlResult(out)
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_system",
-		Description: "Read one system: its purpose, interfaces, and features with their health. It flags interfaces that are not in your vocabularies or that no system provides.",
+		Description: "Read one system: its purpose, interfaces, and features with their health. It flags interfaces that are not in the vocabulary or that no system provides.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a systemArgs) (*mcp.CallToolResult, any, error) {
 		out, err := c.GetSystem(ctx, a.Name)
 		if err != nil {
@@ -326,10 +314,10 @@ func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "change_hub_wiki",
-		Description: "Change the wiki of a hub you orchestrate as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/readonly/hubs/<hub>/wiki/. hikari checks every write against the rules of the hikari-hub skill and applies all of them or none. A document can link the documents of the hub's systems and of its child and parent hubs. A rename rewrites every link to the document in every wiki. The user's plans and notes, and the key of a story, are not yours to change.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a hubChangeArgs) (*mcp.CallToolResult, any, error) {
-		res, err := c.ChangeWiki(ctx, hubName(a.Hub), wikiWrites(a.Writes))
+		Name:        "change_public_wiki",
+		Description: "Change the public wiki as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/readonly/shared/wiki/. hikari checks every write against the rules of the hikari-orchestration skill and applies all of them or none. A document can link the documents of every system wiki. A rename rewrites every link to the document in every wiki. The user's plans and notes are not yours to change.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
+		res, err := c.ChangeWiki(ctx, true, wikiWrites(a.Writes))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -338,34 +326,34 @@ func addOrchestratorTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "define_term",
-		Description: "Add a term to the vocabulary of a hub you orchestrate, or replace the term with this name.",
+		Description: "Add a term to the vocabulary, or replace the term with this name.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a termArgs) (*mcp.CallToolResult, any, error) {
 		t := vocab.Term{Term: a.Term, Definition: a.Definition, Avoid: a.Avoid}
-		if err := c.ChangeVocabulary(ctx, hubName(a.Hub), api.VocabularyChange{Op: "define_term", Term: &t}); err != nil {
+		if err := c.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_term", Term: &t}); err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Defined the term %q in #%s.", a.Term, hubName(a.Hub))), nil, nil
+		return text(fmt.Sprintf("Defined the term %q.", a.Term)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "define_interface",
-		Description: "Add an interface name to the vocabulary of a hub you orchestrate, or replace the interface with this name.",
+		Description: "Add an interface name to the vocabulary, or replace the interface with this name.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a vocabInterfaceArgs) (*mcp.CallToolResult, any, error) {
 		in := vocab.Interface{Name: a.Name, Kind: a.Kind, Description: a.Description}
-		if err := c.ChangeVocabulary(ctx, hubName(a.Hub), api.VocabularyChange{Op: "define_interface", Interface: &in}); err != nil {
+		if err := c.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_interface", Interface: &in}); err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Defined the interface %q in #%s.", a.Name, hubName(a.Hub))), nil, nil
+		return text(fmt.Sprintf("Defined the interface %q.", a.Name)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "remove_entry",
-		Description: "Remove a term or an interface from the vocabulary of a hub you orchestrate.",
+		Description: "Remove a term or an interface from the vocabulary.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a removeEntryArgs) (*mcp.CallToolResult, any, error) {
-		if err := c.ChangeVocabulary(ctx, hubName(a.Hub), api.VocabularyChange{Op: "remove", Name: a.Name}); err != nil {
+		if err := c.ChangeVocabulary(ctx, api.VocabularyChange{Op: "remove", Name: a.Name}); err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Removed %q from #%s.", a.Name, hubName(a.Hub))), nil, nil
+		return text(fmt.Sprintf("Removed %q from the vocabulary.", a.Name)), nil, nil
 	})
 }
 
@@ -391,8 +379,6 @@ func yamlResult(v any) (res *mcp.CallToolResult, _ any, err error) {
 	}
 	return text(string(data)), nil, nil
 }
-
-func hubName(h string) string { return strings.TrimPrefix(h, "#") }
 
 func short(commit string) string {
 	if len(commit) > 10 {

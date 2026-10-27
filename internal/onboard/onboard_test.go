@@ -36,14 +36,14 @@ func TestWrite(t *testing.T) {
 	if got := git("status", "--porcelain", "--untracked-files=all"); got != "?? .claude/skills/mine/SKILL.md\n" {
 		t.Errorf("HS3 git sees only the user's own skill:\n%s", got)
 	}
-	for _, f := range []string{"SKILL.md", "references/principles.md", "references/review.md", "references/wiki.md", "references/hub-wiki.md"} {
+	for _, f := range []string{"SKILL.md", "references/principles.md", "references/review.md", "references/wiki.md", "references/public-wiki.md"} {
 		if _, err := os.Stat(filepath.Join(dir, ".claude/skills/hikify", f)); err != nil {
 			t.Errorf("hikify lacks %s: %v", f, err)
 		}
 	}
-	hub, _ := os.ReadFile(filepath.Join(dir, ".claude/skills/hikify/references/hub-wiki.md"))
-	if !strings.Contains(string(hub), "## The document") {
-		t.Error("decision 6: the hub wiki reference comes from the agents' skill")
+	public, _ := os.ReadFile(filepath.Join(dir, ".claude/skills/hikify/references/public-wiki.md"))
+	if !strings.Contains(string(public), "## The document") {
+		t.Error("decision 6: the public wiki reference comes from the agents' skill")
 	}
 }
 

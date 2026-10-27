@@ -34,7 +34,7 @@ import (
 	"github.com/nathanaday/hikari/internal/version"
 )
 
-const usage = `hikari runs Claude Code agents in containers that talk to each other only through shared hubs.
+const usage = `hikari runs Claude Code agents in containers that talk to each other only through one room.
 
 Usage:
   hikari up [flags] [compose.yaml]      start the server, the web UI, and the compose project

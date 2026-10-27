@@ -76,7 +76,7 @@ func TestToolsAgainstTheServer(t *testing.T) {
 name: test
 x-hikari:
   repos: {shop: {path: shop, branch: hikari/work}}
-  hubs: {h: {orchestrator: lead, members: [orders]}}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
   orders: {x-hikari: {system: {repo: shop, scope: orders}}}
@@ -134,7 +134,7 @@ services:
 		t.Errorf("commit_changes: %s", out)
 	}
 
-	if out, isErr := call(t, lead, "define_interface", map[string]any{"hub": "#h", "name": "POST /orders", "kind": "http", "description": "Creates an order."}); isErr {
+	if out, isErr := call(t, lead, "define_interface", map[string]any{"name": "POST /orders", "kind": "http", "description": "Creates an order."}); isErr {
 		t.Fatalf("define_interface: %s", out)
 	}
 	out, _ = call(t, lead, "get_system", map[string]any{"name": "orders"})
@@ -144,18 +144,24 @@ services:
 	if out, _ := call(t, lead, "search_wiki", map[string]any{"query": "create"}); !strings.Contains(out, "wiki: orders") {
 		t.Errorf("search_wiki:\n%s", out)
 	}
-	if out, isErr := call(t, lead, "change_hub_wiki", map[string]any{"hub": "#h", "writes": []map[string]any{
+	if out, isErr := call(t, lead, "change_public_wiki", map[string]any{"writes": []map[string]any{
 		{"op": "create", "id": "customer-orders", "kind": "story", "name": "A customer orders", "description": "A customer places a sound order.", "body": "## Purpose\n\nThrough [[validate-order]] and [[create-order]].\n"},
 	}}); isErr || !strings.Contains(out, "Applied 1 write(s)") {
-		t.Fatalf("change_hub_wiki: %s", out)
+		t.Fatalf("change_public_wiki: %s", out)
 	}
 	if out, _ := call(t, orders, "get_document", map[string]any{"id": "validate-order"}); !strings.Contains(out, "## Purpose") || !strings.Contains(out, "backlinks:") || !strings.Contains(out, "id: customer-orders") {
 		t.Errorf("get_document returns the document with its backlinks:\n%s", out)
 	}
-	if _, err := orders.CallTool(context.Background(), &mcp.CallToolParams{Name: "define_term", Arguments: map[string]any{"hub": "h", "term": "x", "definition": "y"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
+	if _, err := orders.CallTool(context.Background(), &mcp.CallToolParams{Name: "define_term", Arguments: map[string]any{"term": "x", "definition": "y"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
 		t.Errorf("an owner has no define_term tool, got %v", err)
 	}
-	if out, _ := call(t, orders, "get_vocabulary", map[string]any{"hub": "h"}); !strings.Contains(out, "POST /orders") {
+	if out, _ := call(t, orders, "get_vocabulary", nil); !strings.Contains(out, "POST /orders") {
 		t.Errorf("get_vocabulary:\n%s", out)
+	}
+	if out, isErr := call(t, orders, "post", map[string]any{"body": "Done."}); isErr || !strings.Contains(out, "to the room") || !strings.Contains(out, "lead") {
+		t.Errorf("post: %s", out)
+	}
+	if out, _ := call(t, orders, "list_agents", nil); !strings.Contains(out, "- lead, orchestrator") || !strings.Contains(out, "- orders (you), owner") || !strings.Contains(out, "- user, operator") {
+		t.Errorf("list_agents:\n%s", out)
 	}
 }

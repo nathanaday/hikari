@@ -20,33 +20,28 @@ import (
 // The agent kinds of each scope of wiki (section 2 of the wikis spec).
 var (
 	systemKinds = []string{wiki.Feature, wiki.Principle, wiki.Rule}
-	hubKinds    = []string{wiki.Story, wiki.Rule, wiki.Principle}
+	publicKinds = []string{wiki.Story, wiki.Rule, wiki.Principle}
 	// releaseKinds are the documents a release copies (rule L2).
 	releaseKinds = []string{wiki.Feature, wiki.Principle, wiki.Rule}
 )
 
-// wikiOf is one wiki of the store: a system's or a hub's.
+// wikiOf is one wiki of the store: a system's or the public wiki.
 type wikiOf struct {
 	ref   string
-	scope string // "system" or "hub"
+	scope string // "system" or "public"
 	name  string
-	// author writes its agent documents: the owner, or the hub's
-	// orchestrator.
+	// author writes its agent documents: the owner, or the orchestrator.
+	// The public wiki of a project without an orchestrator has none.
 	author string
 	// dir is its directory, relative to the store, with slashes.
 	dir   string
 	store *wiki.Store
 }
 
-// label names the wiki for a person or an agent: "#shop", or the system.
-func (w *wikiOf) label() string {
-	if w.scope == "hub" {
-		return "#" + w.name
-	}
-	return w.name
-}
+// label names the wiki for a person or an agent: "public", or the system.
+func (w *wikiOf) label() string { return w.name }
 
-// openWikis opens the wiki of every system and hub (rule L1).
+// openWikis opens the wiki of every system and the public wiki (rule L1).
 func (m *Manager) openWikis() error {
 	for _, name := range m.topo.Owners() {
 		s, err := wiki.Open(m.store.SystemWiki(name), systemKinds)
@@ -58,26 +53,21 @@ func (m *Manager) openWikis() error {
 			dir: m.store.Rel(m.store.SystemWiki(name)), store: s,
 		}
 	}
-	for _, hub := range m.topo.HubNames() {
-		s, err := wiki.Open(m.store.HubWiki(hub), hubKinds)
-		if err != nil {
-			return fmt.Errorf("hub %q: %w", hub, err)
-		}
-		m.wikis[api.HubWikiRef(hub)] = &wikiOf{
-			ref: api.HubWikiRef(hub), scope: "hub", name: hub, author: m.topo.Hubs[hub].Orchestrator,
-			dir: m.store.Rel(m.store.HubWiki(hub)), store: s,
-		}
+	s, err := wiki.Open(m.store.PublicWiki(), publicKinds)
+	if err != nil {
+		return fmt.Errorf("the public wiki: %w", err)
+	}
+	m.wikis[api.PublicWikiRef] = &wikiOf{
+		ref: api.PublicWikiRef, scope: "public", name: "public", author: m.topo.Orchestrator,
+		dir: m.store.Rel(m.store.PublicWiki()), store: s,
 	}
 	return nil
 }
 
-// wikiRefs returns the refs of every wiki: the hubs first, then the
-// systems, each in name order (rule N1b).
+// wikiRefs returns the refs of every wiki: the public wiki first, then the
+// systems in name order (rule N1b).
 func (m *Manager) wikiRefs() []string {
-	var out []string
-	for _, hub := range m.topo.HubNames() {
-		out = append(out, api.HubWikiRef(hub))
-	}
+	out := []string{api.PublicWikiRef}
 	for _, name := range m.topo.Owners() {
 		out = append(out, api.SystemWikiRef(name))
 	}
@@ -87,20 +77,12 @@ func (m *Manager) wikiRefs() []string {
 // linkableRefs returns the other wikis whose agent documents w can link
 // (rule N2).
 func (m *Manager) linkableRefs(w *wikiOf) []string {
-	var out []string
 	if w.scope == "system" {
-		for _, hub := range m.topo.MemberHubs(w.name) {
-			out = append(out, api.HubWikiRef(hub))
-		}
-		return out
+		return []string{api.PublicWikiRef}
 	}
-	for _, member := range m.topo.Hubs[w.name].Members {
-		if _, ok := m.owners[member]; ok {
-			out = append(out, api.SystemWikiRef(member))
-		}
-	}
-	for _, hub := range append(m.topo.ChildHubs(w.name), m.topo.ParentHubs(w.name)...) {
-		out = append(out, api.HubWikiRef(hub))
+	var out []string
+	for _, name := range m.topo.Owners() {
+		out = append(out, api.SystemWikiRef(name))
 	}
 	return out
 }
@@ -111,9 +93,7 @@ func (m *Manager) readableRefs(agent string) []string {
 	if _, ok := m.owners[agent]; ok {
 		out = append(out, api.SystemWikiRef(agent))
 	}
-	for _, hub := range m.topo.ReadableHubWikis(agent) {
-		out = append(out, api.HubWikiRef(hub))
-	}
+	out = append(out, api.PublicWikiRef)
 	for _, sys := range m.topo.VisibleSystems(agent) {
 		out = append(out, api.SystemWikiRef(sys))
 	}
@@ -158,7 +138,7 @@ func (m *Manager) check(w *wikiOf) wiki.Check {
 }
 
 // locate finds the document named id, looking first in the wiki from, then
-// in the hubs, then in the systems (rule N1b).
+// in the public wiki, then in the systems (rule N1b).
 func (m *Manager) locate(id, from string) (*wikiOf, *wiki.Document) {
 	refs := m.wikiRefs()
 	if from != "" {
@@ -172,24 +152,21 @@ func (m *Manager) locate(id, from string) (*wikiOf, *wiki.Document) {
 	return nil, nil
 }
 
-// ChangeWiki applies one change to agent's own wiki, or with hub set, to
-// the wiki of a hub that agent orchestrates (rules T1 and T2).
-func (m *Manager) ChangeWiki(agent, hub string, writes []wiki.Write) (api.ChangeResult, error) {
+// ChangeWiki applies one change to agent's own wiki, or with public set,
+// to the public wiki, which only the orchestrator changes (rules T1 and
+// T2).
+func (m *Manager) ChangeWiki(agent string, public bool, writes []wiki.Write) (api.ChangeResult, error) {
 	var w *wikiOf
-	if hub == "" {
+	if !public {
 		if _, err := m.owner(agent); err != nil {
-			return api.ChangeResult{}, fmt.Errorf("%w; an orchestrator changes a hub's wiki with change_hub_wiki", err)
+			return api.ChangeResult{}, fmt.Errorf("%w; the orchestrator changes the public wiki with change_public_wiki", err)
 		}
 		w = m.wikis[api.SystemWikiRef(agent)]
 	} else {
-		h, ok := m.topo.Hubs[hub]
-		switch {
-		case !ok:
-			return api.ChangeResult{}, fmt.Errorf("%w: no hub %q", ErrNotFound, hub)
-		case h.Orchestrator != agent:
-			return api.ChangeResult{}, fmt.Errorf("%w: only %q, the orchestrator of #%s, changes its wiki", ErrForbidden, h.Orchestrator, hub)
+		if err := m.orchestrator(agent, "changes the public wiki"); err != nil {
+			return api.ChangeResult{}, err
 		}
-		w = m.wikis[api.HubWikiRef(hub)]
+		w = m.wikis[api.PublicWikiRef]
 	}
 	m.wikiMu.Lock()
 	defer m.wikiMu.Unlock()
@@ -239,7 +216,7 @@ func (m *Manager) ChangeWiki(agent, hub string, writes []wiki.Write) (api.Change
 		}
 		files = append(files, m.mapPath(agent))
 	} else {
-		verb = fmt.Sprintf("change the #%s wiki", hub)
+		verb = "change the public wiki"
 	}
 	if note := m.commitStore(agent, fmt.Sprintf("%s: %s: %s", agent, verb, describeWrites(writes)), files...); note != "" {
 		out.Notes = append(out.Notes, note)
@@ -312,8 +289,8 @@ func (m *Manager) featureHealth() map[string]string {
 	return out
 }
 
-// support sums the health of the features that a hub's story or rule links
-// (rule H2). It is "" for a document that links no feature.
+// support sums the health of the features that a document of the public
+// wiki links (rule H2). It is "" for a document that links no feature.
 func support(d *wiki.Document, health map[string]string) string {
 	var seen []string
 	for _, id := range d.Neighbors() {
@@ -347,7 +324,7 @@ func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 		d := docs[id]
 		doc := api.WikiDoc{
 			ID: id, Kind: d.KindOf(), Name: d.Name, Description: d.Description, Links: d.Neighbors(),
-			Key: d.Key, Status: d.Status, Created: d.Created,
+			Status: d.Status, Created: d.Created,
 			File: filepath.ToSlash(path.Join(w.dir, id+".md")), Hash: hash(w.store.Raw(id)),
 		}
 		if doc.Links == nil {
@@ -356,7 +333,7 @@ func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 		switch {
 		case doc.Kind == wiki.Feature:
 			doc.Health = health[id]
-		case w.scope == "hub" && (doc.Kind == wiki.Story || doc.Kind == wiki.Rule || doc.Kind == wiki.Principle):
+		case w.scope == "public" && (doc.Kind == wiki.Story || doc.Kind == wiki.Rule || doc.Kind == wiki.Principle):
 			doc.Support = support(d, health)
 		}
 		v.Documents = append(v.Documents, doc)
@@ -383,16 +360,6 @@ func (m *Manager) WikiView(ref string) (api.WikiView, bool) {
 	return m.wikiView(w, m.featureHealth()), true
 }
 
-// HubRefsOf returns the hub wikis whose support depends on a system's
-// health: the hubs the system's owner is a member of.
-func (m *Manager) HubRefsOf(system string) []string {
-	var out []string
-	for _, hub := range m.topo.MemberHubs(system) {
-		out = append(out, api.HubWikiRef(hub))
-	}
-	return out
-}
-
 // GetDocument returns a document of agent's readable wikis, with its
 // backlinks in them (rule T4).
 func (m *Manager) GetDocument(agent, id string) (api.DocumentHit, error) {
@@ -407,7 +374,7 @@ func (m *Manager) GetDocument(agent, id string) (api.DocumentHit, error) {
 	}
 	if w == nil {
 		if other, _ := m.locate(id, ""); other != nil {
-			return api.DocumentHit{}, fmt.Errorf("%w: %q is in the wiki of %s, which you cannot read; ask your orchestrator", ErrNotFound, id, other.label())
+			return api.DocumentHit{}, fmt.Errorf("%w: %q is in the wiki of %s, which you cannot read; ask the orchestrator", ErrNotFound, id, other.label())
 		}
 		return api.DocumentHit{}, fmt.Errorf("%w: no document %q", ErrNotFound, id)
 	}
@@ -435,7 +402,7 @@ func (m *Manager) hit(w *wikiOf, id string, d *wiki.Document, health map[string]
 				h.State = f.State
 			}
 		}
-	case w.scope == "hub" && (h.Kind == wiki.Story || h.Kind == wiki.Rule || h.Kind == wiki.Principle):
+	case w.scope == "public" && (h.Kind == wiki.Story || h.Kind == wiki.Rule || h.Kind == wiki.Principle):
 		h.Support = support(d, health)
 	}
 	return h
@@ -534,7 +501,13 @@ func IsWikiPath(storeRel, p string) bool {
 		return false
 	}
 	parts := strings.Split(rel, "/")
-	return len(parts) >= 4 && (parts[0] == "systems" || parts[0] == "hubs") && parts[2] == store.Wiki
+	switch {
+	case len(parts) >= 4 && parts[0] == "systems":
+		return parts[2] == store.Wiki
+	case len(parts) >= 3 && parts[0] == "shared":
+		return parts[1] == store.Wiki
+	}
+	return false
 }
 
 // WriteDocument writes a document that the user gives in full, in the UI
@@ -546,15 +519,6 @@ func (m *Manager) WriteDocument(ref, name, text string) error {
 // RemoveDocument removes a plan or a note, in the UI.
 func (m *Manager) RemoveDocument(ref, name string) error {
 	return m.userChange(ref, "remove "+name, name, func(w *wikiOf) error { return w.store.RemoveUserDoc(name) })
-}
-
-// SetKey marks or unmarks a story of a hub as key, in the UI (rule K3).
-func (m *Manager) SetKey(ref, id string, key bool) error {
-	verb := "mark key"
-	if !key {
-		verb = "unmark key"
-	}
-	return m.userChange(ref, verb+" "+id, id, func(w *wikiOf) error { return w.store.SetKey(id, key) })
 }
 
 // userChange applies one change that the user makes in the UI and commits

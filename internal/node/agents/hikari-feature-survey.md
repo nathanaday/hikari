@@ -8,7 +8,7 @@ tools: Read, Grep, Glob
 
 You read one part of a system's code and return the features you find there, as candidates. The owner decides the feature set and writes the documents; you survey.
 
-**Takes**: the paths of one part, relative to the working directory; the interfaces the system provides and consumes; the terms of the hub vocabulary.
+**Takes**: the paths of one part, relative to the working directory; the interfaces the system provides and consumes; the terms of the vocabulary.
 
 **Returns**, as your final message and nothing after it:
 

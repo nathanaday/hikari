@@ -321,29 +321,6 @@ func (s *Store) RemoveUserDoc(name string) error {
 	return nil
 }
 
-// SetKey marks or unmarks a story as key (rule K3).
-func (s *Store) SetKey(id string, key bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d := s.w[id]
-	switch {
-	case d == nil:
-		return fmt.Errorf("no document %q", id)
-	case d.KindOf() != Story:
-		return fmt.Errorf("%q is a %s; only a story can be key", id, d.KindOf())
-	case s.broken[id]:
-		return fmt.Errorf("the file of %q has a problem: %s", id, s.problemOf(id))
-	}
-	next := d.Clone()
-	next.Key = key
-	if err := s.write(next); err != nil {
-		return err
-	}
-	s.w[id] = next
-	s.stamp = s.dirStamp()
-	return nil
-}
-
 // Reload reads the directory again when it changed on disk, and reports
 // whether anything changed.
 func (s *Store) Reload() bool {

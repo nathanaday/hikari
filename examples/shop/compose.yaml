@@ -9,18 +9,14 @@
 #
 # Create the repo and the store first, then start the network:
 #   make demo-repo
-#   make up COMPOSE=examples/shop/compose.yaml
+#   make up
 
 name: shop
 
 x-hikari:
   repos:
     shop: {path: ../../.hikari/demo/shop, branch: hikari/demo}
-  hubs:
-    shop:
-      description: Builds the shop.
-      orchestrator: orchestrator
-      members: [orders, inventory]
+  orchestration: orchestrator
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]

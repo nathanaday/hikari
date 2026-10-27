@@ -162,8 +162,8 @@ func (d *dashboard) waitConnected(ctx context.Context, timeout time.Duration) bo
 }
 
 func (d *dashboard) messageLine(m api.Message) string {
-	to := "#" + m.Hub
-	if m.Hub == "" {
+	to := "room"
+	if m.To != "" {
 		to = m.To
 	}
 	body := strings.Join(strings.Fields(m.Body), " ")

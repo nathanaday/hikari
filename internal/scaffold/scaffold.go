@@ -35,8 +35,8 @@ CLAUDE_CODE_OAUTH_TOKEN=
 
 const starterCompose = `# The %[1]s project. Start it with: hikari up compose.yaml
 #
-# This file is a Docker compose file. The x-hikari keys describe the hubs and
-# the systems; see the hikari README.
+# This file is a Docker compose file. The x-hikari keys describe the
+# orchestrator and the systems; see the hikari README.
 
 name: %[1]s
 
@@ -46,11 +46,7 @@ x-hikari:
   project: {branch: "${HIKARI_BRANCH:-hikari}"}
   # repos:                   # a repository that holds a system's code
   #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync compose.yaml
-  hubs:
-    main:
-      description: Builds the %[1]s project.
-      orchestrator: orchestrator
-      members: []            # add each owner here
+  orchestration: orchestrator   # every other agent owns a system
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
@@ -129,7 +125,7 @@ func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, e
 		}
 	}
 	st := store.Store{Root: filepath.Join(dir, "store")}
-	if err := st.Prepare(nil, nil); err != nil {
+	if err := st.Prepare(nil); err != nil {
 		return false, err
 	}
 	if _, err := st.WriteIgnore(); err != nil {

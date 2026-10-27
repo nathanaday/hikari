@@ -331,11 +331,9 @@ func trigger(msgs []api.Message) string {
 	var parts []string
 	seen := map[string]bool{}
 	for _, m := range msgs {
-		p := m.From
-		if m.Hub != "" {
-			p += " in #" + m.Hub
-		} else {
-			p += " by direct message"
+		p := m.From + " in the room"
+		if m.To != "" {
+			p = m.From + " directly"
 		}
 		if !seen[p] {
 			seen[p] = true

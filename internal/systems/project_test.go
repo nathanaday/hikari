@@ -18,8 +18,7 @@ const projectTopology = `
 name: test
 x-hikari:
   project: {branch: hikari}
-  hubs:
-    eng: {orchestrator: lead, members: [orders]}
+  orchestration: lead
 services:
   lead: {x-hikari: {}}
   orders: {x-hikari: {system: {repo: project, scope: app}}}
@@ -82,7 +81,7 @@ func TestProjectStoreCommits(t *testing.T) {
 	if a, s, files := lastCommit(t, dir); a != "orders (hikari)" || s != "orders: set the system info" || !slices.Equal(files, []string{"store/systems/orders/map.yaml"}) {
 		t.Errorf("PR15 set_system_info commit = %s | %s | %v", a, s, files)
 	}
-	res, err := m.ChangeWiki("orders", "", []wiki.Write{{
+	res, err := m.ChangeWiki("orders", false, []wiki.Write{{
 		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.",
 		Interfaces: []string{"create_order"}, Body: body("A customer places an order."),
 	}})
@@ -95,8 +94,8 @@ func TestProjectStoreCommits(t *testing.T) {
 		t.Errorf("C2 change_wiki commit = %s | %s | %v", a, s, files)
 	}
 
-	must(t, m.DefineTerm("lead", "eng", vocab.Term{Term: "order", Definition: "A request to buy items."}))
-	if a, s, files := lastCommit(t, dir); a != "lead (hikari)" || s != "lead: define order in the #eng vocabulary" || !slices.Equal(files, []string{"store/shared/vocabulary/eng.yaml"}) {
+	must(t, m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "A request to buy items."}))
+	if a, s, files := lastCommit(t, dir); a != "lead (hikari)" || s != "lead: define order in the vocabulary" || !slices.Equal(files, []string{"store/shared/vocabulary/terms.yaml"}) {
 		t.Errorf("PR15 vocabulary commit = %s | %s | %v", a, s, files)
 	}
 
@@ -152,7 +151,7 @@ func TestProjectStoreCommits(t *testing.T) {
 func TestProjectWithoutSystemsIsNotListed(t *testing.T) {
 	f := newFixture(t)
 	dir := filepath.Join(f.dir, "empty")
-	src := "name: e\nx-hikari:\n  project: {branch: hikari}\n  hubs: {h: {orchestrator: lead}}\nservices:\n  lead: {x-hikari: {}}\n"
+	src := "name: e\nx-hikari:\n  project: {branch: hikari}\n  orchestration: lead\nservices:\n  lead: {x-hikari: {}}\n"
 	write(t, dir, ".gitignore", ".env\n/.hikari/\n")
 	write(t, dir, "compose.yaml", src)
 	git(t, dir, "init", "--quiet", "--initial-branch=main")
@@ -176,7 +175,7 @@ func TestProjectWithoutSystemsIsNotListed(t *testing.T) {
 func TestProjectWikiAuthors(t *testing.T) {
 	dir, m := newProject(t)
 	must(t, m.SetSystemInfo("orders", sysmap.SystemPatch{Summary: ptr("Takes orders.")}))
-	_, err := m.ChangeWiki("orders", "", []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.", Body: body("A customer places an order.")}})
+	_, err := m.ChangeWiki("orders", false, []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.", Body: body("A customer places an order.")}})
 	must(t, err)
 
 	// C1: your edit of a document comes first, as yours, when an agent
@@ -186,7 +185,7 @@ func TestProjectWikiAuthors(t *testing.T) {
 	os.WriteFile(feature, append(data, []byte("\n## Notes\n\nMine.\n")...), 0o644)
 	write(t, dir, "store/systems/orders/wiki/Roadmap.md", "---\nkind: plan\n---\nRefunds.\n")
 	m.wikis[api.SystemWikiRef("orders")].store.Reload()
-	_, err = m.ChangeWiki("orders", "", []wiki.Write{{Op: "modify", ID: "create-order", Body: body("A customer places an order, and it is stored.")}})
+	_, err = m.ChangeWiki("orders", false, []wiki.Write{{Op: "modify", ID: "create-order", Body: body("A customer places an order, and it is stored.")}})
 	must(t, err)
 	log := git(t, dir, "log", "-2", "--format=%an|%s")
 	if log != "orders (hikari)|orders: change the wiki: modify create-order\nTest User|user: wiki edits before orders's change" {
@@ -197,17 +196,17 @@ func TestProjectWikiAuthors(t *testing.T) {
 	}
 
 	// C4: a change in the UI is committed at once, as yours.
-	must(t, m.WriteDocument(api.HubWikiRef("eng"), "Ideas", "More.\n"))
-	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: write Ideas in #eng" || !slices.Equal(files, []string{"store/hubs/eng/wiki/Ideas.md"}) {
+	must(t, m.WriteDocument(api.PublicWikiRef, "Ideas", "More.\n"))
+	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: write Ideas in public" || !slices.Equal(files, []string{"store/shared/wiki/Ideas.md"}) {
 		t.Errorf("C4: %s | %s | %v", a, s, files)
 	}
 
 	// C3: at stop, what is left in the wikis is yours.
-	write(t, dir, "store/hubs/eng/wiki/Later.md", "Later.\n")
+	write(t, dir, "store/shared/wiki/Later.md", "Later.\n")
 	if errs := m.CommitAll(); len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: wiki edits left when hikari stopped" || !slices.Equal(files, []string{"store/hubs/eng/wiki/Later.md"}) {
+	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: wiki edits left when hikari stopped" || !slices.Equal(files, []string{"store/shared/wiki/Later.md"}) {
 		t.Errorf("C3: %s | %s | %v", a, s, files)
 	}
 	if got := git(t, dir, "status", "--porcelain"); got != "" {
@@ -218,11 +217,12 @@ func TestProjectWikiAuthors(t *testing.T) {
 func TestIsWikiPath(t *testing.T) {
 	for p, want := range map[string]bool{
 		"store/systems/orders/wiki/a.md": true,
-		"store/hubs/eng/wiki/Ideas.md":   true,
+		"store/shared/wiki/Ideas.md":     true,
+		"store/hubs/eng/wiki/Ideas.md":   false,
 		"store/systems/orders/map.yaml":  false,
 		"store/shared/policies/p.md":     false,
 		"compose.yaml":                   false,
-		"store/hubs/eng/wiki":            false,
+		"store/shared/wiki":              false,
 	} {
 		if got := IsWikiPath("store", p); got != want {
 			t.Errorf("C5 IsWikiPath(%q) = %v", p, got)

@@ -22,7 +22,6 @@ type Op struct {
 	ID       string `json:"id,omitempty"`
 	NewID    string `json:"new_id,omitempty"`
 	Kind     string `json:"kind,omitempty"`
-	Hub      string `json:"hub,omitempty"`
 	Agent    string `json:"agent,omitempty"`
 	Template string `json:"template,omitempty"`
 
@@ -30,7 +29,6 @@ type Op struct {
 	Description  *string `json:"description,omitempty"`
 	Instructions *string `json:"instructions,omitempty"`
 	Model        *string `json:"model,omitempty"`
-	Orchestrator *string `json:"orchestrator,omitempty"`
 	URL          *string `json:"url,omitempty"`
 	Path         *string `json:"path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
@@ -41,14 +39,12 @@ type Op struct {
 	Serves       *string `json:"serves,omitempty"`
 	Image        *string `json:"image,omitempty"`
 
-	Members      *[]string `json:"members,omitempty"`
-	Hubs         *[]string `json:"hubs,omitempty"`
 	Read         *[]string `json:"read,omitempty"`
 	Releases     *[]string `json:"releases,omitempty"`
 	Deliverables *[]string `json:"deliverables,omitempty"`
 }
 
-// Rename is a change of the name of an agent or a hub, which a plan can
+// Rename is a change of the name of an agent, which a plan can
 // propagate (section 5).
 type Rename struct {
 	Kind string `json:"kind"`
@@ -179,15 +175,6 @@ func (e *editor) agentName(id string) string {
 	return id
 }
 
-func (e *editor) hub(id string) (*Hub, error) {
-	for i := range e.model.Hubs {
-		if e.model.Hubs[i].ID == id {
-			return &e.model.Hubs[i], nil
-		}
-	}
-	return nil, fmt.Errorf("%w: no hub %q", ErrNotFound, id)
-}
-
 func (e *editor) repo(id string) (*Repo, error) {
 	for i := range e.model.Repos {
 		if e.model.Repos[i].ID == id {
@@ -206,19 +193,14 @@ func (e *editor) sidecar(id string) (*Sidecar, error) {
 	return nil, fmt.Errorf("%w: no sidecar %q", ErrNotFound, id)
 }
 
-// nodeTaken reports whether id is the id or the name of an agent, a hub, or
-// a service, or is reserved.
+// nodeTaken reports whether id is the id or the name of an agent or a
+// service, or is reserved.
 func (e *editor) nodeTaken(id string) bool {
 	if id == topology.User {
 		return true
 	}
 	for _, a := range e.model.Agents {
 		if a.ID == id || a.Name == id {
-			return true
-		}
-	}
-	for _, h := range e.model.Hubs {
-		if h.ID == id || h.Name == id {
 			return true
 		}
 	}
@@ -315,51 +297,20 @@ func (e *editor) apply(op Op) error {
 		}
 		e.summary = append(e.summary, "remove repo "+r.Name)
 		return e.deleteKey("x-hikari.repos", r.ID)
-	case "add_hub":
-		return e.addHub(op)
-	case "set_hub":
-		h, err := e.hub(op.ID)
-		if err != nil {
-			return err
-		}
-		p := "x-hikari.hubs." + h.ID
-		if err := e.setField(p, "description", op.Description, true); err != nil {
-			return err
-		}
-		if op.Orchestrator != nil && *op.Orchestrator != "" {
-			if err := e.setValue(p, "orchestrator", scalar(*op.Orchestrator), false); err != nil {
-				return err
+	case "set_orchestration":
+		if op.Agent == "" {
+			if e.model.Project.Orchestration == "" {
+				return nil
 			}
+			e.summary = append(e.summary, "clear the orchestrator")
+			return e.deleteKey("x-hikari", "orchestration")
 		}
-		e.summary = append(e.summary, "change #"+h.Name)
-		return nil
-	case "add_member":
-		h, err := e.hub(op.Hub)
+		a, err := e.agent(op.Agent)
 		if err != nil {
 			return err
 		}
-		if h.Orchestrator == op.Agent || slices.Contains(h.Members, op.Agent) {
-			return fmt.Errorf("%q is already in #%s", op.Agent, h.ID)
-		}
-		e.summary = append(e.summary, fmt.Sprintf("add %s to #%s", e.agentName(op.Agent), h.Name))
-		return e.edit(func(d *doc) ([]byte, error) {
-			return d.appendItem(parsePath("x-hikari.hubs."+h.ID+".members"), scalar(op.Agent))
-		})
-	case "remove_member":
-		h, err := e.hub(op.Hub)
-		if err != nil {
-			return err
-		}
-		i := slices.Index(h.Members, op.Agent)
-		if i < 0 {
-			return fmt.Errorf("%q is not a member of #%s", op.Agent, h.ID)
-		}
-		e.summary = append(e.summary, fmt.Sprintf("remove %s from #%s", e.agentName(op.Agent), h.Name))
-		return e.edit(func(d *doc) ([]byte, error) {
-			return d.removeItem(parsePath("x-hikari.hubs."+h.ID+".members"), i)
-		})
-	case "remove_hub":
-		return e.removeHub(op)
+		e.summary = append(e.summary, "make "+a.Name+" the orchestrator")
+		return e.setValue("x-hikari", "orchestration", scalar(a.ID), false)
 	case "add_agent":
 		return e.addAgent(op)
 	case "set_agent":
@@ -538,66 +489,18 @@ func (e *editor) addRepo(op Op) error {
 	}
 	e.summary = append(e.summary, "add repo "+op.ID)
 	if e.model == nil || len(e.model.Repos) == 0 {
-		// The repos go before the hubs, as the README writes them.
+		// The repos go before the orchestrator, as the README writes them.
 		empty := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 		if err := e.edit(func(d *doc) ([]byte, error) {
 			if _, ok := d.find(path{"x-hikari", "repos"}); ok {
 				return d.text, nil
 			}
-			return d.setValueBefore(path{"x-hikari"}, "repos", empty, "hubs")
+			return d.setValueBefore(path{"x-hikari"}, "repos", empty, "orchestration")
 		}); err != nil {
 			return err
 		}
 	}
 	return e.setValue("x-hikari.repos", op.ID, mapping(kv...), false)
-}
-
-func (e *editor) addHub(op Op) error {
-	if err := checkID(op.ID); err != nil {
-		return err
-	}
-	if e.nodeTaken(op.ID) {
-		return fmt.Errorf("the id %q is taken", op.ID)
-	}
-	orch := deref(op.Orchestrator)
-	if orch == "" {
-		return errors.New("a hub needs an orchestrator")
-	}
-	kv := []any{}
-	if d := deref(op.Description); d != "" {
-		kv = append(kv, "description", escapeText(d))
-	}
-	members := []string{}
-	if op.Members != nil {
-		members = *op.Members
-	}
-	kv = append(kv, "orchestrator", orch, "members", list(members))
-	e.summary = append(e.summary, "add hub #"+op.ID)
-	if err := e.ensure("x-hikari", "hubs"); err != nil {
-		return err
-	}
-	return e.setValue("x-hikari.hubs", op.ID, mapping(kv...), false)
-}
-
-func (e *editor) removeHub(op Op) error {
-	h, err := e.hub(op.ID)
-	if err != nil {
-		return err
-	}
-	for _, a := range e.model.Agents {
-		in := 0
-		for _, other := range e.model.Hubs {
-			if other.Orchestrator == a.ID || slices.Contains(other.Members, a.ID) {
-				in++
-			}
-		}
-		if in == 1 && (h.Orchestrator == a.ID || slices.Contains(h.Members, a.ID)) {
-			return fmt.Errorf("%q would be in no hub; add it to another hub first, or remove it", a.ID)
-		}
-	}
-	e.leaves("hubs/" + h.ID)
-	e.summary = append(e.summary, "remove hub #"+h.Name)
-	return e.deleteKey("x-hikari.hubs", h.ID)
 }
 
 const defaultService = "    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]\n"
@@ -652,25 +555,7 @@ func (e *editor) addAgent(op Op) error {
 	if err := e.addService(op.ID, body); err != nil {
 		return err
 	}
-	summary := "add agent " + op.ID
-	if op.Hubs != nil && len(*op.Hubs) > 0 {
-		for _, hub := range *op.Hubs {
-			e.model = ReadModel(e.text, e.dir)
-			if err := e.apply(Op{Op: "add_member", Hub: hub, Agent: op.ID}); err != nil {
-				return err
-			}
-			e.summary = e.summary[:len(e.summary)-1]
-		}
-		names := make([]string, len(*op.Hubs))
-		for i, h := range *op.Hubs {
-			names[i] = h
-			if x, err := e.hub(h); err == nil {
-				names[i] = x.Name
-			}
-		}
-		summary += " in #" + strings.Join(names, ", #")
-	}
-	e.summary = append(e.summary, summary)
+	e.summary = append(e.summary, "add agent "+op.ID)
 	return nil
 }
 
@@ -777,11 +662,6 @@ func (e *editor) removeAgent(op Op) error {
 	if err != nil {
 		return err
 	}
-	for _, h := range e.model.Hubs {
-		if h.Orchestrator == a.ID {
-			return fmt.Errorf("%q orchestrates #%s; give the hub another orchestrator first", a.ID, h.ID)
-		}
-	}
 	for _, other := range e.model.Agents {
 		if slices.Contains(other.Releases, a.ID) {
 			return fmt.Errorf("%q is granted the releases of %q; change its grants first", other.ID, a.ID)
@@ -792,13 +672,9 @@ func (e *editor) removeAgent(op Op) error {
 			return fmt.Errorf("the sidecar %q serves %q; remove it first", s.ID, a.ID)
 		}
 	}
-	for _, h := range e.model.Hubs {
-		if slices.Contains(h.Members, a.ID) {
-			if err := e.apply(Op{Op: "remove_member", Hub: h.ID, Agent: a.ID}); err != nil {
-				return err
-			}
-			e.summary = e.summary[:len(e.summary)-1]
-			e.model = ReadModel(e.text, e.dir)
+	if e.model.Project.Orchestration == a.ID {
+		if err := e.deleteKey("x-hikari", "orchestration"); err != nil {
+			return err
 		}
 	}
 	if a.System != nil {
@@ -824,12 +700,6 @@ func (e *editor) rename(op Op) error {
 			return err
 		}
 		p, id, old = "services."+a.ID+".x-hikari", a.ID, a.Name
-	case "hub":
-		h, err := e.hub(op.ID)
-		if err != nil {
-			return err
-		}
-		p, id, old = "x-hikari.hubs."+h.ID, h.ID, h.Name
 	case "repo":
 		r, err := e.repo(op.ID)
 		if err != nil {
@@ -845,7 +715,7 @@ func (e *editor) rename(op Op) error {
 		}
 		p, id, old = "x-hikari.repos."+r.ID, r.ID, r.Name
 	default:
-		return fmt.Errorf("kind must be agent, hub, or repo, not %q", op.Kind)
+		return fmt.Errorf("kind must be agent or repo, not %q", op.Kind)
 	}
 	if name == old {
 		return nil
@@ -865,8 +735,7 @@ func (e *editor) rename(op Op) error {
 	if op.Kind != "repo" {
 		e.renames = append(e.renames, Rename{Kind: op.Kind, From: old, To: name})
 	}
-	sign := map[string]string{"agent": "", "hub": "#", "repo": ""}[op.Kind]
-	e.summary = append(e.summary, fmt.Sprintf("rename %s %s%s to %s%s", op.Kind, sign, old, sign, name))
+	e.summary = append(e.summary, fmt.Sprintf("rename %s %s to %s", op.Kind, old, name))
 	return nil
 }
 
@@ -883,12 +752,6 @@ func (e *editor) changeID(op Op) error {
 			return err
 		}
 		locked, name = a.IDLocked, a.Name
-	case "hub":
-		h, err := e.hub(op.ID)
-		if err != nil {
-			return err
-		}
-		locked, name = h.IDLocked, h.Name
 	case "repo":
 		r, err := e.repo(op.ID)
 		if err != nil {
@@ -901,7 +764,7 @@ func (e *editor) changeID(op Op) error {
 			}
 		}
 	default:
-		return fmt.Errorf("kind must be agent, hub, or repo, not %q", op.Kind)
+		return fmt.Errorf("kind must be agent or repo, not %q", op.Kind)
 	}
 	if locked {
 		return fmt.Errorf("the store or a clone is keyed by %q, so its id cannot change; rename it instead", op.ID)
@@ -919,13 +782,8 @@ func (e *editor) changeID(op Op) error {
 	switch op.Kind {
 	case "agent":
 		parent = "services"
-		for _, h := range e.model.Hubs {
-			if h.Orchestrator == op.ID {
-				refs = append(refs, ref{"x-hikari.hubs." + h.ID, "orchestrator", -1})
-			}
-			if i := slices.Index(h.Members, op.ID); i >= 0 {
-				refs = append(refs, ref{"x-hikari.hubs." + h.ID + ".members", "", i})
-			}
+		if e.model.Project.Orchestration == op.ID {
+			refs = append(refs, ref{"x-hikari", "orchestration", -1})
 		}
 		for _, a := range e.model.Agents {
 			if i := slices.Index(a.Releases, op.ID); i >= 0 {
@@ -937,8 +795,6 @@ func (e *editor) changeID(op Op) error {
 				refs = append(refs, ref{"services." + s.ID + ".x-hikari", "serves", -1})
 			}
 		}
-	case "hub":
-		parent = "x-hikari.hubs"
 	case "repo":
 		parent = "x-hikari.repos"
 		for _, a := range e.model.Agents {

@@ -78,7 +78,7 @@ func TestTap(t *testing.T) {
 	defer srv.Close()
 	tp := newTap(t.Context(), &api.Client{URL: srv.URL, Token: "t", HTTP: srv.Client()})
 
-	tp.begin("woken by user in #eng")
+	tp.begin("woken by user in the room")
 	for _, line := range strings.Split(strings.TrimSpace(stream), "\n") {
 		var e streamEvent
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
@@ -96,7 +96,7 @@ func TestTap(t *testing.T) {
 	if want := "turn tool thinking text done"; strings.Join(kinds, " ") != want {
 		t.Fatalf("kinds = %v, want %s", kinds, want)
 	}
-	if got[0].Text != "woken by user in #eng" || got[0].Turn != 1 {
+	if got[0].Text != "woken by user in the room" || got[0].Turn != 1 {
 		t.Errorf("turn entry: %+v", got[0])
 	}
 	tool := got[1]
@@ -126,7 +126,7 @@ func TestTap(t *testing.T) {
 		t.Errorf("the tool must be posted as it starts: %+v", first)
 	}
 
-	tp.begin("woken by lead by direct message")
+	tp.begin("woken by lead directly")
 	tp.end(turnResult{}, "", errString("claude: boom"))
 	got = col.byID()
 	last := got[len(got)-1]
@@ -158,8 +158,8 @@ func TestClipAndTrigger(t *testing.T) {
 	if got := string(clipJSON(json.RawMessage(`{"a":"`+long+`"}`), 8)); got != `"{\"a\":\"xx…"` {
 		t.Errorf("clipJSON = %s", got)
 	}
-	msgs := []api.Message{{From: "user", Hub: "eng"}, {From: "lead", To: "dev"}, {From: "user", Hub: "eng"}}
-	if got := trigger(msgs); got != "woken by user in #eng, lead by direct message" {
+	msgs := []api.Message{{From: "user"}, {From: "lead", To: "dev"}, {From: "user"}}
+	if got := trigger(msgs); got != "woken by user in the room, lead directly" {
 		t.Errorf("trigger = %q", got)
 	}
 	if got := resultText(json.RawMessage(`[{"type":"text","text":"a"},{"type":"image"}]`)); got != "a\n[image]" {

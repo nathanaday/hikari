@@ -15,11 +15,10 @@ import (
 	"time"
 )
 
-// Message is either a hub post (Hub is set) or a direct message (To is set).
+// Message is a post to the room, or a direct message when To is set.
 type Message struct {
 	ID   int64     `json:"id"`
 	From string    `json:"from"`
-	Hub  string    `json:"hub,omitempty"`
 	To   string    `json:"to,omitempty"`
 	Body string    `json:"body"`
 	Time time.Time `json:"time"`
@@ -29,7 +28,7 @@ type Message struct {
 
 const (
 	RoleOrchestrator = "orchestrator"
-	RoleMember       = "member"
+	RoleOwner        = "owner"
 	RoleOperator     = "operator"
 )
 
@@ -39,37 +38,30 @@ type Peer struct {
 	Description string `json:"description,omitempty"`
 }
 
-type HubInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	// Participants lists the orchestrator first and the user last.
-	Participants []Peer `json:"participants"`
-}
-
 type Self struct {
-	Name         string    `json:"name"`
-	Description  string    `json:"description,omitempty"`
-	Instructions string    `json:"instructions,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	Hubs         []HubInfo `json:"hubs"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
+	Model        string `json:"model,omitempty"`
+	// Participants lists everyone in the room: the orchestrator first and
+	// the user last.
+	Participants []Peer `json:"participants"`
 	// System is set when the agent owns a system.
 	System *SelfSystem `json:"system,omitempty"`
-	// Orchestrates lists the hubs that the agent orchestrates.
-	Orchestrates []string `json:"orchestrates,omitempty"`
-	// VisibleSystems lists the systems whose maps an orchestrator reads.
+	// Orchestrator says that the agent is the project's orchestrator.
+	Orchestrator bool `json:"orchestrator,omitempty"`
+	// VisibleSystems lists the systems whose maps the orchestrator reads.
 	VisibleSystems []string `json:"visible_systems,omitempty"`
-	// HubWikis lists the hubs whose wikis the agent reads.
-	HubWikis []string `json:"hub_wikis,omitempty"`
 	// Releases lists the systems whose releases the agent can read.
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that an owner publishes.
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
-	// MemberGrants maps each member of the hubs that an orchestrator
-	// orchestrates to the systems whose releases it is granted.
-	MemberGrants map[string][]string `json:"member_grants,omitempty"`
-	// MemberDeliverables maps each member of the hubs that an orchestrator
-	// orchestrates to the deliverables it publishes.
-	MemberDeliverables map[string][]DeliverableInfo `json:"member_deliverables,omitempty"`
+	// OwnerGrants maps each owner, for the orchestrator, to the systems
+	// whose releases it is granted.
+	OwnerGrants map[string][]string `json:"owner_grants,omitempty"`
+	// OwnerDeliverables maps each owner, for the orchestrator, to the
+	// deliverables it publishes.
+	OwnerDeliverables map[string][]DeliverableInfo `json:"owner_deliverables,omitempty"`
 }
 
 // DeliverableInfo names a deliverable for a prompt. Description is the
@@ -79,24 +71,23 @@ type DeliverableInfo struct {
 	Description string `json:"description"`
 }
 
-// SystemSkill and HubSkill are hikari's own skills, which always come from
+// SystemSkill and OrchestrationSkill are hikari's own skills, which always come from
 // the binary: one for owners, one for orchestrators. No shared skill or
 // deliverable may use their names.
 const (
-	SystemSkill = "hikari-system"
-	HubSkill    = "hikari-hub"
+	SystemSkill        = "hikari-system"
+	OrchestrationSkill = "hikari-orchestration"
 )
 
 // BuiltinSkills are hikari's own skills.
-var BuiltinSkills = []string{SystemSkill, HubSkill}
+var BuiltinSkills = []string{SystemSkill, OrchestrationSkill}
 
 // AgentPrefix starts the name of each of hikari's own agents. No shared
 // agent may use it.
 const AgentPrefix = "hikari-"
 
-// SendRequest sets exactly one of Hub and To.
+// SendRequest posts to the room, or sends a direct message when To is set.
 type SendRequest struct {
-	Hub  string `json:"hub,omitempty"`
 	To   string `json:"to,omitempty"`
 	Body string `json:"body"`
 }
@@ -227,7 +218,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		if json.NewDecoder(resp.Body).Decode(&e) == nil && e.Error != "" {
 			return errors.New(e.Error)
 		}
-		return fmt.Errorf("hub returned %s", resp.Status)
+		return fmt.Errorf("server returned %s", resp.Status)
 	}
 	if out == nil {
 		return nil

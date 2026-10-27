@@ -55,20 +55,20 @@ The body has one required section, `## Purpose`. For a feature: why it exists an
 
 hikari refuses a change that breaks one of these and names the write and the rule.
 
-- **W1.** The id matches `^[a-z][a-z0-9-]{0,47}$`. It is unique in every wiki of the store: your system, every other system, and every hub.
+- **W1.** The id matches `^[a-z][a-z0-9-]{0,47}$`. It is unique in every wiki of the store: your system, every other system, and the public wiki.
 - **W2.** `name` is present. `description` is one sentence on one line, at most 200 characters.
 - **W3.** Only a feature names `interfaces`, and each is in your `provides` or `consumes`. Call `set_system_info` first.
 - **W4.** The body has a `## Purpose` section with text. A write never gives a `## Notes` section.
 - **W5.** `created`, `updated`, `described_commit`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
 - **W9.** A change has at most 100 writes.
 - **K1.** A link is `[[id]]` or `[[id|text]]`. A link to a heading, `[[id#heading]]`, is refused.
-- **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a story, rule, or principle of the wiki of a hub you are in. A document does not link itself.
+- **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a story, rule, or principle of the public wiki. A document does not link itself.
 
 Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `layout.yaml`; a Purpose that names a path in your scope; more than 60 features.
 
-## The hub wikis
+## The public wiki
 
-The wiki of each hub you are in is in `/hikari/public/readonly/hubs/<hub>/wiki/`. Its stories say which flows use your features, its rules say what must always hold across the systems, and its principles guide how the systems work together. Keep them: a rule of your hub is a rule of your system. When a story needs a feature you do not have, or your feature cannot keep a hub rule, tell your orchestrator. You cannot change a hub wiki.
+The public wiki is in `/hikari/public/readonly/shared/wiki/`. Its stories say which flows use your features, its rules say what must always hold across the systems, and its principles guide how the systems work together. Keep them: a rule of the public wiki is a rule of your system. When a story needs a feature you do not have, or your feature cannot keep a rule of the public wiki, tell the orchestrator. Only the orchestrator changes the public wiki.
 
 ## The change
 
@@ -103,4 +103,4 @@ Link two documents when:
 3. a user does them together in one flow: create an order, then cancel it;
 4. a feature keeps a rule or follows a principle: link the rule or the principle.
 
-Do not link because two features live in the same file or package. Do not say what kind of link it is; the prose around a link can say why in a few words, and hikari never reads that. A link has no direction: write it once, on either document, where the prose makes it natural, and hikari reads the graph both ways. Every feature should have a neighbor. One with none is either part of nothing, which means the feature set is wrong, or new. A feature that links most of the others is a hub; that is information about the system, not a mistake. There are no feature groups: the links are the structure.
+Do not link because two features live in the same file or package. Do not say what kind of link it is; the prose around a link can say why in a few words, and hikari never reads that. A link has no direction: write it once, on either document, where the prose makes it natural, and hikari reads the graph both ways. Every feature should have a neighbor. One with none is either part of nothing, which means the feature set is wrong, or new. A feature that links most of the others is a center of the system; that is information about the system, not a mistake. There are no feature groups: the links are the structure.

@@ -21,8 +21,8 @@ var skills embed.FS
 // that it repeats, so that both come from one source.
 var borrowed = map[string]map[string]string{
 	"hikify": {
-		"references/wiki.md":     "skills/hikari-system/references/wiki.md",
-		"references/hub-wiki.md": "skills/hikari-hub/SKILL.md",
+		"references/wiki.md":        "skills/hikari-system/references/wiki.md",
+		"references/public-wiki.md": "skills/hikari-orchestration/SKILL.md",
 	},
 }
 

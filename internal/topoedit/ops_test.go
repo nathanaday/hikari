@@ -47,13 +47,44 @@ func agentOf(m *Model, id string) *Agent {
 	return nil
 }
 
-func hubOf(m *Model, id string) *Hub {
-	for i := range m.Hubs {
-		if m.Hubs[i].ID == id {
-			return &m.Hubs[i]
-		}
+// room returns a project with the orchestrator lead and the owners dev
+// and qa, in a repo that it makes.
+func room(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	for _, d := range []string{".git", "dev", "qa", "reviewer", "solo"} {
+		os.MkdirAll(filepath.Join(repo, d), 0o755)
 	}
-	return nil
+	return `# The orchestrator lead, and the owners dev and qa.
+
+name: room
+
+x-hikari:
+  repos:
+    app: {path: ` + repo + `, branch: hikari}
+  orchestration: lead
+
+x-agent: &agent
+  image: hikari-agent
+  environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]
+
+services:
+  lead:
+    <<: *agent
+    x-hikari:
+      description: Leads the work. Turns requests into tasks.
+  dev:
+    <<: *agent
+    x-hikari:
+      description: Developer. Builds the app.
+      instructions: Answer with a short plan in plain text.
+      system: {repo: app, scope: dev}
+  qa:
+    <<: *agent
+    x-hikari:
+      description: QA engineer. Writes the tests.
+      system: {repo: app, scope: qa}
+`
 }
 
 // parses checks that compose and the topology checks accept the text.
@@ -72,7 +103,7 @@ func parses(t *testing.T, text []byte) {
 }
 
 func TestOperations(t *testing.T) {
-	team := readExample(t, "team")
+	text := room(t)
 	cases := []struct {
 		name  string
 		ops   []Op
@@ -80,28 +111,18 @@ func TestOperations(t *testing.T) {
 		lines int // the most changed lines, of TE1
 	}{
 		{"name the project", []Op{{Op: "set_project", Name: ptr("Team Planning")}}, func(t *testing.T, m *Model, _ *Result) {
-			if m.Project.Name != "Team Planning" || m.Project.ID != "team" {
+			if m.Project.Name != "Team Planning" || m.Project.ID != "room" || m.Project.Orchestration != "lead" {
 				t.Errorf("%+v", m.Project)
 			}
 		}, 1},
-		{"rename a hub", []Op{{Op: "rename", Kind: "hub", ID: "eng", Name: ptr("platform")}}, func(t *testing.T, m *Model, res *Result) {
-			if h := hubOf(m, "eng"); h.Name != "platform" {
-				t.Errorf("%+v", h)
+		{"rename an agent", []Op{{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("builder")}}, func(t *testing.T, m *Model, res *Result) {
+			if a := agentOf(m, "dev"); a.Name != "builder" {
+				t.Errorf("%+v", a)
 			}
-			if !slices.Equal(res.Renames, []Rename{{"hub", "eng", "platform"}}) || res.Summary[0] != "rename hub #eng to #platform" {
+			if !slices.Equal(res.Renames, []Rename{{"agent", "dev", "builder"}}) || res.Summary[0] != "rename agent dev to builder" {
 				t.Errorf("%+v %v", res.Renames, res.Summary)
 			}
 		}, 1},
-		{"a summary uses names", []Op{
-			{Op: "rename", Kind: "hub", ID: "eng", Name: ptr("platform")},
-			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("builder")},
-			{Op: "remove_member", Hub: "eng", Agent: "dev"},
-			{Op: "add_member", Hub: "product", Agent: "dev"},
-		}, func(t *testing.T, m *Model, res *Result) {
-			if got := strings.Join(res.Summary, "; "); got != "rename hub #eng to #platform; rename agent dev to builder; remove builder from #platform; add builder to #product" {
-				t.Errorf("%s", got)
-			}
-		}, 4},
 		{"rename back to the id removes the field", []Op{
 			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("builder")},
 			{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("dev")},
@@ -110,73 +131,76 @@ func TestOperations(t *testing.T) {
 				t.Errorf("%+v", a)
 			}
 		}, 0},
-		{"add a member", []Op{{Op: "add_member", Hub: "product", Agent: "dev"}}, func(t *testing.T, m *Model, _ *Result) {
-			if h := hubOf(m, "product"); !slices.Equal(h.Members, []string{"writer", "eng-orchestrator", "dev"}) {
-				t.Errorf("%+v", h)
+		{"set the orchestrator", []Op{
+			{Op: "clear_system", ID: "qa"},
+			{Op: "set_orchestration", Agent: "qa"},
+			{Op: "remove_agent", ID: "lead"},
+		}, func(t *testing.T, m *Model, res *Result) {
+			if m.Project.Orchestration != "qa" || agentOf(m, "lead") != nil {
+				t.Errorf("%+v", m.Project)
 			}
-		}, 1},
-		{"remove a member", []Op{{Op: "remove_member", Hub: "eng", Agent: "qa"}, {Op: "add_member", Hub: "product", Agent: "qa"}}, func(t *testing.T, m *Model, _ *Result) {
-			if h := hubOf(m, "eng"); !slices.Equal(h.Members, []string{"dev"}) {
-				t.Errorf("%+v", h)
+			if got := strings.Join(res.Summary, "; "); got != "clear the system of qa; make qa the orchestrator; remove agent lead" {
+				t.Errorf("%s", got)
 			}
-		}, 2},
-		{"add a hub", []Op{{Op: "add_hub", ID: "ops", Orchestrator: ptr("orchestrator"), Description: ptr("Runs it."), Members: &[]string{"dev"}}}, func(t *testing.T, m *Model, _ *Result) {
-			if h := hubOf(m, "ops"); h == nil || h.Orchestrator != "orchestrator" || h.Description != "Runs it." || !slices.Equal(h.Members, []string{"dev"}) {
-				t.Errorf("%+v", h)
-			}
-		}, 3},
-		{"set a hub", []Op{{Op: "set_hub", ID: "eng", Description: ptr("Costs $5."), Orchestrator: ptr("orchestrator")}}, func(t *testing.T, m *Model, res *Result) {
-			if h := hubOf(m, "eng"); h.Description != "Costs $5." || h.Orchestrator != "orchestrator" {
-				t.Errorf("%+v", h)
-			}
-			if !strings.Contains(string(res.Text), "Costs $$5.") {
-				t.Errorf("a $ is written as $$, so that compose keeps it:\n%s", res.Text)
+		}, 6},
+		{"clear the orchestrator", []Op{{Op: "set_orchestration"}, {Op: "set_system", ID: "lead", Repo: ptr("app"), Scope: ptr("solo")}}, func(t *testing.T, m *Model, res *Result) {
+			if m.Project.Orchestration != "" || strings.Contains(string(res.Text), "orchestration") {
+				t.Errorf("%+v\n%s", m.Project, res.Text)
 			}
 		}, 2},
-		{"add an agent from a template", []Op{{Op: "add_agent", ID: "reviewer", Template: "dev", Description: ptr("Reviews."), Hubs: &[]string{"eng"}}}, func(t *testing.T, m *Model, res *Result) {
+		{"remove the orchestrator", []Op{{Op: "remove_agent", ID: "lead"}}, func(t *testing.T, m *Model, res *Result) {
+			if m.Project.Orchestration != "" || agentOf(m, "lead") != nil {
+				t.Errorf("H18: removing the orchestrator clears the key: %+v\n%s", m.Project, res.Text)
+			}
+		}, 5},
+		{"add an agent from a template", []Op{
+			{Op: "add_agent", ID: "reviewer", Template: "dev", Description: ptr("Reviews.")},
+			{Op: "set_system", ID: "reviewer", Repo: ptr("app"), Scope: ptr("reviewer")},
+		}, func(t *testing.T, m *Model, res *Result) {
 			a := agentOf(m, "reviewer")
 			if a == nil || a.Template != "agent" || a.Description != "Reviews." || a.Instructions != "" {
 				t.Errorf("TE5: %+v\n%s", a, res.Text)
 			}
-			if h := hubOf(m, "eng"); !slices.Contains(h.Members, "reviewer") {
-				t.Errorf("%+v", h)
+			if res.Summary[0] != "add agent reviewer" {
+				t.Errorf("%v", res.Summary)
 			}
 		}, 6},
-		{"add an agent without a template", []Op{{Op: "add_agent", ID: "solo", Hubs: &[]string{"eng"}}}, func(t *testing.T, m *Model, _ *Result) {
+		{"add an agent without a template", []Op{
+			{Op: "add_agent", ID: "solo"},
+			{Op: "set_system", ID: "solo", Repo: ptr("app"), Scope: ptr("solo")},
+		}, func(t *testing.T, m *Model, _ *Result) {
 			if a := agentOf(m, "solo"); a == nil || a.Image != "hikari-agent" {
 				t.Errorf("TE5: %+v", a)
 			}
 		}, 7},
-		{"set an agent", []Op{{Op: "set_agent", ID: "dev", Model: ptr("haiku"), Instructions: ptr("Line one.\nLine two.\n"), Description: ptr("")}}, func(t *testing.T, m *Model, _ *Result) {
-			if a := agentOf(m, "dev"); a.Model != "haiku" || a.Instructions != "Line one.\nLine two.\n" || a.Description != "" {
+		{"set an agent", []Op{{Op: "set_agent", ID: "dev", Model: ptr("haiku"), Instructions: ptr("Line one.\nLine two.\n"), Description: ptr("Costs $5.")}}, func(t *testing.T, m *Model, res *Result) {
+			if a := agentOf(m, "dev"); a.Model != "haiku" || a.Instructions != "Line one.\nLine two.\n" || a.Description != "Costs $5." {
 				t.Errorf("TE2: %+v", a)
+			}
+			if !strings.Contains(string(res.Text), "Costs $$5.") {
+				t.Errorf("a $ is written as $$, so that compose keeps it:\n%s", res.Text)
 			}
 		}, 5},
 		{"remove an agent", []Op{{Op: "remove_agent", ID: "qa"}}, func(t *testing.T, m *Model, _ *Result) {
-			if agentOf(m, "qa") != nil || slices.Contains(hubOf(m, "eng").Members, "qa") {
+			if agentOf(m, "qa") != nil || m.Project.Orchestration != "lead" {
 				t.Errorf("TE6: %+v", m)
 			}
-		}, 8},
-		{"change an id", []Op{{Op: "change_id", Kind: "agent", ID: "eng-orchestrator", NewID: "eng-lead"}}, func(t *testing.T, m *Model, res *Result) {
-			if agentOf(m, "eng-lead") == nil || hubOf(m, "eng").Orchestrator != "eng-lead" || !slices.Contains(hubOf(m, "product").Members, "eng-lead") {
-				t.Errorf("TE4: %+v", m.Hubs)
+		}, 5},
+		{"change an id", []Op{{Op: "change_id", Kind: "agent", ID: "lead", NewID: "chief"}}, func(t *testing.T, m *Model, res *Result) {
+			if agentOf(m, "chief") == nil || m.Project.Orchestration != "chief" {
+				t.Errorf("TE4: %+v", m.Project)
 			}
-			if !slices.Equal(res.Renames, []Rename{{"agent", "eng-orchestrator", "eng-lead"}}) {
+			if !slices.Equal(res.Renames, []Rename{{"agent", "lead", "chief"}}) {
 				t.Errorf("an agent named by its id is renamed too: %+v", res.Renames)
 			}
-		}, 3},
-		{"change a hub id", []Op{{Op: "change_id", Kind: "hub", ID: "eng", NewID: "build"}}, func(t *testing.T, m *Model, _ *Result) {
-			if hubOf(m, "build") == nil || hubOf(m, "eng") != nil {
-				t.Errorf("%+v", m.Hubs)
-			}
-		}, 1},
+		}, 2},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, m := apply(t, team, c.ops...)
+			res, m := apply(t, text, c.ops...)
 			c.check(t, m, res)
 			parses(t, res.Text)
-			removed, added := changedLines(team, string(res.Text))
+			removed, added := changedLines(text, string(res.Text))
 			if len(removed) > c.lines || len(added) > c.lines+1 {
 				t.Errorf("TE1: %d lines removed, %d added, want at most %d:\n-%q\n+%q", len(removed), len(added), c.lines, removed, added)
 			}
@@ -204,9 +228,22 @@ func TestSystemsAndGrants(t *testing.T) {
 	}
 }
 
+const solo = `name: solo
+
+x-hikari:
+  orchestration: lead
+
+services:
+  lead:
+    image: hikari-agent
+    x-hikari: {description: Leads.}
+  dev:
+    image: hikari-agent
+    x-hikari: {description: Builds.}
+`
+
 func TestRepoAndProject(t *testing.T) {
-	team := readExample(t, "team")
-	res, m := apply(t, team,
+	res, m := apply(t, solo,
 		Op{Op: "enable_project"},
 		Op{Op: "add_repo", ID: "app", URL: ptr("https://example.com/app.git")},
 		Op{Op: "set_system", ID: "dev", Repo: ptr("app")},
@@ -214,8 +251,8 @@ func TestRepoAndProject(t *testing.T) {
 	if !m.Project.Repo || m.Project.Branch != "${HIKARI_BRANCH:-hikari}" || len(m.Repos) != 1 || m.Repos[0].URL != "https://example.com/app.git" {
 		t.Errorf("%+v %+v\n%s", m.Project, m.Repos, res.Text)
 	}
-	if !regexp.MustCompile(`\n  repos: \{app: \{url: '?https://example.com/app.git'?\}\}\n  hubs:\n`).Match(res.Text) {
-		t.Errorf("a new repos key goes before the hubs:\n%s", res.Text)
+	if !regexp.MustCompile(`\n  repos: \{app: \{url: '?https://example.com/app.git'?\}\}\n  orchestration: lead\n`).Match(res.Text) {
+		t.Errorf("a new repos key goes before the orchestrator:\n%s", res.Text)
 	}
 	if len(res.Effects) != 1 || !strings.Contains(res.Effects[0], "hikari sync") {
 		t.Errorf("TA4: %v", res.Effects)
@@ -230,7 +267,7 @@ func TestRepoAndProject(t *testing.T) {
 }
 
 func TestRefusals(t *testing.T) {
-	team := readExample(t, "team")
+	text := room(t)
 	shop := readExample(t, "shop")
 	cases := []struct {
 		name string
@@ -238,20 +275,20 @@ func TestRefusals(t *testing.T) {
 		ops  []Op
 		want string
 	}{
-		{"unknown op", team, []Op{{Op: "explode"}}, "unknown operation"},
-		{"taken id", team, []Op{{Op: "add_agent", ID: "dev"}}, "taken"},
-		{"taken by a hub", team, []Op{{Op: "add_agent", ID: "eng"}}, "taken"},
-		{"bad id", team, []Op{{Op: "add_hub", ID: "Eng", Orchestrator: ptr("dev")}}, "not a valid id"},
-		{"bad name", team, []Op{{Op: "rename", Kind: "hub", ID: "eng", Name: ptr("Platform")}}, "not a valid name"},
-		{"name taken", team, []Op{{Op: "rename", Kind: "hub", ID: "eng", Name: ptr("dev")}}, "taken"},
-		{"already a member", team, []Op{{Op: "add_member", Hub: "eng", Agent: "dev"}}, "already in #eng"},
-		{"not a member", team, []Op{{Op: "remove_member", Hub: "eng", Agent: "writer"}}, "not a member"},
-		{"orchestrates", team, []Op{{Op: "remove_agent", ID: "eng-orchestrator"}}, "orchestrates #eng"},
-		{"left in no hub", team, []Op{{Op: "remove_hub", ID: "eng"}}, "would be in no hub"},
+		{"unknown op", text, []Op{{Op: "explode"}}, "unknown operation"},
+		{"removed op", text, []Op{{Op: "add_member", Agent: "dev"}}, "unknown operation"},
+		{"taken id", text, []Op{{Op: "add_agent", ID: "dev"}}, "taken"},
+		{"taken by a sidecar", shop, []Op{{Op: "add_agent", ID: "orders-mock"}}, "taken"},
+		{"bad id", text, []Op{{Op: "add_agent", ID: "Dev"}}, "not a valid id"},
+		{"bad name", text, []Op{{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("Builder")}}, "not a valid name"},
+		{"name taken", text, []Op{{Op: "rename", Kind: "agent", ID: "dev", Name: ptr("qa")}}, "taken"},
+		{"unknown kind", text, []Op{{Op: "rename", Kind: "team", ID: "dev", Name: ptr("x")}}, "kind must be agent or repo"},
+		{"orchestrator unknown", text, []Op{{Op: "set_orchestration", Agent: "ghost"}}, "no agent"},
+		{"orchestrator a sidecar", shop, []Op{{Op: "set_orchestration", Agent: "orders-mock"}}, "no agent"},
 		{"repo in use", shop, []Op{{Op: "remove_repo", ID: "shop"}}, "is in the repo"},
-		{"no such agent", team, []Op{{Op: "set_agent", ID: "ghost"}}, "no agent"},
-		{"project off", team, []Op{{Op: "set_project", Branch: ptr("x")}}, "needs the project repository"},
-		{"the second fails", team, []Op{{Op: "add_member", Hub: "product", Agent: "dev"}, {Op: "add_member", Hub: "product", Agent: "dev"}}, "operation 2"},
+		{"no such agent", text, []Op{{Op: "set_agent", ID: "ghost"}}, "no agent"},
+		{"project off", text, []Op{{Op: "set_project", Branch: ptr("x")}}, "needs the project repository"},
+		{"the second fails", text, []Op{{Op: "add_agent", ID: "solo"}, {Op: "add_agent", ID: "solo"}}, "operation 2"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -266,27 +303,22 @@ func TestRefusals(t *testing.T) {
 
 func TestIDLocked(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "store", "hubs", "eng"), 0o755)
-	_, err := Apply([]byte(readExample(t, "team")), []Op{{Op: "change_id", Kind: "hub", ID: "eng", NewID: "build"}}, dir)
+	os.MkdirAll(filepath.Join(dir, "store", "systems", "dev"), 0o755)
+	text := room(t)
+	_, err := Apply([]byte(text), []Op{{Op: "change_id", Kind: "agent", ID: "dev", NewID: "builder"}}, dir)
 	if err == nil || !strings.Contains(err.Error(), "cannot change") {
 		t.Errorf("I4: %v", err)
 	}
-	m := ReadModel([]byte(readExample(t, "team")), dir)
-	if !hubOf(m, "eng").IDLocked || hubOf(m, "product").IDLocked {
-		t.Errorf("TM3: %+v", m.Hubs)
-	}
-	res, err := Apply([]byte(readExample(t, "team")), []Op{{Op: "remove_member", Hub: "eng", Agent: "qa"}, {Op: "add_member", Hub: "product", Agent: "qa"},
-		{Op: "remove_member", Hub: "eng", Agent: "dev"}, {Op: "add_member", Hub: "product", Agent: "dev"},
-		{Op: "add_member", Hub: "product", Agent: "eng-orchestrator"}}, dir)
-	if err == nil {
-		t.Fatalf("eng-orchestrator is a member of product already: %s", res.Text)
+	m := ReadModel([]byte(text), dir)
+	if !agentOf(m, "dev").IDLocked || agentOf(m, "qa").IDLocked {
+		t.Errorf("TM3: %+v", m.Agents)
 	}
 }
 
 func TestRandomOperations(t *testing.T) {
-	for _, name := range []string{"team", "shop", "studio"} {
+	for name, start := range map[string]string{"room": room(t), "shop": readExample(t, "shop")} {
 		t.Run(name, func(t *testing.T) {
-			text := readExample(t, name)
+			text := start
 			rng := rand.New(rand.NewSource(1))
 			for i := range 60 {
 				m := ReadModel([]byte(text), t.TempDir())
@@ -315,34 +347,25 @@ func randomOp(rng *rand.Rand, m *Model, i int) Op {
 		}
 		return ids[rng.Intn(len(ids))]
 	}
-	var agents, hubs []string
+	var agents []string
 	for _, a := range m.Agents {
 		agents = append(agents, a.ID)
 	}
-	for _, h := range m.Hubs {
-		hubs = append(hubs, h.ID)
-	}
 	id := "n" + string(rune('a'+i%26)) + string(rune('a'+i/26))
-	switch rng.Intn(9) {
+	switch rng.Intn(8) {
 	case 0:
-		return Op{Op: "add_agent", ID: id, Template: pick(agents), Hubs: &[]string{pick(hubs)}}
+		return Op{Op: "add_agent", ID: id, Template: pick(agents)}
 	case 1:
-		return Op{Op: "add_member", Hub: pick(hubs), Agent: pick(agents)}
+		return Op{Op: "set_orchestration", Agent: pick(append(agents, ""))}
 	case 2:
-		h := hubOf(m, pick(hubs))
-		if h == nil {
-			return Op{Op: "noop"}
-		}
-		return Op{Op: "remove_member", Hub: h.ID, Agent: pick(h.Members)}
+		return Op{Op: "set_system", ID: pick(agents), Repo: ptr("app"), Scope: ptr(id)}
 	case 3:
-		return Op{Op: "rename", Kind: "hub", ID: pick(hubs), Name: ptr(id)}
+		return Op{Op: "rename", Kind: "agent", ID: pick(agents), Name: ptr(id)}
 	case 4:
 		return Op{Op: "set_agent", ID: pick(agents), Description: ptr("Text with: a colon, $5, and \"quotes\".")}
 	case 5:
-		return Op{Op: "add_hub", ID: id, Orchestrator: ptr(pick(agents))}
-	case 6:
 		return Op{Op: "remove_agent", ID: pick(agents)}
-	case 7:
+	case 6:
 		return Op{Op: "change_id", Kind: "agent", ID: pick(agents), NewID: id}
 	}
 	return Op{Op: "set_agent", ID: pick(agents), Instructions: ptr("First.\nSecond.\n")}

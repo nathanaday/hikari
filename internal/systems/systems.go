@@ -1,8 +1,8 @@
-// Package systems connects the topology to the repos, the system maps, and
-// the hub vocabularies. It enforces who may read and change each of them:
-// an owner reads and changes only its own map, an orchestrator reads the
-// orchestrator view of the systems in the hubs it orchestrates, and only a
-// hub's orchestrator changes the hub's vocabulary.
+// Package systems connects the topology to the repos, the system maps, the
+// wikis, and the vocabulary. It enforces who may read and change each of
+// them: an owner reads and changes only its own map, the orchestrator reads
+// the orchestrator view of every system, and only the orchestrator changes
+// the vocabulary and the public wiki.
 package systems
 
 import (
@@ -37,10 +37,10 @@ var (
 	ErrNotFound  = errors.New("not found")
 )
 
-// Change names what changed: a system map, a hub vocabulary, or a wiki.
+// Change names what changed: a system map, the vocabulary, or a wiki.
 type Change struct {
-	System string
-	Hub    string
+	System     string
+	Vocabulary bool
 	// Wiki is the ref of a wiki that changed.
 	Wiki string
 }
@@ -71,7 +71,7 @@ type Manager struct {
 	repos    map[string]*gitrepo.Repo
 	start    map[string]string
 	owners   map[string]*owner
-	vocabs   map[string]*vocab.Store
+	vocab    *vocab.Store
 	warnings []string
 	now      func() time.Time
 	// projectRepo is the project repository, or nil. storeRel is the store's
@@ -85,16 +85,17 @@ type Manager struct {
 	wikis  map[string]*wikiOf
 	wikiMu sync.Mutex
 
-	mu   sync.Mutex
-	seen map[string]map[string]int
+	mu sync.Mutex
+	// seen holds the version of the vocabulary that each agent last saw.
+	seen map[string]int
 	// seenDocs holds, for each agent and each wiki it hears about, the
 	// hash of each document as of its last turn (rule E1).
 	seenDocs map[string]map[string]map[string]string
 	onChange func(Change)
 }
 
-// New prepares every repo of topo (rules G1 to G5) and loads the system maps
-// and the hub vocabularies.
+// New prepares every repo of topo (rules G1 to G5) and loads the system maps,
+// the wikis, and the vocabulary.
 func New(topo *topology.Topology) (*Manager, error) {
 	m := &Manager{
 		topo:     topo,
@@ -102,9 +103,8 @@ func New(topo *topology.Topology) (*Manager, error) {
 		repos:    map[string]*gitrepo.Repo{},
 		start:    map[string]string{},
 		owners:   map[string]*owner{},
-		vocabs:   map[string]*vocab.Store{},
 		now:      time.Now,
-		seen:     map[string]map[string]int{},
+		seen:     map[string]int{},
 		seenDocs: map[string]map[string]map[string]string{},
 		wikis:    map[string]*wikiOf{},
 		onChange: func(Change) {},
@@ -117,7 +117,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 		m.repos[name], m.start[name] = repo, start
 	}
-	if err := m.store.Prepare(topo.Owners(), topo.HubNames()); err != nil {
+	if err := m.store.Prepare(topo.Owners()); err != nil {
 		return nil, fmt.Errorf("store %s: %w", m.store.Root, err)
 	}
 	if topo.Project != nil {
@@ -162,19 +162,13 @@ func New(topo *topology.Topology) (*Manager, error) {
 	if err := m.checkAgents(); err != nil {
 		return nil, err
 	}
-	for _, hub := range topo.HubNames() {
-		vs, err := vocab.Open(m.store.VocabularyFile(hub), m.store.HubID(hub))
-		if err != nil {
-			return nil, err
-		}
-		m.vocabs[hub] = vs
+	vs, err := vocab.Open(m.store.VocabularyFile())
+	if err != nil {
+		return nil, err
 	}
+	m.vocab = vs
 	for _, agent := range topo.AgentNames() {
-		m.seen[agent] = map[string]int{}
-		for _, hub := range topo.HubsOf(agent) {
-			_, v := m.vocabs[hub].Get()
-			m.seen[agent][hub] = v
-		}
+		_, m.seen[agent] = vs.Get()
 		m.seenDocs[agent] = map[string]map[string]string{}
 		for _, ref := range m.noticeRefs(agent) {
 			m.seenDocs[agent][ref] = m.snapshot(m.wikis[ref])
@@ -190,10 +184,8 @@ func (m *Manager) storePath(rel string) string { return path.Join(m.storeRel, re
 // mapPath is the store path of an owner's map.
 func (m *Manager) mapPath(owner string) string { return m.store.Rel(m.store.MapFile(owner)) }
 
-// vocabularyPath is the store path that a hub's orchestrator changes.
-func (m *Manager) vocabularyPath(hub string) string {
-	return m.store.Rel(m.store.VocabularyFile(hub))
-}
+// vocabularyPath is the store path of the vocabulary.
+func (m *Manager) vocabularyPath() string { return m.store.Rel(m.store.VocabularyFile()) }
 
 // commitStore commits the store paths of agent in the project repository
 // (rules PR14 to PR17). It returns a note when the commit failed, and does
@@ -438,45 +430,34 @@ func (m *Manager) OnChange(fn func(Change)) {
 }
 
 // changed reports c, and also every system whose view depends on it: a
-// system's flags and providers come from the vocabularies of its hubs and
-// from the maps of its peers in those hubs.
+// system's flags and providers come from the vocabulary and from the maps
+// of every other system.
 func (m *Manager) changed(c Change) {
 	m.mu.Lock()
 	fn := m.onChange
 	m.mu.Unlock()
-	var systems []string
-	if c.System != "" {
-		systems = m.peers(c.System)
-	}
 	if c.Wiki != "" {
 		fn(Change{Wiki: c.Wiki})
 	}
-	if c.Hub != "" {
-		fn(Change{Hub: c.Hub})
-		for _, member := range m.topo.Hubs[c.Hub].Members {
-			if _, ok := m.owners[member]; ok && !slices.Contains(systems, member) {
-				systems = append(systems, member)
-			}
-		}
+	if c.Vocabulary {
+		fn(Change{Vocabulary: true})
 	}
-	for _, name := range systems {
-		fn(Change{System: name})
+	if c.System != "" || c.Vocabulary {
+		for _, name := range m.peers(c.System) {
+			fn(Change{System: name})
+		}
 	}
 }
 
-// peers returns system and the other owners that are members of a hub with
-// it.
+// peers returns system first, then every other owner.
 func (m *Manager) peers(system string) []string {
-	out := []string{system}
-	for _, hub := range m.topo.HubNames() {
-		members := m.topo.Hubs[hub].Members
-		if !slices.Contains(members, system) {
-			continue
-		}
-		for _, member := range members {
-			if _, ok := m.owners[member]; ok && !slices.Contains(out, member) {
-				out = append(out, member)
-			}
+	var out []string
+	if system != "" {
+		out = append(out, system)
+	}
+	for _, name := range m.topo.Owners() {
+		if name != system {
+			out = append(out, name)
 		}
 	}
 	return out
@@ -593,9 +574,8 @@ func (m *Manager) CommitAll() []error {
 		all = append(all, m.wikis[ref])
 	}
 	m.commitUserEdits("user: wiki edits left when hikari stopped", all...)
-	for _, hub := range m.topo.HubNames() {
-		orch := m.topo.Hubs[hub].Orchestrator
-		if note := m.commitStore(orch, orch+": store changes left when hikari stopped", m.vocabularyPath(hub)); note != "" {
+	if orch := m.topo.Orchestrator; orch != "" {
+		if note := m.commitStore(orch, orch+": store changes left when hikari stopped", m.vocabularyPath()); note != "" {
 			errs = append(errs, fmt.Errorf("%s: %s", orch, note))
 		}
 	}
@@ -630,11 +610,10 @@ func (m *Manager) Summary() []string {
 }
 
 // Self returns the system details of agent, for its container.
-func (m *Manager) Self(agent string) (*api.SelfSystem, []string) {
-	orchestrates := m.topo.OrchestratedHubs(agent)
+func (m *Manager) Self(agent string) *api.SelfSystem {
 	o, ok := m.owners[agent]
 	if !ok {
-		return nil, orchestrates
+		return nil
 	}
 	s := m.topo.Agents[agent].System
 	return &api.SelfSystem{
@@ -643,7 +622,7 @@ func (m *Manager) Self(agent string) (*api.SelfSystem, []string) {
 		Scope:   o.scope,
 		Read:    s.Read,
 		WorkDir: api.WorkDir(o.scope),
-	}, orchestrates
+	}
 }
 
 func (m *Manager) owner(agent string) (*owner, error) {
@@ -916,35 +895,34 @@ func (m *Manager) Commit(agent, message string) (string, error) {
 
 // PublishRelease publishes the staged product of a deliverable as a
 // release (rules R16 and R17). The map must be current and the private
-// documents valid. It returns the release and the hubs to announce it in.
-func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Manifest, []string, error) {
+// documents valid.
+func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (store.Manifest, error) {
 	o, err := m.holds(agent, req.Deliverable)
 	if err != nil {
-		return store.Manifest{}, nil, err
+		return store.Manifest{}, err
 	}
 	v, problems := m.releaseProblems(o)
 	if len(problems) > 0 {
-		return store.Manifest{}, nil, errors.New(strings.Join(problems, "\n"))
+		return store.Manifest{}, errors.New(strings.Join(problems, "\n"))
 	}
 	public, err := yaml.Marshal(v.View)
 	if err != nil {
-		return store.Manifest{}, nil, err
+		return store.Manifest{}, err
 	}
-	hubs := m.topo.HubsOf(agent)
 	rel, err := m.store.Publish(store.PublishInput{
 		System: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommit: v.System.DescribedState.Commit, Map: public,
-		Wiki: o.wiki.Files(releaseKinds...), Hubs: hubs, Hikari: version.Version, Now: m.now(),
+		Wiki: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
-		return store.Manifest{}, nil, err
+		return store.Manifest{}, err
 	}
 	m.changed(Change{System: agent})
-	return rel, hubs, nil
+	return rel, nil
 }
 
 // TurnContext tells the driver what changed before agent's next turn. It
-// marks the vocabularies as seen.
+// marks the vocabulary as seen.
 func (m *Manager) TurnContext(agent string) api.TurnContext {
 	var tc api.TurnContext
 	if o, ok := m.owners[agent]; ok {
@@ -957,12 +935,9 @@ func (m *Manager) TurnContext(agent string) api.TurnContext {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	tc.WikiChanged = m.wikiChanges(agent)
-	for _, hub := range m.topo.HubsOf(agent) {
-		_, version := m.vocabs[hub].Get()
-		if version != m.seen[agent][hub] {
-			tc.VocabularyChanged = append(tc.VocabularyChanged, hub)
-			m.seen[agent][hub] = version
-		}
+	if _, version := m.vocab.Get(); version != m.seen[agent] {
+		tc.VocabularyChanged = true
+		m.seen[agent] = version
 	}
 	return tc
 }
@@ -982,12 +957,24 @@ func failingFeatures(tests []testmap.FailingTest) []api.FailingFeature {
 	return out
 }
 
-// visible returns the systems that agent may read as an orchestrator.
+// visible returns the systems that agent may read as the orchestrator.
 func (m *Manager) visible(agent string) ([]string, error) {
-	if len(m.topo.OrchestratedHubs(agent)) == 0 {
-		return nil, fmt.Errorf("%w: only orchestrators can read system maps", ErrForbidden)
+	if err := m.orchestrator(agent, "reads the system maps"); err != nil {
+		return nil, err
 	}
 	return m.topo.VisibleSystems(agent), nil
+}
+
+// orchestrator returns an error unless agent is the orchestrator, the only
+// agent that does what.
+func (m *Manager) orchestrator(agent, what string) error {
+	switch o := m.topo.Orchestrator; {
+	case o == "":
+		return fmt.Errorf("%w: only the orchestrator %s, and the project has none", ErrForbidden, what)
+	case o != agent:
+		return fmt.Errorf("%w: only %q, the orchestrator, %s", ErrForbidden, o, what)
+	}
+	return nil
 }
 
 func (m *Manager) visibleSystem(agent, name string) (*owner, error) {
@@ -996,8 +983,7 @@ func (m *Manager) visibleSystem(agent, name string) (*owner, error) {
 		return nil, err
 	}
 	if !slices.Contains(names, name) {
-		return nil, fmt.Errorf("%w: %q is not a system in the hubs that %q orchestrates; visible systems are %s",
-			ErrNotFound, name, agent, list(names))
+		return nil, fmt.Errorf("%w: %q is not a system; the systems are %s", ErrNotFound, name, list(names))
 	}
 	return m.owners[name], nil
 }
@@ -1028,7 +1014,7 @@ func (m *Manager) GetSystem(agent, name string) (api.OrchestratorSystem, error) 
 		return api.OrchestratorSystem{}, err
 	}
 	names, _ := m.visible(agent)
-	known := m.vocabularyNames(m.topo.OrchestratedHubs(agent))
+	known := m.vocabularyNames()
 	providers := m.providers(names)
 	v := m.view(o)
 	releases, _ := m.store.Releases(name)
@@ -1040,53 +1026,36 @@ func (m *Manager) GetSystem(agent, name string) (api.OrchestratorSystem, error) 
 	}, nil
 }
 
-func (m *Manager) orchestratedVocab(agent, hub string) (*vocab.Store, error) {
-	h, ok := m.topo.Hubs[hub]
-	if !ok {
-		return nil, fmt.Errorf("%w: no hub %q", ErrNotFound, hub)
-	}
-	if h.Orchestrator != agent {
-		return nil, fmt.Errorf("%w: only %q, the orchestrator of #%s, can change its vocabulary", ErrForbidden, h.Orchestrator, hub)
-	}
-	return m.vocabs[hub], nil
-}
-
-// changeVocab applies fn to hub's vocabulary and commits it with a message
+// changeVocab applies fn to the vocabulary and commits it with a message
 // that says what changed: verb and name.
-func (m *Manager) changeVocab(agent, hub, verb, name string, fn func(*vocab.Store) error) error {
-	s, err := m.orchestratedVocab(agent, hub)
-	if err != nil {
+func (m *Manager) changeVocab(agent, verb, name string, fn func(*vocab.Store) error) error {
+	if err := m.orchestrator(agent, "changes the vocabulary"); err != nil {
 		return err
 	}
-	if err := fn(s); err != nil {
+	if err := fn(m.vocab); err != nil {
 		return err
 	}
-	m.commitStore(agent, fmt.Sprintf("%s: %s %s in the #%s vocabulary", agent, verb, name, hub), m.vocabularyPath(hub))
-	m.changed(Change{Hub: hub})
+	m.commitStore(agent, fmt.Sprintf("%s: %s %s in the vocabulary", agent, verb, name), m.vocabularyPath())
+	m.changed(Change{Vocabulary: true})
 	return nil
 }
 
-func (m *Manager) DefineTerm(agent, hub string, t vocab.Term) error {
-	return m.changeVocab(agent, hub, "define", t.Term, func(s *vocab.Store) error { return s.DefineTerm(t) })
+func (m *Manager) DefineTerm(agent string, t vocab.Term) error {
+	return m.changeVocab(agent, "define", t.Term, func(s *vocab.Store) error { return s.DefineTerm(t) })
 }
 
-func (m *Manager) DefineInterface(agent, hub string, in vocab.Interface) error {
-	return m.changeVocab(agent, hub, "define", in.Name, func(s *vocab.Store) error { return s.DefineInterface(in) })
+func (m *Manager) DefineInterface(agent string, in vocab.Interface) error {
+	return m.changeVocab(agent, "define", in.Name, func(s *vocab.Store) error { return s.DefineInterface(in) })
 }
 
-func (m *Manager) RemoveEntry(agent, hub, name string) error {
-	return m.changeVocab(agent, hub, "remove", name, func(s *vocab.Store) error { return s.Remove(name) })
+func (m *Manager) RemoveEntry(agent, name string) error {
+	return m.changeVocab(agent, "remove", name, func(s *vocab.Store) error { return s.Remove(name) })
 }
 
-// GetVocabulary returns the vocabulary of a hub that agent is in.
-func (m *Manager) GetVocabulary(agent, hub string) (vocab.Vocabulary, error) {
-	if _, ok := m.topo.Hubs[hub]; !ok {
-		return vocab.Vocabulary{}, fmt.Errorf("%w: no hub %q", ErrNotFound, hub)
-	}
-	if !m.topo.InHub(agent, hub) {
-		return vocab.Vocabulary{}, fmt.Errorf("%w: %q is not in #%s", ErrForbidden, agent, hub)
-	}
-	return m.Vocabulary(hub), nil
+// Vocabulary returns the project's vocabulary, which every agent reads.
+func (m *Manager) Vocabulary() vocab.Vocabulary {
+	v, _ := m.vocab.Get()
+	return v
 }
 
 // Systems returns the full view of every system, for the UI.
@@ -1099,23 +1068,12 @@ func (m *Manager) Systems() []api.SystemView {
 }
 
 // SystemView returns the full view of one system with its repo details and
-// the interface flags seen from the hubs its owner is a member of.
+// its interface flags.
 func (m *Manager) SystemView(name string) api.SystemView {
 	o := m.owners[name]
 	v := m.ownerView(o)
 	priv, _ := o.store.Private()
-	var hubs, peers []string
-	for _, hub := range m.topo.HubNames() {
-		if slices.Contains(m.topo.Hubs[hub].Members, name) {
-			hubs = append(hubs, hub)
-			for _, member := range m.topo.Hubs[hub].Members {
-				if _, ok := m.owners[member]; ok && !slices.Contains(peers, member) {
-					peers = append(peers, member)
-				}
-			}
-		}
-	}
-	providers := m.providers(peers)
+	providers := m.providers(m.topo.Owners())
 	releases, _ := m.store.Releases(name)
 	o.mu.Lock()
 	dirty := o.dirty
@@ -1131,35 +1089,15 @@ func (m *Manager) SystemView(name string) api.SystemView {
 		Repo:      o.repoName,
 		Scope:     o.scope,
 		Branch:    o.branch,
-		Flags:     vocab.Check(interfaceNames(v.System.Interfaces.Provides), interfaceNames(v.System.Interfaces.Consumes), m.vocabularyNames(hubs), keys(providers)),
+		Flags:     vocab.Check(interfaceNames(v.System.Interfaces.Provides), interfaceNames(v.System.Interfaces.Consumes), m.vocabularyNames(), keys(providers)),
 		Providers: providersOf(v.System.Interfaces.Consumes, providers, name),
 	}
 }
 
-// Vocabularies returns every hub vocabulary, for the UI.
-func (m *Manager) Vocabularies() []vocab.Vocabulary {
-	out := []vocab.Vocabulary{}
-	for _, hub := range m.topo.HubNames() {
-		out = append(out, m.Vocabulary(hub))
-	}
-	return out
-}
-
-// Vocabulary returns the vocabulary of one hub, named by the hub's name.
-// Its file holds the hub's id (rule ID6).
-func (m *Manager) Vocabulary(hub string) vocab.Vocabulary {
-	v, _ := m.vocabs[hub].Get()
-	v.Hub = hub
-	return v
-}
-
-func (m *Manager) vocabularyNames(hubs []string) map[string]bool {
+func (m *Manager) vocabularyNames() map[string]bool {
 	known := map[string]bool{}
-	for _, hub := range hubs {
-		v, _ := m.vocabs[hub].Get()
-		for _, name := range v.Names() {
-			known[name] = true
-		}
+	for _, name := range m.Vocabulary().Names() {
+		known[name] = true
 	}
 	return known
 }

@@ -21,15 +21,14 @@ import (
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
-// projectCompose is a project of one orchestrator and one hub, in a project
+// projectCompose is a project of one orchestrator, in a project
 // repository.
 const projectCompose = `# The demo project.
 name: demo
 
 x-hikari:
   project: {branch: main}
-  hubs:
-    main: {description: Builds the demo., orchestrator: lead, members: []}
+  orchestration: lead
 
 services:
   lead:
@@ -115,8 +114,10 @@ func newProjectDir(t *testing.T) (string, string) {
 	file := filepath.Join(dir, "compose.yaml")
 	os.WriteFile(file, []byte(projectCompose), 0o644)
 	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".env\n/.hikari/\n"), 0o644)
-	os.MkdirAll(filepath.Join(dir, "store", "hubs", "main", "wiki"), 0o755)
-	os.WriteFile(filepath.Join(dir, "store", "hubs", "main", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it in #main, with @lead.\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "store", "shared", "wiki"), 0o755)
+	os.WriteFile(filepath.Join(dir, "store", "shared", "wiki", "plan.md"), []byte("---\nkind: plan\nstatus: draft\n---\nShip it soon, with @lead.\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
+	os.WriteFile(filepath.Join(dir, "app", "main.py"), []byte("x\n"), 0o644)
 	run(t, dir, "init", "--quiet", "--initial-branch=main")
 	run(t, dir, "add", "--all")
 	run(t, dir, "commit", "--quiet", "-m", "start")
@@ -133,7 +134,7 @@ func TestTopologyAPI(t *testing.T) {
 		t.Fatalf("GET topology: %d", code)
 	}
 	if !state.Exists || state.Revision != editor.Revision([]byte(projectCompose), true) || state.Mode != ModeEditing || !state.Commits ||
-		state.Model == nil || len(state.Model.Hubs) != 1 || state.Text != projectCompose {
+		state.Model == nil || state.Model.Project.Orchestration != "lead" || state.Text != projectCompose {
 		t.Errorf("TA1, TM1: %+v", state)
 	}
 	if editor.HasError(state.Findings) {
@@ -145,20 +146,21 @@ func TestTopologyAPI(t *testing.T) {
 	if res, _ := http.Get(base + "/api/ui/topology"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("the cookie: %d", res.StatusCode)
 	}
-	if code := call(t, c, "POST", base+"/api/ui/send", map[string]string{"hub": "main", "body": "hi"}, nil); code != http.StatusServiceUnavailable {
+	if code := call(t, c, "POST", base+"/api/ui/send", map[string]string{"body": "hi"}, nil); code != http.StatusServiceUnavailable {
 		t.Errorf("UP3: %d", code)
 	}
 
 	ops := []topoedit.Op{
-		{Op: "rename", Kind: "hub", ID: "main", Name: ptrTo("core")},
-		{Op: "add_agent", ID: "dev", Template: "lead", Description: ptrTo("Builds it."), Hubs: &[]string{"main"}},
+		{Op: "rename", Kind: "agent", ID: "lead", Name: ptrTo("chief")},
+		{Op: "add_agent", ID: "dev", Template: "lead", Description: ptrTo("Builds it.")},
+		{Op: "set_system", ID: "dev", Repo: ptrTo("project"), Scope: ptrTo("app")},
 	}
 	var plan editor.Plan
 	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": ops}, &plan); code != 200 {
 		t.Fatalf("plan: %d %+v", code, plan)
 	}
-	if plan.AppliesAtStart || len(plan.Summary) != 2 || editor.HasError(plan.Findings) || !strings.Contains(plan.Text, "name: core") ||
-		plan.Model == nil || plan.Model.Hubs[0].Name != "core" || len(plan.Occurrences) != 1 || plan.Occurrences[0].Key != "hubs/main/wiki/plan.md:5:12" {
+	if plan.AppliesAtStart || len(plan.Summary) != 3 || editor.HasError(plan.Findings) || !strings.Contains(plan.Text, "name: chief") ||
+		plan.Model == nil || plan.Model.Agents[1].Name != "chief" || len(plan.Occurrences) != 1 || plan.Occurrences[0].Key != "shared/wiki/plan.md:5:20" {
 		t.Errorf("plan: %+v", plan)
 	}
 	added := 0
@@ -180,7 +182,7 @@ func TestTopologyAPI(t *testing.T) {
 		t.Errorf("TA2: %d %v", code, conflict)
 	}
 	var refused map[string]string
-	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": []topoedit.Op{{Op: "remove_agent", ID: "lead"}}}, &refused); code != http.StatusBadRequest || !strings.Contains(refused["error"], "orchestrates") {
+	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": []topoedit.Op{{Op: "rename", Kind: "agent", ID: "lead", Name: ptrTo("Chief")}}}, &refused); code != http.StatusBadRequest || !strings.Contains(refused["error"], "not a valid name") {
 		t.Errorf("TA9: %d %v", code, refused)
 	}
 	if code := call(t, c, "POST", base+"/api/ui/topology/plan", map[string]any{"revision": state.Revision, "operations": []topoedit.Op{{Op: "set_agent", ID: "ghost"}}}, &refused); code != http.StatusNotFound {
@@ -195,7 +197,7 @@ func TestTopologyAPI(t *testing.T) {
 	if saved.Revision != editor.Revision(data, true) || saved.Commit == "" || string(data) != plan.Text {
 		t.Errorf("apply: %+v\n%s", saved, data)
 	}
-	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename hub #main to #core; add agent dev in #core" {
+	if got := run(t, dir, "log", "-1", "--format=%an|%s"); got != "Test User|user: rename agent lead to chief; add agent dev; give dev a system" {
 		t.Errorf("TC1, TC2: %q", got)
 	}
 	if run(t, dir, "status", "--porcelain") != "" {
@@ -228,8 +230,12 @@ func TestTopologyAPI(t *testing.T) {
 	if editor.HasError(lint.Findings) {
 		t.Errorf("lint: %+v", lint.Findings)
 	}
-	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": strings.Replace(projectCompose, "members: []", "members: [ghost]", 1)}, &lint)
-	if len(lint.Findings) != 1 || lint.Findings[0].Path != "x-hikari.hubs.main.members[0]" || lint.Findings[0].Line != 7 {
+	call(t, c, "POST", base+"/api/ui/topology/lint", map[string]string{"text": strings.Replace(projectCompose, "orchestration: lead", "orchestration: ghost", 1)}, &lint)
+	found := false
+	for _, f := range lint.Findings {
+		found = found || (f.Path == "x-hikari.orchestration" && f.Line == 6)
+	}
+	if !found {
 		t.Errorf("TF1 to TF3: %+v", lint.Findings)
 	}
 }

@@ -28,15 +28,13 @@ const (
 // SharedDir is the shared area of the store in a container.
 var SharedDir = path.Join(ReadonlyDir, "shared")
 
-// HubWikiPath returns where a container sees the wiki of a hub that it can
-// read (rule A1 of the wikis spec).
-func HubWikiPath(hub string) string {
-	return path.Join(ReadonlyDir, "hubs", hub, "wiki")
-}
+// PublicWikiPath is where every container sees the public wiki.
+var PublicWikiPath = path.Join(SharedDir, "wiki")
 
-// SystemWikiRef and HubWikiRef name a wiki.
+// SystemWikiRef and PublicWikiRef name a wiki.
 func SystemWikiRef(system string) string { return "system:" + system }
-func HubWikiRef(hub string) string       { return "hub:" + hub }
+
+const PublicWikiRef = "public"
 
 // ReleasesPath returns where a container sees the releases of a system that
 // it can read.
@@ -67,7 +65,7 @@ type TurnContext struct {
 	FailingFeatures     []FailingFeature      `json:"failing_features,omitempty"`
 	PendingFeatures     []string              `json:"pending_features,omitempty"`
 	PrivateErrors       []string              `json:"private_errors,omitempty"`
-	VocabularyChanged   []string              `json:"vocabulary_changed,omitempty"`
+	VocabularyChanged   bool                  `json:"vocabulary_changed,omitempty"`
 	// WikiChanged lists the documents of the agent's readable wikis that
 	// someone else changed since its last turn (rule E1).
 	WikiChanged []WikiChange `json:"wiki_changed,omitempty"`
@@ -77,7 +75,7 @@ type TurnContext struct {
 }
 
 // WikiChange names the changed documents of one wiki. Wiki is its label:
-// "#shop" for a hub, or the system's name.
+// "public" for the public wiki, or the system's name.
 type WikiChange struct {
 	Wiki string      `json:"wiki"`
 	Docs []DocChange `json:"docs"`
@@ -118,9 +116,10 @@ type HealthChange struct {
 	To      string `json:"to"`
 }
 
-// ChangeRequest is one change to a wiki: an owner's, or with Hub, a hub's.
+// ChangeRequest is one change to a wiki: an owner's, or with Public, the
+// public wiki.
 type ChangeRequest struct {
-	Hub    string       `json:"hub,omitempty"`
+	Public bool         `json:"public,omitempty"`
 	Writes []wiki.Write `json:"writes"`
 }
 
@@ -142,10 +141,9 @@ type WikiDoc struct {
 	Description string `json:"description,omitempty"`
 	// Links are the documents it links, in order of first mention.
 	Links  []string `json:"links"`
-	Key    bool     `json:"key,omitempty"`
 	Status string   `json:"status,omitempty"`
 	// Health is a feature's health; Support is the health of the features
-	// that a hub's story or rule links (rule H2).
+	// that a story, rule, or principle of the public wiki links (rule H2).
 	Health  string    `json:"health,omitempty"`
 	Support string    `json:"support,omitempty"`
 	Created time.Time `json:"created,omitzero"`
@@ -261,7 +259,7 @@ type CommitResponse struct {
 	Commit string `json:"commit"`
 }
 
-// VocabularyChange is one change to a hub vocabulary. Op is "define_term",
+// VocabularyChange is one change to the vocabulary. Op is "define_term",
 // "define_interface", or "remove".
 type VocabularyChange struct {
 	Op        string           `json:"op"`
@@ -280,12 +278,11 @@ func (c *Client) SetSystemInfo(ctx context.Context, p sysmap.SystemPatch) error 
 	return c.do(ctx, http.MethodPatch, "/api/node/map/system", p, nil)
 }
 
-// ChangeFeatures applies one change to the owner's feature wiki.
-// ChangeWiki applies one change to the owner's wiki, or with hub set, to
-// the wiki of a hub the agent orchestrates.
-func (c *Client) ChangeWiki(ctx context.Context, hub string, writes []wiki.Write) (ChangeResult, error) {
+// ChangeWiki applies one change to the owner's wiki, or with public set,
+// to the public wiki, which only the orchestrator writes.
+func (c *Client) ChangeWiki(ctx context.Context, public bool, writes []wiki.Write) (ChangeResult, error) {
 	var out ChangeResult
-	err := c.do(ctx, http.MethodPost, "/api/node/wiki", ChangeRequest{Hub: hub, Writes: writes}, &out)
+	err := c.do(ctx, http.MethodPost, "/api/node/wiki", ChangeRequest{Public: public, Writes: writes}, &out)
 	return out, err
 }
 
@@ -356,12 +353,12 @@ func (c *Client) GetDocument(ctx context.Context, id string) (DocumentHit, error
 	return out, err
 }
 
-func (c *Client) GetVocabulary(ctx context.Context, hub string) (vocab.Vocabulary, error) {
+func (c *Client) GetVocabulary(ctx context.Context) (vocab.Vocabulary, error) {
 	var out vocab.Vocabulary
-	err := c.do(ctx, http.MethodGet, "/api/node/vocabulary/"+url.PathEscape(hub), nil, &out)
+	err := c.do(ctx, http.MethodGet, "/api/node/vocabulary", nil, &out)
 	return out, err
 }
 
-func (c *Client) ChangeVocabulary(ctx context.Context, hub string, ch VocabularyChange) error {
-	return c.do(ctx, http.MethodPost, "/api/node/vocabulary/"+url.PathEscape(hub), ch, nil)
+func (c *Client) ChangeVocabulary(ctx context.Context, ch VocabularyChange) error {
+	return c.do(ctx, http.MethodPost, "/api/node/vocabulary", ch, nil)
 }

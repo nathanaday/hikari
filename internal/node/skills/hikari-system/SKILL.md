@@ -9,13 +9,13 @@ You own a system. These documents describe it, and you are the only author of al
 
 | Document | Who reads it | How you change it |
 |---|---|---|
-| `/hikari/public/export/wiki/<id>.md` | Your orchestrator, every release, and the human operator. | Only through `change_wiki`. The files are read-only to you. The user's plans and notes are there too, and are not yours to change. |
+| `/hikari/public/export/wiki/<id>.md` | The orchestrator, every release, and the human operator. | Only through `change_wiki`. The files are read-only to you. The user's plans and notes are there too, and are not yours to change. |
 | `/hikari/public/export/map.yaml` | The same readers. | hikari writes it: the `system` section from `set_system_info`, the `features` list from the wiki. |
 | `/hikari/private/layout.yaml` | You and the human operator. | Edit the file. |
 | `/hikari/private/tests.yaml` | You and the human operator. | Edit the file. |
 | `/hikari/private/results.yaml` | You and the human operator. | hikari writes it from each recorded run. Never edit it. |
 
-The system wiki is the public surface of your system: one document for each feature, principle, and rule, with links between the documents that work together. Other agents never see your code, so a document must make sense without it. The wikis of your hubs, in `/hikari/public/readonly/hubs/<hub>/wiki/`, hold the stories, rules, and principles of the systems together; your documents can link them. The map carries the system's summary, its interfaces, and a projection of the wiki with the health and state of each feature.
+The system wiki is the public surface of your system: one document for each feature, principle, and rule, with links between the documents that work together. Other agents never see your code, so a document must make sense without it. The public wiki, in `/hikari/public/readonly/shared/wiki/`, holds the stories, rules, and principles of the systems together; your documents can link them. The map carries the system's summary, its interfaces, and a projection of the wiki with the health and state of each feature.
 
 The private documents are for your own work. `layout.yaml` is your code map: where each feature lives in the code. `tests.yaml` is your test map: how your suites run, and which features each test touches.
 
@@ -28,7 +28,7 @@ References:
 
 ## The tools
 
-- `set_system_info`: the summary, the responsibilities, and the interfaces that the system provides and consumes. Use the names in your hubs' vocabularies.
+- `set_system_info`: the summary, the responsibilities, and the interfaces that the system provides and consumes. Use the names in the vocabulary.
 - `change_wiki`: create, modify, rename, or remove the features, principles, and rules of your wiki, as one change. hikari checks every write and applies all of them or none.
 - `get_document` and `search_wiki`: read any document of the wikis you can read, with the documents that link it.
 - `record_test_run`: after a suite's command ran, hikari reads its JUnit XML report and records the result of each test.
@@ -82,4 +82,4 @@ A release is a published product of one of your deliverables: the named packages
 3. Call `check_release` with the deliverable's name, and fix every problem it reports.
 4. Call `publish_release` with the deliverable's name, a semver version greater than its last release, notes that say what changed, and a certificate for each target of the deliverable.
 
-hikari writes the manifest, moves the product into `/hikari/public/export/releases/<name>/<version>/` with a copy of the map and the wiki, and announces the release in your hubs. A release never changes. `releases/<name>/latest` is the newest release of that deliverable.
+hikari writes the manifest, moves the product into `/hikari/public/export/releases/<name>/<version>/` with a copy of the map and the wiki, and announces the release in the room. A release never changes. `releases/<name>/latest` is the newest release of that deliverable.

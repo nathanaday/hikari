@@ -13,15 +13,14 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// renamedTopology is a topology with a renamed repo, hub, orchestrator, and
+// renamedTopology is a topology with a renamed repo, orchestrator, and
 // owner.
 const renamedTopology = `
 name: test
 x-hikari:
   repos:
     shop: {name: store, path: shop, branch: hikari/work}
-  hubs:
-    eng: {name: platform, orchestrator: eng-lead, members: [orders, inventory]}
+  orchestration: eng-lead
 services:
   eng-lead: {x-hikari: {name: chief}}
   orders: {x-hikari: {name: intake, system: {repo: shop, scope: services/orders}, grants: {deliverables: [python-library]}}}
@@ -35,7 +34,7 @@ func read(t *testing.T, path string) string {
 	return string(data)
 }
 
-// TestRenamedEntities checks that a renamed system and hub work by name,
+// TestRenamedEntities checks that a renamed system and orchestrator work by name,
 // and that the store keys them by id (rules ID6 and ID7 of the ids spec).
 func TestRenamedEntities(t *testing.T) {
 	f := newFixture(t)
@@ -48,7 +47,7 @@ func TestRenamedEntities(t *testing.T) {
 	systems := filepath.Join(f.dir, "store", "systems")
 
 	must(t, f.m.SetSystemInfo("intake", sysmap.SystemPatch{Summary: ptr("Takes orders.")}))
-	_, err = f.m.ChangeWiki("intake", "", []wiki.Write{{
+	_, err = f.m.ChangeWiki("intake", false, []wiki.Write{{
 		Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores a new order.", Body: body("A customer places an order."),
 	}})
 	must(t, err)
@@ -65,23 +64,16 @@ func TestRenamedEntities(t *testing.T) {
 		t.Errorf("ID13: the view names the system and its repo: owner %q, repo %q", v.Owner, v.Repo)
 	}
 
-	_, err = f.m.ChangeWiki("chief", "platform", []wiki.Write{
+	_, err = f.m.ChangeWiki("chief", true, []wiki.Write{
 		{Op: "create", ID: "order-items", Kind: wiki.Story, Name: "Order items", Description: "A customer orders items.", Body: body("Through [[create-order]].")},
 	})
 	must(t, err)
-	if _, err := os.Stat(filepath.Join(f.dir, "store", "hubs", "eng", "wiki", "order-items.md")); err != nil {
-		t.Errorf("ID6: the wiki of platform is in the directory of its id: %v", err)
+	if _, err := os.Stat(filepath.Join(f.dir, "store", "shared", "wiki", "order-items.md")); err != nil {
+		t.Errorf("the renamed orchestrator writes the public wiki: %v", err)
 	}
-	if _, ok := f.m.WikiView(api.HubWikiRef("platform")); !ok {
-		t.Error("the hub wiki is named by the hub's name")
-	}
-
-	must(t, f.m.DefineTerm("chief", "platform", vocab.Term{Term: "order", Definition: "A request to buy items."}))
-	if got := read(t, filepath.Join(f.dir, "store", "shared", "vocabulary", "eng.yaml")); !strings.Contains(got, "hub: eng") {
-		t.Errorf("ID6: the vocabulary file holds the hub's id:\n%s", got)
-	}
-	if v, err := f.m.GetVocabulary("chief", "platform"); err != nil || v.Hub != "platform" || len(v.Terms) != 1 {
-		t.Errorf("the vocabulary is named by the hub's name: %+v, %v", v, err)
+	must(t, f.m.DefineTerm("chief", vocab.Term{Term: "order", Definition: "A request to buy items."}))
+	if v := f.m.Vocabulary(); len(v.Terms) != 1 {
+		t.Errorf("the renamed orchestrator writes the vocabulary: %+v", v)
 	}
 
 	staging := filepath.Join(systems, "orders", "staging", "python-library")
@@ -89,16 +81,16 @@ func TestRenamedEntities(t *testing.T) {
 	write(t, staging, "orders/create.py", "def create(): pass\n")
 	_, err = f.m.MarkCurrent("intake")
 	must(t, err)
-	rel, hubs, err := f.m.PublishRelease("intake", api.PublishRequest{Deliverable: "python-library", Version: "1.0.0", Notes: "A release."})
+	rel, err := f.m.PublishRelease("intake", api.PublishRequest{Deliverable: "python-library", Version: "1.0.0", Notes: "A release."})
 	must(t, err)
-	if rel.System != "intake" || len(hubs) != 1 || hubs[0] != "platform" {
-		t.Errorf("ID7: the release names the system and hub by name: %+v, %v", rel, hubs)
+	if rel.System != "intake" {
+		t.Errorf("ID7: the release names the system by name: %+v", rel)
 	}
 	manifest := read(t, filepath.Join(systems, "orders", "releases", "python-library", "1.0.0", "release.yaml"))
-	if !strings.Contains(manifest, "system: orders") || !strings.Contains(manifest, "- eng") {
+	if !strings.Contains(manifest, "system: orders") || strings.Contains(manifest, "hubs:") {
 		t.Errorf("ID7: the manifest holds ids:\n%s", manifest)
 	}
-	if v := f.m.SystemView("intake"); len(v.Releases) != 1 || v.Releases[0].System != "intake" || v.Releases[0].Hubs[0] != "platform" {
+	if v := f.m.SystemView("intake"); len(v.Releases) != 1 || v.Releases[0].System != "intake" {
 		t.Errorf("ID7: a manifest reads back with names: %+v", v.Releases)
 	}
 }

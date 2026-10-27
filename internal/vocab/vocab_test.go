@@ -8,8 +8,8 @@ import (
 )
 
 func TestStore(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vocabulary", "product.yaml")
-	s, err := Open(path, "product")
+	path := filepath.Join(t.TempDir(), "vocabulary", "terms.yaml")
+	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +36,10 @@ func TestStore(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(path)
-	if !strings.HasPrefix(string(data), "# The vocabulary of #product.") || !strings.Contains(string(data), "name: POST /orders") {
+	if !strings.HasPrefix(string(data), "# The vocabulary of the project.") || !strings.Contains(string(data), "name: POST /orders") {
 		t.Errorf("file:\n%s", data)
 	}
-	again, err := Open(path, "product")
+	again, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,13 +53,15 @@ func TestStore(t *testing.T) {
 	if err := s.Remove("ghost"); err == nil {
 		t.Error("removing an unknown entry must fail")
 	}
-	if _, err := Open(path, "eng"); err == nil {
-		t.Error("a vocabulary file for another hub must be rejected")
+	bad := filepath.Join(t.TempDir(), "terms.yaml")
+	os.WriteFile(bad, []byte("version: 1\nowner: shop\n"), 0o644)
+	if _, err := Open(bad); err == nil {
+		t.Error("an unknown key is an error")
 	}
 }
 
 func TestDefineRejectsIncompleteEntries(t *testing.T) {
-	s, _ := Open(filepath.Join(t.TempDir(), "h.yaml"), "h")
+	s, _ := Open(filepath.Join(t.TempDir(), "terms.yaml"))
 	for _, err := range []error{
 		s.DefineTerm(Term{Term: "order"}),
 		s.DefineInterface(Interface{Name: "x", Kind: "http"}),

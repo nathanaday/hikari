@@ -15,45 +15,53 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-func TestSystemPromptStatesRolePerHub(t *testing.T) {
-	self := api.Self{
-		Name:        "lead",
-		Description: "leads engineering",
-		Hubs: []api.HubInfo{
-			{Name: "company", Participants: []api.Peer{
-				{Name: "ceo", Role: api.RoleOrchestrator},
-				{Name: "lead", Role: api.RoleMember},
-				{Name: "user", Role: api.RoleOperator, Description: "The human operator."},
-			}},
-			{Name: "eng", Description: "builds things", Participants: []api.Peer{
-				{Name: "lead", Role: api.RoleOrchestrator},
-				{Name: "dev", Role: api.RoleMember, Description: "writes code"},
-				{Name: "user", Role: api.RoleOperator, Description: "The human operator."},
-			}},
-		},
-	}
-	p := systemPrompt(self)
-	t.Log(p)
-	for _, want := range []string{
-		"In #company you are a member. ceo coordinates the hub.",
-		"In #eng you are the orchestrator.",
-		"- lead (you), orchestrator",
-		"- dev, member: writes code",
+var room = []api.Peer{
+	{Name: "lead", Role: api.RoleOrchestrator, Description: "leads engineering"},
+	{Name: "dev", Role: api.RoleOwner, Description: "writes code"},
+	{Name: "orders", Role: api.RoleOwner},
+	{Name: "user", Role: api.RoleOperator, Description: "The human operator."},
+}
+
+func TestSystemPromptStatesTheRoom(t *testing.T) {
+	for name, c := range map[string]struct {
+		self api.Self
+		want []string
+	}{
+		"orchestrator": {api.Self{Name: "lead", Orchestrator: true, Participants: room}, []string{
+			"## The room",
+			"- lead (you), orchestrator: leads engineering",
+			"- dev, owner: writes code",
+			"- user, operator: The human operator.",
+			"mcp__hikari__post sends a message to the room",
+			"mcp__hikari__list_agents",
+			"You are the orchestrator.",
+			"for every owner when you post without mentions",
+		}},
+		"owner": {api.Self{Name: "dev", Participants: room}, []string{
+			"- dev (you), owner: writes code",
+			"You are an owner. lead coordinates the work.",
+			"A post from you starts a turn for lead and for each agent you mention.",
+		}},
+		"no orchestrator": {api.Self{Name: "dev", Participants: room[1:]}, []string{
+			"The project has no orchestrator",
+			"for every agent when it mentions nobody",
+		}},
 	} {
-		if !strings.Contains(p, want) {
-			t.Errorf("system prompt lacks %q", want)
-		}
+		t.Run(name, func(t *testing.T) {
+			p := systemPrompt(c.self)
+			for _, want := range c.want {
+				if !strings.Contains(p, want) {
+					t.Errorf("H19: system prompt lacks %q:\n%s", want, p)
+				}
+			}
+		})
 	}
 }
 
 var owner = api.Self{
-	Name: "orders",
-	Hubs: []api.HubInfo{{Name: "eng", Participants: []api.Peer{
-		{Name: "eng-lead", Role: api.RoleOrchestrator},
-		{Name: "orders", Role: api.RoleMember},
-		{Name: "user", Role: api.RoleOperator},
-	}}},
-	System: &api.SelfSystem{Repo: "shop", Branch: "hikari/work", Scope: "services/orders", Read: []string{"proto"}, WorkDir: "/workspace/services/orders"},
+	Name:         "orders",
+	Participants: room,
+	System:       &api.SelfSystem{Repo: "shop", Branch: "hikari/work", Scope: "services/orders", Read: []string{"proto"}, WorkDir: "/workspace/services/orders"},
 }
 
 func TestOwnerSystemPrompt(t *testing.T) {
@@ -75,37 +83,37 @@ func TestOwnerSystemPrompt(t *testing.T) {
 		`Commits go to the branch "hikari/work".`,
 		"no trailers such as Co-Authored-By",
 		"run the suites that touch the affected features",
-		"tell your orchestrator what you need",
+		"tell the orchestrator, or the owner of that system, what you need",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("D4: owner prompt lacks %q", want)
 		}
 	}
-	if strings.Contains(p, "Your vocabularies") {
+	if strings.Contains(p, "You keep the vocabulary") {
 		t.Error("an owner must not get the orchestrator section")
 	}
 }
 
 func TestOrchestratorSystemPrompt(t *testing.T) {
-	lead := api.Self{Name: "eng-lead", Orchestrates: []string{"eng"}, VisibleSystems: []string{"inventory", "orders"}}
+	lead := api.Self{Name: "lead", Orchestrator: true, Participants: room, VisibleSystems: []string{"inventory", "orders"}}
 	p := systemPrompt(lead)
 	for _, want := range []string{
-		"The members of #eng own these systems: inventory, orders. You have no code and cannot read any.",
+		"The owners own these systems: inventory, orders. You have no code and cannot read any.",
 		"mcp__hikari__list_systems",
 		"When a map does not answer a question, ask the owner.",
-		"You keep the vocabulary of #eng",
+		"You keep the vocabulary",
 		"get_system flags interface names",
 		"/hikari/public/readonly/systems/<system>/",
 		"/hikari/public/readonly/systems/<system>/wiki/",
 		"get_document returns a document",
-		"You keep the wiki of #eng",
-		"mcp__hikari__change_hub_wiki",
-		"load the hikari-hub skill",
+		"You keep the public wiki, /hikari/public/readonly/shared/wiki",
+		"mcp__hikari__change_public_wiki",
+		"load the hikari-orchestration skill",
 		"When a system announces a release, check it",
 		"the deliverable's definition",
 		"only through that system's published releases",
-		"No member of your hubs is granted another system's releases",
-		"No member of your hubs holds a deliverable",
+		"No owner is granted another system's releases",
+		"No owner holds a deliverable",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("D5: orchestrator prompt lacks %q", want)
@@ -114,8 +122,8 @@ func TestOrchestratorSystemPrompt(t *testing.T) {
 	if strings.Contains(p, "Your system\n") {
 		t.Error("an orchestrator must not get the owner section")
 	}
-	plain := systemPrompt(api.Self{Name: "lead", Orchestrates: []string{"product"}})
-	if strings.Contains(plain, "Your systems") || !strings.Contains(plain, "Your vocabularies") {
+	plain := systemPrompt(api.Self{Name: "lead", Orchestrator: true, Participants: room})
+	if strings.Contains(plain, "Your systems") || !strings.Contains(plain, "You keep the vocabulary") {
 		t.Errorf("an orchestrator without systems gets only the vocabulary section:\n%s", plain)
 	}
 }
@@ -145,23 +153,23 @@ func TestTurnNotices(t *testing.T) {
 	if got := turnNotices(owner, api.TurnContext{MapState: "current"}); got != "" {
 		t.Errorf("no notices expected, got %q", got)
 	}
-	got := turnNotices(owner, api.TurnContext{MapState: "stale", StaleFeatures: []sysmap.StaleFeature{{ID: "create-order", Paths: []string{"create.py"}}}, UnmappedPaths: []string{"README.md"}, VocabularyChanged: []string{"eng"}})
-	for _, want := range []string{"Stale features: create-order (create.py).", "belong to no feature: README.md.", "Keep true procedure", "The vocabulary of #eng changed.", "Rename entries in your map"} {
+	got := turnNotices(owner, api.TurnContext{MapState: "stale", StaleFeatures: []sysmap.StaleFeature{{ID: "create-order", Paths: []string{"create.py"}}}, UnmappedPaths: []string{"README.md"}, VocabularyChanged: true})
+	for _, want := range []string{"Stale features: create-order (create.py).", "belong to no feature: README.md.", "Keep true procedure", "The vocabulary changed.", "Rename entries in your map"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("D9: notices lack %q:\n%s", want, got)
 		}
 	}
-	member := turnNotices(api.Self{Name: "writer"}, api.TurnContext{MapState: "stale", VocabularyChanged: []string{"product"}})
-	if strings.Contains(member, "system documents") || strings.Contains(member, "Rename") || !strings.Contains(member, "#product") {
-		t.Errorf("D9: a member without a system got %q", member)
+	lead := turnNotices(api.Self{Name: "lead", Orchestrator: true}, api.TurnContext{MapState: "stale", VocabularyChanged: true})
+	if strings.Contains(lead, "system documents") || strings.Contains(lead, "Rename") || !strings.Contains(lead, "The vocabulary changed.") {
+		t.Errorf("D9: the orchestrator got %q", lead)
 	}
 }
 
 func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
 		"skills/hikari-system/SKILL.md":                             {"name: hikari-system", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_wiki", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/public/export/staging/<name>/", "references/wiki.md", "references/layout.md", "references/tests.md"},
-		"skills/hikari-system/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The hub wikis", "create", "modify", "rename", "remove"},
-		"skills/hikari-hub/SKILL.md":                                {"name: hikari-hub", "change_hub_wiki", "story", "rule", "principle", "key", "## Plans and notes", "## Carry out a plan"},
+		"skills/hikari-system/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The public wiki", "create", "modify", "rename", "remove"},
+		"skills/hikari-orchestration/SKILL.md":                      {"name: hikari-orchestration", "change_public_wiki", "story", "rule", "principle", "## The vocabulary", "define_term", "## Plans and notes", "## Carry out a plan"},
 		"skills/hikari-system/references/layout.md":                 {"P2", "P3", "code:"},
 		"skills/hikari-system/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
 		"skills/hikari-system/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
@@ -352,7 +360,7 @@ func TestGrantsPrompt(t *testing.T) {
 			t.Errorf("P10: prompt lacks %q", want)
 		}
 	}
-	lead := api.Self{Name: "lead", Orchestrates: []string{"eng"}, VisibleSystems: []string{"orders"}, Releases: []string{"orders"}}
+	lead := api.Self{Name: "lead", Orchestrator: true, VisibleSystems: []string{"orders"}, Releases: []string{"orders"}}
 	if strings.Contains(systemPrompt(lead), "## Releases you can use") {
 		t.Error("an orchestrator's own systems are not grants")
 	}
@@ -380,50 +388,50 @@ func TestDeliverablesPrompt(t *testing.T) {
 	if got := deliverableNames(holder); len(got) != 1 || got[0] != "python-library" {
 		t.Errorf("deliverableNames = %v", got)
 	}
-	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, VisibleSystems: []string{"orders"}, MemberDeliverables: map[string][]api.DeliverableInfo{"orders": {{Name: "python-library", Description: "A Python library."}}}}
+	lead := api.Self{Name: "lead", Orchestrator: true, VisibleSystems: []string{"orders"}, OwnerDeliverables: map[string][]api.DeliverableInfo{"orders": {{Name: "python-library", Description: "A Python library."}}}}
 	if p := systemPrompt(lead); !strings.Contains(p, "orders publishes python-library (A Python library.)") {
-		t.Errorf("P14: the orchestrator must know its members' deliverables:\n%s", p)
+		t.Errorf("P14: the orchestrator must know the owners' deliverables:\n%s", p)
 	}
 }
 
-func TestMemberGrantsPrompt(t *testing.T) {
-	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, VisibleSystems: []string{"inventory", "orders"}, MemberGrants: map[string][]string{"orders": {"inventory"}}}
+func TestOwnerGrantsPrompt(t *testing.T) {
+	lead := api.Self{Name: "lead", Orchestrator: true, VisibleSystems: []string{"inventory", "orders"}, OwnerGrants: map[string][]string{"orders": {"inventory"}}}
 	if p := systemPrompt(lead); !strings.Contains(p, "orders reads the releases of inventory") {
-		t.Errorf("the orchestrator must know its members' grants:\n%s", p)
+		t.Errorf("the orchestrator must know the owners' grants:\n%s", p)
 	}
 }
 
-func TestHubSkillAndWikiPrompts(t *testing.T) {
-	lead := api.Self{Name: "lead", Orchestrates: []string{"shop"}, HubWikis: []string{"shop"}}
-	if got := builtinSkills(lead); !slices.Equal(got, []string{api.HubSkill}) {
+func TestOrchestrationSkillAndWikiPrompts(t *testing.T) {
+	lead := api.Self{Name: "lead", Orchestrator: true}
+	if got := builtinSkills(lead); !slices.Equal(got, []string{api.OrchestrationSkill}) {
 		t.Errorf("S2: an orchestrator gets %v", got)
 	}
 	if got := builtinSkills(owner); !slices.Equal(got, []string{api.SystemSkill}) {
 		t.Errorf("an owner gets %v", got)
 	}
 	s, shared := newTestShared(t, false)
-	s.builtins = []string{api.HubSkill}
-	writeFile(t, filepath.Join(shared, "skills", "hikari-hub", "SKILL.md"), "fake")
+	s.builtins = []string{api.OrchestrationSkill}
+	writeFile(t, filepath.Join(shared, "skills", "hikari-orchestration", "SKILL.md"), "fake")
 	s.sync()
-	if data, err := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-hub", "SKILL.md")); err != nil || !strings.Contains(string(data), "change_hub_wiki") {
-		t.Errorf("S2, S4: the hub skill comes from hikari: %v", err)
+	if data, err := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-orchestration", "SKILL.md")); err != nil || !strings.Contains(string(data), "change_public_wiki") {
+		t.Errorf("S2, S4: the orchestration skill comes from hikari: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(s.agentsDir(), "hikari-feature-survey.md")); err == nil {
 		t.Error("the owner's agents are not installed for an orchestrator")
 	}
 
-	member := api.Self{Name: "orders", HubWikis: []string{"shop"}, System: owner.System}
+	member := api.Self{Name: "orders", Participants: room, System: owner.System}
 	p := systemPrompt(member)
-	for _, want := range []string{"## The wikis of your hubs", "- #shop: /hikari/public/readonly/hubs/shop/wiki", "act on a plan only when the user asks", "The rules and principles of your hubs apply to your system"} {
+	for _, want := range []string{"## The public wiki", "The public wiki, /hikari/public/readonly/shared/wiki,", "act on a plan only when the user asks", "The rules and principles of the public wiki apply to your system"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("A1, E2: prompt lacks %q", want)
 		}
 	}
 	n := turnNotices(member, api.TurnContext{WikiChanged: []api.WikiChange{
-		{Wiki: "#shop", Docs: []api.DocChange{{ID: "order-items", Kind: "story"}, {ID: "old", Removed: true}}},
+		{Wiki: "public", Docs: []api.DocChange{{ID: "order-items", Kind: "story"}, {ID: "old", Removed: true}}},
 		{Wiki: "orders", Docs: []api.DocChange{{ID: "Roadmap", Kind: "plan"}}},
 	}})
-	for _, want := range []string{"The wiki of #shop changed: order-items (story), old (removed).", "Your wiki changed: Roadmap (plan)."} {
+	for _, want := range []string{"The public wiki changed: order-items (story), old (removed).", "Your wiki changed: Roadmap (plan)."} {
 		if !strings.Contains(n, want) {
 			t.Errorf("E1: notices lack %q:\n%s", want, n)
 		}

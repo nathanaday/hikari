@@ -14,7 +14,7 @@ The product is your system as an importable Python package, with docs for an eng
 
 ## The docs
 
-Write `README.md` at the top of the staging directory, and more pages under `docs/` when one page would be too long, linked from the README. Their reader cannot see the code, so name nothing inside your repo. Use the names of the hub vocabulary (`get_vocabulary`) for domain terms and interfaces. The docs must cover:
+Write `README.md` at the top of the staging directory, and more pages under `docs/` when one page would be too long, linked from the README. Their reader cannot see the code, so name nothing inside your repo. Use the names of the vocabulary (`get_vocabulary`) for domain terms and interfaces. The docs must cover:
 
 1. What the package is and what it is for, in two or three sentences.
 2. How to use it: add the release's `product/` directory to `PYTHONPATH`, then the import.

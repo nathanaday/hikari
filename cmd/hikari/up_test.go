@@ -46,7 +46,7 @@ func TestRunnerEditingStates(t *testing.T) {
 		t.Errorf("UP2: a missing file waits in the editing state: %s", h.Mode())
 	}
 
-	os.WriteFile(file, []byte("name: demo\nx-hikari: {hubs: {main: {orchestrator: ghost}}}\nservices: {}\n"), 0o644)
+	os.WriteFile(file, []byte("name: demo\nx-hikari: {orchestration: ghost}\nservices: {}\n"), 0o644)
 	r.start()
 	if h.Mode() != server.ModeEditing || r.cur != nil {
 		t.Errorf("UP2: a broken file waits in the editing state: %s", h.Mode())

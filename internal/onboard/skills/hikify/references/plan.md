@@ -1,8 +1,8 @@
 # The plan and the ledger
 
-## The hub plan
+## The project plan
 
-`onboarding/wiki/hubs/<hub>/hikify-plan.md` is a plan document of the hub wiki. Its id is `hikify-plan`, which must be unique in the store: when two hubs have plans, use `hikify-plan-<hub>`.
+`onboarding/wiki/public/hikify-plan.md` is a plan document of the public wiki. Its id is `hikify-plan`, which must be unique in the store.
 
 ```markdown
 ---
@@ -49,7 +49,7 @@ Order: restructure steps first. Then a library's release before its consumers mo
 
 ## The system plan
 
-`onboarding/wiki/systems/<system>/hikify-plan-<system>.md` holds the steps of one system, with the same fields, for its owner. It is a plan document of the system wiki. It repeats the hub plan's step ids, so that the owner and the orchestrator name a step the same way.
+`onboarding/wiki/systems/<system>/hikify-plan-<system>.md` holds the steps of one system, with the same fields, for its owner. It is a plan document of the system wiki. It repeats the project plan's step ids, so that the owner and the orchestrator name a step the same way.
 
 ## The ledger
 

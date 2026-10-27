@@ -1,28 +1,18 @@
 {
   "file": "compose.yaml",
   "exists": true,
-  "revision": "48fd609ce9ef691a68811604cd63210478ad1a680c6a3bab219bd36098f35822",
-  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  hubs:\n    main: {description: Builds the demo., orchestrator: lead, members: []}\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Leads the demo.}\n",
+  "revision": "c0459b66bcb3190e3c47acf1db49f53162bd5d08d2ad08a036d4c668239ca343",
+  "text": "# The demo project.\nname: demo\n\nx-hikari:\n  project: {branch: main}\n  orchestration: lead\n\nservices:\n  lead:\n    image: hikari-agent\n    environment: [CLAUDE_CODE_OAUTH_TOKEN]\n    x-hikari: {description: Leads the demo.}\n",
   "model": {
     "project": {
       "id": "demo",
       "name": "demo",
       "store": "",
       "repo": true,
-      "branch": "main"
+      "branch": "main",
+      "orchestration": "lead"
     },
     "repos": [],
-    "hubs": [
-      {
-        "id": "main",
-        "name": "main",
-        "description": "Builds the demo.",
-        "orchestrator": "lead",
-        "members": [],
-        "line": 7,
-        "id_locked": true
-      }
-    ],
     "agents": [
       {
         "id": "lead",
@@ -40,7 +30,7 @@
           "image",
           "environment"
         ],
-        "line": 10,
+        "line": 9,
         "id_locked": false
       }
     ],

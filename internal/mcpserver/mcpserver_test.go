@@ -36,9 +36,9 @@ func toolNames(t *testing.T, self api.Self) []string {
 }
 
 var (
-	everyone     = []string{"check_inbox", "get_document", "get_vocabulary", "list_hubs", "post_to_hub", "search_wiki", "send_direct_message"}
+	everyone     = []string{"check_inbox", "get_document", "get_vocabulary", "list_agents", "post", "search_wiki", "send_direct_message"}
 	ownerOnly    = []string{"change_wiki", "check_release", "commit_changes", "get_my_system", "mark_map_current", "publish_release", "record_test_run", "set_system_info"}
-	orchestrator = []string{"change_hub_wiki", "define_interface", "define_term", "get_system", "list_systems", "remove_entry"}
+	orchestrator = []string{"change_public_wiki", "define_interface", "define_term", "get_system", "list_systems", "remove_entry"}
 )
 
 func sorted(lists ...[]string) []string {
@@ -55,9 +55,8 @@ func TestToolsByRole(t *testing.T) {
 		self api.Self
 		want []string
 	}{
-		"member":       {api.Self{Name: "writer"}, sorted(everyone)},
 		"owner":        {api.Self{Name: "orders", System: &api.SelfSystem{}}, sorted(everyone, ownerOnly)},
-		"orchestrator": {api.Self{Name: "lead", Orchestrates: []string{"eng"}}, sorted(everyone, orchestrator)},
+		"orchestrator": {api.Self{Name: "lead", Orchestrator: true}, sorted(everyone, orchestrator)},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -8,9 +8,9 @@ You review the refactor plan of a hikari project before any code changes. Your j
 
 - `onboarding/analysis/` (the reports and the synthesis), `onboarding/state.md` (the decisions the user made), and `onboarding/baseline.md`;
 - `compose.target.yaml` and `onboarding/topology.md`;
-- the plans, `onboarding/wiki/hubs/*/hikify-plan*.md` and `onboarding/wiki/systems/*/hikify-plan*.md`;
+- the plans, `onboarding/wiki/public/hikify-plan.md` and `onboarding/wiki/systems/*/hikify-plan*.md`;
 - the ledger, `onboarding/verification.md`;
-- the drafts of the hub wikis in `onboarding/wiki/hubs/`;
+- the drafts of the public wiki in `onboarding/wiki/public/`;
 - the code in `repos/`, to check every claim the plan makes about it;
 - the earlier rounds in `onboarding/review/`, so that you do not repeat a finding that was resolved.
 

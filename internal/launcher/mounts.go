@@ -41,13 +41,10 @@ func SystemMounts(repoPath, scope string, read []string, emptyDir string) []Moun
 // store spec). Every agent reads the shared area. An owner gets its own
 // system directory read-only with its staging area read-write. Each
 // visible system is mounted read-only with its staging area hidden, and
-// each other granted system gets its releases read-only. Each hub wiki in
-// hubs is mounted read-only (rules A1 and A2 of the wikis spec).
-func StoreMounts(st store.Store, agent string, owner bool, visible, readable, hubs []string, emptyDir string) []Mount {
+// each other granted system gets its releases read-only. The public wiki
+// is in the shared area (rule A1 of the wikis spec).
+func StoreMounts(st store.Store, agent string, owner bool, visible, readable []string, emptyDir string) []Mount {
 	mounts := []Mount{{Source: st.SharedDir(), Target: api.SharedDir, ReadOnly: true}}
-	for _, hub := range hubs {
-		mounts = append(mounts, Mount{Source: st.HubWiki(hub), Target: api.HubWikiPath(hub), ReadOnly: true})
-	}
 	if owner {
 		mounts = append(mounts,
 			Mount{Source: st.SystemDir(agent), Target: api.ExportDir, ReadOnly: true},

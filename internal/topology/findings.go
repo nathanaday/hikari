@@ -17,7 +17,7 @@ type Finding struct {
 	Stage    string `json:"stage"`
 	Message  string `json:"message"`
 	// Path is the YAML path of the key at fault, in ids, such as
-	// x-hikari.hubs.eng.members[1]. Line is its line in the source, or 0.
+	// services.web.x-hikari.system.repo. Line is its line in the source, or 0.
 	Path string `json:"path,omitempty"`
 	Line int    `json:"line,omitempty"`
 }
