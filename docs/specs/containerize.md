@@ -9,7 +9,7 @@ Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
 Changes made during the build:
 
 1. **A linked repo that no system uses yet is a warning** (topology). The session links the repositories in step 2 and writes their systems in step 5, but the topology refused a repo that no system used, so `hikari sync` failed. Found in the live run. A path repo that no system uses is still an error.
-2. **The starter compose file sets `image: hikari-agent` on the lead only.** The anchor that every agent merges set it, so an owner that builds its own image would tag it `hikari-agent` and overwrite the base image. Found in the live run.
+2. **The starter compose file sets `image: hikari-agent` on the orchestrator only.** The anchor that every agent merges set it, so an owner that builds its own image would tag it `hikari-agent` and overwrite the base image. Found in the live run.
 3. **The skill proves each image before the run** (CZ7). The session built each image and ran its test command once against the clone, on its own initiative. That finds a broken Dockerfile in seconds instead of in an owner's first turn, so step 6 now requires it.
 4. **The test command writes `all.xml`.** hikari makes the system's `test` command the suite `all`, and reads its report from `all.xml`. The skill said `<suite>.xml`, the session named the report `unit.xml`, and the owner had to correct it. Found in the live run.
 5. **Each host skill's folder ignores itself** (HS3). A line in the project's `.gitignore` for each skill meant that each new host skill, such as `hikify`, broke every project made before it, until you added a line. Now `hikari` writes a `.gitignore` with `*` into each skill's folder, so git ignores the folder with no line at the top, and a skill of your own in `.claude/skills/` stays versioned. Found when `hikify` was added.
@@ -22,7 +22,7 @@ Sources: `docs/brainstorm/onboarding.md` (round 1, questions A1, A2, A4, C1 to C
 
 1. It links each repository by its URL and clones it.
 2. It surveys each repository: its toolchain, its tests, and what its tests need.
-3. It writes one system for each repository, with an agent Dockerfile and a test command, plus a lead and a hub.
+3. It writes one system for each repository, with an agent Dockerfile and a test command, plus an orchestrator and a hub.
 4. You start hikari. Each owner maps its repository and records its tests.
 5. The skill writes the baseline: every test, with its outcome.
 
@@ -35,7 +35,7 @@ From round 1 and its answers:
 1. The onboarding skills run in your Claude Code session on the host (A1).
 2. The binary carries the skills, and writes them into the project's `.claude/skills/`, ignored by git (A2).
 3. Onboarding keeps its state in `onboarding/` in the project repository, versioned (A4).
-4. `containerize-repo` makes a containerized project: one system for each repository, scope the whole repository, an agent Dockerfile, a test command, instructions from the repository's `CLAUDE.md`, a lead, and one hub. It changes no code (C1).
+4. `containerize-repo` makes a containerized project: one system for each repository, scope the whole repository, an agent Dockerfile, a test command, instructions from the repository's `CLAUDE.md`, an orchestrator, and one hub. It changes no code (C1).
 5. A suite that cannot run in its container is a finding, not a change (C2).
 6. Containerize is the first stage of hikify (C3).
 7. A small example of "before" repositories, for hikari's own tests (I2).
@@ -98,7 +98,7 @@ The skill's procedure, in order. Where you gave an answer in your request, the s
   - a test command that runs every suite that can run in the container, and writes JUnit XML to `/hikari/private/reports/`;
   - a named volume, mounted inside the scope, for each directory of dependencies, such as `node_modules`;
   - a `description`, and `instructions` drawn from the repository's `CLAUDE.md`, with no secret and no path outside the repository.
-- **CZ6.** **The hub.** Write a `lead` and one hub, `main`, whose members are the owners.
+- **CZ6.** **The hub.** Write an `orchestrator` and one hub, `main`, whose members are the owners.
 - **CZ7.** **Check.** Run `hikari check`, and fix each finding. Build each image, and run its test command once against the clone. Show you the systems, the suites that cannot run with the reason, and the ignore lines. Commit.
 - **CZ8.** **Run.** Ask you to start `hikari up compose.yaml`. Wait with `hikari status`, until each owner's map is described and each owner has recorded a run of its suites. A suite that fails is a finding of the baseline, not a reason to change code.
 - **CZ9.** **Baseline.** Write `onboarding/baseline.md` (OB2), and record in `state.md` that containerize is done, with the date. Commit.
