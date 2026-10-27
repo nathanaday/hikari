@@ -36,9 +36,13 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Feature map.** A partition's public description: its feature documents and `map.yaml`, which hikari writes from them. Every agent that may read the partition reads it; only its partition agent writes it, through tools.
 
+**Orchestration feature map.** The orchestration agent's own feature map, in `orchestration/read-only/features/`: features that cross partitions, each made of the partition features it links, with its health computed from theirs, and principles and rules that bind only the orchestration agent. Only the orchestration agent reads it, and it writes it through `change_wiki`, as a partition agent writes its own.
+
 **Code map.** Private to the partition: where each feature lives in the code, in `code-map.yaml` in the partition's `.hikari/private/`.
 
 **Test map.** Private to the partition: how its suites run and which features each test touches, in `tests.yaml`.
+
+**Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
 
 **Apply.** Commit a partition's changes to its source repositories: one commit in each repository whose writable folders changed. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
 
@@ -55,5 +59,6 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 | orchestrator | orchestration agent | The same naming. Code identifiers say `Orchestration`. |
 | node | driver | Node was both the driver and the partition; a partition is now only the folders. |
 | compose file | topology file | Compose stays the name of Docker Compose, its keys, and its commands. |
+| story | orchestration feature | A flow across partitions is a feature of the orchestration feature map. |
 | layout, code layout | code map | The private document of where each feature lives. |
 | `commit_changes` | `apply` | The name of the event in the glossary. |

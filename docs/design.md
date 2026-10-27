@@ -209,18 +209,20 @@ no feature of the partition, so it makes nothing stale.
 
 ## Feature maps and the public wiki
 
-The feature wiki became one of many wikis: every partition has one, and the
-project has a public wiki for what spans partitions. A document has a kind. A
-partition's features, principles, and rules, and the public wiki's stories,
-rules, and principles, share one format and one change model, because the
-reasons to check a header, to keep links as the only structure, and to
-apply a change as a whole are the same for every kind.
+The feature wiki became one of many wikis: every partition has one, the
+orchestration agent has one, and the project has a public wiki for what every
+agent keeps. A document has a kind. A partition's features, principles, and
+rules, the orchestration agent's, and the public wiki's rules and principles
+share one format and one change model, because the reasons to check a header,
+to keep links as the only structure, and to apply a change as a whole are the
+same for every kind.
 
 Ids are unique across the vault, which the feature wiki already required
 across partitions. So `[[reserve-stock]]` names one document in any wiki, in
-hikari and in Obsidian, and a story links the features of its partitions with
-no other syntax. A link names a document by its last path segment, because
-Obsidian writes a path when two files share a name, as a release copy does.
+hikari and in Obsidian, and an orchestration feature links the features of
+its partitions with no other syntax. A link names a document by its last path
+segment, because Obsidian writes a path when two files share a name, as a
+release copy does.
 
 The user's plans and notes live beside the agents' documents, so that each
 wiki is also where the user keeps what they intend for its partition or for the
@@ -245,6 +247,34 @@ every agent, and only the orchestration agent writes it. It lives in
 read-only, so it needs no mount of its own. The orchestration agent also reads
 every feature map. Before each turn, an agent learns which documents of the
 wikis it reads someone else changed.
+
+## The orchestration feature map
+
+The orchestration agent has a feature map of its own, in
+`vault/orchestration/read-only/features/`. Its features are flows across
+partitions, and each links the partition features that carry it out. The
+public wiki's stories did this before. They became features because a flow
+across partitions is something the project does, as a partition's feature is
+something the partition does, and one tool, `change_wiki`, for "my feature
+map" keeps the two kinds of agent alike. Rules and principles for every agent
+stay in the public wiki, because only the orchestration agent reads its own
+map.
+
+An orchestration feature has no code and no test of its own. Its health is
+computed from the features it links: failing when one of them is failing,
+pending when one is pending, untested when none is tested, and otherwise
+passing. A flow across partitions can be tested only with every partition at
+once, which is the work of the integration agent planted for later. Until that
+agent exists, the health of the parts is the best evidence that the flow
+works, and computing it needs no new rule: a story of the public wiki showed
+its support the same way.
+
+The orchestration feature map can link every partition's feature map and the
+public wiki, and neither of them links it, so no partition agent depends on a
+document it cannot read. A link has no direction, so a partition feature that
+an orchestration feature links has a backlink. `get_document` and
+`search_wiki` show each reader only the backlinks from documents it can read,
+so that a partition agent learns nothing of a map it cannot open.
 
 ## Tests and health
 
@@ -535,6 +565,17 @@ change applies from the next turn without a restart. hikari's own skills and
 its `hikari-` agents always come from the binary, so that they match the
 binary's version; no skill of the vault can take their names. Shared agent
 definitions are gone: no project defined one.
+
+hikari's own skills come in packs, one for each kind of agent, with a skill
+for each task: plan the work, do it, validate it, and map the features for a
+partition agent; plan the work, check the health, and map the features for the
+orchestration agent. A skill per task loads only what the task needs: an agent
+that checks the health does not read how to publish a release, and an agent
+that maps its features does not read how to carry out a plan. The prompts name
+the skill of each task, such as `hikari-map-features` for the indexing turn. A
+skill of the same name in two packs is two skills with one purpose, so that a
+prompt names it the same way for either kind of agent, and a container gets
+only its own pack.
 
 The skill of a deliverable can run in its own context (`context: fork`), so
 that building a product does not fill the partition agent's context; it must then

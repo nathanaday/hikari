@@ -37,7 +37,7 @@ Host paths start at `examples/shop/`, except the code and the private files, whi
 | `vault/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` |
 | `vault/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | none |
 
-The orchestration agent writes the vocabulary and the stories, rules, and principles of the public wiki, through its tools. The policies, the deliverables, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
+The orchestration agent writes the vocabulary and the rules and principles of the public wiki, through its tools. The policies, the deliverables, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
 
 ### The Partition `orders`
 
@@ -79,7 +79,7 @@ The orchestration agent writes the vocabulary and the stories, rules, and princi
 | `vault/orchestration/read-only/granted/<file>` | none | none | `/hikari/self/granted/<file>` |
 | `vault/orchestration/can-edit/<file>` | none | none | `/hikari/can-edit/<file>` (writable) |
 
-`orchestration/` exists because the topology names an orchestration agent. Its `features/` will hold the orchestration feature map, which a later step of the shared language builds.
+`orchestration/` exists because the topology names an orchestration agent. Its `features/` holds the orchestration feature map: the features that cross partitions, each linking the partition features it is made of, which the orchestration agent writes through `change_wiki`, and your plans and notes. No partition agent mounts it.
 
 ## Files You Give an Agent
 

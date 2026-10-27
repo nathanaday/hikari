@@ -3,7 +3,7 @@
 This guide shows you how to turn a set of existing git repositories into a hikari project. You start from an empty project. You then work with Claude Code in two skills:
 
 - `containerize-repo` runs each repository in hikari, with no change to its code.
-- `hikify` refactors the repositories into isolated partitions, shared libraries, and tested stories, as you decide.
+- `hikify` refactors the repositories into isolated partitions, shared libraries, and flows across partitions whose parts are tested, as you decide.
 
 You are the authority on the layout of your project. The skills propose, show, and ask. They do not refactor code before you approve a plan. They do not push or create a remote repository unless you approve that action in the conversation.
 
@@ -44,7 +44,7 @@ Onboarding costs agent time. Each partition agent reads its whole repository on 
 |---|---|---|---|
 | 1. Make the project | you | run `hikari init` | an empty project repository |
 | 2. Containerize | your Claude Code session, then the partition agents | give the repository URLs, approve ignore lines, start hikari | one partition for each repository, and a baseline of every test |
-| 3. Design | your session, with reviewer subagents | answer questions, approve the stories and the plan | a target topology, stories in the public wiki, a change plan, and a test ledger |
+| 3. Design | your session, with reviewer subagents | answer questions, approve the orchestration features and the plan | a target topology, features of the orchestration feature map, a change plan, and a test ledger |
 | 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored partitions |
 | 5. Verify | your session | approve the push | a checked ledger, and a proof that a fresh clone starts |
 
@@ -143,9 +143,9 @@ The session writes:
 
 - `topology.target.yaml`: the whole target topology. `hikari check -draft topology.target.yaml` checks it, even though its new repositories do not exist yet.
 - `onboarding/topology.md`: each partition and library in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
-- Drafts of the stories, rules, and principles of the public wiki, in `onboarding/wiki/public/`.
+- Drafts of the features of the orchestration feature map, in `onboarding/wiki/orchestration/`, and of the rules and principles of the public wiki, in `onboarding/wiki/public/`.
 
-**Agree on the stories.** A story is a flow across partitions, such as a sign-up from the terminal to the server. Its support, the health of the features it links, must pass at the end.
+**Agree on the orchestration features.** An orchestration feature is a flow across partitions, such as a sign-up from the terminal to the server. Its health, computed from the partition features it links, must pass at the end.
 
 Every boundary states one of three reasons: a library that two or more partitions need, a client and a server, or two concerns that stay in one repository, each a folder of it. A partition is a list of folders, so the design can also give one partition folders from more than one repository, such as a client and the protocol files that only it changes, and read-only folders for code it reads but does not own. If you disagree with a boundary, say so, and the session revises the design.
 
@@ -185,7 +185,7 @@ Tell the session to start the restructure. hikari must be stopped.
 4. **Start the plan.** When the new partitions have finished their first turns, post the message that the session gives you in the room, in the web UI. It looks like this:
 
    ```
-   @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-orchestration skill.
+   @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-plan-work skill.
    ```
 
    Agents act on a plan only when you ask.
@@ -202,11 +202,11 @@ The session:
 
 1. fills in the result of each row of the ledger from the recorded tests;
 2. asks you to approve each test that the plan drops;
-3. checks that every suite passes, and that the support of every story is passing;
+3. checks that every suite passes, and that the health of every orchestration feature is passing;
 4. asks your approval to run `hikari push`, which pushes the hikari branch of each linked repository and then of the project;
 5. runs a dry run: it clones the project into a temporary folder, runs `hikari sync` and `hikari check`, and starts hikari there until every agent connects.
 
-The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the partitions, their releases, the suites left for integration, and the stories.
+The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the partitions, their releases, the suites left for integration, and the orchestration features.
 
 ## After onboarding
 
