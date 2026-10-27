@@ -1,6 +1,18 @@
 # Spec: the vault layout and its mounts
 
-Status: approved.
+Status: built. Docker was not running, so the live check of 2026-10-26 ran without containers: `hikari check` passed on the shop and failed on a copy with `store/`, `shared/`, `systems/`, and `layout.yaml`, naming each move; with `hikari up -no-launch`, the vault took the layout of V1, the orchestration agent's `define_term` through `hikari mcp` landed in `vault/public/vocabulary/terms.yaml`, the shop's override file (written by a throwaway test, because `-no-launch` writes none) gave each agent the mounts of V3, and headless Chrome showed the same mounts in each inspector and the policies, the deliverable, and the granted skill on the Vault page, with no console error. No container ran, so `docker inspect`, the driver's skill links, and a turn's commit of `can-edit/` were checked only by tests.
+
+Changes made during the build:
+
+1. **A release copies the feature map as `features/`.** It holds `map.yaml` and the agent documents, and the manifest says `map: features/map.yaml`. An older release keeps `map.yaml` and `wiki/`, and stays readable, because its manifest names its map.
+2. **The orchestration agent's `can-edit/` is committed at the end of each of its turns.** It has no `apply`, so the driver now asks the server to commit after its turns too, and the server commits only its `can-edit/`.
+3. **At stop, what is left in a `can-edit/` is yours.** Every turn ends with an apply and the containers stop before the final commits, so `CommitAll` commits every `can-edit/` and `granted/` with your identity.
+4. **Your edits are found by `partitions.IsUserPath`,** which replaces `IsWikiPath`: a document of a wiki, or a file of a `can-edit/` or a `granted/`. `map.yaml` now sits in `features/`, so the user's commit of a feature map leaves it out with an `:(exclude)` pathspec, which `gitrepo.CommitPaths` now takes.
+5. **The checks of V7 and V11 are start checks** in `linked.Check`, which `hikari check`, `hikari up`, and the topology editor's lint share. A skill's name, a skill granted twice, and the `hikari-` prefix are topology errors.
+6. **The topology API gives `mounts` in the state and in the plan,** keyed by service id, from `launcher.AgentMounts`. A host path is relative to the topology file's directory when it is inside it, and absolute otherwise, as for the shop's repository; the empty directory that hides a scope's `.hikari` has an empty host path. `/api/ui/topology/options` lists the vault's skills, and the agent inspector edits `grants.skills` for every agent.
+7. **The UI's listing is `/api/ui/vault/public`:** the policies, the skills with the agents they are granted to, and the deliverables. The sidebar's Shared is Vault. A release's detail gives its directory, so the UI no longer builds the path from the partition's name.
+8. **The shop's seed grants a skill.** `skills/python-style` is granted to both partition agents, so a run of the shop shows the mount and the link. The old `examples/shop/store` of earlier runs is in `.hikari/demo/shop-store-before-vault`.
+9. **`hikari status` and `hikari sync` read a map in the project repository by the partition's id,** through the vault's own path; before, they used the name.
 
 Sources: `docs/brainstorm/shared-language.md` (questions D1 to D5, F2, F6, and G4) and `shared-language-answers.md`. This is step 4 of the seven steps of the shared language. The names are those of `docs/glossary.md`.
 
