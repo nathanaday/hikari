@@ -103,7 +103,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 4. **Approve the ignore lines.** When a repository does not ignore its build products, such as `__pycache__/` or `node_modules/`, the skill shows you the lines to add to its `.gitignore`. This is the only change that containerize makes in a repository. Without it, every machine commits the build products again.
 
-5. **Review the partitions.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestration agent, which it names in `x-hikari.orchestration`. It builds each image and runs each test command once. Then it shows you the partitions and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
+5. **Review the partitions.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestration agent. Each partition has one folder, the whole repository, which its agent sees at `/workspace/<name>`; its test command runs in `/workspace` and starts with `cd <name> &&`. The skill names the orchestration agent in `x-hikari.orchestration`. It builds each image and runs each test command once. Then it shows you the partitions and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
 
 6. **Start hikari** when the skill asks, in a terminal of your own, and leave it running:
 
@@ -147,7 +147,7 @@ The session writes:
 
 **Agree on the stories.** A story is a flow across partitions, such as a sign-up from the terminal to the server. Its support, the health of the features it links, must pass at the end.
 
-Every boundary states one of three reasons: a library that two or more partitions need, a client and a server, or two concerns that stay in one repository. If you disagree with a boundary, say so, and the session revises the design.
+Every boundary states one of three reasons: a library that two or more partitions need, a client and a server, or two concerns that stay in one repository, each a folder of it. A partition is a list of folders, so the design can also give one partition folders from more than one repository, such as a client and the protocol files that only it changes, and read-only folders for code it reads but does not own. If you disagree with a boundary, say so, and the session revises the design.
 
 ### Change plan and review
 
@@ -170,7 +170,7 @@ Tell the session to start the restructure. hikari must be stopped.
 1. **The restructure.** The session does the steps whose actor is `session`:
    - it makes each new repository from the moved code, with its history;
    - it installs the drafts, the deliverables, and the target topology;
-   - it moves the documents of each feature that changes partitions.
+   - it moves the documents of each feature that changes partitions, and their entries in the code maps and test maps, whose paths are workspace paths such as `server/accounts/__init__.py`.
 
    It commits each change as you, on the hikari branch of each repository. Your own branches do not change.
 

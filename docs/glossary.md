@@ -16,7 +16,7 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Vocabulary.** The project's shared dictionary, so that every agent maps features with the same names. Every agent reads it, and only the orchestration agent changes it, through tools. It is a directory, `vocabulary/`, whose file `terms.yaml` holds the terms and the interfaces; hikari reads only that file, so that later vocabulary-like files can join it.
 
-**Partition.** The folders that one container mounts as its workspace. It may or may not be a whole repository. The agent inside sees what is mounted as one monorepo, without any concern for the topology or the mounts. Today a partition is one scope in one repository, with read-only paths; step 5 makes it a flat list of folders from any repositories.
+**Partition.** The folders that one container mounts as its workspace. It may or may not be a whole repository. The agent inside sees what is mounted as one monorepo, without any concern for the topology or the mounts. It is a flat list of folders, each a path in any repository of the project, writable or read-only, and the container sees each folder at `/workspace/<repo>/<path>`, or at the folder's `at:`.
 
 **Secrets.** A partition's secrets are Compose's `env_file` and `environment` on its service. A secret system of hikari's own is left for later.
 
@@ -40,7 +40,7 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Test map.** Private to the partition: how its suites run and which features each test touches, in `tests.yaml`.
 
-**Apply.** Commit a partition's changes to its source repositories. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
+**Apply.** Commit a partition's changes to its source repositories: one commit in each repository whose writable folders changed. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
 
 ## Retired Words
 

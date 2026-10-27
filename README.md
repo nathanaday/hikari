@@ -84,13 +84,13 @@ services:
     <<: *agent
     x-hikari:
       description: Owns order intake.
-      partition: {repo: shop, scope: services/orders}
+      partition: {folders: [{repo: shop, path: services/orders}]}
   inventory:
     <<: *agent
     x-hikari:
       description: Owns stock levels and reservations.
       model: haiku
-      partition: {repo: shop, scope: services/inventory}
+      partition: {folders: [{repo: shop, path: services/inventory}]}
 ```
 
 `x-hikari.orchestration` names the orchestration agent by its service id. It is optional, and the orchestration agent has no partition. Every other agent has a partition: `hikari check` refuses an agent that is neither, as `agent "writer" has no partition and is not the orchestration agent`. Each agent sees the `description` of everyone in the room. The `instructions` field of an agent goes into the system prompt of that agent only.
@@ -122,14 +122,14 @@ services:
     x-hikari:
       name: stock
       description: Owns stock levels and reservations.
-      partition: {repo: shop, scope: services/inventory}
+      partition: {folders: [{repo: shop, path: services/inventory}]}
 ```
 
 Agents and the UI use names: here you mention `@stock`. References in the file use ids, such as `orchestration: orchestrator` or `releases: [inventory]`, so a rename changes one line. Everything outside the file is keyed by id: the vault directories, the release manifests, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's id or `user`.
 
 ### Partitions
 
-Give an agent a partition to make it the partition agent of a part of a repo:
+Give an agent a partition to make it a partition agent. A partition is a list of folders, each a path in any repo of the project, writable or read-only:
 
 ```yaml
 x-hikari:
@@ -137,6 +137,7 @@ x-hikari:
     shop:
       path: ~/code/shop          # relative paths start at the topology file
       branch: hikari/checkout-v2 # agents commit here; you merge it
+    protos: {path: ~/code/protos, branch: hikari/checkout-v2}
 
 services:
   orders:
@@ -144,10 +145,11 @@ services:
     x-hikari:
       description: Owns order intake.
       partition:
-        repo: shop
-        scope: services/orders    # the only code orders can see or change
-        read: [proto]             # optional read-only paths outside every scope
-        test: python3 -m pytest -q tests -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml  # optional; seeds the first suite, all
+        folders:
+          - {repo: shop, path: services/orders}          # at /workspace/shop/services/orders
+          - {repo: shop, path: libs/money, read_only: true}
+          - {repo: protos, path: orders, at: protos}     # at /workspace/protos
+        test: python3 -m pytest -q shop/services/orders/tests -o pythonpath=shop/services/orders -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml  # optional; runs in /workspace, and seeds the first suite, all
       grants:
         deliverables: [python-library]  # optional; the releases this partition agent can publish
         releases: [inventory]     # optional; read-only access to another partition's releases
@@ -155,14 +157,16 @@ services:
 
 The `test` command seeds the partition agent's test map once: when the partition has no `tests.yaml` yet, hikari makes the command its first suite, `all`, whose report must be `/hikari/private/reports/all.xml`. After that, the partition agent keeps its suites in `tests.yaml`, and a change of `test` in the topology file has no effect.
 
-When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates the branch if needed and checks it out. Each partition agent's container sees only its scope at `/workspace/<scope>`, with no `.git`. The agent cannot commit by itself: hikari commits the changes inside its scope, with the agent as author and you as committer, when the agent calls `apply` and at the end of every turn. You review the branch and merge it.
+A folder's `repo` is the repo's id, and its `path` is relative to the repo's root; with no `path`, the folder is the whole repo. The container sees each folder at `/workspace/<repo>/<path>`, with the repo's name, unless the folder sets `at:`, and it sees no `.git`. The agent's working directory is `/workspace`, and it works in its folders as in one monorepo. A partition needs at least one folder without `read_only`. The writable folders of two partitions never overlap, and no folder lies inside another partition's writable folder; read-only folders of two partitions may overlap.
+
+When `hikari up` starts, it checks that each repo has no uncommitted changes, then creates each repo's branch if needed and checks it out. The agent cannot commit by itself. An apply commits its writable folders: one commit in each repo whose folders changed, on that repo's branch, with the agent as author, you as committer, and one message. The agent calls `apply` to name the change, and hikari applies what is left at the end of every turn and when hikari stops. You review the branches and merge them.
 
 Four documents describe each partition, and the partition agent is the only author of all four. The first two are the feature map, which every agent can read; the last two are private:
 
 - `vault/partitions/<id>/read-only/features/<doc>.md` holds the documents of the feature map: one markdown document for each feature, principle, and rule of the partition, with a property header that hikari checks and a body that says why it exists and what it promises. Documents link the documents that work together with `[[id]]` links. A link has no direction and no kind, and there are no groups: the links are the structure. The partition agent changes the wiki only through `change_wiki`, which applies a set of writes as a whole or not at all.
 - `vault/partitions/<id>/read-only/features/map.yaml` is the rest of the feature map: a summary, the interfaces the partition provides and consumes, written through `set_partition_info`, and a list of the features that hikari writes from the wiki, with the health and state of each. It holds no file paths and no commands.
-- `<scope>/.hikari/private/code-map.yaml` is the code map: where each feature lives in the code.
-- `<scope>/.hikari/private/tests.yaml` is the test map: the suites that run tests, the features that each test touches, and what no test checks. Each suite's command writes a JUnit XML report to `/hikari/private/reports/<suite>.xml`, and `record_test_run` hands it to hikari. hikari keeps the last result of each test in `results.yaml` beside it. Results and reports are never committed.
+- `<folder>/.hikari/private/code-map.yaml` is the code map: where each feature lives in the code. `<folder>` is the partition's first writable folder, and every path in the private documents is a workspace path, such as `shop/services/orders/app.py`.
+- `<folder>/.hikari/private/tests.yaml` is the test map: the suites that run tests, the features that each test touches, and what no test checks. Each suite's command writes a JUnit XML report to `/hikari/private/reports/<suite>.xml`, and `record_test_run` hands it to hikari. hikari keeps the last result of each test in `results.yaml` beside it. Results and reports are never committed.
 
 The partition agent edits the private documents directly. The `hikari-partition` skill in its container explains each document, what counts as a feature, and how to link; it comes with three read-only agents, `hikari-feature-survey`, `hikari-feature-review`, and `hikari-test-survey`, that read the code for a partition agent. Health is computed from the tests that touch each feature: `failing` when one of them failed, `pending` when one has not run since its file or the code it tests changed, `untested` when no test touches the feature, and otherwise `passing`. The partition agent never reports a count: the test runner writes the results. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, a partition agent reads its code and builds the documents. When the code changes, hikari tells the partition agent which features are stale and which changed paths belong to no feature, and the partition agent updates them and marks the map current. You can open the vault in Obsidian: every link resolves.
 
@@ -201,10 +205,10 @@ Compose owns each agent's environment: its image or Dockerfile, its variables, e
 
 An agent's image must meet one contract: `claude` is on its `PATH`, and its user is not root. The `hikari-agent` image meets it, so a Dockerfile can start `FROM hikari-agent` and add a toolchain. Any other image works when it installs Claude Code and sets a user. `hikari up` checks each image before it starts any container.
 
-- **Dependencies.** A named volume inside the agent's scope keeps Linux builds out of your repo, for example `volumes: [modules:/workspace/web/node_modules]`. hikari makes the volume writable for the agent's user, and it stays between runs.
+- **Dependencies.** A named volume inside one of the agent's writable folders keeps Linux builds out of your repo, for example `volumes: [modules:/workspace/shop/web/node_modules]`. hikari makes the volume writable for the agent's user, and it stays between runs.
 - **Secrets.** Give each agent only its own variables and env files. An agent can read every variable that its container has.
 - **Sidecars.** A service with `x-hikari: {serves: orders}` runs beside orders, for example a database for its tests. It joins only orders' network, so only orders can reach it, by its service name.
-- **Extra mounts.** An agent can mount other host paths, such as a dataset, but not a path in a topology repo, the vault, or the Docker socket. In a project repository, only the vault, `.git`, and the scopes of its partitions are refused.
+- **Extra mounts.** An agent can mount other host paths, such as a dataset, but not a path in a topology repo, the vault, or the Docker socket. In a project repository, only the vault, `.git`, and the writable folders of its partitions are refused.
 
 hikari sets an agent's `entrypoint`, `command`, `working_dir`, and networks, and it refuses a file that sets them or that gives a service host-level access, such as `privileged` or `network_mode`. Every service needs `x-hikari`, so no container runs outside the rules.
 
@@ -255,7 +259,7 @@ Each container mounts a few directories of the vault at fixed paths, and nothing
 | `/hikari/self` | `partitions/<id>/read-only/` | `orchestration/read-only/` | read-only |
 | `/hikari/can-edit` | `partitions/<id>/can-edit/` | `orchestration/can-edit/` | writable |
 | `/hikari/staging` | `partitions/<id>/staging/` | none | writable |
-| `/hikari/private` | its private documents, `<scope>/.hikari/private/` | none | writable |
+| `/hikari/private` | its private documents, `.hikari/private/` of its first writable folder | none | writable |
 | `/hikari/partitions/<name>` | none | each partition's `read-only/` | read-only |
 | `/hikari/grants/<name>/releases` | each granted partition's `read-only/releases/` | none | read-only |
 | `/hikari/skills/<name>` | each granted skill | each granted skill | read-only |
@@ -278,8 +282,8 @@ The key `x-hikari.project: {branch: hikari}` makes the topology file's directory
 - hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the partition's next commit. An apply also commits the agent's changes in its `can-edit/`, and the orchestration agent's changes there are committed at the end of each of its turns. At stop, hikari commits what each agent's paths still hold.
 - hikari never commits your policies, deliverables, or skills. Commit them yourself. Your edits in the wikis are committed with your git identity: before an agent changes the same wiki, when you make them in the UI, at stop, and at start when the project branch is checked out and only the wikis changed. Your changes in a `can-edit/` or a `granted/` are committed the same way at start and at stop.
 - The project repository follows the rules of every repo: it must be clean when hikari starts, and agents commit only to the project branch, which you merge. When the checkout of the branch changes the topology file, hikari reads it again.
-- A partition's code can live in the project repository too: `partition: {repo: project, scope: app}`. The scope cannot overlap the vault.
-- The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each scope.
+- A partition's folder can live in the project repository too: `partition: {folders: [{repo: project, path: app}]}`. The folder cannot overlap the vault or `repos/`.
+- The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each partition's folder.
 
 #### Linked repositories and teammates
 
@@ -336,7 +340,7 @@ It keeps its progress in `onboarding/state.md`, so a new session continues where
 `hikify` starts where containerize ends, and refactors the project into isolated partitions with you. Run `/hikify` in the same project. It works in stages, and keeps each one in `onboarding/`:
 
 1. **Analysis.** A subagent reads each repository with its partition agent's map and the baseline. The session then writes a synthesis of the duplicated code, the boundaries it proposes, and the suites it leaves for integration, and asks you its questions. A difference in behavior between two copies of code is always your decision.
-2. **Target topology.** It drafts `topology.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft topology.target.yaml` checks a target whose new repositories and scopes do not exist yet. With you, it drafts the stories, rules, and principles of the public wiki in `onboarding/wiki/public/`.
+2. **Target topology.** It drafts `topology.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft topology.target.yaml` checks a target whose new repositories and folders do not exist yet. With you, it drafts the stories, rules, and principles of the public wiki in `onboarding/wiki/public/`.
 3. **Change plan.** It writes the project plan, `onboarding/wiki/public/hikify-plan.md`, a plan for each partition, and a ledger that says where each baseline test goes.
 4. **Review.** Fresh reviewer subagents look for what would break, in rounds, until a round finds only minor problems. After four rounds with serious findings, the session stops and asks you.
 5. **Execution.** After you approve, the session makes the new repositories, moves code with its history, and installs the drafts and the target topology. You create each new remote. Then you start hikari, and ask the orchestration agent to carry out the plan: it sends each step to its partition agent when the releases it needs exist. The session follows the run from files.
@@ -359,7 +363,7 @@ Open http://localhost:5173/?token=... with the token that `make up` printed. The
 The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
 - The server is the only authority on the topology. It checks every message against the topology, and decides whom each post wakes. A container cannot change who it is.
-- Only the server writes to git. Agents never get `.git`, so they cannot commit outside their scope, rewrite history, or switch branches.
+- Only the server writes to git. Agents never get `.git`, so they cannot commit outside their folders, rewrite history, or switch branches.
 - The feature map is a public surface. Paths, commands, and test names stay in the private documents, which only the partition agent and you read.
 - The partition agent is the only author of its documents. The server applies each agent's changes to its wiki and checks them, so the wiki and the map never hold an invalid document.
 - Containers cannot reach each other directly. Each container has its own Docker network. The only path between agents goes through the server.
@@ -377,7 +381,8 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `web/src/components/graph-engine.ts`: the canvas of the Map view: layout, drawing, input, and transitions
 - `internal/vocab`: the vocabulary format
 - `internal/vault`: the vault's directories, deliverables, and releases
-- `internal/gitrepo`: branch preparation, scoped commits, and the remote operations of sync and push
+- `internal/gitrepo`: branch preparation, commits of a partition's folders, and the remote operations of sync and push
+- `internal/workspace`: a partition's folders, their places under `/workspace`, and the host folder of a workspace path
 - `internal/linked`: the checks of a start, and `hikari sync` and `hikari push` across the project's repos
 - `internal/driver`: the driver that gives messages to Claude Code
 - `internal/mcpserver`: the MCP tools for the agent

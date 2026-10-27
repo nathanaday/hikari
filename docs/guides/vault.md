@@ -49,12 +49,12 @@ The orchestration agent writes the vocabulary and the stories, rules, and princi
 | `vault/partitions/orders/read-only/granted/<file>` | `/hikari/self/granted/<file>` | none | `/hikari/partitions/orders/granted/<file>` |
 | `vault/partitions/orders/can-edit/<file>` | `/hikari/can-edit/<file>` (writable) | none | none |
 | `vault/partitions/orders/staging/python-library/` | `/hikari/staging/python-library/` (writable) | none | none |
-| `.hikari/demo/shop/services/orders/` | `/workspace/services/orders/` (writable) | none | none |
+| `.hikari/demo/shop/services/orders/` | `/workspace/shop/services/orders/` (writable) | none | none |
 | `.hikari/demo/shop/services/orders/.hikari/private/code-map.yaml` | `/hikari/private/code-map.yaml` (writable) | none | none |
 | `.hikari/demo/shop/services/orders/.hikari/private/tests.yaml` | `/hikari/private/tests.yaml` (writable) | none | none |
 | `.hikari/demo/shop/services/orders/.hikari/private/results.yaml` | `/hikari/private/results.yaml` (hikari writes it) | none | none |
 
-`orders` changes its feature map only through `change_wiki` and `set_partition_info`, so the map stays read-only in its container. Inside its scope, `/workspace/services/orders/.hikari` is an empty directory, so the private files appear at `/hikari/private` only.
+`orders` changes its feature map only through `change_wiki` and `set_partition_info`, so the map stays read-only in its container. Its partition is one folder of the repo `shop`, which it sees at `/workspace/shop/services/orders/`, the repo's name and the folder's path; its working directory is `/workspace`. The private files live in the partition's first writable folder, here its only one, and `/workspace/shop/services/orders/.hikari` is an empty directory, so they appear at `/hikari/private` only. A partition with folders in more repos sees each at `/workspace/<repo>/<path>`, or at the folder's `at:`, and keeps its private files in the first writable folder.
 
 ### The Partition `inventory`
 
@@ -66,7 +66,7 @@ The orchestration agent writes the vocabulary and the stories, rules, and princi
 | `vault/partitions/inventory/read-only/granted/<file>` | none | `/hikari/self/granted/<file>` | `/hikari/partitions/inventory/granted/<file>` |
 | `vault/partitions/inventory/can-edit/<file>` | none | `/hikari/can-edit/<file>` (writable) | none |
 | `vault/partitions/inventory/staging/python-library/` | none | `/hikari/staging/python-library/` (writable) | none |
-| `.hikari/demo/shop/services/inventory/` | none | `/workspace/services/inventory/` (writable) | none |
+| `.hikari/demo/shop/services/inventory/` | none | `/workspace/shop/services/inventory/` (writable) | none |
 | `.hikari/demo/shop/services/inventory/.hikari/private/` | none | `/hikari/private/` (writable) | none |
 
 `orders` reads the releases of `inventory`, because the topology grants them, and nothing else of `inventory`. A release holds `release.yaml`, `SHA256SUMS`, the product in `product/`, and the feature map at release time in `features/`, and `latest` points at the newest version.

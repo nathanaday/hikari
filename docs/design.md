@@ -76,39 +76,63 @@ this under each post.
 
 ## Partition agents, maps, and orchestration agents that never see code
 
-An agent can have a partition: a scope inside a git repo. The partition agent is the only
-agent that reads or changes that code. Orchestration agents own no code. They plan
-from feature maps, which describe what each partition does, which interfaces it
-provides and consumes, and how healthy its features are. A team works the
-same way: an orchestration agent knows which features exist and who owns them, and asks the
-partition agent whether a change is feasible. The partition agent decides how to make it.
+An agent can have a partition: a list of folders, each a path in a git repo,
+writable or read-only. The partition agent is the only agent that changes the
+code of its writable folders. Orchestration agents own no code. They plan from
+feature maps, which describe what each partition does, which interfaces it
+provides and consumes, and how healthy its features are. A team works the same
+way: an orchestration agent knows which features exist and who owns them, and
+asks the partition agent whether a change is feasible. The partition agent
+decides how to make it.
 
 The full spec is `docs/specs/system-maps.md`. The rest of this section gives
 the reasons for its main decisions.
 
 ## The repo stays on the host
 
-The scope is a bind mount of your repo, not a clone. You keep using the repo
-as usual, and the change in the scope is the work itself; there is no second
-copy to sync. The container sees only the scope, its read-only paths, and
-its map directory, at the same relative paths as in the repo. It never sees
-`.git`, because `git status` would show every file outside the scope as
-deleted, and because git access would let an agent rewrite history or
-switch branches.
+Each folder of a partition is a bind mount of your repo, not a clone. You keep
+using the repo as usual, and the change in a folder is the work itself; there
+is no second copy to sync. The container sees its folders under `/workspace`,
+each at `/workspace/<repo>/<path>` unless the topology gives it another place
+with `at:`, and the agent works in them as in one monorepo. A boundary can
+then follow a concern instead of a repo: a partition can take a service from
+one repo and the protocol files that only it changes from another. The working
+directory is `/workspace`, so the code map, the test map, and the test
+commands name workspace paths, which hikari maps back to the folders on the
+host.
+
+A default place names the repo by its name, which the agent sees, not by its
+id, which only the file and the vault use. A rename of a repo in the editor
+therefore moves those places, and the plan of the rename lists each partition
+whose workspace moves.
+
+The writable folders of two partitions never overlap, and no folder of a
+partition, read-only or not, lies inside another partition's writable folder,
+so no agent sees the code of another partition. Read-only folders of two
+partitions may overlap.
+
+The container never sees `.git`, because `git status` would show every file
+outside the folder as deleted, and because git access would let an agent
+rewrite history or switch branches.
 
 ## Only the server writes to git
 
-Local commits need no credentials, so the server commits on the host:
-`git add -A -- <scope>`, then `git commit -- <scope>`. A commit holds only
-the partition agent's files, even when two partition agents share a repo and one has staged
-files. The agent is the author and you are the committer, so `git log`
-shows who wrote each change and who accepted it into the repo.
+Local commits need no credentials, so the server commits on the host. An apply
+commits the writable folders of each repo: `git add -A -- <folders>`, then
+`git commit` of the staged files, one commit in each repo whose folders
+changed, with one message, and nothing in a repo whose folders did not. A
+commit holds only the partition agent's files, even when two partition agents
+share a repo and one has staged files. The agent is the author and you are the
+committer, so `git log` shows who wrote each change and who accepted it into
+the repo.
 
-One working tree has one branch, so agents that share a repo share its
-branch, and the topology declares the branch once for each repo. `hikari up`
-refuses a repo with uncommitted changes, so that your unfinished work never
-enters an agent commit. To keep the next start possible, hikari commits what
-each partition agent left when a turn ends and when hikari stops.
+One working tree has one branch, so agents that share a repo share its branch,
+and the topology declares the branch once for each repo. `hikari up` refuses a
+repo with uncommitted changes, so that your unfinished work never enters an
+agent commit, and prepares each repo's branch once, however many folders use
+it. An agent calls `apply` to name its commits; to keep the next start
+possible, hikari also applies what each partition agent left when a turn ends
+and when hikari stops.
 
 ## A public map and private documents
 
@@ -132,8 +156,10 @@ when it computes health, and it refuses to record a test run or to mark
 the map current while they are invalid, so that they stay true. A skill in
 the container, not a file in your repo, teaches the partition agent their formats.
 
-The private documents live in the scope, so they are versioned and reviewed
-with the code that they describe.
+The private documents live in the partition's first writable folder, in
+`.hikari/private/`, so they are versioned and reviewed with the code that they
+describe. A partition with folders in several repos keeps them in one place,
+and the first writable folder is the one that the topology names first.
 
 ## The feature wiki
 
@@ -175,9 +201,11 @@ Staleness is per feature. The server knows each feature's code paths from the
 code map, so a change in the code names the features it touches, and a
 changed path under no feature is how a missing feature gets found.
 
-A map records the commit that it describes; when files in the scope change
-after that commit, the map is `stale`, and the driver lists the changed paths
-in the partition agent's next prompt.
+A map records the commits that it describes, one for each repo of the writable
+folders. When files in a writable folder change after its repo's commit, the
+map is `stale`, and the driver lists the changed paths, as workspace paths, in
+the partition agent's next prompt. A change in a read-only folder belongs to
+no feature of the partition, so it makes nothing stale.
 
 ## Feature maps and the public wiki
 
@@ -335,9 +363,9 @@ end of each of its turns. Your own changes in a `can-edit/` or a `granted/`
 are committed with your identity at start and at stop, as your wiki edits
 are.
 
-In a project repository, a compose service may bind mount a config
-directory next to the topology file. The guard covers only what hikari
-mounts itself: the vault, `.git`, and the scopes of the partitions in it.
+In a project repository, a compose service may bind mount a config directory
+next to the topology file. The guard covers only what hikari mounts itself:
+the vault, `.git`, and the writable folders of the partitions in it.
 
 ## Linked repositories make a project portable
 
@@ -372,7 +400,7 @@ exists, and every hikari agent needs one. It also needs a view across all
 repositories, which no hikari agent has by design. So the onboarding
 skills run in your own Claude Code session on the host, where you decide
 as the work goes. Hikari's own agents make the code changes later, each in
-its own scope.
+its own folders.
 
 The binary carries these host skills and writes them into the project's
 `.claude/skills/`. A skill versioned in the project would drift from the
@@ -410,11 +438,11 @@ yours or a teammate's, has the same origin.
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its
-working directory. Orchestration agents have no scope, so a `.hikari` directory
-inside a scope could not work for them. Docker also creates an empty
-directory on the host for every mount point, so mount points inside the
-scope would leave directories in your repo. The scope's own `.hikari`
-directory is hidden, so the private documents appear at one path only.
+working directory. Orchestration agents have no folders, so a `.hikari`
+directory inside a folder could not work for them. Docker also creates an
+empty directory on the host for every mount point, so mount points inside a
+folder would leave directories in your repo. The `.hikari` directory of each
+writable folder is hidden, so the private documents appear at one path only.
 
 Each container mounts the vault in a few fixed places, one directory each:
 
@@ -645,7 +673,7 @@ new need would have copied another part of Docker compose. So the topology is
 now a topology file, and every compose feature works.
 
 hikari keeps the parts that must not be written by hand: the mounts of each
-scope and of the vault, the networks, the tokens, the entrypoint, and the
+folder and of the vault, the networks, the tokens, the entrypoint, and the
 hikari binary. It writes them into an override file for each run, which
 compose merges with the user's file. Before it runs anything, hikari reads the
 file as compose resolves it (`docker compose config`) and refuses a file that
@@ -743,7 +771,10 @@ from before the record existed has no known age and shows as the oldest.
 - Release grants change only when a container starts, and there are no
   schema grants yet: a partition that owns a contract publishes it in its
   releases.
-- Files that a partition agent creates in its scope belong to the container user. On
-  Docker Desktop for macOS this is your user; on Linux, it is the user ID of
-  the agent's image, 1000 in `hikari-agent`.
+- Files that a partition agent creates in its folders belong to the container
+  user. On Docker Desktop for macOS this is your user; on Linux, it is the
+  user ID of the agent's image, 1000 in `hikari-agent`.
+- Only the folders are writable, not `/workspace` itself, which Docker
+  creates for the mount points. A test runner that writes a cache in its
+  working directory needs its cache off or inside a folder.
 - A sidecar serves one agent. Agents cannot share a sidecar yet.
