@@ -89,4 +89,4 @@ In a project repository, hikari commits the partition agent's changes in its `ca
 
 ## An Old Layout
 
-A vault from before this layout holds `shared/` and `systems/`, and the topology's directory holds `store/` in place of `vault/`; a partition's private directory holds `layout.yaml` in place of `code-map.yaml`. hikari moves none of these. `hikari check` and `hikari up` refuse each one and name the move that fixes it, and `docs/guides/migrating.md` lists every move.
+A vault from before this layout holds `shared/` and `systems/`, and the topology's directory holds `store/` in place of `vault/`; a partition's private directory holds `layout.yaml` in place of `code-map.yaml`. hikari moves none of these. `hikari check` and `hikari up` refuse each one and name the move that fixes it, and [the migration guide](migrating.md#the-vault-layout) lists every move.

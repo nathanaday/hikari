@@ -326,6 +326,10 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	var keys hikariKeys
 	if f.Hikari.Kind == 0 {
 		fail("", "the topology file has no top-level x-hikari key")
+	} else if old := oldKeys(&f.Hikari, oldProjectKeys); len(old) > 0 {
+		for _, o := range old {
+			fail("x-hikari."+o[0], "%s", o[1])
+		}
 	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
 		fail("x-hikari", "x-hikari: %v", err)
 	}
@@ -361,8 +365,14 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 			fail("services."+name, "service %q has no x-hikari key: mark it as an agent (x-hikari: {description: ...}) or as a sidecar (x-hikari: {serves: <agent>})", name)
 			continue
 		}
+		if old := oldKeys(&sk.Hikari, oldServiceKeys); len(old) > 0 {
+			for _, o := range old {
+				fail("services."+name+".x-hikari."+o[0], "service %q: %s", name, o[1])
+			}
+			continue
+		}
 		if oldPartition(&sk.Hikari) {
-			fail("services."+name+".x-hikari.partition", "service %q: the partition uses the old keys repo, scope, and read; write it as folders: [{repo: <repo>, path: <scope>}], with read_only: true for each read path", name)
+			fail("services."+name+".x-hikari.partition", "service %q: the partition uses the old keys repo, scope, and read; write it as folders: [{repo: <repo>, path: <scope>, at: <scope>}], with read_only: true for each read path; see %s", name, vault.Migrating("partitions"))
 			continue
 		}
 		var h serviceHikari
@@ -389,6 +399,34 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	}
 	t.rekey()
 	return &t, nil
+}
+
+// The keys of x-hikari from before the shared language, each with the move
+// that replaces it.
+var (
+	oldProjectKeys = map[string]string{
+		"store": "x-hikari.store is now x-hikari.vault: rename the key, or remove it to use vault/ next to the topology file, and rename the directory store/ to vault/; see " + vault.Migrating("the-vault"),
+		"hubs":  "x-hikari.hubs is gone: a project has one room, so name its orchestration agent with x-hikari.orchestration: <service>, and give every other agent a partition or remove it; see " + vault.Migrating("the-orchestration-agent"),
+	}
+	oldServiceKeys = map[string]string{
+		"tests":  "x-hikari.tests is gone with the hub's tester: remove the key, and remove the service or give it a partition; its suites stay in their folder, left for integration; see " + vault.Migrating("the-orchestration-agent"),
+		"system": "x-hikari.system is now x-hikari.partition, a list of folders: write partition: {folders: [{repo: <repo>, path: <scope>, at: <scope>}], test: cd <scope> && <test>}, with a folder of read_only: true for each read path; see " + vault.Migrating("partitions"),
+	}
+)
+
+// oldKeys returns each key of the x-hikari node n that old names, with its
+// move, in the order of the file.
+func oldKeys(n *yaml.Node, old map[string]string) [][2]string {
+	var out [][2]string
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if move, ok := old[n.Content[i].Value]; ok {
+			out = append(out, [2]string{n.Content[i].Value, move})
+		}
+	}
+	return out
 }
 
 // oldPartition reports whether an x-hikari node holds a partition of the

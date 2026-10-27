@@ -45,7 +45,7 @@ func TestParse(t *testing.T) {
 func TestParseErrors(t *testing.T) {
 	orch := "  orchestration: a"
 	cases := map[string]struct{ src, want string }{
-		"hubs":             {compose("  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {}}"), "field hubs not found"},
+		"hubs":             {compose("  hubs: {h: {orchestrator: a}}", "  a: {x-hikari: {}}"), "x-hikari.hubs is gone"},
 		"sidecar":          {compose("  orchestration: db", "  a: {x-hikari: {}}\n  db: {x-hikari: {serves: a}}"), `"db" is not an agent's service id`},
 		"user":             {compose("  orchestration: user", "  a: {x-hikari: {}}"), `"user" is not an agent's service id`},
 		"empty":            {``, "is empty"},
@@ -203,6 +203,18 @@ func TestPartitionErrors(t *testing.T) {
 		"F1 escaping at": {
 			partitionsTopology(repo, strings.Replace(valid, "{repo: shop, path: services/orders}", "{repo: shop, path: services/orders, at: ../x}", 1)),
 			"must be a relative path under /workspace",
+		},
+		"M5 old store key": {
+			strings.Replace(partitionsTopology(repo, valid), "  orchestration: lead", "  orchestration: lead\n  store: store", 1),
+			"x-hikari.store is now x-hikari.vault",
+		},
+		"M5 old hubs key": {
+			strings.Replace(partitionsTopology(repo, valid), "  orchestration: lead", "  hubs: {main: {orchestrator: lead, members: [orders]}}", 1),
+			"docs/guides/migrating.md#the-orchestration-agent",
+		},
+		"M5 old system key": {
+			partitionsTopology(repo, strings.Replace(valid, "partition: {folders: [{repo: shop, path: services/orders}]}", "system: {repo: shop, scope: services/orders}", 1)),
+			"x-hikari.system is now x-hikari.partition",
 		},
 		"decision 5 old keys": {
 			partitionsTopology(repo, strings.Replace(valid, "{folders: [{repo: shop, path: services/orders}]}", "{repo: shop, scope: services/orders}", 1)),

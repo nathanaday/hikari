@@ -14,6 +14,7 @@ import (
 	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/topology"
+	"github.com/nathanaday/hikari/internal/vault"
 )
 
 // topologyArg parses the flags of a command that takes one topology file.
@@ -40,7 +41,7 @@ func fileArg(fs *flag.FlagSet) (string, error) {
 	}
 	if _, err := os.Stat(scaffold.TopologyFile); errors.Is(err, iofs.ErrNotExist) {
 		if _, err := os.Stat("compose.yaml"); err == nil {
-			return "", fmt.Errorf("%s does not exist; hikari now opens %s by default, so rename compose.yaml to %s", scaffold.TopologyFile, scaffold.TopologyFile, scaffold.TopologyFile)
+			return "", fmt.Errorf("%s does not exist; hikari now opens %s by default, so rename compose.yaml to %s; see %s", scaffold.TopologyFile, scaffold.TopologyFile, scaffold.TopologyFile, vault.Migrating("the-topology-file"))
 		}
 	}
 	return scaffold.TopologyFile, nil

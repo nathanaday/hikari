@@ -79,7 +79,7 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 func OldLayout(topo *topology.Topology) []string {
 	var out []string
 	if topo.VaultDefault && isDir(filepath.Join(topo.Dir, "store")) && !exists(topo.Vault) {
-		out = append(out, fmt.Sprintf("the topology file sets no x-hikari.vault, and %s holds store/ and no %s/, the old layout: rename store/ to %s/, and move its files to the new layout; see %s", topo.Dir, topology.DefaultVault, topology.DefaultVault, vault.MigratingGuide))
+		out = append(out, fmt.Sprintf("the topology file sets no x-hikari.vault, and %s holds store/ and no %s/, the old layout: rename store/ to %s/, and move its files to the new layout; see %s", topo.Dir, topology.DefaultVault, topology.DefaultVault, vault.Migrating("the-vault")))
 	}
 	out = append(out, topo.VaultOf().OldLayout()...)
 	for _, name := range topo.PartitionAgents() {
@@ -89,7 +89,7 @@ func OldLayout(topo *topology.Topology) []string {
 		}
 		dir := filepath.Join(home.Host, featuremap.Dir, featuremap.PrivateDir)
 		if exists(filepath.Join(dir, featuremap.OldCodeMapFile)) && !exists(filepath.Join(dir, featuremap.CodeMapFile)) {
-			out = append(out, fmt.Sprintf("the private directory %s of %s holds %s and no %s, the old layout: rename %s to %s; see %s", dir, name, featuremap.OldCodeMapFile, featuremap.CodeMapFile, featuremap.OldCodeMapFile, featuremap.CodeMapFile, vault.MigratingGuide))
+			out = append(out, fmt.Sprintf("the private directory %s of %s holds %s and no %s, the old layout: rename %s to %s; see %s", dir, name, featuremap.OldCodeMapFile, featuremap.CodeMapFile, featuremap.OldCodeMapFile, featuremap.CodeMapFile, vault.Migrating("the-code-map-and-the-test-map")))
 		}
 	}
 	return out

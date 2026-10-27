@@ -190,17 +190,35 @@ func (s Vault) Prepare(partitions []string, orchestration bool) error {
 // MigratingGuide is the guide that lists the moves from an old layout.
 const MigratingGuide = "docs/guides/migrating.md"
 
+// Migrating returns the section of the migrating guide with the anchor
+// section.
+func Migrating(section string) string { return MigratingGuide + "#" + section }
+
 // OldLayout returns a problem for each directory of an earlier vault
 // layout in the vault, with the move that fixes it (rule V11).
 func (s Vault) OldLayout() []string {
 	var out []string
+	see := Migrating("the-vault-layout")
 	if isDir(filepath.Join(s.Root, "shared")) {
-		out = append(out, fmt.Sprintf("the vault %s holds shared/, the old layout: move shared/vocabulary, shared/wiki, shared/policies, and shared/deliverables into public/, move shared/skills to skills/ and grant each skill with grants.skills, and delete shared/agents; see %s", s.Root, MigratingGuide))
+		out = append(out, fmt.Sprintf("the vault %s holds shared/, the old layout: move shared/vocabulary, shared/wiki, shared/policies, and shared/deliverables into public/, move shared/skills to skills/ and grant each skill with grants.skills, and delete shared/agents; see %s", s.Root, see))
+	}
+	if isDir(filepath.Join(s.Root, "hubs")) {
+		out = append(out, fmt.Sprintf("the vault %s holds hubs/, the old layout: move the rules, principles, plans, and notes of each hubs/<hub>/wiki/ to public/wiki/, and each story to orchestration/read-only/features/ as a feature; see %s", s.Root, see))
 	}
 	if isDir(filepath.Join(s.Root, "systems")) {
-		out = append(out, fmt.Sprintf("the vault %s holds systems/, the old layout: for each systems/<id>/, move wiki/ to partitions/<id>/read-only/features/, map.yaml into that features/, releases/ to partitions/<id>/read-only/releases/, and staging/ to partitions/<id>/staging/; see %s", s.Root, MigratingGuide))
+		out = append(out, fmt.Sprintf("the vault %s holds systems/, the old layout: for each systems/<id>/, move wiki/ to partitions/<id>/read-only/features/, map.yaml into that features/, releases/ to partitions/<id>/read-only/releases/, and staging/ to partitions/<id>/staging/; see %s", s.Root, see))
+	}
+	if voc := s.Public(Vocabulary); !exists(s.VocabularyFile()) {
+		if old, _ := filepath.Glob(filepath.Join(voc, "*.yaml")); len(old) > 0 {
+			out = append(out, fmt.Sprintf("the vocabulary %s holds %s and no %s, the old layout: rename the file to %s, and delete its hub: line; see %s", voc, filepath.Base(old[0]), VocabularyName, VocabularyName, see))
+		}
 	}
 	return out
+}
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func isDir(p string) bool {
@@ -231,8 +249,8 @@ this file once; you can change it.
 
     public/                     every agent reads it, at /hikari/public
       vocabulary/terms.yaml     the names the project agreed on; the orchestration agent writes it
-      wiki/<id>.md              the public wiki: stories, rules, and principles that the
-                                orchestration agent writes through hikari, and your plans and notes
+      wiki/<id>.md              the public wiki: rules and principles that the orchestration
+                                agent writes through hikari, and your plans and notes
       policies/<name>.md        rules for every agent; you write them
       deliverables/<name>/      what a release must contain and how to make it; you write them
         deliverable.yaml        the description, the layout rules, and the cloud targets

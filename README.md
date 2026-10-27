@@ -288,6 +288,8 @@ The key `x-hikari.project: {branch: hikari}` makes the topology file's directory
 - A partition's folder can live in the project repository too: `partition: {folders: [{repo: project, path: app}]}`. The folder cannot overlap the vault or `repos/`.
 - The project repository must ignore `.env` and `/.hikari/`. Ignore `/.hikari/` at the top only: a `.hikari/` pattern also hides the private documents in each partition's folder.
 
+A project made before the words of the [glossary](docs/glossary.md), with a `compose.yaml`, a `store/`, hubs, and systems, needs the moves of [docs/guides/migrating.md](docs/guides/migrating.md) before hikari starts it. `hikari check` names each move that is left.
+
 #### Linked repositories and teammates
 
 A repo can be linked by its remote URL instead of a path. hikari keeps its clone in `repos/<name>` in the project repository, which git ignores:

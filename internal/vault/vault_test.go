@@ -428,8 +428,20 @@ func TestOldLayout(t *testing.T) {
 	os.MkdirAll(filepath.Join(s.Root, "shared", "vocabulary"), 0o755)
 	os.MkdirAll(filepath.Join(s.Root, "systems", "inventory"), 0o755)
 	got := s.OldLayout()
-	if len(got) != 2 || !strings.Contains(got[0], "move shared/vocabulary") || !strings.Contains(got[1], "partitions/<id>/read-only/features/") || !strings.Contains(got[1], MigratingGuide) {
+	if len(got) != 2 || !strings.Contains(got[0], "move shared/vocabulary") || !strings.Contains(got[1], "partitions/<id>/read-only/features/") || !strings.Contains(got[1], Migrating("the-vault-layout")) {
 		t.Errorf("V11: %q", got)
+	}
+	os.RemoveAll(filepath.Join(s.Root, "shared"))
+	os.RemoveAll(filepath.Join(s.Root, "systems"))
+	os.MkdirAll(filepath.Join(s.Root, "hubs", "main", "wiki"), 0o755)
+	os.WriteFile(filepath.Join(s.Public(Vocabulary), "main.yaml"), []byte("version: 1\nhub: main\n"), 0o644)
+	got = s.OldLayout()
+	if len(got) != 2 || !strings.Contains(got[0], "holds hubs/") || !strings.Contains(got[1], "holds main.yaml and no terms.yaml") {
+		t.Errorf("M5 hubs/ and a hub's vocabulary: %q", got)
+	}
+	os.WriteFile(s.VocabularyFile(), []byte("version: 1\n"), 0o644)
+	if got = s.OldLayout(); len(got) != 1 {
+		t.Errorf("terms.yaml beside another file: %q", got)
 	}
 }
 
