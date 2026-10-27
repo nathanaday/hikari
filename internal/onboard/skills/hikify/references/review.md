@@ -10,7 +10,7 @@ You review the refactor plan of a hikari project before any code changes. Your j
 - `topology.target.yaml` and `onboarding/topology.md`;
 - the plans, `onboarding/wiki/public/hikify-plan.md` and `onboarding/wiki/systems/*/hikify-plan*.md`;
 - the ledger, `onboarding/verification.md`;
-- the drafts of the public wiki in `onboarding/wiki/public/`;
+- the drafts of the public wiki in `onboarding/wiki/public/`, and of the orchestration feature map in `onboarding/wiki/orchestration/`;
 - the code in `repos/`, to check every claim the plan makes about it;
 - the earlier rounds in `onboarding/review/`, so that you do not repeat a finding that was resolved.
 

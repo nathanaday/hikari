@@ -62,13 +62,15 @@ hikari refuses a change that breaks one of these and names the write and the rul
 - **W5.** `created`, `updated`, `described_commits`, and `described_at` are hikari's. A write that gives one is applied without it, with a warning.
 - **W9.** A change has at most 100 writes.
 - **K1.** A link is `[[id]]` or `[[id|text]]`. A link to a heading, `[[id#heading]]`, is refused.
-- **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a story, rule, or principle of the public wiki. A document does not link itself.
+- **K2.** Every link resolves to a feature, principle, or rule of your wiki, counting the documents that the same change creates, or to a rule or principle of the public wiki. A document does not link itself.
 
 Warnings, which never refuse a change: a feature with no neighbor; a feature with no `code` entry in `code-map.yaml`; a Purpose that names a path in your workspace; more than 60 features.
 
 ## The public wiki
 
-The public wiki is in `/hikari/public/wiki/`. Its stories say which flows use your features, its rules say what must always hold across the partitions, and its principles guide how the partitions work together. Keep them: a rule of the public wiki is a rule of your partition. When a story needs a feature you do not have, or your feature cannot keep a rule of the public wiki, tell the orchestration agent. Only the orchestration agent changes the public wiki.
+The public wiki is in `/hikari/public/wiki/`. Its rules say what must always hold across the partitions, and its principles guide how the partitions work together. Keep them: a rule of the public wiki is a rule of your partition. When your feature cannot keep a rule of the public wiki, tell the orchestration agent. Only the orchestration agent changes the public wiki.
+
+The orchestration agent also keeps a feature map of its own: features that cross partitions, each made of the partition features it links, with its health computed from theirs. You cannot read it, and its links to your features do not show among your backlinks. When the orchestration agent asks for a feature that one of its features needs, it names the flow.
 
 ## The change
 

@@ -49,6 +49,9 @@ func FeatureMapRef(partition string) string { return "partition:" + partition }
 
 const PublicWikiRef = "public"
 
+// OrchestrationWikiRef names the orchestration feature map.
+const OrchestrationWikiRef = "orchestration"
+
 // PartitionPath returns where the orchestration agent sees the read-only
 // part of a partition.
 func PartitionPath(partition string) string { return path.Join(PartitionsDir, partition) }

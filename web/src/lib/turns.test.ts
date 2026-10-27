@@ -54,7 +54,7 @@ describe('stepLabel', () => {
     expect(stepLabel(step({ tool: 'Edit', input: { file_path: '/w/a.py' }, done: false }))).toBe('Editing a.py')
     expect(stepLabel(step({ tool: 'Bash', input: { command: 'npm test', description: 'Run the tests' } }))).toBe('Run the tests')
     expect(stepLabel(step({ tool: 'Bash', input: { command: 'npm test' } }))).toBe('npm test')
-    expect(stepLabel(step({ tool: 'Skill', input: { skill: 'hikari-partition' } }))).toBe('Used the hikari-partition skill')
+    expect(stepLabel(step({ tool: 'Skill', input: { skill: 'hikari-map-features' } }))).toBe('Used the hikari-map-features skill')
     expect(stepLabel(step({ tool: 'mcp__hikari__post', input: { body: 'hi' } }))).toBe('Posted to the room')
     expect(stepLabel(step({ tool: 'mcp__hikari__send_direct_message', input: { to: 'lead', body: 'hi' } }))).toBe('Sent a message to lead')
     expect(stepLabel(step({ tool: 'mcp__hikari__upsert_features' }))).toBe('upsert features')

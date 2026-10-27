@@ -29,39 +29,41 @@ type sharedArea struct {
 	// directory of its granted skills.
 	public string
 	skills string
-	// builtins are hikari's own skills that the agent's roles need.
+	// role names the agent's pack of built-in skills, and builtins its
+	// skills.
+	role         string
 	builtins     []string
 	deliverables []string
 	granted      []string
 	warned       map[string]bool
 }
 
-func newSharedArea(builtins, deliverables, granted []string) (*sharedArea, error) {
+func newSharedArea(self api.Self, deliverables, granted []string) (*sharedArea, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, builtins: builtins, deliverables: deliverables, granted: granted, warned: map[string]bool{}}, nil
+	role := packRole(self)
+	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, role: role, builtins: api.Packs[role], deliverables: deliverables, granted: granted, warned: map[string]bool{}}, nil
 }
 
-// builtinSkills returns hikari's own skills that self's roles need: the
-// partition skill for a partition agent, the orchestration skill for the orchestration agent.
-func builtinSkills(self api.Self) []string {
-	var out []string
-	if self.Partition != nil {
-		out = append(out, api.PartitionSkill)
+// packRole returns the role whose pack self gets (rule K1 of the skill packs
+// spec): an agent is a partition agent or the orchestration agent.
+func packRole(self api.Self) string {
+	switch {
+	case self.Partition != nil:
+		return api.RolePartition
+	case self.Orchestration:
+		return api.RoleOrchestration
 	}
-	if self.Orchestration {
-		out = append(out, api.OrchestrationSkill)
-	}
-	return out
+	return ""
 }
 
 func (s *sharedArea) skillsDir() string { return filepath.Join(s.home, ".claude", "skills") }
 func (s *sharedArea) agentsDir() string { return filepath.Join(s.home, ".claude", "agents") }
 
 // sync links the granted skills and the skills of the agent's
-// deliverables, installs the built-in skill, and returns the policies as a
+// deliverables, installs the agent's pack, and returns the policies as a
 // system prompt section. Problems are logged, so that a broken vault never
 // stops a turn.
 func (s *sharedArea) sync() string {
@@ -71,6 +73,7 @@ func (s *sharedArea) sync() string {
 			return ""
 		}
 	}
+	s.removeOtherBuiltins()
 	for _, name := range s.builtins {
 		s.writeBuiltin(name)
 	}
@@ -116,17 +119,19 @@ func (s *sharedArea) files(kind, ext string) []string {
 	return out
 }
 
-// writeBuiltin installs one of hikari's own skill packages, and with the
-// partition skill, hikari's agents, replacing whatever is at their paths, such
-// as a link that a skill of the same name left behind.
+// writeBuiltin installs one skill of the agent's pack, and with the
+// partition pack's map-features skill, hikari's agents, replacing whatever
+// is at their paths, such as a link that a skill of the same name left
+// behind.
 func (s *sharedArea) writeBuiltin(skill string) {
 	dir := filepath.Join(s.skillsDir(), skill)
 	os.RemoveAll(dir)
-	err := fs.WalkDir(builtin, "skills/"+skill, func(path string, d fs.DirEntry, err error) error {
+	root := "skills/" + s.role + "/" + skill
+	err := fs.WalkDir(builtin, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		rel, _ := filepath.Rel("skills/"+skill, path)
+		rel, _ := filepath.Rel(root, path)
 		data, err := builtin.ReadFile(path)
 		if err != nil {
 			return err
@@ -140,7 +145,7 @@ func (s *sharedArea) writeBuiltin(skill string) {
 	if err != nil {
 		log.Printf("vault: install the %s skill: %v", skill, err)
 	}
-	if skill != api.PartitionSkill {
+	if s.role != api.RolePartition || skill != api.MapFeaturesSkill {
 		return
 	}
 	agents, _ := fs.ReadDir(builtin, "agents")
@@ -153,6 +158,17 @@ func (s *sharedArea) writeBuiltin(skill string) {
 		}
 		if err != nil {
 			log.Printf("vault: install the agent %s: %v", a.Name(), err)
+		}
+	}
+}
+
+// removeOtherBuiltins removes each built-in skill that is not in the
+// agent's pack, such as one that an earlier version of hikari installed.
+func (s *sharedArea) removeOtherBuiltins() {
+	entries, _ := os.ReadDir(s.skillsDir())
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), api.AgentPrefix) && !slices.Contains(s.builtins, e.Name()) {
+			os.RemoveAll(filepath.Join(s.skillsDir(), e.Name()))
 		}
 	}
 }

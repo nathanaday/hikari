@@ -92,7 +92,9 @@ func TestPartitionAgentSystemPrompt(t *testing.T) {
 		"Releases follow your deliverables",
 		"You hold no deliverable, so you cannot publish a release",
 		"/hikari/public holds what every agent",
-		"load the hikari-partition skill",
+		"load the hikari-map-features skill",
+		"load the hikari-plan-work skill first",
+		"Hikari gives you these skills, for the tasks of your role: hikari-plan-work, hikari-do-work, hikari-validate-work, hikari-map-features.",
 		"mcp__hikari__get_vocabulary",
 		"no trailers such as Co-Authored-By",
 		"run the suites that touch the affected features",
@@ -122,7 +124,11 @@ func TestOrchestrationSystemPrompt(t *testing.T) {
 		"get_document returns a document",
 		"You keep the public wiki, /hikari/public/wiki",
 		"mcp__hikari__change_public_wiki",
-		"load the hikari-orchestration skill",
+		"load the hikari-map-features skill",
+		"load the hikari-plan-work skill",
+		"load the hikari-health-check skill",
+		"Your feature map, /hikari/self/features/",
+		"Hikari gives you these skills, for the tasks of your role: hikari-plan-work, hikari-health-check, hikari-map-features.",
 		"When a partition announces a release, check it",
 		"the deliverable's definition",
 		"only through that partition's published releases",
@@ -144,7 +150,7 @@ func TestOrchestrationSystemPrompt(t *testing.T) {
 
 func TestIndexingPrompt(t *testing.T) {
 	build := indexingPrompt(partitionAgent, api.TurnContext{MapState: "unbuilt"})
-	for _, want := range []string{"not built yet", "Load the hikari-partition skill", "Build procedure", "set_partition_info", "change_wiki", "hikari-feature-survey", "code-map.yaml", "tests.yaml", "/hikari/private/reports/<suite>.xml", "record_test_run", "hikari-test-survey", "mark_map_current", "Send no messages"} {
+	for _, want := range []string{"not built yet", "Load the hikari-map-features skill", "Build procedure", "set_partition_info", "change_wiki", "hikari-feature-survey", "code-map.yaml", "tests.yaml", "/hikari/private/reports/<suite>.xml", "record_test_run", "hikari-test-survey", "mark_map_current", "Send no messages"} {
 		if !strings.Contains(build, want) {
 			t.Errorf("D8: build prompt lacks %q", want)
 		}
@@ -181,16 +187,21 @@ func TestTurnNotices(t *testing.T) {
 
 func TestBuiltinSkills(t *testing.T) {
 	for name, wants := range map[string][]string{
-		"skills/hikari-partition/SKILL.md":                             {"name: hikari-partition", "## Build", "## Keep true", "## Test", "record_test_run", "tests.yaml", "hikari-test-survey", "change_wiki", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "## Publish a release", "check_release", "publish_release", "/hikari/staging/<name>/", "references/wiki.md", "references/code-map.md", "references/tests.md"},
-		"skills/hikari-partition/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The public wiki", "create", "modify", "rename", "remove"},
-		"skills/hikari-orchestration/SKILL.md":                         {"name: hikari-orchestration", "change_public_wiki", "story", "rule", "principle", "## The vocabulary", "define_term", "## Plans and notes", "## Carry out a plan"},
-		"skills/hikari-partition/references/code-map.md":               {"P2", "P3", "code:"},
-		"skills/hikari-partition/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
-		"skills/hikari-partition/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
-		"agents/hikari-test-survey.md":                                 {"name: hikari-test-survey", "tools: Read, Grep, Glob", "keys", "gaps"},
-		"skills/hikari-partition/references/examples/reserve-stock.md": {"---\nid: reserve-stock\n", "## Purpose", "[[release-stock]]"},
-		"agents/hikari-feature-survey.md":                              {"name: hikari-feature-survey", "tools: Read, Grep, Glob", "candidates", "evidence"},
-		"agents/hikari-feature-review.md":                              {"name: hikari-feature-review", "tools: Read, Grep, Glob", "findings", "change_wiki"},
+		"skills/partition/hikari-map-features/SKILL.md":                             {"name: hikari-map-features", "## Build", "## Keep true", "tests.yaml", "hikari-test-survey", "change_wiki", "set_partition_info", "hikari-feature-survey", "hikari-feature-review", "mark_map_current", "references/wiki.md", "references/code-map.md", "references/tests.md"},
+		"skills/partition/hikari-map-features/references/wiki.md":                   {"## Purpose", "W1.", "W4.", "K1.", "K2.", "## The kinds", "principle", "## What a feature is", "## How to link", "## The public wiki", "create", "modify", "rename", "remove"},
+		"skills/partition/hikari-map-features/references/code-map.md":               {"P2", "P3", "code:"},
+		"skills/partition/hikari-map-features/references/tests.md":                  {"X1.", "X3.", "gaps", "/hikari/private/reports/<suite>.xml", "junit_family=xunit1", "--reporter=junit", "untested", "failing", "pending", "passing", "record_test_run"},
+		"skills/partition/hikari-map-features/references/examples/tests.yaml":       {"version: 1", "tests/test_stock.py", "--junitxml=/hikari/private/reports/all.xml"},
+		"skills/partition/hikari-map-features/references/examples/reserve-stock.md": {"---\nid: reserve-stock\n", "## Purpose", "[[release-stock]]"},
+		"skills/partition/hikari-plan-work/SKILL.md":                                {"name: hikari-plan-work", "more than one feature", "post the plan in the room", "interfaces", "wait for an answer"},
+		"skills/partition/hikari-do-work/SKILL.md":                                  {"name: hikari-do-work", "code-map.yaml", "`apply`", "## Publish a release", "check_release", "publish_release", "/hikari/staging/<name>/"},
+		"skills/partition/hikari-validate-work/SKILL.md":                            {"name: hikari-validate-work", "## Test", "## Problems", "record_test_run", "get_my_partition", "../hikari-map-features/references/tests.md"},
+		"skills/orchestration/hikari-map-features/SKILL.md":                         {"name: hikari-map-features", "change_wiki", "change_public_wiki", "/hikari/self/features/", "feature", "rule", "principle", "## The vocabulary", "define_term"},
+		"skills/orchestration/hikari-plan-work/SKILL.md":                            {"name: hikari-plan-work", "which partitions", "## Plans and notes", "## Carry out a plan"},
+		"skills/orchestration/hikari-health-check/SKILL.md":                         {"name: hikari-health-check", "list_partitions", "get_partition", "vocabulary", "@name"},
+		"agents/hikari-test-survey.md":                                              {"name: hikari-test-survey", "tools: Read, Grep, Glob", "keys", "gaps", "hikari-map-features"},
+		"agents/hikari-feature-survey.md":                                           {"name: hikari-feature-survey", "tools: Read, Grep, Glob", "candidates", "evidence", "hikari-map-features"},
+		"agents/hikari-feature-review.md":                                           {"name: hikari-feature-review", "tools: Read, Grep, Glob", "findings", "change_wiki", "hikari-map-features"},
 	} {
 		data, err := builtin.ReadFile(name)
 		if err != nil {
@@ -204,7 +215,7 @@ func TestBuiltinSkills(t *testing.T) {
 	}
 	// Every markdown example parses as a feature document, and the test
 	// map example is valid against them.
-	examples, _ := fs.ReadDir(builtin, "skills/hikari-partition/references/examples")
+	examples, _ := fs.ReadDir(builtin, "skills/partition/hikari-map-features/references/examples")
 	ids := map[string]bool{}
 	for _, e := range examples {
 		if !strings.HasSuffix(e.Name(), ".md") {
@@ -215,7 +226,7 @@ func TestBuiltinSkills(t *testing.T) {
 	if len(ids) != 3 {
 		t.Errorf("want three feature examples, got %d", len(ids))
 	}
-	data, _ := builtin.ReadFile("skills/hikari-partition/references/examples/tests.yaml")
+	data, _ := builtin.ReadFile("skills/partition/hikari-map-features/references/examples/tests.yaml")
 	tm, err := testmap.Parse(data)
 	if err == nil {
 		err = tm.Validate(map[string]bool{"reserve-stock": true, "check-availability": true, "restock-sku": true})
@@ -227,7 +238,7 @@ func TestBuiltinSkills(t *testing.T) {
 		if !strings.HasSuffix(e.Name(), ".md") {
 			continue
 		}
-		data, _ := builtin.ReadFile("skills/hikari-partition/references/examples/" + e.Name())
+		data, _ := builtin.ReadFile("skills/partition/hikari-map-features/references/examples/" + e.Name())
 		d, err := wiki.Parse(string(data))
 		if err != nil || d.ID+".md" != e.Name() || d.KindOf() != wiki.Feature {
 			t.Errorf("example %s: %v", e.Name(), err)
@@ -235,7 +246,7 @@ func TestBuiltinSkills(t *testing.T) {
 	}
 }
 
-func newTestShared(t *testing.T, partitionAgent bool) (*sharedArea, string, string) {
+func newTestShared(t *testing.T, role string) (*sharedArea, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	public, skills := filepath.Join(root, "public"), filepath.Join(root, "skills")
@@ -243,11 +254,7 @@ func newTestShared(t *testing.T, partitionAgent bool) (*sharedArea, string, stri
 		os.MkdirAll(filepath.Join(public, d), 0o755)
 	}
 	os.MkdirAll(skills, 0o755)
-	var builtins []string
-	if partitionAgent {
-		builtins = []string{api.PartitionSkill}
-	}
-	return &sharedArea{home: filepath.Join(root, "home"), public: public, skills: skills, builtins: builtins, warned: map[string]bool{}}, public, skills
+	return &sharedArea{home: filepath.Join(root, "home"), public: public, skills: skills, role: role, builtins: api.Packs[role], warned: map[string]bool{}}, public, skills
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -259,13 +266,13 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestSharedAreaSync(t *testing.T) {
-	s, public, skills := newTestShared(t, true)
+	s, public, skills := newTestShared(t, api.RolePartition)
 	writeFile(t, filepath.Join(skills, "style", "SKILL.md"), "---\nname: style\n---\n")
 	writeFile(t, filepath.Join(skills, "other", "SKILL.md"), "---\nname: other\n---\n")
 	writeFile(t, filepath.Join(skills, "empty-dir", "notes.txt"), "no skill here")
 	writeFile(t, filepath.Join(public, "policies", "b-security.md"), "Never log secrets.")
 	writeFile(t, filepath.Join(public, "policies", "a-style.md"), "Write short sentences.")
-	s.granted = []string{"style", "empty-dir", "hikari-partition"}
+	s.granted = []string{"style", "empty-dir", "hikari-map-features"}
 
 	policies := s.sync()
 	if target, _ := os.Readlink(filepath.Join(s.skillsDir(), "style")); target != filepath.Join(skills, "style") {
@@ -283,7 +290,7 @@ func TestSharedAreaSync(t *testing.T) {
 	if !strings.Contains(policies, "# Policies") || strings.Index(policies, "## a-style") > strings.Index(policies, "## b-security") || !strings.Contains(policies, "Never log secrets.") {
 		t.Errorf("H3: policies:\n%s", policies)
 	}
-	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-partition", "references", "wiki.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-map-features", "references", "wiki.md")); err != nil {
 		t.Errorf("H11: the skill package is installed with its references: %v", err)
 	}
 	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md", "hikari-test-survey.md"} {
@@ -291,9 +298,9 @@ func TestSharedAreaSync(t *testing.T) {
 			t.Errorf("H11: the agent %s is installed: %v", a, err)
 		}
 	}
-	data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-partition", "SKILL.md"))
-	if !strings.HasPrefix(string(data), "---\nname: hikari-partition") {
-		t.Errorf("H4: the built-in hikari-partition skill was replaced: %.40q", data)
+	data, _ := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-map-features", "SKILL.md"))
+	if !strings.HasPrefix(string(data), "---\nname: hikari-map-features") {
+		t.Errorf("H4: the built-in hikari-map-features skill was replaced: %.40q", data)
 	}
 
 	// The skill of a held deliverable is linked, and it wins over a granted
@@ -318,13 +325,58 @@ func TestSharedAreaSync(t *testing.T) {
 	}
 }
 
+// TestPacks checks that each kind of agent gets its own pack and no skill
+// of the other pack (rules K1 and K16 of the skill packs spec).
+func TestPacks(t *testing.T) {
+	for self, want := range map[*api.Self][]string{
+		&partitionAgent:                     {"hikari-do-work", "hikari-map-features", "hikari-plan-work", "hikari-validate-work"},
+		{Name: "lead", Orchestration: true}: {"hikari-health-check", "hikari-map-features", "hikari-plan-work"},
+	} {
+		role := packRole(*self)
+		s, _, _ := newTestShared(t, role)
+		// A skill of the other pack, or of an earlier version, is removed.
+		writeFile(t, filepath.Join(s.skillsDir(), "hikari-partition", "SKILL.md"), "old")
+		other := "hikari-health-check"
+		if role == api.RoleOrchestration {
+			other = "hikari-do-work"
+		}
+		writeFile(t, filepath.Join(s.skillsDir(), other, "SKILL.md"), "other pack")
+		s.sync()
+		entries, _ := os.ReadDir(s.skillsDir())
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Name())
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("K1: %s gets %v, want %v", role, got, want)
+		}
+		for _, name := range want {
+			data, _ := os.ReadFile(filepath.Join(s.skillsDir(), name, "SKILL.md"))
+			embedded, _ := builtin.ReadFile("skills/" + role + "/" + name + "/SKILL.md")
+			if len(data) == 0 || string(data) != string(embedded) {
+				t.Errorf("K1: %s's %s is not its own pack's", role, name)
+			}
+		}
+		_, err := os.Stat(filepath.Join(s.agentsDir(), "hikari-feature-survey.md"))
+		if (err == nil) != (role == api.RolePartition) {
+			t.Errorf("K3: %s and the agent definitions: %v", role, err)
+		}
+	}
+	for role, pack := range api.Packs {
+		entries, _ := fs.ReadDir(builtin, "skills/"+role)
+		if len(entries) != len(pack) {
+			t.Errorf("K1: the binary embeds %d skills for %s; its pack has %d", len(entries), role, len(pack))
+		}
+	}
+}
+
 func TestSharedAreaForNonPartitionAgents(t *testing.T) {
-	s, _, _ := newTestShared(t, false)
+	s, _, _ := newTestShared(t, "")
 	if got := s.sync(); got != "" {
 		t.Errorf("no policies, no section: %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-partition")); err == nil {
-		t.Error("only partition agents get the built-in skills")
+	if entries, _ := os.ReadDir(s.skillsDir()); len(entries) != 0 {
+		t.Errorf("an agent of no role gets no built-in skill: %v", entries)
 	}
 	if _, err := os.Stat(filepath.Join(s.agentsDir(), "hikari-feature-survey.md")); err == nil {
 		t.Error("only partition agents get the built-in agents")
@@ -408,19 +460,12 @@ func TestPartitionAgentGrantsPrompt(t *testing.T) {
 }
 
 func TestOrchestrationSkillAndWikiPrompts(t *testing.T) {
-	lead := api.Self{Name: "lead", Orchestration: true}
-	if got := builtinSkills(lead); !slices.Equal(got, []string{api.OrchestrationSkill}) {
-		t.Errorf("S2: an orchestration agent gets %v", got)
-	}
-	if got := builtinSkills(partitionAgent); !slices.Equal(got, []string{api.PartitionSkill}) {
-		t.Errorf("a partition agent gets %v", got)
-	}
-	s, _, skills := newTestShared(t, false)
-	s.builtins, s.granted = []string{api.OrchestrationSkill}, []string{"hikari-orchestration"}
-	writeFile(t, filepath.Join(skills, "hikari-orchestration", "SKILL.md"), "fake")
+	s, _, skills := newTestShared(t, api.RoleOrchestration)
+	s.granted = []string{"hikari-map-features"}
+	writeFile(t, filepath.Join(skills, "hikari-map-features", "SKILL.md"), "fake")
 	s.sync()
-	if data, err := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-orchestration", "SKILL.md")); err != nil || !strings.Contains(string(data), "change_public_wiki") {
-		t.Errorf("S2, S4: the orchestration skill comes from hikari: %v", err)
+	if data, err := os.ReadFile(filepath.Join(s.skillsDir(), "hikari-map-features", "SKILL.md")); err != nil || !strings.Contains(string(data), "change_public_wiki") {
+		t.Errorf("S2, S4: the orchestration agent's map-features skill comes from hikari: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(s.agentsDir(), "hikari-feature-survey.md")); err == nil {
 		t.Error("the partition agent's agents are not installed for an orchestration agent")
@@ -434,10 +479,10 @@ func TestOrchestrationSkillAndWikiPrompts(t *testing.T) {
 		}
 	}
 	n := turnNotices(member, api.TurnContext{WikiChanged: []api.WikiChange{
-		{Wiki: "public", Docs: []api.DocChange{{ID: "order-items", Kind: "story"}, {ID: "old", Removed: true}}},
+		{Wiki: "public", Docs: []api.DocChange{{ID: "stock-never-negative", Kind: "rule"}, {ID: "old", Removed: true}}},
 		{Wiki: "orders", Docs: []api.DocChange{{ID: "Roadmap", Kind: "plan"}}},
 	}})
-	for _, want := range []string{"The public wiki changed: order-items (story), old (removed).", "Your wiki changed: Roadmap (plan)."} {
+	for _, want := range []string{"The public wiki changed: stock-never-negative (rule), old (removed).", "Your wiki changed: Roadmap (plan)."} {
 		if !strings.Contains(n, want) {
 			t.Errorf("E1: notices lack %q:\n%s", want, n)
 		}
@@ -446,13 +491,13 @@ func TestOrchestrationSkillAndWikiPrompts(t *testing.T) {
 
 func TestRestorePrompt(t *testing.T) {
 	tests := restorePrompt(api.TurnContext{NoLocalResults: true})
-	for _, want := range []string{"fresh clone", "another machine recorded", "record_test_run", "Send no messages"} {
+	for _, want := range []string{"fresh clone", "another machine recorded", "Load the hikari-validate-work skill", "record_test_run", "Send no messages"} {
 		if !strings.Contains(tests, want) {
 			t.Errorf("SY10 restore prompt lacks %q:\n%s", want, tests)
 		}
 	}
 	n := turnNotices(partitionAgent, api.TurnContext{MapState: "current", NoLocalResults: true})
-	if !strings.Contains(n, "Run each suite") {
+	if !strings.Contains(n, "run each suite") {
 		t.Errorf("SY10 notice lacks the restore step:\n%s", n)
 	}
 }

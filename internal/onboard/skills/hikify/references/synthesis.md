@@ -17,7 +17,7 @@ For each partition of the target: what it owns, and the reason for its boundary,
 ## Left for integration
 
 - `cloud/tests/ui/test_dashboard.py`: needs a browser. Stays in cloud, outside every test command.
-- The edge sends a reading that the cloud stores: no test covers it. A story of the public wiki.
+- The edge sends a reading that the cloud stores: no test covers it. A feature of the orchestration feature map.
 
 ## Questions
 

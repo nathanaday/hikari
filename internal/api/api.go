@@ -73,16 +73,26 @@ type DeliverableInfo struct {
 	Description string `json:"description"`
 }
 
-// PartitionSkill and OrchestrationSkill are hikari's own skills, which always come from
-// the binary: one for partition agents, one for orchestration agents. No skill of the
+// The built-in skills, which always come from the binary. No skill of the
 // vault or deliverable may use their names.
 const (
-	PartitionSkill     = "hikari-partition"
-	OrchestrationSkill = "hikari-orchestration"
+	PlanWorkSkill     = "hikari-plan-work"
+	DoWorkSkill       = "hikari-do-work"
+	ValidateWorkSkill = "hikari-validate-work"
+	MapFeaturesSkill  = "hikari-map-features"
+	HealthCheckSkill  = "hikari-health-check"
 )
 
-// BuiltinSkills are hikari's own skills.
-var BuiltinSkills = []string{PartitionSkill, OrchestrationSkill}
+// Packs maps each role of an agent to its pack of built-in skills. A skill
+// of the same name in two packs is two skills (decision 1 of the skill
+// packs spec).
+var Packs = map[string][]string{
+	RolePartition:     {PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill},
+	RoleOrchestration: {PlanWorkSkill, HealthCheckSkill, MapFeaturesSkill},
+}
+
+// BuiltinSkills are the names of every built-in skill.
+var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill, HealthCheckSkill}
 
 // AgentPrefix starts the name of each of hikari's own skills and agents.
 // No skill of the vault may use it.

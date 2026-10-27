@@ -151,7 +151,7 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "change_wiki",
-		Description: "Change your partition's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/self/features/. hikari checks every write against the rules of the hikari-partition skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of the public wiki. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
+		Description: "Change your partition's wiki as one change: create, modify, rename, or remove its features, principles, and rules in /hikari/self/features/. hikari checks every write against the rules of the hikari-map-features skill and applies all of them or none. Writes in one call can link documents that the same call creates; a document can also link the stories, rules, and principles of the public wiki. A rename rewrites every link to the document in every wiki; a remove points them at the redirect or turns them into text. The user's plans and notes are not yours to change. hikari writes the map's features from the wiki.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := c.ChangeWiki(ctx, false, wikiWrites(a.Writes))
 		if err != nil {
@@ -315,7 +315,7 @@ func addOrchestrationTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "change_public_wiki",
-		Description: "Change the public wiki as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/wiki/. hikari checks every write against the rules of the hikari-orchestration skill and applies all of them or none. A document can link the documents of every feature map. A rename rewrites every link to the document in every wiki. The user's plans and notes are not yours to change.",
+		Description: "Change the public wiki as one change: create, modify, rename, or remove its stories, rules, and principles in /hikari/public/wiki/. hikari checks every write against the rules of the hikari-map-features skill and applies all of them or none. A document can link the documents of every feature map. A rename rewrites every link to the document in every wiki. The user's plans and notes are not yours to change.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a changeArgs) (*mcp.CallToolResult, any, error) {
 		res, err := c.ChangeWiki(ctx, true, wikiWrites(a.Writes))
 		if err != nil {

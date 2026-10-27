@@ -1,6 +1,6 @@
 ---
 name: hikari-feature-review
-description: Read-only worker for a partition agent that keeps its feature map true. It checks the feature documents and the code map against the code and returns findings as JSON, each with evidence and a suggested write. Sent by the Keep true procedure of the hikari-partition skill after a large change. It never writes a file or calls a hikari tool.
+description: Read-only worker for a partition agent that keeps its feature map true. It checks the feature documents and the code map against the code and returns findings as JSON, each with evidence and a suggested write. Sent by the Keep true procedure of the hikari-map-features skill after a large change. It never writes a file or calls a hikari tool.
 tools: Read, Grep, Glob
 ---
 

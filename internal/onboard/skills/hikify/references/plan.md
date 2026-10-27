@@ -15,7 +15,7 @@ status: proposed
 
 ## Purpose
 
-Why the project changes, in two or three sentences, with links to the stories that the target proves.
+Why the project changes, in two or three sentences, with links to the orchestration features that the target proves.
 
 ## Steps
 
@@ -58,7 +58,7 @@ Order: restructure steps first. Then a library's release before its consumers mo
 ```markdown
 # Verification
 
-| Test | Now in | Planned place | Story or reason |
+| Test | Now in | Planned place | Feature or reason |
 |---|---|---|---|
 | tests.test_units > test_round | edge | kept: units | |
 | tests.test_api > test_store | cloud | kept: cloud | |
@@ -67,7 +67,7 @@ Order: restructure steps first. Then a library's release before its consumers mo
 ```
 
 - **kept: <partition>**: the test stays a unit test, in the partition that holds its code after the plan.
-- **left for integration**: the suite stays in its repository, outside every test command, with the reason and the story that it checks.
+- **left for integration**: the suite stays in its repository, outside every test command, with the reason and the orchestration feature that it checks.
 - **dropped**: the test goes, with a reason. A drop waits for the user's approval.
 
 Execution fills in the result of each row. Every test id of the baseline appears once.

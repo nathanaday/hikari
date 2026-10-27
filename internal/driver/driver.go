@@ -33,7 +33,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	shared, err := newSharedArea(builtinSkills(self), deliverableNames(self), self.Skills)
+	shared, err := newSharedArea(self, deliverableNames(self), self.Skills)
 	if err != nil {
 		return err
 	}

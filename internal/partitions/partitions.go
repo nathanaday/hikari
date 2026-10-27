@@ -862,7 +862,7 @@ func (m *Manager) RecordRun(agent, suite string) (api.RunResult, error) {
 	where := path.Join(api.PrivateDir, rel)
 	info, err := os.Stat(report)
 	if err != nil {
-		return api.RunResult{}, fmt.Errorf("J2: no report at %s; make the command of suite %q write a JUnit XML report there, then run it again (the hikari-partition skill's references/tests.md lists the flags of each runner)", where, suite)
+		return api.RunResult{}, fmt.Errorf("J2: no report at %s; make the command of suite %q write a JUnit XML report there, then run it again (the hikari-map-features skill's references/tests.md lists the flags of each runner)", where, suite)
 	}
 	if info.Size() > testmap.MaxReportBytes {
 		return api.RunResult{}, fmt.Errorf("J6: the report %s has %d bytes; at most %d", where, info.Size(), testmap.MaxReportBytes)

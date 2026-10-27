@@ -11,7 +11,7 @@ Set the stage to `hikify: restructure`. hikari must be stopped: ask the user to 
 Do the steps whose actor is `session`, in the order of the plan, up to the first step of another actor. After each step, check its "Done when". Record the result in `state.md`, and commit. When a check fails, stop and tell the user what failed.
 
 - **A new repository.** Make it in a temporary folder outside `repos/`, from the moved code with its history, as the step says. Add a README and an ignore file. Do not move the folder into `repos/`. Give the user the commands that create the remote and push `main` to it. Run them only when the user approves, in the conversation. Then run `hikari sync topology.yaml`, which clones it into `repos/` with the right origin, once `topology.yaml` names it.
-- **Drafts.** Copy each draft of `onboarding/wiki/public/` to `vault/public/wiki/`, each draft of `onboarding/wiki/systems/<partition>/` to `vault/partitions/<partition>/read-only/features/`, and each deliverable of `onboarding/shared/deliverables/` to `vault/public/deliverables/`.
+- **Drafts.** Copy each draft of `onboarding/wiki/public/` to `vault/public/wiki/`, each draft of `onboarding/wiki/orchestration/` to `vault/orchestration/read-only/features/`, each draft of `onboarding/wiki/systems/<partition>/` to `vault/partitions/<partition>/read-only/features/`, and each deliverable of `onboarding/shared/deliverables/` to `vault/public/deliverables/`.
 - **Features that change partitions.** An id is unique in the whole vault, so move the document itself, from the old partition's wiki to the new partition's, as the step says. Remove its entries from the old partition agent's `code-map.yaml` and `tests.yaml`, in `.hikari/private/` of the old partition's first writable folder. Their paths are workspace paths; write them as the new partition's workspace places the code.
 - **The topology.** Copy `topology.target.yaml` over `topology.yaml`, and remove `topology.target.yaml`.
 
@@ -28,7 +28,7 @@ hikari up topology.yaml
 When the agents have connected and finished their first turns (`hikari status` shows each new partition described), ask the user to post this in the room, with the orchestration agent's name and the plan's first step that is not yours:
 
 ```
-@<orchestration agent> Please carry out the plan [[hikify-plan]], from step S<n>. Follow the Carry out a plan procedure of the hikari-orchestration skill.
+@<orchestration agent> Please carry out the plan [[hikify-plan]], from step S<n>. Follow the Carry out a plan procedure of the hikari-plan-work skill.
 ```
 
 The orchestration agent then sends each step to its actor when the step's needs are met, and posts the state of the steps in the room. Follow the run from files. Do not talk to an agent.
@@ -47,7 +47,7 @@ Set the stage to `hikify: verify`.
 
 1. Run `hikari status -tests topology.yaml`. For each row of `onboarding/verification.md`, write the result: the test's outcome in its planned place, or `missing`.
 2. Ask the user to approve each row that is `dropped`.
-3. Check that every partition agent's suite passes, and that the support of each story is passing. Ask the user to read it on the room's Wiki tab.
+3. Check that every partition agent's suite passes, and that the health of each orchestration feature is passing. Ask the user to read it on the orchestration agent's Feature map tab.
 4. Run `hikari check topology.yaml`.
 5. **The dry run.** It proves that a teammate gets the same project from one clone.
    1. Ask the user to stop hikari.
@@ -59,4 +59,4 @@ Set the stage to `hikify: verify`.
 
    A failure is a finding of the verification. Fix it in the project, and run the dry run again.
 
-When every check holds, set the stage to `hikify: done`, with the date, and commit. Sum up for the user: the partitions and their releases, the suites left for integration, the stories with their support, and the hikari branches that wait for the user's merge.
+When every check holds, set the stage to `hikify: done`, with the date, and commit. Sum up for the user: the partitions and their releases, the suites left for integration, the orchestration features with their health, and the hikari branches that wait for the user's merge.

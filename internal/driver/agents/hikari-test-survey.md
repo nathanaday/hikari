@@ -1,6 +1,6 @@
 ---
 name: hikari-test-survey
-description: Read-only worker for a partition agent that maps its tests to its features. It reads a group of test files with the feature map and returns the keys and links of tests.yaml as JSON, with gaps it noticed. Sent by the Build and Keep true procedures of the hikari-partition skill when many tests are unmapped. It never writes a file or calls a hikari tool.
+description: Read-only worker for a partition agent that maps its tests to its features. It reads a group of test files with the feature map and returns the keys and links of tests.yaml as JSON, with gaps it noticed. Sent by the Build and Keep true procedures of the hikari-map-features skill when many tests are unmapped. It never writes a file or calls a hikari tool.
 tools: Read, Grep, Glob
 ---
 

@@ -26,13 +26,14 @@ func partitionAgentPrompt(self api.Self) string {
 		fmt.Fprintf(&b, "- %s: %s; %s\n", api.WorkspacePath(f.Place), where, mode)
 	}
 	b.WriteString("\nYou can change only the folders that are not read-only. You cannot see the rest of each repo, and you have no git: hikari commits for you. Paths in your code map and your test map are workspace paths, relative to /workspace, such as " + examplePath(s) + ".\n\n")
-	b.WriteString(`- Your feature map is your partition's public description. Its documents are in /hikari/self/features/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes its map, /hikari/self/features/map.yaml, from the features and from set_partition_info. Your private /hikari/private/code-map.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestration agent plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-partition skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
+	b.WriteString(`- Your feature map is your partition's public description. Its documents are in /hikari/self/features/: one markdown document for each feature, principle, and rule, with links between the documents that work together, and the user's plans and notes. You read the files and change your documents only with mcp__hikari__change_wiki. hikari writes its map, /hikari/self/features/map.yaml, from the features and from set_partition_info. Your private /hikari/private/code-map.yaml, the code map that says where each feature lives, and /hikari/private/tests.yaml, the test map that says how your suites run and which features each test touches, are yours alone; you edit them directly. The orchestration agent plans from the feature documents and the map and never reads your code. Before you build or change the documents, load the hikari-map-features skill: it explains each document, what counts as a feature, a principle, or a rule, how to link, and how to keep them true.
+- When a request asks you to change code, load the hikari-plan-work skill first: before a change of more than one feature, you post your plan in the room.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/self/releases/ and never change.
 - /hikari/self/granted/ holds files that the user gives you to read, and /hikari/can-edit/ files that the user gives you to change. hikari commits your changes in /hikari/can-edit/ with your code.
 - For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary).
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. hikari makes one commit with that message in each repo whose folders changed, on its branch: %s. hikari also commits what you leave at the end of each turn.\n", branches(s))
-	b.WriteString("- After a change, run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
+	b.WriteString("- Make a change with the hikari-do-work skill. Before you say that it is done, load the hikari-validate-work skill: run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
 	b.WriteString("- If a task needs a change outside your partition, tell the orchestration agent, or the partition agent of that partition, what you need and why. Do not work around it.\n")
 	return b.String()
 }
@@ -57,7 +58,8 @@ func orchestrationPrompt(self api.Self) string {
 The map and the releases of each of your partitions are in /hikari/partitions/<partition>/: features/map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and features/, the feature map at release time. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the partition agent makes it (SKILL.md). When a partition announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the partition agent what is missing. You cannot change deliverables or who holds them; ask the user.
 `, api.PublicDir)
 	}
-	fmt.Fprintf(&b, "\n## The public wiki\n\nYou keep the public wiki, %s: the stories, rules, and principles that say what the partitions must do together. Change it only with mcp__hikari__change_public_wiki, and link each story to the features of the partitions that carry it out. Before you write or change the public wiki, load the %s skill.\n", api.PublicWikiPath, api.OrchestrationSkill)
+	fmt.Fprintf(&b, "\n## Your feature map\n\nYour feature map, %s/features/, holds the features that cross partitions: each is a flow that links the features of the partitions that carry it out, and its health is computed from theirs. Change it only with mcp__hikari__change_wiki. Only you read it.\n", api.SelfDir)
+	fmt.Fprintf(&b, "\n## The public wiki\n\nYou keep the public wiki, %s: the rules and principles that every agent keeps. Change it only with mcp__hikari__change_public_wiki. Before you write or change your feature map, the public wiki, or the vocabulary, load the %s skill. When a request needs work in the partitions, load the %s skill; to check how the project stands, load the %s skill.\n", api.PublicWikiPath, api.MapFeaturesSkill, api.PlanWorkSkill, api.HealthCheckSkill)
 	fmt.Fprintf(&b, "\n## Your files\n\n%s/granted/ holds files that the user gives you to read, and %s files that the user gives you to change. hikari commits your changes there at the end of each turn.\n", api.SelfDir, api.CanEditDir)
 	b.WriteString("\n## The vocabulary\n\nYou keep the vocabulary: the names that everyone in the project uses for domain terms and for the interfaces between partitions. Use mcp__hikari__define_term, define_interface, and remove_entry. When a partition agent uses a different name for something that the vocabulary defines, ask the partition agent to rename it.")
 	if len(self.VisiblePartitions) > 0 {
@@ -75,9 +77,9 @@ func indexingPrompt(self api.Self, tc api.TurnContext) string {
 		b.WriteString("Your partition documents are stale: the code changed since they were last marked current.\n\n")
 		b.WriteString(staleLists(tc))
 		b.WriteString(healthLists(tc))
-		b.WriteString("\nLoad the hikari-partition skill and follow its Keep true procedure: update the stale features, place the unmapped paths, run the suites that touch the affected features and call record_test_run for each run, then call mark_map_current.\n")
+		b.WriteString("\nLoad the hikari-map-features skill and follow its Keep true procedure: update the stale features, place the unmapped paths, run the suites that touch the affected features and call record_test_run for each run, then call mark_map_current.\n")
 	} else {
-		b.WriteString(`Your partition documents are not built yet. Load the hikari-partition skill and follow its Build procedure:
+		b.WriteString(`Your partition documents are not built yet. Load the hikari-map-features skill and follow its Build procedure:
 
 1. Read the code in your writable folders to learn what the partition does, and write the parts of code-map.yaml. Read what you need, not every file; send the hikari-feature-survey agent for each large part.
 2. Describe the partition with set_partition_info, then write one feature document for each feature with change_wiki, linked to the features it works with, and a principle or a rule where the code shows one.
@@ -104,7 +106,7 @@ func restorePrompt(tc api.TurnContext) string {
 func restoreSteps(tc api.TurnContext) string {
 	var b strings.Builder
 	if tc.NoLocalResults {
-		b.WriteString("- Your map shows the health that another machine recorded, and this machine has no results of your tests. Run each suite of tests.yaml and call record_test_run for it.\n")
+		b.WriteString("- Your map shows the health that another machine recorded, and this machine has no results of your tests. Load the hikari-validate-work skill, run each suite of tests.yaml, and call record_test_run for it.\n")
 	}
 	return b.String()
 }
@@ -212,9 +214,9 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 	if self.Partition != nil {
 		switch tc.MapState {
 		case mapStale:
-			notes = append(notes, "Your partition documents are stale. "+staleSummary(tc)+" Before you end this turn, follow the Keep true procedure of the hikari-partition skill and call mark_map_current.")
+			notes = append(notes, "Your partition documents are stale. "+staleSummary(tc)+" Before you end this turn, follow the Keep true procedure of the hikari-map-features skill and call mark_map_current.")
 		case mapUnbuilt:
-			notes = append(notes, "Your partition documents are not built yet. Before you end this turn, load the hikari-partition skill, follow its Build procedure, and call mark_map_current.")
+			notes = append(notes, "Your partition documents are not built yet. Before you end this turn, load the hikari-map-features skill, follow its Build procedure, and call mark_map_current.")
 		}
 		if h := healthSummary(tc); h != "" {
 			notes = append(notes, h)
@@ -239,6 +241,8 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		switch w.Wiki {
 		case api.PublicWikiRef:
 			where = "The public wiki"
+		case api.OrchestrationWikiRef:
+			where = "Your feature map"
 		case self.Name:
 			where = "Your wiki"
 		}
@@ -266,10 +270,10 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 // and S3 of the wikis spec).
 func wikisPrompt(self api.Self) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## The public wiki\n\nThe public wiki, %s, holds the stories, which say what the partitions must do together and for whom, the rules, which must always hold, and the principles, which guide how the partitions work together. You read it, read-only.", api.PublicWikiPath)
+	fmt.Fprintf(&b, "\n## The public wiki\n\nThe public wiki, %s, holds the rules, which must always hold, and the principles, which guide how the partitions work together. You read it, read-only.", api.PublicWikiPath)
 	b.WriteString(" A document links others as [[id]]; an id is unique in every wiki, and mcp__hikari__get_document reads any document you can read, with the documents that link it. Plans and notes in a wiki are the user's: read them for context, and act on a plan only when the user asks you to.")
 	if self.Partition != nil {
-		b.WriteString(" The rules and principles of the public wiki apply to your partition. When a story needs a feature your partition lacks, or a feature cannot keep a rule, tell the orchestration agent.")
+		b.WriteString(" The rules and principles of the public wiki apply to your partition. When a feature cannot keep a rule, tell the orchestration agent.")
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -298,6 +302,9 @@ func branches(s *api.SelfPartition) string {
 func sharedPrompt(self api.Self) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and the deliverables in deliverables/. It is read-only.\n", api.PublicDir)
+	if pack := api.Packs[packRole(self)]; len(pack) > 0 {
+		fmt.Fprintf(&b, "\nHikari gives you these skills, for the tasks of your role: %s. Load the one that the task names.\n", strings.Join(pack, ", "))
+	}
 	if len(self.Skills) > 0 {
 		fmt.Fprintf(&b, "\nThe user grants you these skills, in %s/: %s. Load one when its description fits the task.\n", api.SkillsDir, strings.Join(self.Skills, ", "))
 	}

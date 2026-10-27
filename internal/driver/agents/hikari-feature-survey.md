@@ -1,6 +1,6 @@
 ---
 name: hikari-feature-survey
-description: Read-only worker for a partition agent that builds its feature map. It reads one part of the workspace and returns candidate features as JSON, with their code paths, evidence, and candidate neighbors. Sent by the Build procedure of the hikari-partition skill, one per part. It never writes a file or calls a hikari tool.
+description: Read-only worker for a partition agent that builds its feature map. It reads one part of the workspace and returns candidate features as JSON, with their code paths, evidence, and candidate neighbors. Sent by the Build procedure of the hikari-map-features skill, one per part. It never writes a file or calls a hikari tool.
 tools: Read, Grep, Glob
 ---
 
