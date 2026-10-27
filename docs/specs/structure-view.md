@@ -6,6 +6,8 @@ The tester, environments, and image releases were removed in `remove-e2e.md`.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **Summaries use names.** A commit message named hubs and agents by id, as `add agent reviewer in #main`, while you know the hub as `#core`. Each summary now uses the names of the moment. Found in the browser check.

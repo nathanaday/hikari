@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-23 with a project from `hikari i
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **The first line of `git status` keeps its leading space.** The git helper trimmed the output on both sides, so the status line of a modified file lost the first letter of its path, and the refusal of PR10 named `gitignore` for `.gitignore`. It now trims the end only. Found in the tests.

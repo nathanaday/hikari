@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-25. `hikari up` in an empty dire
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **The run's server takes the node API before the agents connect.** The host passed requests to the run only once it was running, so the agents' first call got 503, and both containers exited. The host now attaches the run's server when it exists, and still shows `starting`. Found in the live run.

@@ -4,6 +4,8 @@ Status: built.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 - hikari pulls an agent's image with `docker pull` only when the image is not on the machine. `docker compose pull --policy missing` tried to pull local images, such as `hikari-agent`, from a registry.

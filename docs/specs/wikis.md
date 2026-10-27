@@ -6,6 +6,8 @@ The tester, environments, and image releases were removed in `remove-e2e.md`.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **A user document is lighter, not dashed** (U3). A dashed outline already means a stale feature, so a plan or a note is drawn smaller and paler under the Kind lens, and neutral under Tests.

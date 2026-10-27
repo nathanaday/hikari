@@ -7,33 +7,33 @@ This document gives the reasons for the main decisions in hikari.
 Two principles shape every topology, and the hikify skill checks a design
 against both.
 
-Each system owns one concern. hikari isolates a library from its
-consumers, and a client from its server: each agent owns one concern
+Each partition has one concern. hikari isolates a library from its
+consumers, and a client from its server: each agent has one concern
 behind clean interfaces, in a container that sees only its own code, and
-the orchestrator links the systems. An agent that owns one concern holds
+the orchestration agent links the partitions. An agent that has one concern holds
 all of it in context and cannot break code it cannot see. Code copied
-between two systems drifts, and the drift is a bug that no unit test
+between two partitions drifts, and the drift is a bug that no unit test
 finds, so a library serves both instead.
 
-Each system tests only its own code, with the unit tests of its language.
-Inside one system, a suite that needs a display, a browser, the whole
-application, or another system depends on code the system does not own,
-so its failure names the wrong owner, and its tools weigh down the
-system's container. Such a suite stays in its repository, outside every
+Each partition tests only its own code, with the unit tests of its language.
+Inside one partition, a suite that needs a display, a browser, the whole
+application, or another partition depends on code the partition does not own,
+so its failure names the wrong partition agent, and its tools weigh down the
+partition's container. Such a suite stays in its repository, outside every
 test command, and hikify records it as left for integration. A way to run
 it is planted.
 
 ## Ids and names
 
 Every agent and repo has an id and a name. The id keys what lives outside
-the compose file: store directories, release manifests, containers,
+the topology file: vault directories, release manifests, containers,
 networks, and clones. The name is what people and
-agents use. A rename then changes one field, and the store and the
+agents use. A rename then changes one field, and the vault and the
 releases stay as they are; a release is
 immutable, so it could not follow a rename anyway.
 
 The id is the key that the file already writes, not a generated code, so a
-compose file stays readable and every file from before names existed keeps
+topology file stays readable and every file from before names existed keeps
 its meaning. References in the file name ids, so that a rename changes one
 line and the file never holds a stale name. hikari checks the file in ids,
 so each error names the key that the file writes, and then keys the
@@ -45,43 +45,43 @@ target by name: an agent never sees an id.
 
 A project is one room. The user and every agent are in it, everyone in it
 receives every post, and any two of them can send direct messages to each
-other. `x-hikari.orchestration` names the orchestrator by its service id,
-and every other agent owns a system. A key at the top of the file allows
-one orchestrator and makes two impossible to write. A project with no
-orchestrator is valid too.
+other. `x-hikari.orchestration` names the orchestration agent by its service id,
+and every other agent has a partition. A key at the top of the file allows
+one orchestration agent and makes two impossible to write. A project with no
+orchestration agent is valid too.
 
-One orchestrator and its owners is the team that a project needs today: one
+One orchestration agent and its partition agents is the team that a project needs today: one
 agent coordinates, the others do focused work, and everyone can read the
-room. hikari once split a project into hubs, each with its own orchestrator
+room. hikari once split a project into hubs, each with its own orchestration agent
 and members, so that a tree of hubs gave a hierarchy in which each agent saw
-only its own rooms. The wake rules, the direct messages, the systems that an
-orchestrator saw, the vocabularies, and the wikis all followed from the hub
+only its own rooms. The wake rules, the direct messages, the partitions that an
+orchestration agent saw, the vocabularies, and the wikis all followed from the hub
 list. A tree of hubs can come back when a project needs islands.
 
 ## Not every post starts a turn
 
 Every participant receives every post, but a post starts a turn at once only
-for the orchestrator, for each agent that the post mentions as `@name`, and
-for every owner when the orchestrator posts without mentions. With no
-orchestrator, a post without mentions starts a turn for every agent. Other
+for the orchestration agent, for each agent that the post mentions as `@name`, and
+for every partition agent when the orchestration agent posts without mentions. With no
+orchestration agent, a post without mentions starts a turn for every agent. Other
 agents read the post at the start of their next turn. A direct message
 always starts a turn for its recipient.
 
 If every post started a turn for every agent, one message in a room of N
 agents would start N turns, and each reply would start N more. With these
-rules, the orchestrator decides who works, an owner wakes another owner only
+rules, the orchestration agent decides who works, a partition agent wakes another partition agent only
 by name, and nothing is lost: every post still reaches every participant. The
 server records in each message which participants it woke, and the UI shows
 this under each post.
 
-## Owners, maps, and orchestrators that never see code
+## Partition agents, maps, and orchestration agents that never see code
 
-An agent can own a system: a scope inside a git repo. The owner is the only
-agent that reads or changes that code. Orchestrators own no code. They plan
-from system maps, which describe what each system does, which interfaces it
+An agent can have a partition: a scope inside a git repo. The partition agent is the only
+agent that reads or changes that code. Orchestration agents own no code. They plan
+from feature maps, which describe what each partition does, which interfaces it
 provides and consumes, and how healthy its features are. A team works the
-same way: an orchestrator knows which features exist and who owns them, and asks the
-owner whether a change is feasible. The owner decides how to make it.
+same way: an orchestration agent knows which features exist and who owns them, and asks the
+partition agent whether a change is feasible. The partition agent decides how to make it.
 
 The full spec is `docs/specs/system-maps.md`. The rest of this section gives
 the reasons for its main decisions.
@@ -100,7 +100,7 @@ switch branches.
 
 Local commits need no credentials, so the server commits on the host:
 `git add -A -- <scope>`, then `git commit -- <scope>`. A commit holds only
-the owner's files, even when two owners share a repo and one has staged
+the partition agent's files, even when two partition agents share a repo and one has staged
 files. The agent is the author and you are the committer, so `git log`
 shows who wrote each change and who accepted it into the repo.
 
@@ -108,62 +108,62 @@ One working tree has one branch, so agents that share a repo share its
 branch, and the topology declares the branch once for each repo. `hikari up`
 refuses a repo with uncommitted changes, so that your unfinished work never
 enters an agent commit. To keep the next start possible, hikari commits what
-each owner left when a turn ends and when hikari stops.
+each partition agent left when a turn ends and when hikari stops.
 
 ## A public map and private documents
 
 The map is the boundary of a container. Other agents never see the code, so
-the map holds only what they need: what the system does, its interfaces, and
+the map holds only what they need: what the partition does, its interfaces, and
 whether each feature exists and is tested. A file path or a test command in
 the map would invite them to reason about code that they cannot see. The
-owner still needs that knowledge, so it lives in two private documents in
+partition agent still needs that knowledge, so it lives in two private documents in
 the same directory: `layout.yaml`, which says where each feature lives in the
 code, and `tests.yaml`, a test map that says which features each test
 touches.
 
-Only the owner can describe its system accurately, so it writes all three
+Only the partition agent can describe its partition accurately, so it writes all three
 documents. It changes the map through tools, not by editing the file: the
 server applies each change to a copy, checks it, and writes the file with an
 atomic rename. A typo cannot corrupt the public surface, and the server knows
-at once when it changed. The private documents are the owner's working
-notes, so the owner edits them with its normal file tools, and the container
+at once when it changed. The private documents are the partition agent's working
+notes, so the partition agent edits them with its normal file tools, and the container
 mounts them read-write while the map stays read-only. The server reads them
 when it computes health, and it refuses to record a test run or to mark
 the map current while they are invalid, so that they stay true. A skill in
-the container, not a file in your repo, teaches the owner their formats.
+the container, not a file in your repo, teaches the partition agent their formats.
 
 All three documents live in the scope, so they are versioned and reviewed
 with the code that they describe.
 
 ## The feature wiki
 
-Each feature is one markdown document in the store, beside the map, and the
+Each feature is one markdown document in the vault, beside the map, and the
 map's feature list is written from those documents. A map entry of a few
 fields had no room for the reasons behind a feature, and nothing said when
 one feature's description was last true. A document has a header that the
 server checks and a body for people and agents: why the feature exists, what
 it promises, and what it refuses. The body cites no code, so the document is
 the same for every reader; nothing in it is hidden from one reader and shown
-to another. The code paths of a feature stay in the owner's code map,
-`layout.yaml`, which only the owner needs.
+to another. The code paths of a feature stay in the partition agent's code map,
+`layout.yaml`, which only the partition agent needs.
 
-The documents live in the store, not in the repo, because they are the public
-surface: orchestrators already mount each system's store directory, a release
-copies them with the map, and the store opens as one Obsidian vault of every
-system. Each document records the commit it describes, so staleness needs no
+The documents live in the vault, not in the repo, because they are the public
+surface: orchestration agents already mount each partition's vault directory, a release
+copies them with the map, and the vault opens as one Obsidian vault of every
+partition. Each document records the commit it describes, so staleness needs no
 git history.
 
 Links are the only structure. A document links the features it works with as
-`[[id]]`, anywhere in its text. A link has no direction, so the owner writes
+`[[id]]`, anywhere in its text. A link has no direction, so the partition agent writes
 it once and the server reads the graph both ways. A link has no kind: a
 labeled relation is a judgment that goes stale, and nothing would read it.
 There are no feature groups, because how broad a group should be is always an
 opinion; the clusters of linked features show the groups by themselves.
 
-The owner changes the wiki through one tool that applies a set of writes as a
+The partition agent changes the wiki through one tool that applies a set of writes as a
 whole, so that the files always have the schema and features in one change
 can link each other. A rename rewrites every link, which an agent editing
-files by hand would get wrong. The owner reads the files directly, and a
+files by hand would get wrong. The partition agent reads the files directly, and a
 user edits a document's `## Notes` section in Obsidian; the server reloads
 hand edits and keeps the last valid wiki when one breaks a rule. Findings,
 plans, and test health are not in the documents: they will be entities of
@@ -176,25 +176,25 @@ changed path under no feature is how a missing feature gets found.
 
 A map records the commit that it describes; when files in the scope change
 after that commit, the map is `stale`, and the driver lists the changed paths
-in the owner's next prompt.
+in the partition agent's next prompt.
 
-## System wikis and the public wiki
+## Feature maps and the public wiki
 
-The feature wiki became one of many wikis: every system has one, and the
-project has a public wiki for what spans systems. A document has a kind. A
-system's features, principles, and rules, and the public wiki's stories,
+The feature wiki became one of many wikis: every partition has one, and the
+project has a public wiki for what spans partitions. A document has a kind. A
+partition's features, principles, and rules, and the public wiki's stories,
 rules, and principles, share one format and one change model, because the
 reasons to check a header, to keep links as the only structure, and to
 apply a change as a whole are the same for every kind.
 
-Ids are unique across the store, which the feature wiki already required
-across systems. So `[[reserve-stock]]` names one document in any wiki, in
-hikari and in Obsidian, and a story links the features of its systems with
+Ids are unique across the vault, which the feature wiki already required
+across partitions. So `[[reserve-stock]]` names one document in any wiki, in
+hikari and in Obsidian, and a story links the features of its partitions with
 no other syntax. A link names a document by its last path segment, because
 Obsidian writes a path when two files share a name, as a release copy does.
 
 The user's plans and notes live beside the agents' documents, so that each
-wiki is also where the user keeps what they intend for its system or for the
+wiki is also where the user keeps what they intend for its partition or for the
 project. Agents read them and never change them. A file with no kind is a note,
 so that a page dropped into the folder in Obsidian is valid as it is. A
 hand edit is checked file by file: a broken document keeps its last valid
@@ -211,9 +211,9 @@ next change of that wiki, at stop, and at start. Configuration in the shared
 area stays the user's to commit, because it changes how agents behave.
 
 Every agent reads the public wiki, because its rules and principles apply to
-every agent, and only the orchestrator writes it. It lives in
+every agent, and only the orchestration agent writes it. It lives in
 `store/shared/wiki/`, which every container already mounts read-only, so it
-needs no mount of its own. The orchestrator also reads every system wiki.
+needs no mount of its own. The orchestration agent also reads every feature map.
 Before each turn, an agent learns which documents of the wikis it reads
 someone else changed.
 
@@ -221,11 +221,11 @@ someone else changed.
 
 Health is computed, never set, and no agent types a number into it. Each
 suite's command makes the test runner write a JUnit XML report, the one
-format that almost every runner writes, and the owner only tells the server
+format that almost every runner writes, and the partition agent only tells the server
 which suite ran. The server reads the report, keeps the last result of each
 test, and deletes the report. An agent that summed results by hand could
 miscount or credit a failure to the wrong feature; a runner's report cannot.
-The owner still runs the suites. The server could run them in the owner's
+The partition agent still runs the suites. The server could run them in the partition agent's
 container, which would take the agent out of the path entirely, but that
 needs long blocking calls and timeouts, and it belongs with the validation
 agent planted for later.
@@ -237,8 +237,8 @@ computed. The links live in one private file, not a document per test: a
 library with five hundred tests would need five hundred documents with
 nothing to say beyond their names. One key can cover a test, a describe
 block, a file, or a directory, and the most specific key decides, so that a
-large system needs a few dozen lines. The links are applied when health is
-computed, not when a run is recorded, so an owner can run the suites first
+large partition needs a few dozen lines. The links are applied when health is
+computed, not when a run is recorded, so a partition agent can run the suites first
 and map the tests afterward.
 
 A result counts only while the test's file and the code of every feature it
@@ -253,33 +253,33 @@ behind the code and only a run clears them.
 Test names, files, and failure messages stay private. The public map shows
 each feature's health and counts of its touching tests. Results change with
 every run, so the server keeps them out of commits with an ignore file; they
-stay on the host between runs, like the map in the store. A rename in the
+stay on the host between runs, like the map in the vault. A rename in the
 wiki follows into the test map, the code map, and the recorded hashes, so
 that a rename never makes results pending or leaves a private file invalid.
 
-## The orchestrator sees every system
+## The orchestration agent sees every partition
 
-The orchestrator reads the map of every system, because it plans across all
-of them. Owners read no other system's map. When an owner is blocked by
-another system, it asks the orchestrator.
+The orchestration agent reads the map of every partition, because it plans across all
+of them. Partition agents read no other partition's map. When a partition agent is blocked by
+another partition, it asks the orchestration agent.
 
 ## One vocabulary
 
-Owners cannot read each other's maps, so they cannot agree on names by
-themselves. The orchestrator keeps the project's vocabulary of terms and
+Partition agents cannot read each other's maps, so they cannot agree on names by
+themselves. The orchestration agent keeps the project's vocabulary of terms and
 interface names in `store/shared/vocabulary/terms.yaml`, which every agent
 reads. hikari reads only `terms.yaml` and ignores the other files of the
-directory. Matching interface names is how the orchestrator connects
-systems: "orders consumes `Stock.reserve`, which inventory provides". The
+directory. Matching interface names is how the orchestration agent connects
+partitions: "orders consumes `Stock.reserve`, which inventory provides". The
 server never rejects a map change because of the vocabulary, because a map
 must describe what the code does. It flags names that the vocabulary lacks,
-and consumed interfaces that no system provides, and the orchestrator decides
-whether to add the name or to ask the owner to rename.
+and consumed interfaces that no partition provides, and the orchestration agent decides
+whether to add the name or to ask the partition agent to rename.
 
-## One store for everything that is not code
+## One vault for everything that is not code
 
-Maps, vocabularies, shared rules, and releases live in one directory, the
-store, so that you can open it and see your whole ecosystem. The private
+Feature maps, the vocabulary, shared rules, and releases live in one directory, the
+vault, so that you can open it and see your whole ecosystem. The private
 documents are the exception: they describe the code at a commit, so they
 stay in the repo and change in the same commits as the code. Releases are
 versioned by their immutable version directories, and they can hold large
@@ -287,31 +287,31 @@ binaries, which git handles badly, so git never holds them.
 
 ## The project repository
 
-A store outside git loses its history: no one can say who changed a
+A vault outside git loses its history: no one can say who changed a
 feature or when. So a project can be a git repository of its own, which
-holds the topology and the store, and hikari commits each change that an
+holds the topology and the vault, and hikari commits each change that an
 agent makes through a tool, with the agent as author. The knowledge is
 versioned; products and results are not.
 
 A project opts in with `x-hikari.project`. hikari could find the
-repository that holds the compose file by itself, but the examples sit
+repository that holds the topology file by itself, but the examples sit
 inside the hikari repo, and hikari would then check out a branch of its
 own repo. An explicit key costs one line.
 
 The project repository follows the branch rules of every repo: clean at
 start, and agent commits only on a branch that you merge. The checkout of
-that branch can change the compose file, so hikari reads it again after
+that branch can change the topology file, so hikari reads it again after
 the checkout, and the branch's file decides.
 
 A test run changes the health in a map, but it makes no commit. A commit
 for each run would bury the changes of the wiki in noise, so the health
-goes into the system's next commit. For the same reason, a time in a
+goes into the partition's next commit. For the same reason, a time in a
 document keeps whole seconds: a finer time in memory would rewrite the map
 on each start.
 
 In a project repository, a compose service may bind mount a config
-directory next to the compose file. The guard covers only what hikari
-mounts itself: the store, `.git`, and the scopes of the systems in it.
+directory next to the topology file. The guard covers only what hikari
+mounts itself: the vault, `.git`, and the scopes of the partitions in it.
 
 ## Linked repositories make a project portable
 
@@ -336,7 +336,7 @@ each machine. hikari reads no `.env` of its own; compose already reads it.
 A fresh clone lacks what git does not version: test results and releases.
 A missing results file is no evidence, so the map keeps the health that
 the teammate's machine recorded, instead of dropping every feature to
-pending and committing the drop. The owner's first turn runs its suites
+pending and committing the drop. The partition agent's first turn runs its suites
 again.
 
 ## Onboarding runs in your own session
@@ -354,8 +354,8 @@ binary that checks the topology it writes. Each skill's folder holds a
 `.gitignore` of `*`, so git ignores it without a line in the project's own
 ignore file, and a new host skill never breaks an older project.
 
-Containerize changes no code. It wraps each repository as one system, and
-the owners' first turns map the code and record the tests. That gives the
+Containerize changes no code. It wraps each repository as one partition, and
+the partition agents' first turns map the code and record the tests. That gives the
 refactor of hikify three things it would otherwise rebuild: every
 repository runs in hikari, every test has a recorded outcome, and each
 repository has a map written by the agent that owns it. A suite that
@@ -363,13 +363,13 @@ cannot run in a container is a finding, not a change: hikify leaves it
 in its repository for integration. The one exception is an ignore line for build products, with
 your approval. Without it, every machine commits the products again.
 
-`hikari status` reads only files, so the session can watch the owners'
+`hikari status` reads only files, so the session can watch the partition agents'
 progress without a server API, and the baseline is the same text that a
 person reads.
 
 Hikify designs before it changes anything. The design stays in
-`onboarding/` and `compose.target.yaml` until you approve it, because the
-target's new systems have no wiki in the store yet. A difference
+`onboarding/` and `topology.target.yaml` until you approve it, because the
+target's new partitions have no wiki in the vault yet. A difference
 in behavior between two copies of code is always your question: the skill
 never picks one. Fresh reviewers check the plan in rounds, and a reviewer
 told to find faults always finds a minor one, so a round of minor findings
@@ -384,45 +384,45 @@ yours or a teammate's, has the same origin.
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its
-working directory. Orchestrators have no scope, so a `.hikari` directory
+working directory. Orchestration agents have no scope, so a `.hikari` directory
 inside a scope could not work for them. Docker also creates an empty
 directory on the host for every mount point, so mount points inside the
 scope would leave directories in your repo. The scope's own `.hikari`
 directory is hidden, so the private documents appear at one path only.
 
-An owner can write only its staging area. Its map stays read-only, so it
+A partition agent can write only its staging area. Its map stays read-only, so it
 keeps the checks of the map tools, and its published releases stay
 read-only, so they never change.
 
-## Releases connect isolated systems
+## Releases connect isolated partitions
 
-A system that another system needs, such as a library, publishes it as a
+A partition that another partition needs, such as a library, publishes it as a
 release: the product and the docs that someone who cannot see the code
 needs to use it. Publishing checks that the map is current, so that a
 release matches what the map describes, and records the source commit and a
 copy of the public map. Feature health does not block a release; the copy
 of the map shows it.
 
-## Deliverables put the rules of a release in the store
+## Deliverables put the rules of a release in the vault
 
-Every system delivers something different: a Python package, a container
+Every partition delivers something different: a Python package, a container
 image, a set of documents. The rules of a release therefore do not belong
-in hikari. They live in the store as a deliverable, a named package of
+in hikari. They live in the vault as a deliverable, a named package of
 `deliverable.yaml` and `SKILL.md`, which you can read, change, and bind to
-owners in the topology. The layout rules are three glob lists, so that you
+partition agents in the topology. The layout rules are three glob lists, so that you
 can be as loose as a list of file types or as strict as an exact map of
-files. The skill tells the owner how to make the product, and hikari sets
+files. The skill tells the partition agent how to make the product, and hikari sets
 none of its frontmatter, so its author decides whether it forks its
 context.
 
 Deliverables live in the shared area, which every container already
-mounts, so an orchestrator can check a release against its deliverable and
+mounts, so an orchestration agent can check a release against its deliverable and
 a change applies from the next turn. The grant, not the mount, decides who
 publishes a deliverable: only a holder gets its skill and can call the
-publish tools, and only an owner can hold one, because an owner has code
-to build from, a map and a commit for provenance, and a place in the store.
+publish tools, and only a partition agent can hold one, because a partition agent has code
+to build from, a map and a commit for provenance, and a place in the vault.
 
-hikari writes the whole manifest. The owner writes nothing in it, so the
+hikari writes the whole manifest. The partition agent writes nothing in it, so the
 manifest is a record that hikari vouches for: who published, when, from
 which commit, with which hikari version, and the digest of every file. A
 release keeps its product as a directory, not an archive, so that
@@ -430,20 +430,20 @@ consumers and the UI read it with normal tools; the read-only mounts make
 it immutable and `SHA256SUMS` makes it checkable.
 
 A target is a promise that the product also goes to a cloud service. The
-owner uploads, with the credentials that compose gives its container, and
+partition agent uploads, with the credentials that compose gives its container, and
 gives a certificate in the publish call. hikari checks the certificate's
 shape against the promise and records it; it never uploads and does not
 call the service, which would need credentials and network access on the
 server.
 
 Publishing moves the staging area's contents into the release one entry at
-a time. It does not rename the staging directory, because the owner's
+a time. It does not rename the staging directory, because the partition agent's
 container mounts that directory: after a rename, the mount would follow the
-directory into the release, and the owner could still write to it.
+directory into the release, and the partition agent could still write to it.
 
 A container cannot get a new bind mount while it runs, so release grants
 are part of the topology and take effect when the container starts. A grant
-covers every version of a system, and the consumer chooses a version.
+covers every version of a partition, and the consumer chooses a version.
 
 ## Shared knowledge reaches agents as Claude Code expects it
 
@@ -451,12 +451,12 @@ Shared skills and agent definitions are linked into `~/.claude` in each
 container, where Claude Code finds them. Policies are rules, so they go into
 every system prompt; a skill applies only when an agent loads it. The
 driver connects the shared area again before each turn, so a change applies
-from the next turn without a restart. hikari's own `hikari-system` skill
+from the next turn without a restart. hikari's own `hikari-partition` skill
 and its `hikari-` agents always come from the binary, so that they match the
 binary's version; a shared agent cannot take their names.
 
 The skill of a deliverable can run in its own context (`context: fork`), so
-that building a product does not fill the owner's context; it must then
+that building a product does not fill the partition agent's context; it must then
 wait for the result (`background: false`), because a headless turn ends
 when its prompt is answered.
 
@@ -517,7 +517,7 @@ the driver tool calls and cost for each turn.
 
 The UI changes the topology through operations, such as `rename` or
 `set_orchestration`, and the server turns each operation into a change of the
-compose file's text. A plain encoder would write the whole file again: it
+topology file's text. A plain encoder would write the whole file again: it
 drops blank lines, moves comments, and writes `<<: *agent` as
 `!!merge <<: *agent`. So each operation splices only the YAML nodes that it
 changes, and every other byte of your file stays. The server applies the
@@ -525,12 +525,12 @@ operations, not the UI, so that the edits, the checks, and their tests live
 in one language.
 
 A plan shows what a list of operations would do before it does it: the
-diff of the file, what it leaves in the store, and the checks of the new
+diff of the file, what it leaves in the vault, and the checks of the new
 text. A save names the revision it started from, because you, a host
 session, or git can change the file at the same time. In a project
 repository each save is a commit as you, because an uncommitted compose
 file would block the next start, and because the topology's history is then
-`git log compose.yaml`.
+`git log topology.yaml`.
 
 The editor reads its model from the source, without the checks, so that a
 file with a broken reference opens in the form, which is where a form helps
@@ -585,18 +585,18 @@ repeats the wake rules of the server. The tests of both use the same cases.
 
 ## Compose owns the environment; hikari owns the boundaries
 
-An owner must run its tests, so its container needs the system's toolchain,
-and some systems need more: secrets, a database, a GPU. The topology once grew
+A partition agent must run its tests, so its container needs the partition's toolchain,
+and some partitions need more: secrets, a database, a GPU. The topology once grew
 its own fields for this, such as Debian packages and a setup script, and each
 new need would have copied another part of Docker compose. So the topology is
-now a compose file, and every compose feature works.
+now a topology file, and every compose feature works.
 
 hikari keeps the parts that must not be written by hand: the mounts of each
-scope and of the store, the networks, the tokens, the entrypoint, and the
+scope and of the vault, the networks, the tokens, the entrypoint, and the
 hikari binary. It writes them into an override file for each run, which
 compose merges with the user's file. Before it runs anything, hikari reads the
 file as compose resolves it (`docker compose config`) and refuses a file that
-would cross a boundary: a bind mount of a repo or the store, the Docker
+would cross a boundary: a bind mount of a repo or the vault, the Docker
 socket, host networking, privileges, or a mount over `/hikari` or over
 another agent's code. So the guarantees come from checks, with one test for
 each rule, instead of from hikari building every container itself.
@@ -648,15 +648,15 @@ writes `messages.jsonl` only when the run has a message.
 
 The Map view is a force graph in the style of Obsidian's graph. `d3-force`
 lays it out and `d3-zoom` pans and zooms, but the view draws every frame on a
-2D canvas itself. The reason is the move from the topology into a system: the
-camera, the fading nodes, the features that spread out of the system, and
+2D canvas itself. The reason is the move from the topology into a partition: the
+camera, the fading nodes, the features that spread out of the partition, and
 the lens colors all change under one clock. A complete graph library owns its
 draw loop and its camera, and a transition between two of its graphs fights
 it. The graphs are small, tens of nodes and at most a few hundred, so a 2D
 canvas is fast enough and WebGL would add weight for nothing.
 
 Both maps live on one canvas, so no frame is ever empty. The engine knows
-nodes and edges, not systems or features; the view tells it how two graphs
+nodes and edges, not partitions or features; the view tells it how two graphs
 relate, and it opens one out of a node of the other or folds it back. The
 simulation stops when the layout settles, so an idle map costs nothing.
 
@@ -681,16 +681,16 @@ from before the record existed has no known age and shows as the oldest.
   The server does not read it back at start.
 - Claude Code loads MCP tools on demand, so the first turn of each agent
   spends one tool call to load the hikari tools.
-- The first indexing turn of an owner reads its whole system.
-- No agent sees another system's code. A system tests against another
-  system's published releases when the topology grants them. No agent runs
+- The first indexing turn of a partition agent reads its whole partition.
+- No agent sees another partition's code. A partition tests against another
+  partition's published releases when the topology grants them. No agent runs
   a suite of the whole application; such suites wait for integration.
 - Teammates' branches are merged by people with git. hikari pushes and
   syncs, but it never merges.
 - Release grants change only when a container starts, and there are no
-  schema grants yet: a system that owns a contract publishes it in its
+  schema grants yet: a partition that owns a contract publishes it in its
   releases.
-- Files that an owner creates in its scope belong to the container user. On
+- Files that a partition agent creates in its scope belong to the container user. On
   Docker Desktop for macOS this is your user; on Linux, it is the user ID of
   the agent's image, 1000 in `hikari-agent`.
 - A sidecar serves one agent. Agents cannot share a sidecar yet.

@@ -2,6 +2,8 @@
 
 Status: built. Docker was not running, so the live check ran `hikari up -no-launch` on the shop and drove the node API with each agent's run token in place of agent turns: `messages.jsonl` shows that the user's post woke only the orchestrator, the orchestrator's post woke both owners, and an owner's direct message woke the other owner, and inventory read the term and the rule that the orchestrator wrote into `terms.yaml` and `shared/wiki/`. Headless Chrome showed the room with its Messages, Vocabulary, and Wiki tabs, and the Map with the orchestrator in the middle; no agent turn ran.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **A rename leaves `x-hikari.orchestration` alone** (H5). The key holds a service id, which a rename keeps; `change_id` rewrites it, as it rewrites a grant.

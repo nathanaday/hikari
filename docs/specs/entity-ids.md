@@ -6,6 +6,8 @@ The tester, environments, and image releases were removed in `remove-e2e.md`.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **A map takes the system's new name** (ID12). The public map records `system.name`, and hikari refused a map whose name was not its system's. The map's place in the store, keyed by id, already says which system it describes, so hikari now writes the new name into the map at start and shows a note. Agents that read `map.yaml` then see names too. Found in the tests.

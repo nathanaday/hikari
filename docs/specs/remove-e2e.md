@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-26: `hikari check examples/shop/compose.yaml` passed, and `hikari up -no-launch` served the UI in headless Chrome, where `#shop` has the tabs Messages, Vocabulary, and Wiki, `#/hub/shop/tests` opens All, the snapshot's wikis have no `tests` field, and `/api/node/e2e/plans/shop` is not found. The Docker daemon was not running; neither command needed it.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **A principle of a hub shows its support too** (RE10). Before the tester, only a story and a rule had support. A hub document's `health` is now empty, and `support` is its health.

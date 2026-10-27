@@ -2,6 +2,8 @@
 
 Status: built. Checked in a headless Chrome on 2026-10-25 against `hikari up` in an empty directory: the Topology view opened alone in the sidebar with Create the project; create opened the YAML tab; a member `ghost` drew a red dot on line 18 and the finding "hub "main" references unknown agent "ghost"" within a second; Cmd-S opened the review with the diff, and the save committed with Start disabled; the fix enabled Start, which ran the agents and filled the sidebar; an edit on disk under an unsaved change showed "The file changed on disk while you edited it"; Stop returned to the editing state. The browser logged no errors.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **The editing mode reads "Agents stopped".** "editing" names hikari's state, not what you see; beside Start agents, "stopped" says what Start changes.

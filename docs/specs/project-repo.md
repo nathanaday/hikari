@@ -6,6 +6,8 @@ The tester, environments, and image releases were removed in `remove-e2e.md`.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **The runs directory is ignored as `/.hikari/`** (PR11, PR23). A `.hikari/` pattern also matches the `.hikari` directory of each scope, which hides the private documents. Found in the tests.

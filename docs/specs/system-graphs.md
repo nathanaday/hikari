@@ -4,6 +4,8 @@ Status: built. Checked in a browser on 2026-10-22, against the shop demo, with h
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **History entries between the maps.** The UI replaced its history entry on every view change, so back left the app. A move between the two maps now adds an entry (U17). Other views behave as before.

@@ -4,6 +4,8 @@ Status: built. The tests and health spec (`docs/specs/test-health.md`) later rep
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 - Owners add features in batches with `upsert_features` (see section 8).
 - hikari commits what each owner left when hikari stops, in addition to rule G13, so that rule G1 does not block the next start.
 - A change to a map or a vocabulary also updates the UI views of the systems whose flags and providers depend on it.

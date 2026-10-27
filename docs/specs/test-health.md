@@ -2,6 +2,8 @@
 
 Status: built. Checked in live runs on 2026-10-22. In the shop, both owners built their test maps from nothing in one indexing turn each, at about $0.15 per owner; a bug put into `inventory/stock.py` on the host made its features `pending`, a recorded run made two of them `failing` with the test and its message, the next turn's notice named the failing test, and the owner fixed the bug; a rename rewrote `tests.yaml`, `layout.yaml`, and the results, and the feature stayed `passing`; no result, report, or test name reached a commit or a public map. In yami, the library owner mapped 534 tests to 11 features with 32 file keys, and every feature passed; the plugin's end-to-end suite, which needs a running Obsidian, showed as `failing` and `pending`, which is true in a container.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **Steps 3, 4, and 5 are one commit.** The old record tool could not compile against the new private documents.

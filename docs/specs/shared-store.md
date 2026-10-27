@@ -6,6 +6,8 @@ The tester, environments, and image releases were removed in `remove-e2e.md`.
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 - Orchestrators also learn which release grants their members have, so that they can plan tests against releases. They cannot change grants; they ask the user.

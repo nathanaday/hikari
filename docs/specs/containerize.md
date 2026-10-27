@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-23 of the onboard example: a hea
 
 Hubs were removed in `remove-hubs.md`.
 
+Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
+
 Changes made during the build:
 
 1. **A linked repo that no system uses yet is a warning** (topology). The session links the repositories in step 2 and writes their systems in step 5, but the topology refused a repo that no system used, so `hikari sync` failed. Found in the live run. A path repo that no system uses is still an error.

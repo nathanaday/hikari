@@ -3,7 +3,7 @@
 This guide shows you how to turn a set of existing git repositories into a hikari project. You start from an empty project. You then work with Claude Code in two skills:
 
 - `containerize-repo` runs each repository in hikari, with no change to its code.
-- `hikify` refactors the repositories into isolated systems, shared libraries, and tested stories, as you decide.
+- `hikify` refactors the repositories into isolated partitions, shared libraries, and tested stories, as you decide.
 
 You are the authority on the layout of your project. The skills propose, show, and ask. They do not refactor code before you approve a plan. They do not push or create a remote repository unless you approve that action in the conversation.
 
@@ -36,16 +36,16 @@ You need:
 - A credential for the agent containers: a token from `claude setup-token`, or an Anthropic API key.
 - Read access to each repository from your machine. `hikari sync` uses your own git and SSH settings.
 
-Onboarding costs agent time. Each owner reads its whole repository on its first start, and the review rounds of the design send several reviewers. Start with a few repositories, or try the [example](#try-it-on-the-example) first.
+Onboarding costs agent time. Each partition agent reads its whole repository on its first start, and the review rounds of the design send several reviewers. Start with a few repositories, or try the [example](#try-it-on-the-example) first.
 
 ## The stages
 
 | Stage | Who works | What you do | What you get |
 |---|---|---|---|
 | 1. Make the project | you | run `hikari init` | an empty project repository |
-| 2. Containerize | your Claude Code session, then the owner agents | give the repository URLs, approve ignore lines, start hikari | one system for each repository, and a baseline of every test |
+| 2. Containerize | your Claude Code session, then the partition agents | give the repository URLs, approve ignore lines, start hikari | one partition for each repository, and a baseline of every test |
 | 3. Design | your session, with reviewer subagents | answer questions, approve the stories and the plan | a target topology, stories in the public wiki, a change plan, and a test ledger |
-| 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored systems |
+| 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored partitions |
 | 5. Verify | your session | approve the push | a checked ledger, and a proof that a fresh clone starts |
 
 Each stage records its progress in `onboarding/state.md`. You can stop after any stage and continue later.
@@ -59,7 +59,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
    cd ~/code/myproject
    ```
 
-   This writes `compose.yaml`, `.gitignore`, `.env.example`, the store, and the two skills in `.claude/skills/`, and makes the first commit.
+   This writes `topology.yaml`, `.gitignore`, `.env.example`, the vault, and the two skills in `.claude/skills/`, and makes the first commit.
 
 2. Copy `.env.example` to `.env`, and set your credential:
 
@@ -103,17 +103,17 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 4. **Approve the ignore lines.** When a repository does not ignore its build products, such as `__pycache__/` or `node_modules/`, the skill shows you the lines to add to its `.gitignore`. This is the only change that containerize makes in a repository. Without it, every machine commits the build products again.
 
-5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator, which it names in `x-hikari.orchestration`. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
+5. **Review the partitions.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestration agent, which it names in `x-hikari.orchestration`. It builds each image and runs each test command once. Then it shows you the partitions and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
 
 6. **Start hikari** when the skill asks, in a terminal of your own, and leave it running:
 
    ```sh
-   hikari up compose.yaml
+   hikari up topology.yaml
    ```
 
-   The terminal shows the web UI address. On their first start, the owner agents read their code, write their wikis and maps, and run their tests. A large repository takes many minutes.
+   The terminal shows the web UI address. On their first start, the partition agents read their code, write their wikis and maps, and run their tests. A large repository takes many minutes.
 
-7. The skill waits until each owner has recorded its tests. Then it writes `onboarding/baseline.md`, with every test and its outcome. A failing test is part of the baseline, not a reason to change code.
+7. The skill waits until each partition agent has recorded its tests. Then it writes `onboarding/baseline.md`, with every test and its outcome. A failing test is part of the baseline, not a reason to change code.
 
 8. Stop hikari with Ctrl-C when the skill says that containerize is done.
 
@@ -129,7 +129,7 @@ Run the second skill in the same project:
 
 ### Analysis
 
-One subagent reads each repository, its owner's map, and the baseline. Each writes a report in `onboarding/analysis/`. The session then writes `onboarding/analysis/synthesis.md`: the duplicated code, the boundaries it proposes, and the suites it leaves for integration. It then asks you its questions in one message.
+One subagent reads each repository, its partition agent's map, and the baseline. Each writes a report in `onboarding/analysis/`. The session then writes `onboarding/analysis/synthesis.md`: the duplicated code, the boundaries it proposes, and the suites it leaves for integration. It then asks you its questions in one message.
 
 Answer each question in the conversation. You can also write an answer in the `## Your answers` section of a report. Some answers are yours alone:
 
@@ -141,20 +141,20 @@ Answer each question in the conversation. You can also write an answer in the `#
 
 The session writes:
 
-- `compose.target.yaml`: the whole target topology. `hikari check -draft compose.target.yaml` checks it, even though its new repositories do not exist yet.
-- `onboarding/topology.md`: each system and library in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
+- `topology.target.yaml`: the whole target topology. `hikari check -draft topology.target.yaml` checks it, even though its new repositories do not exist yet.
+- `onboarding/topology.md`: each partition and library in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
 - Drafts of the stories, rules, and principles of the public wiki, in `onboarding/wiki/public/`.
 
-**Agree on the stories.** A story is a flow across systems, such as a sign-up from the terminal to the server. Its support, the health of the features it links, must pass at the end.
+**Agree on the stories.** A story is a flow across partitions, such as a sign-up from the terminal to the server. Its support, the health of the features it links, must pass at the end.
 
-Every boundary states one of three reasons: a library that two or more systems need, a client and a server, or two concerns that stay in one repository. If you disagree with a boundary, say so, and the session revises the design.
+Every boundary states one of three reasons: a library that two or more partitions need, a client and a server, or two concerns that stay in one repository. If you disagree with a boundary, say so, and the session revises the design.
 
 ### Change plan and review
 
 The session writes:
 
 - a project plan, `onboarding/wiki/public/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
-- a system plan for each owner;
+- a partition plan for each partition agent;
 - the ledger, `onboarding/verification.md`, which gives the planned place of every baseline test: kept, left for integration, or dropped with a reason. A drop waits for your approval.
 
 Fresh reviewer subagents then look for what would break, in rounds. Each round's findings and their resolutions are in `onboarding/review/<n>.md`. A round with only minor findings ends the review. After four rounds that still have serious findings, the session stops and asks you how to go on.
@@ -170,7 +170,7 @@ Tell the session to start the restructure. hikari must be stopped.
 1. **The restructure.** The session does the steps whose actor is `session`:
    - it makes each new repository from the moved code, with its history;
    - it installs the drafts, the deliverables, and the target topology;
-   - it moves the documents of each feature that changes systems.
+   - it moves the documents of each feature that changes partitions.
 
    It commits each change as you, on the hikari branch of each repository. Your own branches do not change.
 
@@ -179,10 +179,10 @@ Tell the session to start the restructure. hikari must be stopped.
 3. **Start hikari** again:
 
    ```sh
-   hikari up compose.yaml
+   hikari up topology.yaml
    ```
 
-4. **Start the plan.** When the new systems have finished their first turns, post the message that the session gives you in the room, in the web UI. It looks like this:
+4. **Start the plan.** When the new partitions have finished their first turns, post the message that the session gives you in the room, in the web UI. It looks like this:
 
    ```
    @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-orchestration skill.
@@ -190,11 +190,11 @@ Tell the session to start the restructure. hikari must be stopped.
 
    Agents act on a plan only when you ask.
 
-5. **Watch.** The orchestrator posts the state of each step in the room. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. When a step waits for you or for the session, the orchestrator says so in the room.
+5. **Watch.** The orchestration agent posts the state of each step in the room. It sends a step to its partition agent only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The partition agents change only their own code. When a step waits for you or for the session, the orchestration agent says so in the room.
 
-   If an owner reports that a step cannot be done as written, the orchestrator tells you. The session proposes a change to the plan, and changes it only with your approval.
+   If a partition agent reports that a step cannot be done as written, the orchestration agent tells you. The session proposes a change to the plan, and changes it only with your approval.
 
-6. When the orchestrator reports every step done, stop hikari, and tell the session.
+6. When the orchestration agent reports every step done, stop hikari, and tell the session.
 
 ## 5. Verify
 
@@ -206,13 +206,13 @@ The session:
 4. asks your approval to run `hikari push`, which pushes the hikari branch of each linked repository and then of the project;
 5. runs a dry run: it clones the project into a temporary folder, runs `hikari sync` and `hikari check`, and starts hikari there until every agent connects.
 
-The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the systems, their releases, the suites left for integration, and the stories.
+The dry run proves that a teammate gets the same project from one clone. When every check holds, the session sets the stage to `hikify: done`, and sums up the partitions, their releases, the suites left for integration, and the stories.
 
 ## After onboarding
 
 - **Review and merge.** The agents' work and the restructure are on the hikari branch of each repository, or on your own branch when you set `HIKARI_BRANCH`. Review them and merge them into your own branches with git. hikari never merges.
 - **Keep `onboarding/`.** It records why the project has its shape: the reports, the decisions, the reviews, and the ledger.
-- **Keep working.** The project is now an ordinary hikari project. Plan new work as plan documents in the wikis, and ask the orchestrator to carry them out.
+- **Keep working.** The project is now an ordinary hikari project. Plan new work as plan documents in the wikis, and ask the orchestration agent to carry them out.
 
 ## Teammates
 
@@ -228,7 +228,7 @@ A teammate starts from a clone of the project repository:
 2. Clone the linked repositories, and start from a teammate's branch:
 
    ```sh
-   hikari sync -from hikari-alex compose.yaml
+   hikari sync -from hikari-alex topology.yaml
    ```
 
    `sync` never merges, rebases, or resets. It reports how each branch compares with the remote, and names each map whose commit was not pushed.
@@ -242,13 +242,13 @@ A teammate starts from a clone of the project repository:
 4. Check and start:
 
    ```sh
-   hikari check compose.yaml
-   hikari up compose.yaml
+   hikari check topology.yaml
+   hikari up topology.yaml
    ```
 
-A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the other machine recorded. On its first turn, each owner runs its tests again.
+A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the other machine recorded. On its first turn, each partition agent runs its tests again.
 
-To share your agents' work, run `hikari push compose.yaml`. It pushes your branch of each linked repository first, then of the project. It never forces.
+To share your agents' work, run `hikari push topology.yaml`. It pushes your branch of each linked repository first, then of the project. It never forces.
 
 ## Stop and continue later
 
@@ -260,8 +260,8 @@ The skills commit each of their files at once, as you, so the project is always 
 
 | Path | What it holds |
 |---|---|
-| `compose.yaml` | the topology that hikari runs |
-| `compose.target.yaml` | the target topology, until the restructure replaces `compose.yaml` with it |
+| `topology.yaml` | the topology that hikari runs |
+| `topology.target.yaml` | the target topology, until the restructure replaces `topology.yaml` with it |
 | `repos/<name>/` | the clone of each linked repository; git ignores it |
 | `onboarding/state.md` | the stage, your decisions, and the open questions |
 | `onboarding/baseline.md` | every test and its outcome at the end of containerize |
@@ -278,23 +278,23 @@ The skills commit each of their files at once, as you, so the project is always 
 | Command | What it does |
 |---|---|
 | `hikari init <dir>` | makes a new project repository |
-| `hikari sync [-from <branch>] compose.yaml` | clones missing repositories, makes your branches from the remote, writes the skills, and reports what was not pushed |
-| `hikari check compose.yaml` | runs every check of `hikari up`, and starts nothing |
-| `hikari check -draft compose.target.yaml` | checks a target topology whose new repositories do not exist yet |
-| `hikari status [-tests] compose.yaml` | shows each system's map and recorded tests; with `-tests`, each test |
-| `hikari up compose.yaml` | starts the project |
-| `hikari push compose.yaml` | pushes your branches, linked repositories first |
+| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote, writes the skills, and reports what was not pushed |
+| `hikari check topology.yaml` | runs every check of `hikari up`, and starts nothing |
+| `hikari check -draft topology.target.yaml` | checks a target topology whose new repositories do not exist yet |
+| `hikari status [-tests] topology.yaml` | shows each partition's map and recorded tests; with `-tests`, each test |
+| `hikari up topology.yaml` | starts the project |
+| `hikari push topology.yaml` | pushes your branches, linked repositories first |
 
 ## Problems and fixes
 
 | What you see | What to do |
 |---|---|
-| `the linked repo <name> is not cloned` | Run `hikari sync compose.yaml`. |
+| `the linked repo <name> is not cloned` | Run `hikari sync topology.yaml`. |
 | `<repo> has uncommitted changes` | Commit or stash the changes it names, then start again. |
-| `cannot listen on 127.0.0.1:7420` | Another hikari runs. Stop it, or start with `hikari up -listen 127.0.0.1:7431 compose.yaml`. |
-| `the linked repo <name> is not used by any system yet` | A warning during containerize, before the skill writes the systems. It is normal. |
-| An image fails to build, or an owner cannot run its tests | Tell the session. It fixes the Dockerfile or the test command, and asks you to restart hikari. |
-| A change to a system's `test` command has no effect | The `test` key seeds only the first suite of a new system. Ask the owner to change its suite instead. |
+| `cannot listen on 127.0.0.1:7420` | Another hikari runs. Stop it, or start with `hikari up -listen 127.0.0.1:7431 topology.yaml`. |
+| `the linked repo <name> is not used by any partition yet` | A warning during containerize, before the skill writes the partitions. It is normal. |
+| An image fails to build, or a partition agent cannot run its tests | Tell the session. It fixes the Dockerfile or the test command, and asks you to restart hikari. |
+| A change to a partition's `test` command has no effect | The `test` key seeds only the first suite of a new partition. Ask the partition agent to change its suite instead. |
 | `hikari sync` reports a map whose commit is missing | A teammate pushed the project but not their linked repositories. Ask them to run `hikari push`. |
 | The review stops after four rounds | Read the open findings in `onboarding/review/`, then tell the session to revise, to run one more round, or to go on. |
 | The session asks to push or to create a remote | Approve only the action that it names, or run the command yourself. |
