@@ -57,7 +57,7 @@ The test command runs every suite that can run in the container, and writes one 
 
 Write `instructions` from the repository's `CLAUDE.md` and contributor docs: the conventions an agent must follow in that code. Leave out what only applies to a person's machine. Add the suites that the partition agent must not run, and why.
 
-Then write the orchestration agent, and name it in `x-hikari.orchestration`, as `references/topology.md` shows.
+Then write one orchestration agent, with the project's purpose as its `description`, and name it in `x-hikari.orchestration`, as `references/topology.md` shows. `hikari init` already wrote one, `orchestrator`; keep it and give it the description.
 
 ### 6. Check
 
@@ -86,7 +86,7 @@ Ask the user to start hikari in a terminal of their own and leave it running:
 hikari up topology.yaml
 ```
 
-The first start builds each image. On their first turns, the partition agents read their code, write their wikis and maps, and run and record their suites. Check progress with:
+The first start builds each image. On their first turns, the partition agents read their code, write their feature maps, and run and record their suites. hikari applies what each partition agent changes as commits on the project branch of its repository; containerize changes no code, so these commits should hold only the code map and the test map, in `.hikari/private/` of each repository. Check progress with:
 
 ```sh
 hikari status topology.yaml

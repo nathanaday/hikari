@@ -1,11 +1,22 @@
 ---
 name: hikify
-description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of isolated partitions and libraries, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into partitions, extract shared libraries, or plan the target topology.
+description: Design the refactor of a containerized hikari project with the user - analyze each repository, draft a target topology of partitions of folders and libraries and the orchestration feature map, write the change plan, and have fresh reviewers check it until it holds. Use in a hikari project repository after containerize-repo is done, when the user wants to hikify, refactor for hikari, split repositories into partitions, extract shared libraries, or plan the target topology.
 ---
 
 # Hikify: design the refactor
 
 You work for the user in their own Claude Code session, in a hikari project repository. The project is containerized: each repository runs as one hikari partition, its partition agent has mapped it, and `onboarding/baseline.md` records every test. You design how the project becomes a set of isolated partitions behind clean interfaces, and then you carry the design out with hikari's agents. The design is yours to draft and the user's to decide. Until the user approves it, nothing in the running project changes: the design stays in `onboarding/` and `topology.target.yaml`.
+
+You draft every document of the vault in `onboarding/vault/`, which mirrors the vault: a draft sits at the path where it will live, and the restructure copies the tree into `vault/` as it is.
+
+| Draft | Where you write it |
+|---|---|
+| a rule, a principle, or the project plan of the public wiki | `onboarding/vault/public/wiki/<doc>.md` |
+| a new deliverable | `onboarding/vault/public/deliverables/<name>/` |
+| a feature of the orchestration feature map | `onboarding/vault/orchestration/read-only/features/<doc>.md` |
+| a partition's plan, or a first document of a new partition | `onboarding/vault/partitions/<id>/read-only/features/<doc>.md` |
+
+`<doc>` is the document's id. A partition's directory is named by its partition agent's id, `<id>`, the service key in the topology file.
 
 Read `references/principles.md` first. Every boundary and every plan step must keep its two principles.
 
@@ -32,16 +43,16 @@ Read `references/topology.md`.
 
 1. Write `topology.target.yaml`: the whole target topology. It starts from `topology.yaml`, and adds the partitions, libraries, and grants of the design. Each partition is a list of folders, and may take folders from more than one repository (`references/topology.md`). Run `hikari check -draft topology.target.yaml` until it passes.
 2. Write `onboarding/topology.md`: each partition and library in plain words; a diagram in a `mermaid` block; the reason for each split and merge, of one of the three kinds; each split you decided against, and why; each new repository, marked "to create".
-3. Draft the deliverable of each new library in `onboarding/shared/deliverables/<name>/`, as `references/topology.md` shows.
-4. Draft with the user the features of the orchestration feature map, each a flow across partitions, in `onboarding/wiki/orchestration/<id>.md`, and the rules and principles of the public wiki, in `onboarding/wiki/public/<id>.md`. Follow `references/orchestration.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Link the features of the partition agents' maps by their ids, which are in `vault/partitions/<partition>/read-only/features/`. Propose the flows that the suites left for integration check, and the flows across partitions that no test covers.
+3. Draft the deliverable of each new library in `onboarding/vault/public/deliverables/<name>/`, as `references/topology.md` shows.
+4. Draft with the user the features of the orchestration feature map, each a flow across partitions, in `onboarding/vault/orchestration/read-only/features/<id>.md`, and the rules and principles of the public wiki, in `onboarding/vault/public/wiki/<id>.md`. Follow `references/orchestration.md` for the format, and `references/wiki.md` for the rules of ids and links. Ignore the tools that those references name; they are the agents'. You write the drafts as files. Each orchestration feature links the partition features that it is made of, by their ids, which are in `vault/partitions/<id>/read-only/features/`. Propose the flows that the suites left for integration check, and the flows across partitions that no test covers.
 5. Commit. Show the user the topology in a few lines, the diagram's file, and the orchestration features. When the user agrees, set the stage to `hikify: plan`.
 
 ## Stage 3: Change plan
 
 Read `references/plan.md`.
 
-1. Write the project plan, `onboarding/wiki/public/hikify-plan.md`: every step, in order. Restructure steps come first, then the steps of the partition agents.
-2. Write the partition plan, `onboarding/wiki/systems/<partition>/hikify-plan-<partition>.md`, for each partition that has steps: that partition's steps, for its partition agent.
+1. Write the project plan, `onboarding/vault/public/wiki/hikify-plan.md`: every step, in order. Restructure steps come first, then the steps of the partition agents.
+2. Write the partition plan, `onboarding/vault/partitions/<id>/read-only/features/hikify-plan-<id>.md`, for each partition that has steps: that partition's steps, for its partition agent.
 3. Write the ledger, `onboarding/verification.md`: every test of the baseline, and every suite that containerize left out, once each, with its planned place.
 4. Check the ledger. Count the test ids in `onboarding/baseline.md` and in the ledger, and fix every id that is missing or appears twice.
 5. Commit, and set the stage to `hikify: review`.

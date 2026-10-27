@@ -68,7 +68,7 @@ A partition with folders from two repositories, and a read-only folder. Each fol
 
 ## Deliverables
 
-A library publishes a release of a deliverable: a kind of product, with rules for its files. The topology grants it with `grants.deliverables`. Draft each new deliverable in `onboarding/shared/deliverables/<name>/`. Execution copies it to `vault/public/deliverables/<name>/`. A deliverable that the vault already has needs no draft.
+A library publishes a release of a deliverable: a kind of product, with rules for its files. The topology grants it with `grants.deliverables`. Draft each new deliverable in `onboarding/vault/public/deliverables/<name>/`, which the restructure copies to `vault/public/deliverables/<name>/`. A deliverable that the vault already has needs no draft.
 
 `deliverable.yaml`:
 

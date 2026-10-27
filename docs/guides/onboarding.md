@@ -111,7 +111,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
    hikari up topology.yaml
    ```
 
-   The terminal shows the web UI address. On their first start, the partition agents read their code, write their wikis and maps, and run their tests. A large repository takes many minutes.
+   The terminal shows the web UI address. On their first start, the partition agents read their code, write their feature maps, and run their tests. A large repository takes many minutes.
 
 7. The skill waits until each partition agent has recorded its tests. Then it writes `onboarding/baseline.md`, with every test and its outcome. A failing test is part of the baseline, not a reason to change code.
 
@@ -143,7 +143,7 @@ The session writes:
 
 - `topology.target.yaml`: the whole target topology. `hikari check -draft topology.target.yaml` checks it, even though its new repositories do not exist yet.
 - `onboarding/topology.md`: each partition and library in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
-- Drafts of the features of the orchestration feature map, in `onboarding/wiki/orchestration/`, and of the rules and principles of the public wiki, in `onboarding/wiki/public/`.
+- Drafts of the features of the orchestration feature map, in `onboarding/vault/orchestration/read-only/features/`, and of the rules and principles of the public wiki, in `onboarding/vault/public/wiki/`. `onboarding/vault/` mirrors the vault, so each draft is already at the path where it will live.
 
 **Agree on the orchestration features.** An orchestration feature is a flow across partitions, such as a sign-up from the terminal to the server. Its health, computed from the partition features it links, must pass at the end.
 
@@ -153,7 +153,7 @@ Every boundary states one of three reasons: a library that two or more partition
 
 The session writes:
 
-- a project plan, `onboarding/wiki/public/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
+- a project plan, `onboarding/vault/public/wiki/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
 - a partition plan for each partition agent;
 - the ledger, `onboarding/verification.md`, which gives the planned place of every baseline test: kept, left for integration, or dropped with a reason. A drop waits for your approval.
 
@@ -267,7 +267,7 @@ The skills commit each of their files at once, as you, so the project is always 
 | `onboarding/baseline.md` | every test and its outcome at the end of containerize |
 | `onboarding/analysis/` | a report for each repository, and the synthesis |
 | `onboarding/topology.md` | the target topology in plain words, with a diagram |
-| `onboarding/wiki/` | drafts of wiki documents and plans, until the restructure installs them |
+| `onboarding/vault/` | drafts of the vault's documents, plans, and deliverables, at the paths where they will live, until the restructure copies them into `vault/` |
 | `onboarding/review/<n>.md` | the findings of each review round, with their resolutions |
 | `onboarding/verification.md` | the ledger: where each baseline test goes, and the result |
 | `.claude/skills/` | the two skills; `hikari sync` replaces them, so do not edit them |

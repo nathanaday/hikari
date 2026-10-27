@@ -2,7 +2,7 @@
 
 ## The project plan
 
-`onboarding/wiki/public/hikify-plan.md` is a plan document of the public wiki. Its id is `hikify-plan`, which must be unique in the vault.
+`onboarding/vault/public/wiki/hikify-plan.md` is a plan document of the public wiki. Its id is `hikify-plan`, which must be unique in the vault.
 
 ```markdown
 ---
@@ -49,7 +49,7 @@ Order: restructure steps first. Then a library's release before its consumers mo
 
 ## The partition plan
 
-`onboarding/wiki/systems/<partition>/hikify-plan-<partition>.md` holds the steps of one partition, with the same fields, for its partition agent. It is a plan document of the feature map. It repeats the project plan's step ids, so that the partition agent and the orchestration agent name a step the same way.
+`onboarding/vault/partitions/<id>/read-only/features/hikify-plan-<id>.md` holds the steps of one partition, with the same fields, for its partition agent, whose id is `<id>`. It is a plan document of that partition's feature map. It repeats the project plan's step ids, so that the partition agent and the orchestration agent name a step the same way.
 
 ## The ledger
 

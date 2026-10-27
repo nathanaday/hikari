@@ -1,12 +1,16 @@
 package onboard
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nathanaday/hikari/internal/api"
 )
 
 func TestWrite(t *testing.T) {
@@ -69,5 +73,54 @@ func TestSkillsNameEachOther(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestNamesBuilt checks M4 of the Hikari agent spec: the host skills name
+// only the built-in skills, the agents' tools, and hikari's commands.
+func TestNamesBuilt(t *testing.T) {
+	src, _ := filepath.Glob("../mcpserver/*.go")
+	tools := map[string]bool{}
+	for _, f := range src {
+		data, _ := os.ReadFile(f)
+		for _, m := range regexp.MustCompile(`Name: +"([a-z_]+)"`).FindAllStringSubmatch(string(data), -1) {
+			tools[m[1]] = true
+		}
+	}
+	main, _ := os.ReadFile("../../cmd/hikari/main.go")
+	notTools := []string{"network_mode", "node_modules", "junit_family", "read_only"}
+	snake := regexp.MustCompile("`([a-z]+(?:_[a-z]+)+)`")
+	skill := regexp.MustCompile(`hikari-[a-z]+(?:-[a-z]+)*`)
+	command := regexp.MustCompile("`hikari ([a-z]+)")
+	fs.WalkDir(skills, "skills", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, _ := skills.ReadFile(p)
+		text := string(data)
+		for _, m := range snake.FindAllStringSubmatch(text, -1) {
+			if !tools[m[1]] && !slices.Contains(notTools, m[1]) {
+				t.Errorf("%s names %s, which is no tool", p, m[1])
+			}
+		}
+		for _, name := range skill.FindAllString(text, -1) {
+			if name != "hikari-agent" && !slices.Contains(api.BuiltinSkills, name) {
+				t.Errorf("%s names %s, which is no built-in skill", p, name)
+			}
+		}
+		for _, m := range command.FindAllStringSubmatch(text, -1) {
+			if !strings.Contains(string(main), `case "`+m[1]+`"`) {
+				t.Errorf("%s names hikari %s, which is no command", p, m[1])
+			}
+		}
+		for _, old := range []string{"onboarding/wiki", "onboarding/shared"} {
+			if strings.Contains(text, old) {
+				t.Errorf("%s drafts in %s; drafts go in onboarding/vault/", p, old)
+			}
+		}
+		return nil
+	})
+	if !tools["apply"] || len(tools) < 10 {
+		t.Fatalf("read the tools from the mcpserver sources: %v", tools)
 	}
 }
