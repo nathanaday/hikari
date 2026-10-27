@@ -4,6 +4,8 @@ Status: built. Checked in a live run of the shop: inventory loaded the `python-l
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Sources: `docs/brainstorm/deliverables.md` and `deliverables-answers.md`. This spec replaces section 5 (Releases) of `docs/specs/shared-store.md`, its rules R1 to R11, its decisions 1 and 7 where they concern releases, and the `release-docs` skill (H5).
 
 ## Summary

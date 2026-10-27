@@ -1,6 +1,10 @@
 # Spec: the topology is a compose file
 
-Status: built. Changes made during the build:
+Status: built.
+
+Hubs were removed in `remove-hubs.md`.
+
+Changes made during the build:
 
 - hikari pulls an agent's image with `docker pull` only when the image is not on the machine. `docker compose pull --policy missing` tried to pull local images, such as `hikari-agent`, from a registry.
 - Sidecars may not set the host-level keys of C7 either (`privileged`, `cap_add`, `devices`, `pid`, `ipc`, `userns_mode`, `volumes_from`), not only the network keys. A privileged sidecar could reach the host, and so the repos.

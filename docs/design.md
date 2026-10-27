@@ -25,9 +25,9 @@ it is planted.
 
 ## Ids and names
 
-Every agent, hub, and repo has an id and a name. The id keys what lives
-outside the compose file: store directories, vocabulary files, release
-manifests, containers, networks, and clones. The name is what people and
+Every agent and repo has an id and a name. The id keys what lives outside
+the compose file: store directories, release manifests, containers,
+networks, and clones. The name is what people and
 agents use. A rename then changes one field, and the store and the
 releases stay as they are; a release is
 immutable, so it could not follow a rename anyway.
@@ -41,29 +41,35 @@ topology by name, so that everything agents and the UI reach works in
 names. hikari writes every mount, so a mount's source is keyed by id and its
 target by name: an agent never sees an id.
 
-## Hubs, not a free graph
+## One room
 
-The topology is a set of hubs. Each hub has one orchestrator and zero or more
-members, and the user is in every hub. Everyone in a hub can post to it, and
-any two nodes that share a hub can send direct messages to each other.
+A project is one room. The user and every agent are in it, everyone in it
+receives every post, and any two of them can send direct messages to each
+other. `x-hikari.orchestration` names the orchestrator by its service id,
+and every other agent owns a system. A key at the top of the file allows
+one orchestrator and makes two impossible to write. A project with no
+orchestrator is valid too.
 
-A hub matches how a team works: one agent coordinates, the others do focused
-work, and everyone can read the room. An agent that is a member of one hub and
-the orchestrator of another connects the two, so a tree of hubs gives a
-hierarchy in which each agent sees only its own rooms. Direct messages keep a
-side conversation out of the room, but they never reach outside the hubs that
-two nodes share.
+One orchestrator and its owners is the team that a project needs today: one
+agent coordinates, the others do focused work, and everyone can read the
+room. hikari once split a project into hubs, each with its own orchestrator
+and members, so that a tree of hubs gave a hierarchy in which each agent saw
+only its own rooms. The wake rules, the direct messages, the systems that an
+orchestrator saw, the vocabularies, and the wikis all followed from the hub
+list. A tree of hubs can come back when a project needs islands.
 
 ## Not every post starts a turn
 
-Every participant of a hub receives every post, but a post starts a turn at
-once only for the orchestrator, for each participant that the post mentions as
-`@name`, and for all members when the orchestrator posts without mentions.
-Other participants read the post at the start of their next turn.
+Every participant receives every post, but a post starts a turn at once only
+for the orchestrator, for each agent that the post mentions as `@name`, and
+for every owner when the orchestrator posts without mentions. With no
+orchestrator, a post without mentions starts a turn for every agent. Other
+agents read the post at the start of their next turn. A direct message
+always starts a turn for its recipient.
 
-If every post started a turn for every member, one message in a room of N
+If every post started a turn for every agent, one message in a room of N
 agents would start N turns, and each reply would start N more. With these
-rules, the orchestrator decides who works, a member wakes another member only
+rules, the orchestrator decides who works, an owner wakes another owner only
 by name, and nothing is lost: every post still reaches every participant. The
 server records in each message which participants it woke, and the UI shows
 this under each post.
@@ -158,13 +164,28 @@ The owner changes the wiki through one tool that applies a set of writes as a
 whole, so that the files always have the schema and features in one change
 can link each other. A rename rewrites every link, which an agent editing
 files by hand would get wrong. The owner reads the files directly, and a
-user edits a document's `## Hub and system wikis
+user edits a document's `## Notes` section in Obsidian; the server reloads
+hand edits and keeps the last valid wiki when one breaks a rule. Findings,
+plans, and test health are not in the documents: they will be entities of
+their own that link features, so that each relation is computed instead of
+kept fresh by hand.
 
-The feature wiki became one of many wikis: every system and every hub has one,
-and a document has a kind. A system's features, principles, and rules, and a
-hub's stories, rules, and principles, share one format and one change model,
-because the reasons to check a header, to keep links as the only structure,
-and to apply a change as a whole are the same for every kind.
+Staleness is per feature. The server knows each feature's code paths from the
+code map, so a change in the code names the features it touches, and a
+changed path under no feature is how a missing feature gets found.
+
+A map records the commit that it describes; when files in the scope change
+after that commit, the map is `stale`, and the driver lists the changed paths
+in the owner's next prompt.
+
+## System wikis and the public wiki
+
+The feature wiki became one of many wikis: every system has one, and the
+project has a public wiki for what spans systems. A document has a kind. A
+system's features, principles, and rules, and the public wiki's stories,
+rules, and principles, share one format and one change model, because the
+reasons to check a header, to keep links as the only structure, and to
+apply a change as a whole are the same for every kind.
 
 Ids are unique across the store, which the feature wiki already required
 across systems. So `[[reserve-stock]]` names one document in any wiki, in
@@ -172,9 +193,9 @@ hikari and in Obsidian, and a story links the features of its systems with
 no other syntax. A link names a document by its last path segment, because
 Obsidian writes a path when two files share a name, as a release copy does.
 
-The user's plans and notes live beside the agents' documents, so that the
-wiki of a system or a hub is also where the user keeps what they intend for
-it. Agents read them and never change them. A file with no kind is a note,
+The user's plans and notes live beside the agents' documents, so that each
+wiki is also where the user keeps what they intend for its system or for the
+project. Agents read them and never change them. A file with no kind is a note,
 so that a page dropped into the folder in Obsidian is valid as it is. A
 hand edit is checked file by file: a broken document keeps its last valid
 version, and a broken link is a warning, because a wiki that refuses a note
@@ -189,24 +210,12 @@ user's, and hikari commits it with the user's identity: before an agent's
 next change of that wiki, at stop, and at start. Configuration in the shared
 area stays the user's to commit, because it changes how agents behave.
 
-An owner reads the wikis of its hubs, because their rules and principles
-apply to it, and an orchestrator reads the wikis of its child hubs, which
-speak for their systems as the child orchestrator does. Before each turn,
-an agent learns which documents of those wikis someone else changed.
-
-## Notes` section in Obsidian; the server reloads
-hand edits and keeps the last valid wiki when one breaks a rule. Findings,
-plans, and test health are not in the documents: they will be entities of
-their own that link features, so that each relation is computed instead of
-kept fresh by hand.
-
-Staleness is per feature. The server knows each feature's code paths from the
-code map, so a change in the code names the features it touches, and a
-changed path under no feature is how a missing feature gets found.
-
-A map records the commit that it describes; when files in the scope change
-after that commit, the map is `stale`, and the driver lists the changed paths
-in the owner's next prompt.
+Every agent reads the public wiki, because its rules and principles apply to
+every agent, and only the orchestrator writes it. It lives in
+`store/shared/wiki/`, which every container already mounts read-only, so it
+needs no mount of its own. The orchestrator also reads every system wiki.
+Before each turn, an agent learns which documents of the wikis it reads
+someone else changed.
 
 ## Tests and health
 
@@ -248,19 +257,19 @@ stay on the host between runs, like the map in the store. A rename in the
 wiki follows into the test map, the code map, and the recorded hashes, so
 that a rename never makes results pending or leaves a private file invalid.
 
-## Orchestrators see what they orchestrate
+## The orchestrator sees every system
 
-An orchestrator reads only the systems of the direct members of its hubs. In
-a tree of hubs, a parent orchestrator does not see the systems of a child
-hub; the child hub's orchestrator speaks for them, as a manager speaks for a
-team. Workers read no other system's map. When an owner is blocked by
-another system, it asks its orchestrator.
+The orchestrator reads the map of every system, because it plans across all
+of them. Owners read no other system's map. When an owner is blocked by
+another system, it asks the orchestrator.
 
-## A vocabulary for each hub
+## One vocabulary
 
 Owners cannot read each other's maps, so they cannot agree on names by
-themselves. The orchestrator of each hub keeps a vocabulary of terms and
-interface names. Matching interface names is how the orchestrator connects
+themselves. The orchestrator keeps the project's vocabulary of terms and
+interface names in `store/shared/vocabulary/terms.yaml`, which every agent
+reads. hikari reads only `terms.yaml` and ignores the other files of the
+directory. Matching interface names is how the orchestrator connects
 systems: "orders consumes `Stock.reserve`, which inventory provides". The
 server never rejects a map change because of the vocabulary, because a map
 must describe what the code does. It flags names that the vocabulary lacks,
@@ -360,7 +369,7 @@ person reads.
 
 Hikify designs before it changes anything. The design stays in
 `onboarding/` and `compose.target.yaml` until you approve it, because the
-target's new hubs and systems have no wiki in the store yet. A difference
+target's new systems have no wiki in the store yet. A difference
 in behavior between two copies of code is always your question: the skill
 never picks one. Fresh reviewers check the plan in rounds, and a reviewer
 told to find faults always finds a minor one, so a round of minor findings
@@ -454,7 +463,8 @@ when its prompt is answered.
 ## One server routes all messages
 
 Every message goes through the server. The server knows the topology, checks
-each message against the hubs, and records each message in the log.
+the sender and the recipient of each message, and records each message in
+the log.
 
 The other option was to connect agents directly, with Docker networks that
 follow the topology. That design spreads the topology across Docker networks,
@@ -505,8 +515,8 @@ the driver tool calls and cost for each turn.
 
 ## The topology is edited as text, one node at a time
 
-The UI changes the topology through operations, such as `rename_hub` or
-`add_member`, and the server turns each operation into a change of the
+The UI changes the topology through operations, such as `rename` or
+`set_orchestration`, and the server turns each operation into a change of the
 compose file's text. A plain encoder would write the whole file again: it
 drops blank lines, moves comments, and writes `<<: *agent` as
 `!!merge <<: *agent`. So each operation splices only the YAML nodes that it
@@ -618,7 +628,7 @@ sees recent turns and not a growing log; the run's log file keeps all of it.
 In headless mode Claude Code has no way to ask a question: `AskUserQuestion`
 is not available, and the text that ends a turn goes to nobody. hikari does
 not forward that text as a message, because most of it is a status line and
-forwarding it would flood the hubs. Instead the system prompt says that the
+forwarding it would flood the room. Instead the system prompt says that the
 closing text reaches no one and that questions go by message, and the UI
 shows the closing text in the turn's card, marked when the agent sent no
 message during the turn, and highlighted when it asks something.

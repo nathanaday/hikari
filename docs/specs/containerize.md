@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-23 of the onboard example: a headless Claude Code session in the project ran the skill with the two `file://` URLs and the user's approvals in the request. It linked and cloned both repositories, surveyed them with two subagents, and added `__pycache__/` and `.pytest_cache/` to each repository's `.gitignore`, the only change to their files. It wrote a Dockerfile and a system for each, left out `tests/browser` with the reason, and built each image and ran each test command once. `hikari check` passed. After `hikari up`, both owners mapped their code and recorded their suites (server 5 of 5, cli 3 of 3). The server's owner recorded the browser page as a gap of its test map. The session then wrote `onboarding/baseline.md` with every test and set the stage to `containerize: done`. Every commit of the session has the user's identity, and nothing was pushed.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **A linked repo that no system uses yet is a warning** (topology). The session links the repositories in step 2 and writes their systems in step 5, but the topology refused a repo that no system used, so `hikari sync` failed. Found in the live run. A path repo that no system uses is still an error.

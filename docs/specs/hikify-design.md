@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-23 on the containerized onboard 
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **A round of minor findings ends the review** (RV4). Reviewers who are told to find faults always find a minor one. The live run needed five rounds on a project of two small repositories, and its findings still stood. Now a round whose findings that stand are all minor ends the review, once the session resolves them. Four rounds with serious findings still stop for the user.

@@ -4,6 +4,8 @@ Status: built, except the onboarding of P3 (decision 7), which waits for the use
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **A tester's environment override is written to its private `environment/` folder.** hikari wrote `.environment.override.yaml`, which holds this machine's paths, into the tester's scope, where the tester's commit picked it up. The session found it during verification. The folder is already out of git (LG2), and a Docker test now checks that the scope stays clean.

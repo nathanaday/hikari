@@ -3,7 +3,7 @@
 This guide shows you how to turn a set of existing git repositories into a hikari project. You start from an empty project. You then work with Claude Code in two skills:
 
 - `containerize-repo` runs each repository in hikari, with no change to its code.
-- `hikify` refactors the repositories into isolated systems, shared libraries, and tested hub stories, as you decide.
+- `hikify` refactors the repositories into isolated systems, shared libraries, and tested stories, as you decide.
 
 You are the authority on the layout of your project. The skills propose, show, and ask. They do not refactor code before you approve a plan. They do not push or create a remote repository unless you approve that action in the conversation.
 
@@ -44,7 +44,7 @@ Onboarding costs agent time. Each owner reads its whole repository on its first 
 |---|---|---|---|
 | 1. Make the project | you | run `hikari init` | an empty project repository |
 | 2. Containerize | your Claude Code session, then the owner agents | give the repository URLs, approve ignore lines, start hikari | one system for each repository, and a baseline of every test |
-| 3. Design | your session, with reviewer subagents | answer questions, pick key stories, approve the plan | a target topology, hub stories, a change plan, and a test ledger |
+| 3. Design | your session, with reviewer subagents | answer questions, approve the stories and the plan | a target topology, stories in the public wiki, a change plan, and a test ledger |
 | 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored systems |
 | 5. Verify | your session | approve the push | a checked ledger, and a proof that a fresh clone starts |
 
@@ -103,7 +103,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 4. **Approve the ignore lines.** When a repository does not ignore its build products, such as `__pycache__/` or `node_modules/`, the skill shows you the lines to add to its `.gitignore`. This is the only change that containerize makes in a repository. Without it, every machine commits the build products again.
 
-5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator and a hub. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
+5. **Review the systems.** The skill writes an agent Dockerfile, a test command, and instructions for each repository, plus an orchestrator, which it names in `x-hikari.orchestration`. It builds each image and runs each test command once. Then it shows you the systems and the suites that it left out, with the reason for each. A suite that is left out is not changed. It stays in its repository, and the design stage records it as left for integration.
 
 6. **Start hikari** when the skill asks, in a terminal of your own, and leave it running:
 
@@ -142,10 +142,10 @@ Answer each question in the conversation. You can also write an answer in the `#
 The session writes:
 
 - `compose.target.yaml`: the whole target topology. `hikari check -draft compose.target.yaml` checks it, even though its new repositories do not exist yet.
-- `onboarding/topology.md`: each system, library, and hub in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
-- Drafts of the hub's stories, rules, and principles, in `onboarding/wiki/hubs/<hub>/`.
+- `onboarding/topology.md`: each system and library in plain words, with a diagram, the reason for each boundary, and the splits it decided against. Read this file. It is what you approve, not the YAML.
+- Drafts of the stories, rules, and principles of the public wiki, in `onboarding/wiki/public/`.
 
-**Pick the key stories.** The session asks which stories are key. A key story is part of the integration test that matters most to you. Its support, the health of the features it links, must pass at the end.
+**Agree on the stories.** A story is a flow across systems, such as a sign-up from the terminal to the server. Its support, the health of the features it links, must pass at the end.
 
 Every boundary states one of three reasons: a library that two or more systems need, a client and a server, or two concerns that stay in one repository. If you disagree with a boundary, say so, and the session revises the design.
 
@@ -153,7 +153,7 @@ Every boundary states one of three reasons: a library that two or more systems n
 
 The session writes:
 
-- a hub plan, `onboarding/wiki/hubs/<hub>/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
+- a project plan, `onboarding/wiki/public/hikify-plan.md`, with each step in order, the actor of each step, what the step needs first, and when it is done;
 - a system plan for each owner;
 - the ledger, `onboarding/verification.md`, which gives the planned place of every baseline test: kept, left for integration, or dropped with a reason. A drop waits for your approval.
 
@@ -161,7 +161,7 @@ Fresh reviewer subagents then look for what would break, in rounds. Each round's
 
 When a fix needs a behavior that you have not decided, the session marks it as a proposal and asks you. Read the questions at approval with care.
 
-**Approve the plan.** Read `onboarding/topology.md`, the hub plan, and the ledger, then tell the session that you approve. It sets each plan to `approved`.
+**Approve the plan.** Read `onboarding/topology.md`, the project plan, and the ledger, then tell the session that you approve. It sets each plan to `approved`.
 
 ## 4. Carry out the plan
 
@@ -182,15 +182,15 @@ Tell the session to start the restructure. hikari must be stopped.
    hikari up compose.yaml
    ```
 
-4. **Start the plan.** When the new systems have finished their first turns, post the message that the session gives you in the hub, in the web UI. It looks like this:
+4. **Start the plan.** When the new systems have finished their first turns, post the message that the session gives you in the room, in the web UI. It looks like this:
 
    ```
-   @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-hub skill.
+   @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-orchestration skill.
    ```
 
    Agents act on a plan only when you ask.
 
-5. **Watch.** The orchestrator posts the state of each step in the hub. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. When a step waits for you or for the session, the orchestrator says so in the hub.
+5. **Watch.** The orchestrator posts the state of each step in the room. It sends a step to its owner only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The owners change only their own code. When a step waits for you or for the session, the orchestrator says so in the room.
 
    If an owner reports that a step cannot be done as written, the orchestrator tells you. The session proposes a change to the plan, and changes it only with your approval.
 
@@ -202,7 +202,7 @@ The session:
 
 1. fills in the result of each row of the ledger from the recorded tests;
 2. asks you to approve each test that the plan drops;
-3. checks that every suite passes, and that the support of every key story is passing;
+3. checks that every suite passes, and that the support of every story is passing;
 4. asks your approval to run `hikari push`, which pushes the hikari branch of each linked repository and then of the project;
 5. runs a dry run: it clones the project into a temporary folder, runs `hikari sync` and `hikari check`, and starts hikari there until every agent connects.
 

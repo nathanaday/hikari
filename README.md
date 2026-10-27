@@ -4,11 +4,11 @@ Status: in development.
 
 ## About
 
-Hikari runs each Claude Code agent in its own Docker container and connects the agents through hubs that you define. A hub is a chat room with one orchestrator and its members. An agent can send messages only to the hubs it is in and to the agents it shares a hub with.
+Hikari runs each Claude Code agent in its own Docker container and connects the agents through one room. Every post in the room reaches everyone, and anyone can send a direct message to anyone.
 
-An agent can own a system: a directory of a git repo on your machine, mounted into its container. The owner is the only agent that can read or change that code, and it keeps a map of what the system does. Orchestrators never see code. They plan from the maps and ask the owners for changes.
+One agent can be the orchestrator, and every other agent owns a system: a directory of a git repo on your machine, mounted into its container. The owner is the only agent that can read or change that code, and it keeps a map of what the system does. The orchestrator never sees code. It plans from the maps and asks the owners for changes.
 
-You are a member of every hub, so you can post in any hub and send a direct message to any agent.
+You are in the room too, so you can post to everyone and send a direct message to any agent.
 
 ## Quickstart
 
@@ -38,12 +38,13 @@ You are a member of every hub, so you can post in any hub and send a direct mess
 ### Start
 
 ```sh
+make demo-repo
 make up
 ```
 
-This command builds the web UI, the `hikari` binaries, and the `hikari-agent` image. Then it starts the server and the example's compose project, with one container for each agent. The terminal shows each start-up step, then keeps the web UI address, the state of each agent, and the cost so far pinned at the bottom, with one line for each message above them. Open the web UI address. It contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
+`make demo-repo` writes the repo of the shop example, two small Python services, to `.hikari/demo/shop`, and seeds the example's store. `make up` starts the shop, and asks you to run `make demo-repo` first when its repo is missing. It builds the web UI, the `hikari` binaries, and the `hikari-agent` image. Then it starts the server and the shop's compose project, with one container for each agent: the orchestrator and the owners `orders` and `inventory`. The terminal shows each start-up step, then keeps the web UI address, the state of each agent, and the cost so far pinned at the bottom, with one line for each message above them. Open the web UI address. It contains a secret token, so do not share it. Press Ctrl-C to stop all containers.
 
-The web UI's Topology view shows the compose file in two tabs. Structure is a form: a list of the project, repos, hubs, agents, and sidecars, and an inspector for the one you select, where you rename, add, remove, change members, systems, grants, and models. YAML is an editor of the file with the checks of `hikari check` as you type. Every save shows the lines of the file it changes before it writes them, and a rename offers to carry the new `@name` or `#name` into the wikis, place by place. An edit changes only the lines it needs, so your comments and layout stay. In a project repository, a save is a commit as you. The agents read the topology when they start, so a change applies at the next start; Stop and Start are in the view.
+The web UI's Topology view shows the compose file in two tabs. Structure is a form: a list of the project, repos, agents, and sidecars, and an inspector for the one you select, where you rename, add, and remove them, pick the orchestrator, and change systems, grants, and models. YAML is an editor of the file with the checks of `hikari check` as you type. Every save shows the lines of the file it changes before it writes them, and a rename of an agent offers to carry the new `@name` into the wikis and the vocabulary, place by place. An edit changes only the lines it needs, so your comments and layout stay. In a project repository, a save is a commit as you. The agents read the topology when they start, so a change applies at the next start; Stop and Start are in the view.
 
 `hikari up` opens `compose.yaml` in the current directory when you name no file. It prints the web UI address before it reads the file. When the file is missing or has errors, or a start check fails, it does not exit: it waits with the web UI open, so that you can create the project or fix the file there, and start the agents from the UI. You can stop the agents from the UI too, change the topology, and start them again in the same process. Ctrl-C stops everything.
 
@@ -51,30 +52,23 @@ Each run keeps its records in `.hikari/runs/<run-id>/`: `hikari.log` with everyt
 
 To have the latest `hikari` on your `PATH` everywhere, run `make install` after you pull or commit. It builds the binaries and copies `hikari` and its Linux builds to `/opt/hikari/bin`, which it adds to the system `PATH` in `/etc/paths.d/hikari`. The first run asks for `sudo` to make the directory and that entry; later runs do not. Set `HIKARI_PREFIX` to install somewhere else.
 
-To use a different network:
+To start another compose file:
 
 ```sh
-make up COMPOSE=examples/team/compose.yaml
-```
-
-To try systems on a small demo repo:
-
-```sh
-make demo-repo
-make up COMPOSE=examples/shop/compose.yaml
+make up COMPOSE=path/to/compose.yaml
 ```
 
 ## Usage
 
-The topology is a Docker compose file. Compose describes each agent's container, and the `x-hikari` keys, which compose ignores, describe the network: the hubs at the top, and each agent's role in its service. The name `user` always means you.
+The topology is a Docker compose file. Compose describes each agent's container, and the `x-hikari` keys, which compose ignores, describe the network: the orchestrator at the top, and each agent's role in its service. The name `user` always means you.
 
 ```yaml
-name: team                     # required; it names the containers, networks, and volumes
+name: shop                     # required; it names the containers, networks, and volumes
 
 x-hikari:
-  hubs:
-    product: {orchestrator: orchestrator, members: [writer, eng-orchestrator]}
-    eng: {orchestrator: eng-orchestrator, members: [dev]}
+  repos:
+    shop: {path: ~/code/shop, branch: hikari/demo}
+  orchestration: orchestrator  # optional; the service id of the orchestrator
 
 x-agent: &agent                # a YAML anchor, so that each service repeats less
   image: hikari-agent
@@ -83,49 +77,53 @@ x-agent: &agent                # a YAML anchor, so that each service repeats les
 services:
   orchestrator:
     <<: *agent
-    x-hikari: {description: Orchestrates product planning. Turns requests into tasks and reports the result.}
-  writer:
+    x-hikari: {description: Orchestrates the shop. Plans changes from the system maps.}
+  orders:
     <<: *agent
-    x-hikari: {description: Copywriter.}
-  eng-orchestrator:
+    x-hikari:
+      description: Owns order intake.
+      system: {repo: shop, scope: services/orders}
+  inventory:
     <<: *agent
-    x-hikari: {description: Orchestrates engineering.}
-  dev:
-    <<: *agent
-    x-hikari: {description: Developer., model: haiku}
+    x-hikari:
+      description: Owns stock levels and reservations.
+      model: haiku
+      system: {repo: shop, scope: services/inventory}
 ```
 
-In this network, `eng-orchestrator` is a member of `#product` and the orchestrator of `#eng`. It is the only path between the two hubs: `dev` cannot reach `orchestrator` or `writer`. Each agent sees the `description` of the other participants in its hubs. The `instructions` field of an agent goes into the system prompt of that agent only.
+`x-hikari.orchestration` names the orchestrator by its service id. It is optional, and the orchestrator owns no system. Every other agent owns a system: `hikari check` refuses an agent that does neither, as `agent "writer" owns no system and is not the orchestrator`. Each agent sees the `description` of everyone in the room. The `instructions` field of an agent goes into the system prompt of that agent only.
 
-Every participant of a hub receives every post. A post starts a turn at once only for:
+You and every agent are in one room, and everyone in it receives every post. A post starts a turn at once only for:
 
-- the orchestrator of the hub,
-- each participant that the post mentions as `@name`,
-- all members, when the orchestrator posts without mentions.
+- the orchestrator,
+- each agent that the post mentions as `@name`,
+- every owner, when the orchestrator posts without mentions.
 
-Other participants read the post at the start of their next turn. A direct message always starts a turn. These rules keep a room of agents from all answering at once.
+When the project has no orchestrator, a post without mentions starts a turn for every agent. Other agents read the post at the start of their next turn. Anyone can send a direct message to anyone, and a direct message always starts a turn for its recipient. These rules keep a room of agents from all answering at once.
 
 Compose reads the whole file, including `x-hikari`, so write `$$` for a literal `$` in instructions.
 
-Inside a container, every agent has the tools `post_to_hub`, `send_direct_message`, `list_hubs`, `check_inbox`, and `get_vocabulary`, and it sees its hikari documents under `/hikari`.
+Inside a container, every agent has the tools `post`, `send_direct_message`, `list_agents`, `check_inbox`, and `get_vocabulary`, and it sees its hikari documents under `/hikari`. `list_agents` lists everyone in the room with their role, `orchestrator`, `owner`, or `operator` for you, and their description.
 
 ### Names and ids
 
-Every agent, hub, and repo has an id, the key that the file writes, and a name. The name is the id unless a `name` field sets it, and the project's name is `x-hikari.name`:
+Every agent and repo has an id, the key that the file writes, and a name. The name is the id unless a `name` field sets it, and the project's name is `x-hikari.name`:
 
 ```yaml
 x-hikari:
-  name: Team Planning
-  hubs:
-    eng: {name: platform, orchestrator: eng-orchestrator, members: [dev]}
+  name: Shop Planning
+  orchestration: orchestrator
 
 services:
-  dev:
+  inventory:
     <<: *agent
-    x-hikari: {name: builder, description: Developer.}
+    x-hikari:
+      name: stock
+      description: Owns stock levels and reservations.
+      system: {repo: shop, scope: services/inventory}
 ```
 
-Agents and the UI use names: here you post in `#platform` and mention `@builder`. References in the file use ids, such as `members: [dev]`, so a rename changes one line. Everything outside the file is keyed by id: the store directories, the vocabulary files, the release manifests, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's or hub's id.
+Agents and the UI use names: here you mention `@stock`. References in the file use ids, such as `orchestration: orchestrator` or `releases: [inventory]`, so a rename changes one line. Everything outside the file is keyed by id: the store directories, the release manifests, the containers, and the clones. A rename therefore moves nothing; it takes effect at the next start. Names follow the rules of ids, and no name may be another agent's id or `user`.
 
 ### Systems
 
@@ -137,8 +135,6 @@ x-hikari:
     shop:
       path: ~/code/shop          # relative paths start at the compose file
       branch: hikari/checkout-v2 # agents commit here; you merge it
-  hubs:
-    shop: {orchestrator: orchestrator, members: [orders]}
 
 services:
   orders:
@@ -168,34 +164,34 @@ Four documents describe each system, and the owner is the only author of all fou
 
 The owner edits the private documents directly. The `hikari-system` skill in its container explains each document, what counts as a feature, and how to link; it comes with three read-only agents, `hikari-feature-survey`, `hikari-feature-review`, and `hikari-test-survey`, that read the code for an owner. Health is computed from the tests that touch each feature: `failing` when one of them failed, `pending` when one has not run since its file or the code it tests changed, `untested` when no test touches the feature, and otherwise `passing`. The owner never reports a count: the test runner writes the results. State is computed too: a feature is `stale` when its code changed since the documents were marked current. On its first start, an owner reads its code and builds the documents. When the code changes, hikari tells the owner which features are stale and which changed paths belong to no feature, and the owner updates them and marks the map current. You can open the store in Obsidian: every link resolves.
 
-An orchestrator reads the public maps of the systems in the hubs it orchestrates, and it keeps a vocabulary for each hub in `store/shared/vocabulary/<hub>.yaml`: the names that every agent uses for domain terms and interfaces. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
+The orchestrator reads the public map of every system, and it keeps the project's one vocabulary in `store/shared/vocabulary/terms.yaml`: the names that every agent uses for domain terms and interfaces. Every agent reads it with `get_vocabulary`, and the orchestrator changes it with `define_term`, `define_interface`, and `remove_entry`. With no orchestrator, only you change it. hikari reads only `terms.yaml` and ignores the other files of the directory. The orchestrator view flags interface names that are not in the vocabulary, and consumed interfaces that no system provides.
 
-The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test map. It also shows each hub's vocabulary and the shared area, with each deliverable's rules and holders.
+The UI shows each system with its public map, health, flags, and releases, and, marked private, its layout and test map. It also shows the vocabulary on the room's page, and the shared area, with each deliverable's rules and holders.
 
 ### Wikis
 
-Every system and every hub has a wiki: one markdown document per entry, each with a kind.
+Every system has a wiki, and the project has one public wiki: one markdown document per entry, each with a kind.
 
 | Kind | In | Who writes it | What it holds |
 |---|---|---|---|
 | `feature` | system | the owner | one thing the system does that someone relies on |
-| `principle` | system, hub | the owner, the orchestrator | a lasting choice that guides the work, with its reason |
-| `rule` | system, hub | the owner, the orchestrator | a statement that must always hold |
-| `story` | hub | the orchestrator | a flow that an actor goes through across systems, and its outcome |
-| `plan` | system, hub | you | work you intend, with a `status` |
-| `note` | system, hub | you | anything else; a file with no `kind` is a note |
+| `principle` | system, public | the owner, the orchestrator | a lasting choice that guides the work, with its reason |
+| `rule` | system, public | the owner, the orchestrator | a statement that must always hold |
+| `story` | public | the orchestrator | a flow that an actor goes through across systems, and its outcome |
+| `plan` | system, public | you | work you intend, with a `status` |
+| `note` | system, public | you | anything else; a file with no `kind` is a note |
 
-A hub's wiki is `store/hubs/<hub>/wiki/`. Its orchestrator writes it through `change_hub_wiki` and the `hikari-hub` skill. Every participant reads it at `/hikari/public/readonly/hubs/<hub>/wiki/`, and an orchestrator also reads the wikis of its child hubs. Ids are unique across the store, so `[[reserve-stock]]` names one document wherever it is written: a story of a hub links the features of its systems, and a feature can link the rules and principles of its hubs. The links across wikis show how the ecosystem fits together. A rename rewrites every link to the document in every wiki.
+The public wiki is `store/shared/wiki/`, and the UI and the API call it `public`. The orchestrator writes it through `change_public_wiki` and the `hikari-orchestration` skill. Every agent reads it at `/hikari/public/readonly/shared/wiki/`, and the orchestrator also reads every system wiki. Ids are unique across the store, so `[[reserve-stock]]` names one document wherever it is written: a story links the features of the systems, and a feature can link the rules and principles of the public wiki. The links across wikis show how the ecosystem fits together. A rename rewrites every link to the document in every wiki.
 
-Plans and notes are yours. Write them in Obsidian, where the store is one vault, or in the UI. Agents read them and never change them, and the prompts say to act on a plan only when you ask. You can write any document by hand; one of an agent's kinds must keep the rules of its kind. A hand edit that breaks one document affects only that document: hikari keeps its last valid version and shows the problem. You mark a key story, the stories that matter most to you, in the UI. Before each turn, an agent is told which documents of the wikis it reads were changed by someone else.
+Plans and notes are yours. Write them in Obsidian, where the store is one vault, or in the UI. Agents read them and never change them, and the prompts say to act on a plan only when you ask. You can write any document by hand; one of an agent's kinds must keep the rules of its kind. A hand edit that breaks one document affects only that document: hikari keeps its last valid version and shows the problem. Before each turn, an agent is told which documents of the wikis it reads were changed by someone else.
 
-`get_document` and `search_wiki` read any document of the wikis an agent can read, with the documents that link it. A hub's story, rule, or principle shows its support: the health of the features it links.
+`get_document` and `search_wiki` read any document of the wikis an agent can read, with the documents that link it. A story, rule, or principle of the public wiki shows its support: the health of the features it links.
 
-The Map view draws the topology as a force graph: each hub, each system, the repository its code is in, and the deliverables it holds, with dashed edges where one system reads another's releases or uses its interfaces. Lenses color the systems: Activity (cyan while the owner works, muted cyan while it waits), Tests (red for a failing feature, yellow for a pending one, green when they pass), and Git (magenta for uncommitted changes). Click a system or a hub and the camera moves into it, and it opens into its wiki map: one node per document, shaped by kind, with smaller nodes for the documents of other wikis that it links or that link it. The wiki lenses are Kind, Tests (a feature's health, a story's support), and Age. Click a document to read it beside the graph, with the documents that link it, and to edit it; the New button writes a document. Each hub page has a Wiki tab that lists its documents, key stories first. Back returns to the topology.
+The Map view draws the topology as a force graph: the orchestrator in the middle with an edge to each system, and each system with the repository its code is in and the deliverables it holds. A dashed edge joins two systems for each release grant, and where one system uses the other's interfaces. Lenses color the systems: Activity (cyan while the owner works, muted cyan while it waits), Tests (red for a failing feature, yellow for a pending one, green when they pass), and Git (magenta for uncommitted changes). Click a system and the camera moves into it, and it opens into its wiki map; click the orchestrator and it opens the public wiki's map. A wiki map has one node per document, shaped by kind, with smaller nodes for the documents of other wikis that it links or that link it. The wiki lenses are Kind, Tests (a feature's health, a story's support), and Age. Click a document to read it beside the graph, with the documents that link it, and to edit it; the New button writes a document. The room's Wiki tab lists the documents of the public wiki. Back returns to the topology.
 
 ### Suites of the whole application
 
-Each system's tests cover only its own code. A suite that needs a display, a browser, the whole application, or another system stays in its repository, outside every test command, and hikify records it in `onboarding/` as left for integration. hikari does not run these suites yet, so a hub's stories, rules, and principles have no health of their own: each shows its support.
+Each system's tests cover only its own code. A suite that needs a display, a browser, the whole application, or another system stays in its repository, outside every test command, and hikify records it in `onboarding/` as left for integration. hikari does not run these suites yet, so the stories, rules, and principles of the public wiki have no health of their own: each shows its support.
 
 ### Each agent's container
 
@@ -216,9 +212,9 @@ The store is one directory, `store/` next to the compose file unless `x-hikari` 
 
 ```
 store/
-  hubs/<hub>/wiki/<id>.md    the hub wiki: stories, rules, principles, and your plans and notes
   shared/                    every agent reads this
-    vocabulary/<hub>.yaml    the names each hub agreed on
+    wiki/<id>.md             the public wiki: stories, rules, principles, and your plans and notes
+    vocabulary/terms.yaml    the names the project agreed on
     policies/<name>.md       your rules for every agent; they go into every system prompt
     skills/<name>/SKILL.md   your Claude Code skills for every agent
     agents/<name>.md         your Claude Code subagent definitions
@@ -236,9 +232,9 @@ A deliverable is a named package that says what a release must contain and how i
 - `deliverable.yaml`: a description, optional layout rules on the files of the product as glob lists `require`, `allow`, and `forbid`, and optional targets, which promise that the product is also published to `github-release`, `dockerhub`, or `huggingface`.
 - `SKILL.md`: a Claude Code skill that tells the owner how to build the product. hikari installs it under the deliverable's name in each holder's container.
 
-An owner can hold several deliverables, so one system can publish, for example, a library and a container image. To publish, the owner loads the deliverable's skill, builds the product in `staging/<deliverable>/`, calls `check_release` to check it against the layout rules, then calls `publish_release` with a version and notes. When the deliverable has targets, the owner publishes there first, with the tools and credentials that compose gives its container, and gives one certificate for each target in the same call; hikari checks each certificate's shape and never uploads anything. hikari then writes the manifest, `release.yaml`, with who published, when, from which commit, with which hikari version, the certificates, and the digest of the product, writes `SHA256SUMS`, moves the product into `releases/<deliverable>/<version>/product/` with a copy of the public map, and announces the release in the owner's hubs. The shop example's `python-library` deliverable shows the format.
+An owner can hold several deliverables, so one system can publish, for example, a library and a container image. To publish, the owner loads the deliverable's skill, builds the product in `staging/<deliverable>/`, calls `check_release` to check it against the layout rules, then calls `publish_release` with a version and notes. When the deliverable has targets, the owner publishes there first, with the tools and credentials that compose gives its container, and gives one certificate for each target in the same call; hikari checks each certificate's shape and never uploads anything. hikari then writes the manifest, `release.yaml`, with who published, when, from which commit, with which hikari version, the certificates, and the digest of the product, writes `SHA256SUMS`, moves the product into `releases/<deliverable>/<version>/product/` with a copy of the public map, and announces the release in the room. An older manifest can still have a `hubs:` field, which hikari ignores. The shop example's `python-library` deliverable shows the format.
 
-The orchestrator reads the maps and releases of the systems in its hubs, and the deliverables in the shared area, so it can check each release against its deliverable. Grant any agent read-only access to another system's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
+The orchestrator reads the maps and releases of every system, and the deliverables in the shared area, so it can check each release against its deliverable. Grant any agent read-only access to another system's releases with `grants.releases`, for example so that it can integrate a library and test against it. Grants take effect when the container starts.
 
 Every container sees its hikari documents at the same paths:
 
@@ -246,7 +242,7 @@ Every container sees its hikari documents at the same paths:
 /hikari/private/                                 an owner's private documents
 /hikari/public/export/map.yaml                   its public map (read-only)
 /hikari/public/export/wiki/                      its system wiki (read-only; changed through a tool)
-/hikari/public/readonly/hubs/<hub>/wiki/         the wiki of each hub it is in
+/hikari/public/readonly/shared/wiki/             the public wiki
 /hikari/public/export/staging/                   its next release (read-write)
 /hikari/public/export/releases/                  its published releases (read-only)
 /hikari/public/readonly/shared/                  the shared area
@@ -265,8 +261,8 @@ This writes a starter `compose.yaml`, a `.gitignore`, an `.env.example`, and the
 
 The key `x-hikari.project: {branch: hikari}` makes the compose file's directory a project repository. Then:
 
-- The store is versioned: the maps, the wikis, the vocabularies, and your shared area. Releases and staging areas are not, and `store/.gitignore` keeps them out.
-- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the #shop vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the system's next commit. At stop, hikari commits what each agent's paths still hold.
+- The store is versioned: the maps, the wikis, the vocabulary, and your shared area. Releases and staging areas are not, and `store/.gitignore` keeps them out.
+- hikari commits each change that an agent makes through a tool, with the agent as author and you as committer, on the project branch: `orders: change features: create create-order`, or `orchestrator: define order in the vocabulary`. A test run changes the health in the map but makes no commit; the health goes into the system's next commit. At stop, hikari commits what each agent's paths still hold.
 - hikari never commits your own files in `store/shared`: policies, skills, agents, and deliverables. Commit them yourself. Your edits in the wikis are committed with your git identity: before an agent changes the same wiki, when you make them in the UI, at stop, and at start when the project branch is checked out and only the wikis changed.
 - The project repository follows the rules of every repo: it must be clean when hikari starts, and agents commit only to the project branch, which you merge. When the checkout of the branch changes the compose file, hikari reads it again.
 - A system's code can live in the project repository too: `system: {repo: project, scope: app}`. The scope cannot overlap the store.
@@ -299,7 +295,7 @@ Three commands work on the whole project:
 
 A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the teammate's machine recorded. On its first turn, each owner runs its suites again.
 
-The web UI shows each hub as a chat room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. Under each hub post, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
+The web UI shows the room, a direct-message thread for each agent, and an All activity view with every message, including private messages between agents. The room's page, `#/room`, has three tabs: Messages, Vocabulary, and Wiki. Under each post in the room, it shows which agents the post woke. While you write, the composer shows which agents your draft will wake.
 
 Each turn of an agent appears in the timeline as a card, after the message that woke it. While the agent works, the card shows its steps live: what it reads, edits, runs, and writes, each with its duration. Click a tool call to see its input and output. When the turn ends, the card folds into one line, such as `26s · 14 tool calls · 3 files changed · $0.18`, which opens again on click.
 
@@ -316,7 +312,7 @@ For a step-by-step guide, see [docs/guides/onboarding.md](docs/guides/onboarding
 1. links each repository and clones it with `hikari sync`;
 2. surveys each repository with a subagent: its toolchain, its tests, and the suites that cannot run in a container, such as browser tests;
 3. proposes ignore lines for build products that a repository does not ignore, and adds them only with your approval;
-4. writes an agent Dockerfile, a test command, and instructions for each system, and an orchestrator and a hub, then runs `hikari check`;
+4. writes an agent Dockerfile, a test command, and instructions for each system, and an orchestrator, which it names in `x-hikari.orchestration`, then runs `hikari check`;
 5. asks you to start `hikari up`, and waits until each owner has mapped its repository and recorded its tests;
 6. writes the baseline, every test with its outcome, to `onboarding/baseline.md`.
 
@@ -327,11 +323,11 @@ It keeps its progress in `onboarding/state.md`, so a new session continues where
 `hikify` starts where containerize ends, and refactors the project into isolated systems with you. Run `/hikify` in the same project. It works in stages, and keeps each one in `onboarding/`:
 
 1. **Analysis.** A subagent reads each repository with its owner's map and the baseline. The session then writes a synthesis of the duplicated code, the boundaries it proposes, and the suites it leaves for integration, and asks you its questions. A difference in behavior between two copies of code is always your decision.
-2. **Target topology.** It drafts `compose.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft compose.target.yaml` checks a target whose new repositories and scopes do not exist yet. With you, it drafts the stories, rules, and principles of each hub, and you pick the key stories.
-3. **Change plan.** It writes plan documents for each hub and system, and a ledger that says where each baseline test goes.
+2. **Target topology.** It drafts `compose.target.yaml`, explains it in `onboarding/topology.md` with a diagram, and states the reason for each boundary. `hikari check -draft compose.target.yaml` checks a target whose new repositories and scopes do not exist yet. With you, it drafts the stories, rules, and principles of the public wiki in `onboarding/wiki/public/`.
+3. **Change plan.** It writes the project plan, `onboarding/wiki/public/hikify-plan.md`, a plan for each system, and a ledger that says where each baseline test goes.
 4. **Review.** Fresh reviewer subagents look for what would break, in rounds, until a round finds only minor problems. After four rounds with serious findings, the session stops and asks you.
 5. **Execution.** After you approve, the session makes the new repositories, moves code with its history, and installs the drafts and the target topology. You create each new remote. Then you start hikari, and ask the orchestrator to carry out the plan: it sends each step to its owner when the releases it needs exist. The session follows the run from files.
-6. **Verification.** The session checks that every baseline test is kept, left for integration, or dropped with your approval, and that the support of each key story is passing. Then it clones the project into a temporary folder, syncs, checks, and starts it, as a teammate would.
+6. **Verification.** The session checks that every baseline test is kept, left for integration, or dropped with your approval, and that the support of each story is passing. Then it clones the project into a temporary folder, syncs, checks, and starts it, as a teammate would.
 
 To try it, run `make example-onboard`. It writes two small repositories as local remotes, and an empty project in `.hikari/demo/onboard/project`.
 
@@ -349,7 +345,7 @@ Open http://localhost:5173/?token=... with the token that `make up` printed. The
 
 The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
-- The server is the only authority on the topology. It checks every message against the hubs. A container cannot change who it is or who it can reach.
+- The server is the only authority on the topology. It checks every message against the topology, and decides whom each post wakes. A container cannot change who it is.
 - Only the server writes to git. Agents never get `.git`, so they cannot commit outside their scope, rewrite history, or switch branches.
 - The map is a public surface. Paths, commands, and test names stay in the private documents, which only the owner and you read.
 - The owner is the only author of its documents. The server applies each agent's changes to its wiki and checks them, so the wiki and the map never hold an invalid document.
@@ -361,12 +357,12 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 
 - `cmd/hikari`: the command-line entry point
 - `internal/server`: message routing, the log, the HTTP API, and the web UI
-- `internal/systems`: repos, system maps, vocabularies, and who may read and change them
+- `internal/systems`: repos, system maps, the vocabulary, and who may read and change them
 - `internal/sysmap`: the map and the private documents, their rules, health, and feature state
 - `internal/wiki`: the documents of a wiki, their kinds, links, and the change that writes them
 - `internal/testmap`: the test map, JUnit reports, recorded runs, and the health of each feature
 - `web/src/components/graph-engine.ts`: the canvas of the Map view: layout, drawing, input, and transitions
-- `internal/vocab`: the hub vocabulary format
+- `internal/vocab`: the vocabulary format
 - `internal/store`: the store layout, deliverables, and releases
 - `internal/gitrepo`: branch preparation, scoped commits, and the remote operations of sync and push
 - `internal/linked`: the checks of a start, and `hikari sync` and `hikari push` across the project's repos
@@ -376,7 +372,7 @@ The design notes in [docs/design.md](docs/design.md) give the full reasons.
 - `internal/topology`: reads and checks compose files
 - `internal/version`: the version of hikari, which `hikari version`, the terminal banner, and the web UI show; change it there for each release
 - `web/`: the browser UI
-- `examples/`: `studio` (one hub), `team` (two hubs in a tree), and `shop` (two systems in the demo repo, with a sidecar)
+- `examples/`: `shop` (an orchestrator and two systems in the demo repo, with a sidecar), and `onboard` (two repositories before hikari, for `make example-onboard`)
 
 External:
 

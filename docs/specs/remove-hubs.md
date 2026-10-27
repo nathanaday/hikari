@@ -1,6 +1,17 @@
 # Spec: one project, one room
 
-Status: approved.
+Status: built. Docker was not running, so the live check ran `hikari up -no-launch` on the shop and drove the node API with each agent's run token in place of agent turns: `messages.jsonl` shows that the user's post woke only the orchestrator, the orchestrator's post woke both owners, and an owner's direct message woke the other owner, and inventory read the term and the rule that the orchestrator wrote into `terms.yaml` and `shared/wiki/`. Headless Chrome showed the room with its Messages, Vocabulary, and Wiki tabs, and the Map with the orchestrator in the middle; no agent turn ran.
+
+Changes made during the build:
+
+1. **A rename leaves `x-hikari.orchestration` alone** (H5). The key holds a service id, which a rename keeps; `change_id` rewrites it, as it rewrites a grant.
+2. **`set_orchestration` does not check the agent's system** (H18). `hikari check` reports an orchestrator that owns one, and the project's inspector offers only agents without a system, and None.
+3. **The user's wiki routes take the wiki's ref**: `/api/ui/wiki/{ref}/docs/{id}`, with `public` or `system:<name>`, because the public wiki has no scope and name. The key route went with the key.
+4. **The wake cases are one file**, `web/src/lib/fixtures/wake.json`, which `TestWakeRules` and `rules.test.ts` both run (H6). It also holds the direct-message cases of H7.
+5. **The wire types follow the room.** `Self` has `participants` and `orchestrator` instead of hubs, and `owner_grants` and `owner_deliverables` replace the member fields. The snapshot has `participants` and one `vocabulary`, each agent view has its `role`, and the role `member` is `owner`. A turn in no conversation, such as indexing, shows in the room.
+6. **`terms.yaml` is decoded strictly.** A `hub:` key in it is an error; hikari never reads the old `<hub>.yaml` files, so only a hand copy can have one.
+7. **The orchestrator's node opens the public wiki's map** (`#/room/map`), as a hub's node opened its wiki, and the Activity lens colors it by the orchestrator's state.
+8. **`docs/design.md` had a heading pasted into a sentence** of "The feature wiki". The renamed section "System wikis and the public wiki" now stands on its own.
 
 Sources: `docs/brainstorm/shared-language.md` (questions B1 to B8, and G1 to G3 for hubs) and `shared-language-answers.md`. This is step 2 of the seven steps of the shared language.
 

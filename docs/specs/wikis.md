@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-22 of a project from `hikari ini
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **A user document is lighter, not dashed** (U3). A dashed outline already means a stale feature, so a plan or a note is drawn smaller and paler under the Kind lens, and neutral under Tests.

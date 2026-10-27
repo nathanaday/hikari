@@ -2,6 +2,8 @@
 
 Status: built. Checked in a live run on 2026-10-25. `hikari up` in an empty directory printed the address and waited: "compose.yaml does not exist; create it in the web UI". `create` made a project repository with its first commit. One `apply` of six operations named the project `Editor Live`, added a path repo and the owner `app` from the template `orchestrator` in `#main`, and committed `user: name the project "Editor Live"; add repo app; add agent app in #main; give app a system; 2 more`; its diff changed only the lines of the touched nodes. Start from the API started both agents. During the run, a plan of `rename hub main to core` said "applies at start" and listed the `#main` of a hand-written note; the apply committed the compose file and the note as you, through the run's lock. Stop returned to editing, the UI's `send` answered 503, and Start began a new run whose snapshot showed `#core`, while the store kept `hubs/main`. Ctrl-C stopped the containers and exited.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **The run's server takes the node API before the agents connect.** The host passed requests to the run only once it was running, so the agents' first call got 503, and both containers exited. The host now attaches the run's server when it exists, and still shows `starting`. Found in the live run.
@@ -19,7 +21,7 @@ Sources: `docs/brainstorm/topology-editor.md` (round 1), `topology-editor-round-
 
 ## Summary
 
-The UI gets an API that reads, checks, and changes the compose file. A change is a list of operations, such as `rename_hub` or `add_member`. The server turns operations into text edits that touch only the YAML nodes they change, shows the result as a plan, and applies the plan as a whole. In a project repository, each saved change is a commit as you. A rename can carry the new name into the wikis and the vocabularies, wherever you choose.
+The UI gets an API that reads, checks, and changes the compose file. A change is a list of operations, such as `rename` or `set_orchestration`. The server turns operations into text edits that touch only the YAML nodes they change, shows the result as a plan, and applies the plan as a whole. In a project repository, each saved change is a commit as you. A rename can carry the new name into the wikis and the vocabularies, wherever you choose.
 
 `hikari up` serves the UI before it has a topology. It starts at once when the file is valid, as today. When the file is missing or broken, or a start check fails, it waits in an editing state, with the editor open in the UI. You start and stop the agents from the UI, and Ctrl-C still stops everything.
 
@@ -78,9 +80,9 @@ From the rounds and their answers:
 
 ## 3. The Source Model
 
-- **TM1.** The model holds the project (id, name, store, project branch), each repo (id, name, url, path, branch), each hub (id, name, description, orchestrator, members), each agent (id, name, description, instructions, model, system, grants, image or build, its other compose keys by name), and each sidecar (id, serves). Each entity has its line.
+- **TM1.** The model holds the project (id, name, store, project branch, orchestration), each repo (id, name, url, path, branch), each agent (id, name, description, instructions, model, system, grants, image or build, its other compose keys by name), and each sidecar (id, serves). Each entity has its line.
 - **TM2.** A value is shown as the source writes it. A value that holds `${`, which compose interpolates, is marked as an expression.
-- **TM3.** Each agent, hub, and repo has `id_locked`, true when something outside the file is keyed by its id: a directory `store/systems/<id>` or `store/hubs/<id>`, a vocabulary file, or a clone `repos/<id>`.
+- **TM3.** Each agent and repo has `id_locked`, true when something outside the file is keyed by its id: a directory `store/systems/<id>`, or a clone `repos/<id>`.
 - **TM4.** A text with a YAML syntax error has no model.
 
 ## 4. Operations
@@ -95,34 +97,31 @@ Each operation is a JSON object with an `op` and its fields. Ids name the entiti
 | `add_repo` | `id`, `url` or `path`, `branch` | the id is taken |
 | `set_repo` | `id`, `url`, `path`, `branch` | |
 | `remove_repo` | `id` | a system uses it |
-| `add_hub` | `id`, `orchestrator`, `description`, `members` | the id is taken |
-| `set_hub` | `id`, `description`, `orchestrator` | |
-| `add_member`, `remove_member` | `hub`, `agent` | the agent is already a member, or is not |
-| `remove_hub` | `id` | an agent would be in no hub |
-| `add_agent` | `id`, `template`, `description`, `hubs` | the id is taken |
+| `set_orchestration` | `agent` | the agent does not exist |
+| `add_agent` | `id`, `template`, `description` | the id is taken |
 | `set_agent` | `id`, `description`, `instructions`, `model` | |
 | `set_system` | `id`, `repo`, `scope`, `read`, `test` | |
 | `clear_system` | `id` | |
 | `set_grants` | `id`, `releases`, `deliverables` | |
-| `remove_agent` | `id` | it orchestrates a hub, or a grant, a sidecar, or no other agent would name it |
+| `remove_agent` | `id` | a grant names it, or a sidecar serves it |
 | `add_sidecar` | `id`, `serves`, `image` | the id is taken |
 | `set_serves` | `id`, `agent` | |
 | `remove_sidecar` | `id` | |
-| `rename` | `kind` (`agent`, `hub`, `repo`), `id`, `name` | |
-| `change_id` | `kind`, `id`, `new_id` | `id_locked` (TM3) |
+| `rename` | `kind` (`agent`, `repo`), `id`, `name` | |
+| `change_id` | `kind` (`agent`, `repo`), `id`, `new_id` | `id_locked` (TM3) |
 
 - **TE1.** An operation edits the source text with primitive edits only (decision 3). No byte outside the nodes it changes changes.
 - **TE2.** Optional fields follow decision 4.
 - **TE3.** `rename` sets the entity's `name` field, or removes it when the new name is the id. It changes no reference.
-- **TE4.** `change_id` renames the key, and every reference to it: `orchestrator`, `members`, `grants.releases`, `serves`, and `system.repo`.
-- **TE5.** `add_agent` copies its template's text (decision 5), or writes `image: hikari-agent` and the credential variables when it names no template. It adds the agent to each hub of `hubs` as a member.
-- **TE6.** `remove_agent` removes the agent from the members of every hub. `remove_hub` and `clear_system` leave the store directory in place, and the plan says so.
+- **TE4.** `change_id` renames the key, and every reference to it: `x-hikari.orchestration`, `grants.releases`, `serves`, and `system.repo`.
+- **TE5.** `add_agent` copies its template's text (decision 5), or writes `image: hikari-agent` and the credential variables when it names no template.
+- **TE6.** `set_orchestration` makes `agent` the orchestrator, or removes `x-hikari.orchestration` when `agent` is empty. `remove_agent` of the orchestrator removes `x-hikari.orchestration` too. `remove_agent` of an owner and `clear_system` leave the store directory in place, and the plan says so.
 - **TE7.** A list of operations applies in order, as a whole. When one is refused, the response names its index and the reason, and nothing is written.
 - **TE8.** An operation that leaves the file failing its checks is not refused: the plan shows the findings, which decide whether you save. The findings of the plan are lint's (TL1 to TL3) on the new text.
 
 ## 5. Propagation
 
-- **TP1.** For each `rename` of an agent or a hub in a plan, hikari lists each occurrence of `@<old name>` or `#<old name>` in the bodies of the documents of every wiki, and in the definitions and descriptions of every vocabulary. A match is the whole name: `@orders` does not match `@orders-db`.
+- **TP1.** For each `rename` of an agent in a plan, hikari lists each occurrence of `@<old name>` in the bodies of the documents of the system wikis, `systems/*/wiki/`, and of the public wiki, `shared/wiki/`, and in the definitions and descriptions of the vocabulary, `shared/vocabulary/terms.yaml`. A match is the whole name: `@orders` does not match `@orders-db`.
 - **TP2.** Each occurrence has a key, `<store path>:<line>:<column>`, the line's text, and the replacement.
 - **TP3.** `apply` takes the keys you chose, and rewrites only those. A key whose text no longer matches is skipped, and the response names it.
 - **TP4.** A system map's summary is listed without a key: the owner writes it.

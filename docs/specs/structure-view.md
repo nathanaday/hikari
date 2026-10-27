@@ -4,6 +4,8 @@ Status: built. Checked in a headless Chrome on 2026-10-26 against `hikari up` on
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **Summaries use names.** A commit message named hubs and agents by id, as `add agent reviewer in #main`, while you know the hub as `#core`. Each summary now uses the names of the moment. Found in the browser check.

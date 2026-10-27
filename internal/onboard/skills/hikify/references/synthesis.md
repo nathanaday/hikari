@@ -17,7 +17,7 @@ For each system of the target: what it owns, and the reason for its boundary, of
 ## Left for integration
 
 - `cloud/tests/ui/test_dashboard.py`: needs a browser. Stays in cloud, outside every test command.
-- The edge sends a reading that the cloud stores: no test covers it. A story of #main.
+- The edge sends a reading that the cloud stores: no test covers it. A story of the public wiki.
 
 ## Questions
 

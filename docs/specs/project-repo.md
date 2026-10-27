@@ -4,6 +4,8 @@ Status: built. Checked in a live run on 2026-10-22 of a project from `hikari ini
 
 The tester, environments, and image releases were removed in `remove-e2e.md`.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **The runs directory is ignored as `/.hikari/`** (PR11, PR23). A `.hikari/` pattern also matches the `.hikari` directory of each scope, which hides the private documents. Found in the tests.

@@ -2,6 +2,8 @@
 
 Status: built. Checked in a browser on 2026-10-22, against the shop demo, with headless Chrome driven by Playwright, because the Chrome extension was not connected. Both maps were checked under every lens. A host edit turned inventory and its repository magenta under Git and yellow under Tests. A working owner pulsed cyan and an idle one was muted cyan. A feature that inventory added was the brightest under Age, and the three documents from before `created` were the dimmest. A recorded failing run turned inventory and the three features its test touches red. The transition was recorded both ways as a GIF. Back and forward, a direct link, the keyboard, reduced motion, and a 390-pixel screen were also checked.
 
+Hubs were removed in `remove-hubs.md`.
+
 Changes made during the build:
 
 1. **History entries between the maps.** The UI replaced its history entry on every view change, so back left the app. A move between the two maps now adds an entry (U17). Other views behave as before.
