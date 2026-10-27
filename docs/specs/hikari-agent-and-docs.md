@@ -1,6 +1,19 @@
 # Spec: the Hikari agent, the docs, and the migration
 
 Status: approved.
+M1–M6 and M9–M12 built; M7–M8 pending.
+Changes made during the build:
+
+1. **The old topology keys name their move.** `x-hikari.store`, `x-hikari.hubs`, and a service's `system` and `tests` failed with the decoder's "field not found"; each now fails with the move and the section of the guide. Every refusal of an old file, key, or vault directory ends with `docs/guides/migrating.md#<section>`, through `vault.Migrating`.
+2. **`hikari check` also refuses `hubs/` in the vault, and a vocabulary file without `terms.yaml`.** V11 listed neither, and a start would silently lose the stories and the terms (M5, step 8).
+3. **A migrated test command starts with `cd <scope> &&`.** Decision 2 keeps the paths, but a partition's commands run in `/workspace`, where a system's ran in its scope; the suites of the test map take the same `cd`. A system with no scope has no `at:` that keeps it at `/workspace`, so it mounts at `/workspace/<repo>`, and its volumes and instructions take `<repo>/`.
+4. **Only file and directory keys of the test map take the place.** An id key stays, because the runner names a test the same way after the `cd`.
+5. **The guide's vault script uses `mv` and `git add -A vault`,** so that ignored releases and staging areas move too. It writes the new `.gitignore`. The new README comes from a scratch `hikari init`: hikari writes a README only into a vault without one, and one written at start would be an uncommitted file that blocks the next start.
+6. **The partition plan is `hikify-plan-<id>.md`** in `onboarding/vault/partitions/<id>/read-only/features/`. The restructure copies with `cp -R onboarding/vault/. vault/`, and `git status` shows any vault file that a draft replaced.
+7. **M4 is a test, `TestNamesBuilt`:** each backquoted snake-case name of a host skill is a tool of `internal/mcpserver`, each `hikari-` name a built-in skill or the image, each `hikari <command>` a command, and no skill drafts in `onboarding/wiki/` or `onboarding/shared/`.
+8. **The vault's README no longer names stories.** The sweep found it outside the files of M10.
+9. **`docs/design.md` was rewrapped paragraph by paragraph:** only the paragraphs with a line over 78 columns, with no word changed. `containerize.md` names the orchestrator where it named the lead, and keeps its other old words as history.
+10. **The live check (M12) ran without Docker.** On `make example-onboard`, the topology written from `containerize-repo`'s reference passed `hikari check` after `hikari sync`, and a target from hikify's reference, with the library `accounts` to create and a partition `signup` of the whole `server` and `cli` repositories, passed `hikari check -draft`. No folder may lie inside another partition's writable folder, and each repository of the example keeps its code at its root, so the partition of both repositories takes both whole. The guide was rehearsed on a scratch copy of yami's old project: `hikari check` named each move, passed after them, and `hikari up -no-launch` converted both maps and committed them at stop. No image was built and no agent turn ran.
 
 Sources: `docs/brainstorm/shared-language.md` (questions C4, F5, and the "Decided" note on "lead") and `shared-language-answers.md`. This is the last of the seven steps of the shared language. The names are those of `docs/glossary.md`.
 
