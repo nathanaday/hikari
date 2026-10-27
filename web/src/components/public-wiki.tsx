@@ -6,17 +6,17 @@ import { orderDocs } from '@/lib/wikis'
 
 // PublicWiki lists the documents of the public wiki by kind, and opens each
 // one on the map (rule U7 of the wikis spec).
-export function PublicWiki({ orchestrator, wiki, show }: { orchestrator?: string; wiki: WikiView | undefined; show: (v: View) => void }) {
+export function PublicWiki({ orchestration, wiki, show }: { orchestration?: string; wiki: WikiView | undefined; show: (v: View) => void }) {
   const docs = orderDocs(wiki?.documents ?? [])
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-testid="public-wiki">
       <div className="mx-auto max-w-3xl space-y-3">
         <p className="text-sm text-muted-foreground">
-          The stories, rules, and principles of the project, which {orchestrator ?? 'the orchestrator'} writes, and your plans and notes.{' '}
+          The stories, rules, and principles of the project, which {orchestration ?? 'the orchestration agent'} writes, and your plans and notes.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', public: true })}>
             Open the wiki map
           </button>{' '}
-          to see how they link the features of the systems, or to write a document.
+          to see how they link the features of the partitions, or to write a document.
         </p>
         {docs.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">The public wiki has no documents yet.</p>

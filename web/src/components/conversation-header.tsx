@@ -2,9 +2,9 @@ import { BookOpen, Boxes, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
-import { NodeAvatar } from '@/components/node-avatar'
+import { ParticipantAvatar } from '@/components/participant-avatar'
 import { StatusDot } from '@/components/status-dot'
-import { mapStateLabel } from '@/lib/labels'
+import { mapStateLabel, roleLabel } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { RoomTab, View } from '@/lib/view'
@@ -32,18 +32,18 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         Map
       </button>
     )
-    body = v.system ? (
+    body = v.partition ? (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <Network className="size-4 text-muted-foreground" />
           {crumb}
           <span className="font-normal text-muted-foreground">/</span>
-          {v.system}
+          {v.partition}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The wiki of {v.system}: its features, principles, and rules, your plans and notes, and the documents of the public wiki that link them.{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.system! })}>
-            Open the system page
+          The wiki of {v.partition}: its features, principles, and rules, your plans and notes, and the documents of the public wiki that link them.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'partition', name: v.partition! })}>
+            Open the partition page
           </button>
           .
         </p>
@@ -57,7 +57,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           public wiki
         </h1>
         <p className="text-sm text-muted-foreground">
-          The public wiki: its stories, rules, and principles, your plans and notes, and the features of the systems that they link.{' '}
+          The public wiki: its stories, rules, and principles, your plans and notes, and the features of the partitions that they link.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'room', tab: 'wiki' })}>
             Open the list
           </button>
@@ -71,7 +71,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           Map
         </h1>
         <p className="text-sm text-muted-foreground">
-          The orchestrator and each system, with its repository and the deliverables it holds. Click a system to open its wiki, or the orchestrator to open the public wiki.
+          The orchestration agent and each partition, with its repository and the deliverables it holds. Click a partition to open its wiki, or the orchestration agent to open the public wiki.
         </p>
       </>
     )
@@ -96,7 +96,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         </h1>
         <p className="text-sm text-muted-foreground">
           A release of the deliverable {v.deliverable} by{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: v.name })}>
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'partition', name: v.name })}>
             {v.name}
           </button>
           . It never changes. Agents with access read it at{' '}
@@ -147,7 +147,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
               >
                 <StatusDot state={status(p.name)} />
                 <span className="font-medium">{p.name}</span>
-                {p.role === 'orchestrator' && <span className="text-muted-foreground">orchestrator</span>}
+                {p.role === 'orchestration' && <span className="text-muted-foreground">orchestration agent</span>}
               </button>
             ),
           )}
@@ -159,24 +159,24 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         </div>
       </>
     )
-  } else if (v.kind === 'system') {
-    const sys = state.systems.find((x) => x.owner === v.name)!
-    const owner = state.agents.find((a) => a.name === sys.owner)
-    const described = sys.system.described_state
+  } else if (v.kind === 'partition') {
+    const sys = state.partitions.find((x) => x.partition_agent === v.name)!
+    const partitionAgent = state.agents.find((a) => a.name === sys.partition_agent)
+    const described = sys.partition.described_state
     body = (
       <>
         <h1 className="flex items-center gap-2 text-base font-semibold">
           <Boxes className="size-4 text-muted-foreground" />
-          {sys.owner}
+          {sys.partition_agent}
           <Badge variant="secondary" className="gap-1.5 font-normal" data-testid="map-state">
-            <MapStateDot state={sys.state} busy={owner?.status.state === 'indexing'} error={!!sys.error} />
-            {owner?.status.state === 'indexing' ? 'indexing' : mapStateLabel[sys.state]}
+            <MapStateDot state={sys.state} busy={partitionAgent?.status.state === 'indexing'} error={!!sys.error} />
+            {partitionAgent?.status.state === 'indexing' ? 'indexing' : mapStateLabel[sys.state]}
           </Badge>
         </h1>
         <p className="text-sm text-muted-foreground">
           Owned by{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'dm', name: sys.owner })}>
-            {sys.owner}
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'dm', name: sys.partition_agent })}>
+            {sys.partition_agent}
           </button>{' '}
           · <code className="text-xs">{sys.scope ? `${sys.repo}/${sys.scope}` : sys.repo}</code> · branch{' '}
           <code className="text-xs">{sys.branch}</code>
@@ -187,7 +187,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             </>
           )}{' '}
           ·{' '}
-          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', system: sys.owner })}>
+          <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', partition: sys.partition_agent })}>
             Feature map
           </button>
         </p>
@@ -195,10 +195,10 @@ export function ConversationHeader({ state, show, onMention }: Props) {
     )
   } else {
     const agent = state.agents.find((a) => a.name === v.name)!
-    const owns = state.systems.some((x) => x.owner === agent.name)
+    const owns = state.partitions.some((x) => x.partition_agent === agent.name)
     body = (
       <div className="flex gap-3">
-        <NodeAvatar name={agent.name} me={false} className="mt-0.5" />
+        <ParticipantAvatar name={agent.name} me={false} className="mt-0.5" />
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-base font-semibold">
             {agent.name}
@@ -208,12 +208,12 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             </Badge>
           </h1>
           <p className="text-sm text-muted-foreground">
-            {[agent.description, agent.role].filter(Boolean).join(' · ')}
+            {[roleLabel[agent.role], agent.description].filter(Boolean).join(' · ')}
             {owns && (
               <>
                 {' · '}
-                <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'system', name: agent.name })}>
-                  system map
+                <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'partition', name: agent.name })}>
+                  feature map
                 </button>
               </>
             )}

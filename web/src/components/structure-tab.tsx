@@ -198,7 +198,7 @@ export function EntityList({ model, findings, selected, select }: { model: Topol
       <Group title="Project">
         <Row active={selected === 'project'} title={model.project.name} id={model.project.id} sub={model.project.repo ? 'a project repository' : undefined} severity={sev({ kind: 'project' })} onClick={() => select({ kind: 'project' })} />
       </Group>
-      <Group title="Repos" add="repo" onAdd={onAdd}>
+      <Group title="Repositories" add="repo" onAdd={onAdd}>
         {model.repos.map((r) => (
           <Row key={r.id} active={selected === `repo:${r.id}`} title={r.name} id={r.id} sub={r.url || r.path} severity={sev({ kind: 'repo', id: r.id })} onClick={() => select({ kind: 'repo', id: r.id })} />
         ))}

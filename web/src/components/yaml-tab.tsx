@@ -13,7 +13,7 @@ const YamlEditor = lazy(() => import('@/components/yaml-editor').then((m) => ({ 
 
 type Base = { revision: string; text: string }
 
-// YamlTab edits the compose file as text (rules YY1 to YY8): lint as you
+// YamlTab edits the topology file as text (rules YY1 to YY8): lint as you
 // type, the findings beside the editor, and a save that shows its diff.
 export function YamlTab({ data, mode, reload, line, onDirty }: { data: TopologyState; mode: Mode; reload: () => void; line?: number; onDirty: (dirty: boolean) => void }) {
   const editor = useRef<YamlEditorHandle>(null)
@@ -166,7 +166,7 @@ export function SaveReview({
       <SheetContent className="w-full sm:max-w-2xl" data-testid="review">
         <SheetHeader>
           <SheetTitle>Review your changes</SheetTitle>
-          <SheetDescription>The lines of the compose file that this save changes.</SheetDescription>
+          <SheetDescription>The lines of the topology file that this save changes.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4">
           <DiffView diff={diff} />

@@ -34,7 +34,7 @@ const theme = EditorView.theme({
   '.cm-diagnostic-warning': { borderLeftColor: 'var(--lens-pending)' },
 })
 
-// YamlEditor edits the compose file's text with CodeMirror 6 (rules YY1 and
+// YamlEditor edits the topology file's text with CodeMirror 6 (rules YY1 and
 // YY2). It owns its document; a new value replaces it only when it differs.
 export const YamlEditor = forwardRef<YamlEditorHandle, Props>(function YamlEditor({ value, markers, onChange, onSave }, ref) {
   const host = useRef<HTMLDivElement>(null)

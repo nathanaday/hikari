@@ -20,7 +20,7 @@ describe('DiffView', () => {
 describe('FindingsList', () => {
   it('lists each finding with its line, and says when there is none (YY3)', () => {
     const html = renderToStaticMarkup(
-      <FindingsList findings={[{ severity: 'error', stage: 'topology', message: 'agent "lead" owns no system and is not the orchestrator', line: 7 }]} onLine={() => {}} />,
+      <FindingsList findings={[{ severity: 'error', stage: 'topology', message: 'agent "lead" has no partition and is not the orchestration agent', line: 7 }]} onLine={() => {}} />,
     )
     expect(html).toContain('Line 7')
     expect(html).toContain('aria-label="error"')

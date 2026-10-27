@@ -7,7 +7,7 @@ import { hasError } from '@/lib/topology'
 import type { Occurrence, Plan } from '@/lib/types'
 
 // Occurrences lists the places a rename can propagate to, each under a
-// checkbox (rule SR2). One without a key is its owner's to change.
+// checkbox (rule SR2). One without a key is its partition agent's to change.
 export function Occurrences({ occurrences, chosen, toggle }: { occurrences: Occurrence[]; chosen: Set<string>; toggle: (key: string) => void }) {
   return (
     <ul className="divide-y rounded-md border text-sm" data-testid="occurrences">
@@ -21,7 +21,7 @@ export function Occurrences({ occurrences, chosen, toggle }: { occurrences: Occu
           <span className="min-w-0 flex-1">
             <span className="block text-xs text-muted-foreground">
               {o.file}, line {o.line}
-              {!o.key && ' · its owner updates it'}
+              {!o.key && ' · its partition agent updates it'}
             </span>
             <span className="block font-mono text-xs break-words">{o.replace}</span>
           </span>
@@ -62,7 +62,7 @@ export function PlanReview({
       <SheetContent className="w-full sm:max-w-2xl" data-testid="plan-review">
         <SheetHeader>
           <SheetTitle>Review your changes</SheetTitle>
-          <SheetDescription>What the save writes into the compose file, and what it changes outside it.</SheetDescription>
+          <SheetDescription>What the save writes into the topology file, and what it changes outside it.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4">
           <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid="summary">

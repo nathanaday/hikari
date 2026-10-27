@@ -10,11 +10,11 @@ const wiki = wikiOf('public', [
   doc('ballots-decide-validity', 'principle', { name: 'Ballots decides validity' }),
   doc('ballots-decide-winner', 'story', { name: 'Raw ballots to a winner', support: 'passing', links: ['count-votes'] }),
 ])
-const tally = wikiOf('system:tally', [doc('count-votes', 'feature', { name: 'Count votes', health: 'passing' })])
+const tally = wikiOf('partition:tally', [doc('count-votes', 'feature', { name: 'Count votes', health: 'passing' })])
 
 describe('PublicWiki', () => {
   it('lists the documents by kind (U7)', () => {
-    const html = renderToStaticMarkup(<PublicWiki orchestrator="lead" wiki={wiki} show={() => {}} />)
+    const html = renderToStaticMarkup(<PublicWiki orchestration="lead" wiki={wiki} show={() => {}} />)
     const order = ['Raw ballots to a winner', 'Ballots decides validity', 'Roadmap'].map((t) => html.indexOf(t))
     expect(order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1]))).toBe(true)
     expect(html).toContain('which lead writes')

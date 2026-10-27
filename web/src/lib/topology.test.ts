@@ -9,14 +9,14 @@ import { parseHash, viewHash } from './view'
 const snapshot = (mode: Snapshot['mode']): Snapshot => ({
   version: '0.0.1',
   mode,
-  file: 'compose.yaml',
+  file: 'topology.yaml',
   revision: 'r1',
   start_findings: mode === 'editing' ? [{ severity: 'error', stage: 'start', message: 'a repo has uncommitted changes' }] : undefined,
   me: 'user',
   agents: [],
   participants: [],
   messages: [],
-  systems: [],
+  partitions: [],
   vocabulary: { version: 1, terms: [], interfaces: [] },
 })
 

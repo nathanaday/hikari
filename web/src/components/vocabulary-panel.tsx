@@ -2,9 +2,9 @@ import { BookOpen } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { Vocabulary } from '@/lib/types'
 
-// VocabularyPanel shows the project's vocabulary, which the orchestrator
+// VocabularyPanel shows the project's vocabulary, which the orchestration agent
 // keeps.
-export function VocabularyPanel({ orchestrator, vocabulary }: { orchestrator?: string; vocabulary?: Vocabulary }) {
+export function VocabularyPanel({ orchestration, vocabulary }: { orchestration?: string; vocabulary?: Vocabulary }) {
   const terms = vocabulary?.terms ?? []
   const interfaces = vocabulary?.interfaces ?? []
   if (terms.length === 0 && interfaces.length === 0) {
@@ -12,7 +12,7 @@ export function VocabularyPanel({ orchestrator, vocabulary }: { orchestrator?: s
       <div className="flex flex-1 flex-col items-center gap-2 px-6 py-16 text-center text-sm text-muted-foreground" data-testid="vocabulary">
         <BookOpen className="size-6 text-neutral-300" />
         <p className="font-medium text-foreground">No vocabulary yet</p>
-        <p>{orchestrator ? `${orchestrator} defines the shared names of the project as the work needs them.` : 'The project has no orchestrator, so nobody writes the vocabulary.'}</p>
+        <p>{orchestration ? `${orchestration} defines the shared names of the project as the work needs them.` : 'The project has no orchestration agent, so nobody writes the vocabulary.'}</p>
       </div>
     )
   }
@@ -20,7 +20,7 @@ export function VocabularyPanel({ orchestrator, vocabulary }: { orchestrator?: s
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="vocabulary">
       <div className="max-w-4xl space-y-6 px-4 py-5 md:px-6">
         <p className="text-sm text-muted-foreground">
-          The names that everyone in the project uses. {orchestrator ? `${orchestrator} keeps this vocabulary.` : ''}
+          The names that everyone in the project uses. {orchestration ? `${orchestration} keeps this vocabulary.` : ''}
         </p>
         <section className="space-y-2">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Terms ({terms.length})</h2>

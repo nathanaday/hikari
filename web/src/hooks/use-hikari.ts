@@ -66,7 +66,7 @@ export function useHikari() {
   useEffect(() => {
     const hash = viewHash(state.view)
     const last = lastView.current
-    const between = last.kind === 'map' && state.view.kind === 'map' && (last.system !== state.view.system || last.public !== state.view.public)
+    const between = last.kind === 'map' && state.view.kind === 'map' && (last.partition !== state.view.partition || last.public !== state.view.public)
     lastView.current = state.view
     if (location.hash === hash) return
     if (between) history.pushState(null, '', location.pathname + location.search + hash)

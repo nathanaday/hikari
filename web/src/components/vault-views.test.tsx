@@ -19,7 +19,7 @@ const release: ReleaseDetail = {
   manifest: {
     deliverable: 'python-library',
     version: '0.1.0',
-    system: 'inventory',
+    partition: 'inventory',
     released: '2026-10-22T20:17:05Z',
     notes: 'First release.',
     hikari: '0.0.1',
@@ -60,7 +60,7 @@ const marked = (html: string) => {
 
 describe('ReleaseBody', () => {
   it('shows the manifest, the certificates, and the files with digests (U14)', () => {
-    const html = renderToStaticMarkup(<ReleaseBody system="inventory" deliverable="python-library" version="0.1.0" data={release} />)
+    const html = renderToStaticMarkup(<ReleaseBody partition="inventory" deliverable="python-library" version="0.1.0" data={release} />)
     for (const want of ['First release.', '3 files, 2569 bytes', 'sha256:d8c523f2', '23732d5', 'href="https://github.com/acme/inventory/releases/tag/v0.1.0"', 'acme/inventory · v0.1.0', 'sha256:abc', 'product/inventory/stock.py', 'a40eab3a', 'sha256 0ffc73ea41e7']) {
       expect(html).toContain(want)
     }
@@ -70,7 +70,7 @@ describe('ReleaseBody', () => {
 
   it('opens release.yaml when the product has no README', () => {
     const data = { ...release, files: release.files.filter((f) => !f.endsWith('README.md')) }
-    const html = renderToStaticMarkup(<ReleaseBody system="inventory" deliverable="python-library" version="0.1.0" data={data} />)
+    const html = renderToStaticMarkup(<ReleaseBody partition="inventory" deliverable="python-library" version="0.1.0" data={data} />)
     expect(marked(html)).toContain('release.yaml')
   })
 })

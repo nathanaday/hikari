@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agent, doc, feature, system, wikiOf, withHealth } from './fixtures'
+import { agent, doc, feature, partition, wikiOf, withHealth } from './fixtures'
 import { topologyGraph, wikiGraph, type GraphNode } from './graph'
 import {
   activityPaint,
@@ -10,7 +10,7 @@ import {
   legend,
   minAge,
   neutral,
-  systemHealth,
+  partitionHealth,
   topologyContext,
   topologyDetail,
   topologyPaint,
@@ -30,12 +30,12 @@ describe('activity lens (U33)', () => {
 })
 
 describe('tests lens (U34, U40)', () => {
-  it('sums a system from its features', () => {
-    expect(systemHealth([withHealth('a', 'passing'), withHealth('b', 'failing'), withHealth('c', 'pending')])).toBe('failing')
-    expect(systemHealth([withHealth('a', 'passing'), withHealth('c', 'pending')])).toBe('pending')
-    expect(systemHealth([withHealth('a', 'passing'), withHealth('b', 'untested')])).toBe('passing')
-    expect(systemHealth([withHealth('b', 'untested')])).toBe('untested')
-    expect(systemHealth([])).toBe('untested')
+  it('sums a partition from its features', () => {
+    expect(partitionHealth([withHealth('a', 'passing'), withHealth('b', 'failing'), withHealth('c', 'pending')])).toBe('failing')
+    expect(partitionHealth([withHealth('a', 'passing'), withHealth('c', 'pending')])).toBe('pending')
+    expect(partitionHealth([withHealth('a', 'passing'), withHealth('b', 'untested')])).toBe('passing')
+    expect(partitionHealth([withHealth('b', 'untested')])).toBe('untested')
+    expect(partitionHealth([])).toBe('untested')
   })
 
   it('counts the features of each health', () => {
@@ -45,30 +45,30 @@ describe('tests lens (U34, U40)', () => {
 })
 
 describe('topology lenses', () => {
-  const systems = [
-    system('orders', [withHealth('a', 'failing')], { dirty: true, repo: 'shop' }),
-    system('inventory', [withHealth('b', 'passing')], { repo: 'shop' }),
-    system('docs', [], { repo: 'site' }),
+  const partitions = [
+    partition('orders', [withHealth('a', 'failing')], { dirty: true, repo: 'shop' }),
+    partition('inventory', [withHealth('b', 'passing')], { repo: 'shop' }),
+    partition('docs', [], { repo: 'site' }),
   ]
   const g = topologyGraph({
-    systems,
+    partitions,
     repos: [
-      { name: 'shop', branch: 'h', systems: ['orders', 'inventory'] },
-      { name: 'site', branch: 'h', systems: ['docs'] },
+      { name: 'shop', branch: 'h', partitions: ['orders', 'inventory'] },
+      { name: 'site', branch: 'h', partitions: ['docs'] },
     ],
     deliverables: [{ name: 'lib', holders: ['orders'] }],
   })
-  const ctx = topologyContext(systems, [agent('orders', 'working'), agent('inventory', 'idle'), agent('docs', 'exited')])
+  const ctx = topologyContext(partitions, [agent('orders', 'working'), agent('inventory', 'idle'), agent('docs', 'exited')])
   const node = (id: string) => g.nodes.find((n) => n.id === id)!
 
-  it('colors systems under each lens', () => {
-    expect(topologyPaint('activity', node('system:orders'), ctx).fill).toBe('active')
-    expect(topologyPaint('activity', node('system:inventory'), ctx).fill).toBe('waiting')
-    expect(topologyPaint('tests', node('system:orders'), ctx).fill).toBe('fail')
-    expect(topologyPaint('tests', node('system:inventory'), ctx).fill).toBe('pass')
-    expect(topologyPaint('tests', node('system:docs'), ctx).fill).toBe('none')
-    expect(topologyPaint('git', node('system:orders'), ctx).fill).toBe('dirty')
-    expect(topologyPaint('git', node('system:inventory'), ctx)).toEqual(neutral)
+  it('colors partitions under each lens', () => {
+    expect(topologyPaint('activity', node('partition:orders'), ctx).fill).toBe('active')
+    expect(topologyPaint('activity', node('partition:inventory'), ctx).fill).toBe('waiting')
+    expect(topologyPaint('tests', node('partition:orders'), ctx).fill).toBe('fail')
+    expect(topologyPaint('tests', node('partition:inventory'), ctx).fill).toBe('pass')
+    expect(topologyPaint('tests', node('partition:docs'), ctx).fill).toBe('none')
+    expect(topologyPaint('git', node('partition:orders'), ctx).fill).toBe('dirty')
+    expect(topologyPaint('git', node('partition:inventory'), ctx)).toEqual(neutral)
   })
 
   it('colors a repository only under git, and a deliverable never (U35)', () => {
@@ -79,8 +79,8 @@ describe('topology lenses', () => {
   })
 
   it('says the lens detail in the hover card (U36)', () => {
-    expect(topologyDetail('activity', node('system:inventory'), ctx)).toBe('waiting')
-    expect(topologyDetail('tests', node('system:orders'), ctx)).toBe('1 failing')
+    expect(topologyDetail('activity', node('partition:inventory'), ctx)).toBe('waiting')
+    expect(topologyDetail('tests', node('partition:orders'), ctx)).toBe('1 failing')
     expect(topologyDetail('git', node('repo:shop'), ctx)).toBe('uncommitted changes')
     expect(topologyDetail('activity', node('deliverable:lib'), ctx)).toBe('')
   })
@@ -94,7 +94,7 @@ describe('wiki lenses', () => {
     doc('Roadmap', 'plan', { status: 'idea' }),
   ]
   const features = [feature('old'), feature('mid', { state: 'stale' })]
-  const wiki = wikiOf('system:inventory', docs)
+  const wiki = wikiOf('partition:inventory', docs)
   const g = wikiGraph(wiki, wikiIndex([wiki]))
   const ctx = wikiContext(g.nodes, (n) => docs.find((d) => d.id === n.ref), features)
   const node = (ref: string) => g.nodes.find((n) => n.ref === ref)!

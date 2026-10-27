@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
-import { asJSON, asText, storeFileURL, useFetch } from '@/hooks/use-store-file'
+import { asJSON, asText, vaultFileURL, useFetch } from '@/hooks/use-vault-file'
 import type { Certificate, ReleaseDetail } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const noNames = new Set<string>()
 
-// resolve returns the store path that href, a link in the file at path,
+// resolve returns the vault path that href, a link in the file at path,
 // points to.
 function resolve(path: string, href: string): string {
   const parts = path.split('/').slice(0, -1)
@@ -19,7 +19,7 @@ function resolve(path: string, href: string): string {
 }
 
 function FileContent({ path, open }: { path: string; open: (path: string) => void }) {
-  const { data, error, loading } = useFetch(storeFileURL(path), asText)
+  const { data, error, loading } = useFetch(vaultFileURL(path), asText)
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>
   if (error) return <p className="text-sm text-muted-foreground">{error}</p>
   return path.endsWith('.md') ? (
@@ -65,20 +65,20 @@ function CertificateRow({ c }: { c: Certificate }) {
   )
 }
 
-export function ReleaseView({ system, deliverable, version }: { system: string; deliverable: string; version: string }) {
+export function ReleaseView({ partition, deliverable, version }: { partition: string; deliverable: string; version: string }) {
   const parse = useCallback((r: Response) => asJSON<ReleaseDetail>(r), [])
-  const { data, error } = useFetch(`/api/ui/store/releases/${system}/${deliverable}/${version}`, parse)
+  const { data, error } = useFetch(`/api/ui/vault/releases/${partition}/${deliverable}/${version}`, parse)
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
-  return <ReleaseBody system={system} deliverable={deliverable} version={version} data={data} />
+  return <ReleaseBody partition={partition} deliverable={deliverable} version={version} data={data} />
 }
 
 // ReleaseBody shows a loaded release: its manifest, certificates, and files,
 // with the product's README as the main page when there is one.
-export function ReleaseBody({ system, deliverable, version, data }: { system: string; deliverable: string; version: string; data: ReleaseDetail }) {
+export function ReleaseBody({ partition, deliverable, version, data }: { partition: string; deliverable: string; version: string; data: ReleaseDetail }) {
   const [open, setOpen] = useState<string | null>(null)
   const m = data.manifest
-  const base = `systems/${system}/releases/${deliverable}/${version}/`
+  const base = `systems/${partition}/releases/${deliverable}/${version}/`
   const readme = base + 'product/README.md'
   const shown = open ?? (data.files.includes(readme) ? readme : base + 'release.yaml')
   return (

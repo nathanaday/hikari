@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { doc, feature, system, wikiOf } from './fixtures'
-import { docNodeID, featureRadius, neighborsOf, systemRadius, topologyGraph, wikiGraph } from './graph'
+import { doc, feature, partition, wikiOf } from './fixtures'
+import { docNodeID, featureRadius, neighborsOf, partitionRadius, topologyGraph, wikiGraph } from './graph'
 import { wikiIndex } from './wikis'
 
 const shop = () => ({
-  systems: [
-    system('orders', [feature('a'), feature('b'), feature('c'), feature('d')], {
+  partitions: [
+    partition('orders', [feature('a'), feature('b'), feature('c'), feature('d')], {
       grants: { releases: ['inventory'], deliverables: ['python-library'] },
       providers: { 'Stock.reserve': ['inventory'] },
     }),
-    system('inventory', [feature('x')], { grants: { releases: [], deliverables: ['python-library'] }, providers: {} }),
+    partition('inventory', [feature('x')], { grants: { releases: [], deliverables: ['python-library'] }, providers: {} }),
   ],
-  repos: [{ name: 'shop', branch: 'hikari/demo', systems: ['inventory', 'orders'] }],
+  repos: [{ name: 'shop', branch: 'hikari/demo', partitions: ['inventory', 'orders'] }],
   deliverables: [
     { name: 'python-library', holders: ['inventory', 'orders'] },
     { name: 'unheld', holders: [] },
@@ -19,50 +19,50 @@ const shop = () => ({
 })
 
 describe('topologyGraph', () => {
-  it('has a node for each system, repository, and held deliverable (U30)', () => {
+  it('has a node for each partition, repository, and held deliverable (U30)', () => {
     const g = topologyGraph(shop())
-    expect(g.nodes.map((n) => n.id)).toEqual(['system:inventory', 'system:orders', 'repo:shop', 'deliverable:python-library'])
+    expect(g.nodes.map((n) => n.id)).toEqual(['partition:inventory', 'partition:orders', 'repo:shop', 'deliverable:python-library'])
     expect(g.nodes.map((n) => n.shape)).toEqual(['circle', 'circle', 'square', 'diamond'])
-    const orders = g.nodes.find((n) => n.id === 'system:orders')!
-    expect(orders.radius).toBe(systemRadius(4))
-    expect(systemRadius(0)).toBe(6)
-    expect(systemRadius(1000)).toBe(18)
+    const orders = g.nodes.find((n) => n.id === 'partition:orders')!
+    expect(orders.radius).toBe(partitionRadius(4))
+    expect(partitionRadius(0)).toBe(6)
+    expect(partitionRadius(1000)).toBe(18)
   })
 
-  it('joins systems to repositories and holders, and systems to each other once (U31)', () => {
+  it('joins partitions to repositories and holders, and partitions to each other once (U31)', () => {
     const g = topologyGraph(shop())
     const edges = g.edges.map((e) => `${e.source} ${e.target}${e.dashed ? ' dashed' : ''}`)
     expect(edges).toEqual([
-      'system:inventory repo:shop',
-      'system:orders repo:shop',
-      'deliverable:python-library system:inventory',
-      'deliverable:python-library system:orders',
-      'system:orders system:inventory dashed',
+      'partition:inventory repo:shop',
+      'partition:orders repo:shop',
+      'deliverable:python-library partition:inventory',
+      'deliverable:python-library partition:orders',
+      'partition:orders partition:inventory dashed',
     ])
   })
 
-  it('leaves out edges to systems that are not in the graph', () => {
+  it('leaves out edges to partitions that are not in the graph', () => {
     const input = shop()
-    input.systems[0].grants!.releases = ['gone']
-    input.systems[0].providers = { x: ['gone', 'orders'] }
-    input.repos[0].systems.push('gone')
+    input.partitions[0].grants!.releases = ['gone']
+    input.partitions[0].providers = { x: ['gone', 'orders'] }
+    input.repos[0].partitions.push('gone')
     expect(topologyGraph(input).edges.filter((e) => e.dashed || e.source.includes('gone') || e.target.includes('gone'))).toEqual([])
   })
 })
 
-describe('topologyGraph with an orchestrator', () => {
-  it('draws the orchestrator as a hexagon joined to every system (decision 5)', () => {
-    const g = topologyGraph({ ...shop(), orchestrator: 'lead' })
-    const lead = g.nodes.filter((n) => n.kind === 'orchestrator')
-    expect(lead.map((n) => [n.id, n.shape, n.label])).toEqual([['orchestrator:lead', 'hexagon', 'lead']])
-    const edges = g.edges.filter((e) => e.source.startsWith('orchestrator:')).map((e) => `${e.source} ${e.target}`)
-    expect(edges).toEqual(['orchestrator:lead system:inventory', 'orchestrator:lead system:orders'])
+describe('topologyGraph with an orchestration agent', () => {
+  it('draws the orchestration agent as a hexagon joined to every partition (decision 5)', () => {
+    const g = topologyGraph({ ...shop(), orchestration: 'lead' })
+    const lead = g.nodes.filter((n) => n.kind === 'orchestration')
+    expect(lead.map((n) => [n.id, n.shape, n.label])).toEqual([['orchestration:lead', 'hexagon', 'lead']])
+    const edges = g.edges.filter((e) => e.source.startsWith('orchestration:')).map((e) => `${e.source} ${e.target}`)
+    expect(edges).toEqual(['orchestration:lead partition:inventory', 'orchestration:lead partition:orders'])
     expect(g.edges.filter((e) => e.dashed)).toHaveLength(1)
   })
 })
 
 describe('wikiGraph', () => {
-  const orders = wikiOf('system:orders', [
+  const orders = wikiOf('partition:orders', [
     doc('create-order', 'feature', { links: ['validate-order'] }),
     doc('validate-order', 'feature'),
     doc('never-oversell', 'rule', { links: ['create-order', 'stock-never-negative'] }),
@@ -72,7 +72,7 @@ describe('wikiGraph', () => {
     doc('order-items', 'story', { name: 'Order items', links: ['create-order', 'reserve-stock'] }),
     doc('stock-never-negative', 'rule'),
   ])
-  const inventory = wikiOf('system:inventory', [doc('reserve-stock', 'feature')])
+  const inventory = wikiOf('partition:inventory', [doc('reserve-stock', 'feature')])
   const index = wikiIndex([pub, orders, inventory])
 
   it('has a node per document with the shape of its kind (U2, U3)', () => {
@@ -95,15 +95,15 @@ describe('wikiGraph', () => {
       [docNodeID('public', 'order-items'), 'Order items · the public wiki', 4],
       [docNodeID('public', 'stock-never-negative'), 'stock-never-negative · the public wiki', 4],
     ])
-    expect([...neighborsOf(g, docNodeID('system:orders', 'create-order'))].sort()).toEqual([
+    expect([...neighborsOf(g, docNodeID('partition:orders', 'create-order'))].sort()).toEqual([
+      docNodeID('partition:orders', 'Ideas'),
+      docNodeID('partition:orders', 'never-oversell'),
+      docNodeID('partition:orders', 'validate-order'),
       docNodeID('public', 'order-items'),
-      docNodeID('system:orders', 'Ideas'),
-      docNodeID('system:orders', 'never-oversell'),
-      docNodeID('system:orders', 'validate-order'),
     ])
   })
 
-  it('draws the stories of the public wiki with the features of the systems', () => {
+  it('draws the stories of the public wiki with the features of the partitions', () => {
     const g = wikiGraph(pub, index)
     expect(g.nodes.filter((n) => n.foreign).map((n) => n.ref).sort()).toEqual(['create-order', 'never-oversell', 'reserve-stock'])
     expect(g.edges.length).toBe(3)

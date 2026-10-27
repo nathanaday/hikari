@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Boxes, FileCode2, FolderGit2, Package } from 'lucide-react'
 import { FindingsList } from '@/components/findings-list'
-import { Section } from '@/components/system-detail'
+import { Section } from '@/components/partition-detail'
 import { Chips, Field, Select, TextField } from '@/components/topology-fields'
 import { Button } from '@/components/ui/button'
-import { findingsOf, owners, systemsIn, type AddKind, type Op, type Selection } from '@/lib/structure'
+import { findingsOf, partitionAgents, partitionsIn, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { branchProblem, nameProblem, urlProblem, validProjectName } from '@/lib/topology-rules'
 import type { Finding, TopologyAgent, TopologyModel } from '@/lib/types'
 
@@ -57,7 +57,7 @@ function Identity({ kind, id, name, locked, p }: { kind: 'agent' | 'repo'; id: s
         hint={kind === 'repo' ? 'What the UI calls it.' : `What agents and you call it: @${name}.`}
       />
       {locked ? (
-        <Field label="Id" hint="The store is keyed by this id, so it stays. Rename it instead.">
+        <Field label="Id" hint="The vault is keyed by this id, so it stays. Rename it instead.">
           <code className="block rounded-md border bg-neutral-50 px-3 py-1.5 text-xs">{id}</code>
         </Field>
       ) : (
@@ -121,8 +121,8 @@ export function ProjectInspector(p: InspectorProps) {
       <Section title="Project repository">
         <p className="text-sm text-muted-foreground">
           {pr.repo
-            ? 'The directory of the compose file is a git repository: hikari commits the store to it, and clones linked repos into repos/.'
-            : 'The store is not versioned. Turn the project repository on to keep its history in git and to link repos by url.'}
+            ? 'The directory of the topology file is a git repository: hikari commits the vault to it, and clones linked repos into repos/.'
+            : 'The vault is not versioned. Turn the project repository on to keep its history in git and to link repos by url.'}
         </p>
         {pr.repo && (
           <TextField label="Branch" value={pr.branch} mono check={branchProblem} onCommit={(v) => p.add({ op: 'set_project', branch: v })} hint="Agents commit here, and you merge it." />
@@ -131,17 +131,17 @@ export function ProjectInspector(p: InspectorProps) {
           {pr.repo ? 'Turn off the project repository' : 'Turn on the project repository'}
         </Button>
       </Section>
-      <Section title="Orchestrator">
-        <Field label="Orchestrator" hint="It plans from the system maps, writes the vocabulary and the public wiki, and every post wakes it. It owns no system; every other agent owns one.">
+      <Section title="Orchestration agent">
+        <Field label="Orchestration agent" hint="It plans from the feature maps, writes the vocabulary and the public wiki, and every post wakes it. It has no partition; every other agent has one.">
           <Select
             value={pr.orchestration}
-            options={[{ value: '', label: 'None' }, ...p.model.agents.filter((a) => !a.system || a.id === pr.orchestration).map((a) => ({ value: a.id, label: a.name }))]}
+            options={[{ value: '', label: 'None' }, ...p.model.agents.filter((a) => !a.partition || a.id === pr.orchestration).map((a) => ({ value: a.id, label: a.name }))]}
             onChange={(v) => p.add({ op: 'set_orchestration', agent: v })}
           />
         </Field>
       </Section>
-      <Section title="Store">
-        <TextField label="Directory" value={pr.store} mono placeholder="store" onCommit={(v) => p.add({ op: 'set_project', store: v })} hint="Relative to the compose file. Empty means store/." />
+      <Section title="Vault">
+        <TextField label="Directory" value={pr.vault} mono placeholder="store" onCommit={(v) => p.add({ op: 'set_project', vault: v })} hint="Relative to the topology file. Empty means store/." />
       </Section>
     </div>
   )
@@ -150,7 +150,7 @@ export function ProjectInspector(p: InspectorProps) {
 // RepoInspector edits a repo (rule SI2).
 export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
   const r = p.model.repos.find((x) => x.id === id)!
-  const systems = systemsIn(id, p.model)
+  const partitions = partitionsIn(id, p.model)
   return (
     <div className="space-y-6">
       <Header icon={<FolderGit2 className="size-4 text-muted-foreground" />} name={r.name} id={r.id} />
@@ -160,21 +160,21 @@ export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
         {r.url ? (
           <TextField label="Url" value={r.url} mono check={urlProblem} onCommit={(v) => p.add({ op: 'set_repo', id, url: v })} hint="hikari sync clones it into repos/." />
         ) : (
-          <TextField label="Path" value={r.path} mono check={(v) => (v ? null : 'A repo needs a path or a url.')} onCommit={(v) => p.add({ op: 'set_repo', id, path: v })} hint="On this machine; relative paths start at the compose file." />
+          <TextField label="Path" value={r.path} mono check={(v) => (v ? null : 'A repo needs a path or a url.')} onCommit={(v) => p.add({ op: 'set_repo', id, path: v })} hint="On this machine; relative paths start at the topology file." />
         )}
         <TextField label="Branch" value={r.branch} mono placeholder={r.url ? 'the project branch' : ''} check={(v) => (v ? branchProblem(v) : null)} onCommit={(v) => p.add({ op: 'set_repo', id, branch: v })} />
       </Section>
-      <Section title="Systems in it">
-        {systems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No system uses it yet.</p>
+      <Section title="Partitions in it">
+        {partitions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No partition uses it yet.</p>
         ) : (
           <ul className="space-y-1 text-sm">
-            {systems.map((a) => (
+            {partitions.map((a) => (
               <li key={a.id}>
                 <button type="button" className="underline underline-offset-2" onClick={() => p.select({ kind: 'agent', id: a.id })}>
                   {a.name}
                 </button>{' '}
-                <span className="text-muted-foreground">{a.system!.scope || 'the whole repo'}</span>
+                <span className="text-muted-foreground">{a.partition!.scope || 'the whole repo'}</span>
               </li>
             ))}
           </ul>
@@ -182,8 +182,8 @@ export function RepoInspector({ id, ...p }: InspectorProps & { id: string }) {
       </Section>
       <RemoveButton
         label="Remove the repo"
-        disabled={systems.length > 0}
-        reason={`Used by ${systems.map((a) => a.name).join(', ')}.`}
+        disabled={partitions.length > 0}
+        reason={`Used by ${partitions.map((a) => a.name).join(', ')}.`}
         onRemove={async () => {
           if (!(await p.add({ op: 'remove_repo', id }))) p.select({ kind: 'project' })
         }}
@@ -201,7 +201,7 @@ const modelOptions = (opts: Options, current: string) => {
 // AgentInspector edits an agent (rule SI4).
 export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
   const a = p.model.agents.find((x) => x.id === id)!
-  const orchestrator = p.model.project.orchestration === id
+  const orchestration = p.model.project.orchestration === id
   return (
     <div className="space-y-6">
       <Header icon={<Boxes className="size-4 text-muted-foreground" />} name={a.name} id={a.id} />
@@ -213,16 +213,16 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
         <Select value={a.model} options={modelOptions(p.options, a.model)} onChange={(v) => p.add({ op: 'set_agent', id, model: v })} />
       </Field>
 
-      <SystemSection a={a} orchestrator={orchestrator} p={p} />
+      <PartitionSection a={a} orchestration={orchestration} p={p} />
 
-      {a.system && (
+      {a.partition && (
         <Section title="Grants">
-          <Field label="Releases it reads" hint="It reads these systems' releases; a container gets new grants when it starts.">
+          <Field label="Releases it reads" hint="It reads these partitions' releases; a container gets new grants when it starts.">
             <Chips
               items={a.releases.map((r) => ({ value: r, label: p.model.agents.find((x) => x.id === r)?.name ?? r }))}
               onRemove={(r) => p.add({ op: 'set_grants', id, releases: a.releases.filter((x) => x !== r) })}
               onAdd={(r) => p.add({ op: 'set_grants', id, releases: [...a.releases, r] })}
-              choices={owners(p.model)
+              choices={partitionAgents(p.model)
                 .filter((o) => o.id !== id && !a.releases.includes(o.id))
                 .map((o) => ({ value: o.id, label: o.name }))}
               addLabel="Grant the releases of…"
@@ -235,7 +235,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
               onAdd={(d) => p.add({ op: 'set_grants', id, deliverables: [...a.deliverables, d] })}
               choices={p.options.deliverables.filter((d) => !a.deliverables.includes(d)).map((d) => ({ value: d, label: d }))}
               addLabel="Add a deliverable…"
-              empty={p.options.deliverables.length ? 'None' : 'None; the store defines no deliverable yet.'}
+              empty={p.options.deliverables.length ? 'None' : 'None; the vault defines no deliverable yet.'}
             />
           </Field>
         </Section>
@@ -249,7 +249,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
       </Section>
 
       <RemoveButton
-        label={orchestrator ? 'Remove the agent, and leave the project without an orchestrator' : 'Remove the agent'}
+        label={orchestration ? 'Remove the agent, and leave the project without an orchestration agent' : 'Remove the agent'}
         onRemove={async () => {
           if (!(await p.add({ op: 'remove_agent', id }))) p.select({ kind: 'project' })
         }}
@@ -291,44 +291,44 @@ function ContainerSummary({ a }: { a: TopologyAgent }) {
   )
 }
 
-function SystemSection({ a, orchestrator, p }: { a: TopologyAgent; orchestrator: boolean; p: InspectorProps }) {
+function PartitionSection({ a, orchestration, p }: { a: TopologyAgent; orchestration: boolean; p: InspectorProps }) {
   const repos = [...(p.model.project.repo ? [{ value: 'project', label: 'the project repository' }] : []), ...p.model.repos.map((r) => ({ value: r.id, label: r.name }))]
-  if (!a.system) {
+  if (!a.partition) {
     return (
-      <Section title="System">
+      <Section title="Partition">
         <p className="text-sm text-muted-foreground">
-          {orchestrator ? 'The orchestrator owns no code: it plans from the maps of the owners.' : 'It owns no code yet. Every agent but the orchestrator owns a system: the part of a repo that only it reads and changes.'}
+          {orchestration ? 'The orchestration agent owns no code: it plans from the feature maps of the partitions.' : 'It owns no code yet. Every agent but the orchestration agent has a partition: the part of a repo that only it reads and changes.'}
         </p>
-        {!orchestrator &&
+        {!orchestration &&
           (repos.length ? (
-            <Select value="" placeholder="Own a system in…" options={repos} onChange={(v) => v && p.add({ op: 'set_system', id: a.id, repo: v })} className="w-auto text-xs text-muted-foreground" />
+            <Select value="" placeholder="Own a partition in…" options={repos} onChange={(v) => v && p.add({ op: 'set_partition', id: a.id, repo: v })} className="w-auto text-xs text-muted-foreground" />
           ) : (
             <p className="text-sm text-muted-foreground">Add a repo first.</p>
           ))}
       </Section>
     )
   }
-  const s = a.system
+  const s = a.partition
   return (
-    <Section title="System">
+    <Section title="Partition">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Repo">
-          <Select value={s.repo} options={repos} onChange={(v) => p.add({ op: 'set_system', id: a.id, repo: v })} />
+          <Select value={s.repo} options={repos} onChange={(v) => p.add({ op: 'set_partition', id: a.id, repo: v })} />
         </Field>
-        <TextField label="Scope" value={s.scope} mono placeholder="the whole repo" onCommit={(v) => p.add({ op: 'set_system', id: a.id, scope: v })} hint="The directory it owns, relative to the repo." />
+        <TextField label="Scope" value={s.scope} mono placeholder="the whole repo" onCommit={(v) => p.add({ op: 'set_partition', id: a.id, scope: v })} hint="The directory it owns, relative to the repo." />
       </div>
-      <TextField label="Test command" value={s.test} mono placeholder="none" onCommit={(v) => p.add({ op: 'set_system', id: a.id, test: v })} hint="Seeds its first suite when it has no tests.yaml." />
+      <TextField label="Test command" value={s.test} mono placeholder="none" onCommit={(v) => p.add({ op: 'set_partition', id: a.id, test: v })} hint="Seeds its first suite when it has no tests.yaml." />
       <Field label="Read-only paths" hint="Directories outside every scope that it may read.">
         <Chips
           items={s.read.map((r) => ({ value: r, label: r }))}
-          onRemove={(r) => p.add({ op: 'set_system', id: a.id, read: s.read.filter((x) => x !== r) })}
-          onAdd={(r) => p.add({ op: 'set_system', id: a.id, read: [...s.read, r] })}
+          onRemove={(r) => p.add({ op: 'set_partition', id: a.id, read: s.read.filter((x) => x !== r) })}
+          onAdd={(r) => p.add({ op: 'set_partition', id: a.id, read: [...s.read, r] })}
           addLabel="Add a path and press Enter"
           check={(v) => (v.startsWith('/') || v.includes('..') ? 'A relative path inside the repo.' : null)}
         />
       </Field>
-      <Button size="sm" variant="ghost" onClick={() => p.add({ op: 'clear_system', id: a.id })}>
-        Clear the system
+      <Button size="sm" variant="ghost" onClick={() => p.add({ op: 'clear_partition', id: a.id })}>
+        Clear the partition
       </Button>
     </Section>
   )
@@ -346,7 +346,7 @@ export function SidecarInspector({ id, ...p }: InspectorProps & { id: string }) 
       </Field>
       <Section title="Container">
         <p className="text-sm">
-          <code className="text-xs">{s.image || 'built from the compose file'}</code>
+          <code className="text-xs">{s.image || 'built from the topology file'}</code>
         </p>
         <Button size="sm" variant="outline" onClick={() => p.editYAML(s.line)}>
           Edit in YAML
@@ -423,7 +423,7 @@ export function AddForm({ what, ...p }: InspectorProps & { what: AddKind }) {
           <Field label="Description">
             <input value={b} onChange={(e) => setB(e.target.value)} className="h-8 w-full rounded-md border border-input px-3 text-sm shadow-xs outline-none" />
           </Field>
-          <p className="text-xs text-muted-foreground">It joins the room. Give it a system next, or make it the orchestrator in the project.</p>
+          <p className="text-xs text-muted-foreground">It joins the room. Give it a partition next, or make it the orchestration agent in the project.</p>
         </>
       )}
       {what === 'sidecar' && (

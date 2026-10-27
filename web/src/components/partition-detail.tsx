@@ -2,7 +2,7 @@ import { ChevronRight, Lock, TriangleAlert } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
 import type { State } from '@/lib/store'
-import type { Feature, Interface, Manifest, Private, SystemView } from '@/lib/types'
+import type { Feature, Interface, Manifest, Private, PartitionView } from '@/lib/types'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -36,11 +36,11 @@ export function Section({ title, children, private: isPrivate }: { title: string
   )
 }
 
-// PrivateLabel marks what only the owner and the user see. Other agents see
+// PrivateLabel marks what only the partition agent and the user see. Other agents see
 // the public map alone.
 function PrivateLabel() {
   return (
-    <span className="inline-flex items-center gap-1 font-normal tracking-normal normal-case" title="Only the owner and you see this. Other agents see the public map.">
+    <span className="inline-flex items-center gap-1 font-normal tracking-normal normal-case" title="Only the partition agent and you see this. Other agents see the feature map.">
       <Lock className="size-3" />
       private
     </span>
@@ -97,7 +97,7 @@ function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: strin
 }
 
 function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
-  const layout = priv.layout.features?.[f.id]
+  const codeMap = priv.code_map.features?.[f.id]
   const link = `[[${f.id}]]`
   const keys = Object.entries(priv.tests.tests ?? {})
     .filter(([, links]) => links?.includes(link))
@@ -144,13 +144,13 @@ function FeatureRow({ f, priv }: { f: Feature; priv: Private }) {
             ))}
           </div>
         ) : null}
-        {(layout || keys.length > 0 || gaps) && (
+        {(codeMap || keys.length > 0 || gaps) && (
           <div className="mt-1 space-y-1.5 border-l-2 pl-3" data-testid="feature-private">
             <div className="text-xs text-muted-foreground">
               <PrivateLabel />
             </div>
-            <Paths label="code" paths={layout?.code ?? undefined} />
-            {layout?.notes && <p className="text-xs text-muted-foreground">{layout.notes}</p>}
+            <Paths label="code" paths={codeMap?.code ?? undefined} />
+            {codeMap?.notes && <p className="text-xs text-muted-foreground">{codeMap.notes}</p>}
             <Paths label="tests" paths={keys.length ? keys : undefined} />
             <List label="Not tested" items={gaps} />
           </div>
@@ -170,18 +170,18 @@ function openFeature(e: React.MouseEvent, id: string) {
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 
-export function SystemDetail({ state, system: v }: { state: State; system: SystemView }) {
-  const owner = state.agents.find((a) => a.name === v.owner)
+export function PartitionDetail({ state, partition: v }: { state: State; partition: PartitionView }) {
+  const partitionAgent = state.agents.find((a) => a.name === v.partition_agent)
   const flags = v.flags ?? []
   const providers = v.providers ?? {}
   const flagsFor = (name: string) => flags.filter((f) => f.interface === name).map((f) => f.problem)
-  const s = v.system
+  const s = v.partition
   const priv = v.private
-  const parts = priv.layout.parts ?? []
+  const parts = priv.code_map.parts ?? []
   const suites = Object.entries(priv.tests.suites ?? {})
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="system-detail">
+    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="partition-detail">
       <div className="max-w-4xl space-y-6 px-4 py-5 md:px-6">
         {v.error && (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -190,7 +190,7 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
         )}
         {v.private_errors?.length ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="private-errors">
-            <p className="font-medium">The owner's private documents have problems:</p>
+            <p className="font-medium">The partition agent's private documents have problems:</p>
             <ul className="ml-4 list-disc">
               {v.private_errors.map((e) => (
                 <li key={e}>{e}</li>
@@ -206,9 +206,9 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
         )}
         {v.state === 'unbuilt' && !s.summary && v.features.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            {owner?.status.state === 'indexing'
-              ? `${v.owner} is reading its system and building the map.`
-              : `${v.owner} has not described this system yet.`}
+            {partitionAgent?.status.state === 'indexing'
+              ? `${v.partition_agent} is reading its partition and building the map.`
+              : `${v.partition_agent} has not described this partition yet.`}
           </p>
         ) : (
           <>
@@ -262,7 +262,7 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
                       <ul className="divide-y border-y">
                         {releases.map((r) => (
                           <li key={r.version} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-sm">
-                            <a href={`#/system/${v.owner}/release/${r.deliverable}/${r.version}`} className="font-medium underline underline-offset-2">
+                            <a href={`#/partition/${v.partition_agent}/release/${r.deliverable}/${r.version}`} className="font-medium underline underline-offset-2">
                               {r.version}
                             </a>
                             <span className="min-w-0 flex-1">{r.notes}</span>
@@ -293,7 +293,7 @@ export function SystemDetail({ state, system: v }: { state: State; system: Syste
               )}
             </Section>
             {parts.length > 0 && (
-              <Section title="Layout" private>
+              <Section title="Code map" private>
                 <ul className="space-y-1 text-sm">
                   {parts.map((l) => (
                     <li key={l.path} className="flex gap-3">

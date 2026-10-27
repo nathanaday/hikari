@@ -3,7 +3,7 @@ import { HealthBadge } from '@/components/health'
 import { Markdown } from '@/components/markdown'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { asText, storeFileURL, useFetch } from '@/hooks/use-store-file'
+import { asText, vaultFileURL, useFetch } from '@/hooks/use-vault-file'
 import type { DocKind, WikiDoc, WikiView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { documentBody } from '@/lib/wiki'
@@ -24,7 +24,7 @@ export function KindBadge({ kind }: { kind: DocKind }) {
 // support, its text, and the documents that link it (rule U5 of the wikis
 // spec), and lets the user change it (rule U6).
 export function DocumentPanel({ wiki, doc, index, onLink }: { wiki: WikiView; doc: WikiDoc; index: WikiIndex; onLink: (id: string) => void }) {
-  const text = useFetch(`${storeFileURL(doc.file)}&v=${doc.hash}`, asText)
+  const text = useFetch(`${vaultFileURL(doc.file)}&v=${doc.hash}`, asText)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState(false)

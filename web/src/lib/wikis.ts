@@ -16,12 +16,12 @@ export const kindLabel: Record<DocKind, string> = {
 export const isUserKind = (k: DocKind) => k === 'plan' || k === 'note'
 
 export const publicRef = 'public'
-export const systemRef = (system: string) => `system:${system}`
+export const featureMapRef = (partition: string) => `partition:${partition}`
 
 // Located is a document with the wiki it is in.
 export type Located = { wiki: WikiView; doc: WikiDoc }
 
-// WikiIndex finds any document of the store by id, and the documents that
+// WikiIndex finds any document of the vault by id, and the documents that
 // link it (rule N6 of the wikis spec).
 export type WikiIndex = { byID: Map<string, Located>; backlinks: Map<string, Located[]> }
 
@@ -79,7 +79,7 @@ export function userDocProblem(name: string): string | null {
 
 // kindsOf returns the kinds a wiki holds: the agent kinds of its scope,
 // then the user's (section 2 of the wikis spec).
-export function kindsOf(scope: 'public' | 'system'): DocKind[] {
+export function kindsOf(scope: 'public' | 'partition'): DocKind[] {
   return scope === 'public' ? ['story', 'rule', 'principle', 'plan', 'note'] : ['feature', 'principle', 'rule', 'plan', 'note']
 }
 

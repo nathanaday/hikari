@@ -8,13 +8,13 @@ import { PublicWiki } from '@/components/public-wiki'
 import { SignIn } from '@/components/sign-in'
 import { ReleaseView } from '@/components/release-view'
 import { SharedView } from '@/components/shared-view'
-import { SystemDetail } from '@/components/system-detail'
+import { PartitionDetail } from '@/components/partition-detail'
 import { TopologyView } from '@/components/topology-view'
 import { VocabularyPanel } from '@/components/vocabulary-panel'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useHikari } from '@/hooks/use-hikari'
-import { orchestratorOf } from '@/lib/rules'
+import { orchestrationOf } from '@/lib/rules'
 import { viewKey } from '@/lib/view'
 
 export default function App() {
@@ -34,16 +34,16 @@ export default function App() {
   let main: React.ReactNode
   if (v.kind === 'map') {
     main = <MapView state={state} show={show} />
-  } else if (v.kind === 'system') {
-    main = <SystemDetail state={state} system={state.systems.find((x) => x.owner === v.name)!} />
+  } else if (v.kind === 'partition') {
+    main = <PartitionDetail state={state} partition={state.partitions.find((x) => x.partition_agent === v.name)!} />
   } else if (v.kind === 'release') {
-    main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} system={v.name} deliverable={v.deliverable} version={v.version} />
+    main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} partition={v.name} deliverable={v.deliverable} version={v.version} />
   } else if (v.kind === 'shared') {
     main = <SharedView />
   } else if (v.kind === 'room' && v.tab === 'wiki') {
-    main = <PublicWiki orchestrator={orchestratorOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
+    main = <PublicWiki orchestration={orchestrationOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
   } else if (v.kind === 'room' && v.tab === 'vocabulary') {
-    main = <VocabularyPanel orchestrator={orchestratorOf(state.participants)} vocabulary={state.vocabulary} />
+    main = <VocabularyPanel orchestration={orchestrationOf(state.participants)} vocabulary={state.vocabulary} />
   } else {
     main = <MessageList state={state} />
   }

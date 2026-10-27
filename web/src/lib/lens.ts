@@ -1,5 +1,5 @@
 import type { GraphNode } from './graph'
-import type { Agent, AgentState, DocKind, Feature, FeatureState, Health, SystemView, WikiDoc } from './types'
+import type { Agent, AgentState, DocKind, Feature, FeatureState, Health, PartitionView, WikiDoc } from './types'
 import { docHealth } from './wikis'
 
 export type TopologyLens = 'activity' | 'tests' | 'git'
@@ -22,7 +22,7 @@ export type Paint = { fill: Color; stroke: Color; opacity: number; pulse: boolea
 export const neutral: Paint = { fill: 'white', stroke: 'outline', opacity: 1, pulse: false, dashed: false }
 const filled = (fill: Color, extra: Partial<Paint> = {}): Paint => ({ ...neutral, fill, stroke: fill, ...extra })
 
-// activityPaint colors a system from its owner's status (rule U33).
+// activityPaint colors a partition from its partition agent's status (rule U33).
 export function activityPaint(state: AgentState | undefined): Paint {
   switch (state) {
     case 'working':
@@ -39,8 +39,8 @@ export function activityPaint(state: AgentState | undefined): Paint {
 
 const healthColor: Record<Health, Color> = { failing: 'fail', pending: 'pending', passing: 'pass', untested: 'none' }
 
-// systemHealth sums a system's features into one health (rule U34).
-export function systemHealth(features: Feature[]): Health {
+// partitionHealth sums a partition's features into one health (rule U34).
+export function partitionHealth(features: Feature[]): Health {
   const has = (h: Health) => features.some((f) => f.health === h)
   if (has('failing')) return 'failing'
   if (has('pending')) return 'pending'
@@ -53,29 +53,29 @@ export function healthPaint(h: Health): Paint {
 }
 
 // TopologyContext is what the topology lenses read.
-export type TopologyContext = { systems: Map<string, SystemView>; agents: Map<string, Agent> }
+export type TopologyContext = { partitions: Map<string, PartitionView>; agents: Map<string, Agent> }
 
-export function topologyContext(systems: SystemView[], agents: Agent[]): TopologyContext {
-  return { systems: new Map(systems.map((s) => [s.owner, s])), agents: new Map(agents.map((a) => [a.name, a])) }
+export function topologyContext(partitions: PartitionView[], agents: Agent[]): TopologyContext {
+  return { partitions: new Map(partitions.map((s) => [s.partition_agent, s])), agents: new Map(agents.map((a) => [a.name, a])) }
 }
 
 // topologyPaint gives a topology node its paint under a lens. Nodes that a
 // lens says nothing about are neutral (rule C4 of the brainstorm, U35).
 export function topologyPaint(lens: TopologyLens, node: GraphNode, ctx: TopologyContext): Paint {
-  if (node.kind === 'system') {
-    const sys = ctx.systems.get(node.ref)
+  if (node.kind === 'partition') {
+    const sys = ctx.partitions.get(node.ref)
     switch (lens) {
       case 'activity':
         return activityPaint(ctx.agents.get(node.ref)?.status.state)
       case 'tests':
-        return healthPaint(systemHealth(sys?.features ?? []))
+        return healthPaint(partitionHealth(sys?.features ?? []))
       case 'git':
         return sys?.dirty ? filled('dirty') : neutral
     }
   }
-  if (node.kind === 'orchestrator' && lens === 'activity') return activityPaint(ctx.agents.get(node.ref)?.status.state)
+  if (node.kind === 'orchestration' && lens === 'activity') return activityPaint(ctx.agents.get(node.ref)?.status.state)
   if (node.kind === 'repo' && lens === 'git') {
-    const dirty = [...ctx.systems.values()].some((s) => s.repo === node.ref && s.dirty)
+    const dirty = [...ctx.partitions.values()].some((s) => s.repo === node.ref && s.dirty)
     return dirty ? filled('dirty') : neutral
   }
   return neutral
@@ -88,8 +88,8 @@ export function topologyDetail(lens: TopologyLens, node: GraphNode, ctx: Topolog
     if (lens !== 'git') return ''
     return topologyPaint('git', node, ctx).fill === 'dirty' ? 'uncommitted changes' : 'clean'
   }
-  if (node.kind !== 'system' && (node.kind !== 'orchestrator' || lens !== 'activity')) return ''
-  const sys = ctx.systems.get(node.ref)
+  if (node.kind !== 'partition' && (node.kind !== 'orchestration' || lens !== 'activity')) return ''
+  const sys = ctx.partitions.get(node.ref)
   switch (lens) {
     case 'activity': {
       const status = ctx.agents.get(node.ref)?.status

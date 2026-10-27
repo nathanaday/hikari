@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
-import { asJSON, asText, storeFileURL, useFetch } from '@/hooks/use-store-file'
+import { asJSON, asText, vaultFileURL, useFetch } from '@/hooks/use-vault-file'
 import type { Deliverable, SharedListing } from '@/lib/types'
 
 const noNames = new Set<string>()
 
 function Entry({ name, path }: { name: string; path: string }) {
   const [open, setOpen] = useState(false)
-  const { data, error } = useFetch(open ? storeFileURL(path) : null, asText)
+  const { data, error } = useFetch(open ? vaultFileURL(path) : null, asText)
   return (
     <details className="group border-b last:border-b-0" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} data-testid="shared-entry">
       <summary className="flex cursor-pointer list-none items-center gap-2 py-2 text-sm hover:bg-neutral-50 [&::-webkit-details-marker]:hidden">
@@ -62,7 +62,7 @@ function Patterns({ label, patterns }: { label: string; patterns?: string[] }) {
 // opens to its skill.
 export function DeliverableEntry({ d }: { d: Deliverable }) {
   const [open, setOpen] = useState(false)
-  const { data, error } = useFetch(open ? storeFileURL(d.skill) : null, asText)
+  const { data, error } = useFetch(open ? vaultFileURL(d.skill) : null, asText)
   const hasRules = d.layout.require?.length || d.layout.allow?.length || d.layout.forbid?.length
   return (
     <details className="group border-b last:border-b-0" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} data-testid="deliverable">
@@ -102,7 +102,7 @@ export function DeliverableEntry({ d }: { d: Deliverable }) {
 
 export function SharedView() {
   const parse = useCallback((r: Response) => asJSON<SharedListing>(r), [])
-  const { data, error } = useFetch('/api/ui/store/shared', parse)
+  const { data, error } = useFetch('/api/ui/vault/shared', parse)
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
   return (
@@ -118,7 +118,7 @@ export function SharedView() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Add a deliverable as store/shared/deliverables/&lt;name&gt;/ with deliverable.yaml and SKILL.md, and grant it to an owner in the topology.
+              Add a deliverable as store/shared/deliverables/&lt;name&gt;/ with deliverable.yaml and SKILL.md, and grant it to a partition agent in the topology.
             </p>
           )}
         </section>

@@ -27,6 +27,6 @@ export function useFetch<T>(url: string | null, parse: (r: Response) => Promise<
 export const asJSON = <T,>(r: Response) => r.json() as Promise<T>
 export const asText = (r: Response) => r.text()
 
-export function storeFileURL(path: string): string {
-  return `/api/ui/store/file?path=${encodeURIComponent(path)}`
+export function vaultFileURL(path: string): string {
+  return `/api/ui/vault/file?path=${encodeURIComponent(path)}`
 }

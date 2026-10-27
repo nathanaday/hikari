@@ -7,7 +7,7 @@ import type { Color, Paint } from '@/lib/lens'
 
 // GraphEngine lays out, draws, and animates one graph at a time on a
 // canvas (rules U20 to U29 and U41 to U44). It knows nodes and edges, not
-// systems or features.
+// partitions or features.
 
 type SimNode = SimulationNodeDatum & { id: string; node: GraphNode }
 type SimLink = { source: SimNode; target: SimNode; dashed: boolean }

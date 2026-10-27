@@ -7,7 +7,7 @@ function initials(name: string): string {
   return (parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase()
 }
 
-export function NodeAvatar({ name, me, className }: { name: string; me: boolean; className?: string }) {
+export function ParticipantAvatar({ name, me, className }: { name: string; me: boolean; className?: string }) {
   return (
     <Avatar className={cn('size-8 rounded-md', className)}>
       <AvatarFallback className="rounded-md bg-neutral-100 text-[11px] font-medium text-neutral-600">

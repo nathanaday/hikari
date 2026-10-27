@@ -68,7 +68,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             <SidebarGroup>
               <SidebarMenu>
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
-                {state.systems.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
+                {state.partitions.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
                 {item({ kind: 'shared' }, 'Shared', <BookOpen />)}
                 {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}
               </SidebarMenu>
@@ -76,16 +76,16 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             <SidebarGroup>
               <SidebarMenu>{item({ kind: 'room' }, 'Room', <MessagesSquare />)}</SidebarMenu>
             </SidebarGroup>
-            {state.systems.length > 0 && (
+            {state.partitions.length > 0 && (
               <SidebarGroup>
-                <SidebarGroupLabel>Systems</SidebarGroupLabel>
+                <SidebarGroupLabel>Partitions</SidebarGroupLabel>
                 <SidebarMenu>
-                  {state.systems.map((sys) => {
-                    const owner = state.agents.find((a) => a.name === sys.owner)
-                    const busy = owner?.status.state === 'working' || owner?.status.state === 'indexing'
+                  {state.partitions.map((sys) => {
+                    const partitionAgent = state.agents.find((a) => a.name === sys.partition_agent)
+                    const busy = partitionAgent?.status.state === 'working' || partitionAgent?.status.state === 'indexing'
                     return item(
-                      { kind: 'system', name: sys.owner },
-                      sys.owner,
+                      { kind: 'partition', name: sys.partition_agent },
+                      sys.partition_agent,
                       <span className="flex size-4 items-center justify-center">
                         <MapStateDot state={sys.state} busy={busy} error={!!sys.error} />
                       </span>,

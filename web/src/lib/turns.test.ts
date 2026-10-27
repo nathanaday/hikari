@@ -29,7 +29,7 @@ describe('turnKeys', () => {
   it('shows a turn where the messages that woke it are', () => {
     expect(turnKeys(turn('woken by user in the room, lead directly'), 'user')).toEqual(['room'])
     expect(turnKeys(turn('woken by user directly'), 'user')).toEqual(['dm:dev'])
-    expect(turnKeys(turn('indexing the system'), 'user')).toEqual(['room'])
+    expect(turnKeys(turn('indexing the partition'), 'user')).toEqual(['room'])
   })
   it('keeps a direct message between agents out of the user\'s threads', () => {
     expect(turnInView(turn('woken by lead directly'), { kind: 'dm', name: 'dev' }, 'user')).toBe(false)
@@ -54,7 +54,7 @@ describe('stepLabel', () => {
     expect(stepLabel(step({ tool: 'Edit', input: { file_path: '/w/a.py' }, done: false }))).toBe('Editing a.py')
     expect(stepLabel(step({ tool: 'Bash', input: { command: 'npm test', description: 'Run the tests' } }))).toBe('Run the tests')
     expect(stepLabel(step({ tool: 'Bash', input: { command: 'npm test' } }))).toBe('npm test')
-    expect(stepLabel(step({ tool: 'Skill', input: { skill: 'hikari-system' } }))).toBe('Used the hikari-system skill')
+    expect(stepLabel(step({ tool: 'Skill', input: { skill: 'hikari-partition' } }))).toBe('Used the hikari-partition skill')
     expect(stepLabel(step({ tool: 'mcp__hikari__post', input: { body: 'hi' } }))).toBe('Posted to the room')
     expect(stepLabel(step({ tool: 'mcp__hikari__send_direct_message', input: { to: 'lead', body: 'hi' } }))).toBe('Sent a message to lead')
     expect(stepLabel(step({ tool: 'mcp__hikari__upsert_features' }))).toBe('upsert features')

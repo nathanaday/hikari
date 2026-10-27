@@ -11,7 +11,7 @@ export type Message = {
   woke?: string[]
 }
 
-export type Role = 'orchestrator' | 'owner' | 'operator'
+export type Role = 'orchestration' | 'partition' | 'operator'
 
 export type Peer = {
   name: string
@@ -79,10 +79,10 @@ export type Feature = {
 
 export type Flag = { interface: string; problem: string }
 
-// Private holds the owner's private documents: where each feature lives in
+// Private holds the partition agent's private documents: where each feature lives in
 // the code, and which features each test touches.
 export type Private = {
-  layout: {
+  code_map: {
     version: number
     parts: { path: string; description: string }[] | null
     features: Record<string, { code: string[] | null; notes?: string }>
@@ -112,7 +112,7 @@ export type Certificate = {
 export type Manifest = {
   deliverable: string
   version: string
-  system: string
+  partition: string
   released: string
   notes: string
   hikari: string
@@ -148,11 +148,11 @@ export type SharedListing = {
   deliverables: Deliverable[]
 }
 
-// SystemView is everything about one system: the public map as the owner
+// PartitionView is everything about one partition: the public map as the partition agent
 // sees it, its private documents, and its repo details.
-export type SystemView = {
+export type PartitionView = {
   version: number
-  system: {
+  partition: {
     name: string
     summary?: string
     responsibilities?: string[]
@@ -166,7 +166,7 @@ export type SystemView = {
   private_errors?: string[]
   private: Private
   releases: Manifest[] | null
-  owner: string
+  partition_agent: string
   repo: string
   scope: string
   branch: string
@@ -201,16 +201,16 @@ export type WikiDoc = {
   health?: Health
   support?: Health
   created?: string
-  // file is the document's path in the store; hash changes with its text.
+  // file is the document's path in the vault; hash changes with its text.
   file: string
   hash: string
 }
 
-// WikiView is the wiki of a system, or the public wiki. ref is
-// "system:<name>" or "public".
+// WikiView is the wiki of a partition, or the public wiki. ref is
+// "partition:<name>" or "public".
 export type WikiView = {
   ref: string
-  scope: 'system' | 'public'
+  scope: 'partition' | 'public'
   name: string
   documents: WikiDoc[]
   problems?: string[]
@@ -230,11 +230,11 @@ export type Snapshot = {
   start_findings?: Finding[]
   me: string
   agents: Agent[]
-  // participants lists everyone in the room: the orchestrator first and
+  // participants lists everyone in the room: the orchestration agent first and
   // the user last.
   participants: Peer[]
   messages: Message[]
-  systems: SystemView[]
+  partitions: PartitionView[]
   vocabulary: Vocabulary
   repos?: RepoInfo[]
   deliverables?: DeliverableInfo[]
@@ -242,18 +242,18 @@ export type Snapshot = {
   activity?: Record<string, Activity[]>
 }
 
-// RepoInfo is one repository of the topology with the systems in it.
-export type RepoInfo = { name: string; branch: string; systems: string[] }
+// RepoInfo is one repository of the topology with the partitions in it.
+export type RepoInfo = { name: string; branch: string; partitions: string[] }
 
-// DeliverableInfo is a deliverable of the store with the agents that hold it.
+// DeliverableInfo is a deliverable of the vault with the agents that hold it.
 export type DeliverableInfo = { name: string; description?: string; holders: string[]; error?: string }
 
 export type ServerEvent =
   | { type: 'snapshot'; snapshot: Snapshot }
   | { type: 'message'; message: Message }
-  | { type: 'status'; node: string; status: Status }
-  | { type: 'activity'; node: string; activity: Activity }
-  | { type: 'system'; system: SystemView }
+  | { type: 'status'; agent: string; status: Status }
+  | { type: 'activity'; agent: string; activity: Activity }
+  | { type: 'partition'; partition: PartitionView }
   | { type: 'vocabulary'; vocabulary: Vocabulary }
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
@@ -273,17 +273,17 @@ export type Finding = {
   line?: number
 }
 
-// orchestration is the service id of the orchestrator, or "".
-export type TopologyProject = { id: string; name: string; store: string; repo: boolean; branch: string; orchestration: string }
+// orchestration is the service id of the orchestration agent, or "".
+export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string }
 export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
-export type TopologySystem = { repo: string; scope: string; read: string[]; test: string }
+export type TopologyPartition = { repo: string; scope: string; read: string[]; test: string }
 export type TopologyAgent = {
   id: string
   name: string
   description: string
   instructions: string
   model: string
-  system: TopologySystem | null
+  partition: TopologyPartition | null
   releases: string[]
   deliverables: string[]
   image: string

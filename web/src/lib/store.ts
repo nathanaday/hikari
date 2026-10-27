@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Peer, RepoInfo, ServerEvent, SystemView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -10,7 +10,7 @@ export type State = {
   version: string
   // project is the project's name.
   project: string
-  // mode, file, and revision follow hikari up and its compose file, and
+  // mode, file, and revision follow hikari up and its topology file, and
   // startFindings say why the last start failed (rule YS1).
   mode: Mode
   file: string
@@ -18,16 +18,16 @@ export type State = {
   startFindings: Finding[]
   me: string
   agents: Agent[]
-  // participants lists everyone in the room: the orchestrator first and
+  // participants lists everyone in the room: the orchestration agent first and
   // the user last.
   participants: Peer[]
   messages: Message[]
-  systems: SystemView[]
+  partitions: PartitionView[]
   vocabulary: Vocabulary
   // repos and deliverables let the map draw the topology.
   repos: RepoInfo[]
   deliverables: DeliverableInfo[]
-  // wikis holds the public wiki and the wiki of every system.
+  // wikis holds the public wiki and the wiki of every partition.
   wikis: WikiView[]
   // activity holds the recent steps of each agent, oldest first.
   activity: Record<string, Activity[]>
@@ -56,7 +56,7 @@ export function initialState(view: View): State {
     agents: [],
     participants: [],
     messages: [],
-    systems: [],
+    partitions: [],
     vocabulary: emptyVocabulary,
     repos: [],
     deliverables: [],
@@ -69,17 +69,17 @@ export function initialState(view: View): State {
 
 const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 
-// resolve returns v if it names an agent or a system of s, and All activity
+// resolve returns v if it names an agent or a partition of s, and All activity
 // if not. Without agents, only the Topology view exists (rule YV5).
-function resolve(v: View, s: Pick<State, 'agents' | 'systems' | 'mode'>): View {
+function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
   if (v.kind === 'room') return v
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
-  if ((v.kind === 'system' || v.kind === 'release') && s.systems.some((x) => x.owner === v.name)) return v
+  if ((v.kind === 'partition' || v.kind === 'release') && s.partitions.some((x) => x.partition_agent === v.name)) return v
   if (v.kind === 'shared') return v
   if (v.kind === 'map') {
-    if (v.system) return s.systems.some((x) => x.owner === v.system) ? v : { kind: 'map' }
+    if (v.partition) return s.partitions.some((x) => x.partition_agent === v.partition) ? v : { kind: 'map' }
     return v
   }
   return allView
@@ -104,7 +104,7 @@ function applyEvent(s: State, e: ServerEvent): State {
   switch (e.type) {
     case 'snapshot': {
       const { me, agents } = e.snapshot
-      const systems = e.snapshot.systems ?? []
+      const partitions = e.snapshot.partitions ?? []
       return {
         ...s,
         loaded: true,
@@ -117,14 +117,14 @@ function applyEvent(s: State, e: ServerEvent): State {
         me,
         agents,
         participants: e.snapshot.participants ?? [],
-        systems,
+        partitions,
         messages: e.snapshot.messages ?? [],
         vocabulary: e.snapshot.vocabulary ?? emptyVocabulary,
         repos: e.snapshot.repos ?? [],
         deliverables: e.snapshot.deliverables ?? [],
         wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
-        view: resolve(s.view, { agents, systems, mode: e.snapshot.mode ?? 'running' }),
+        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running' }),
         unread: {},
       }
     }
@@ -140,14 +140,14 @@ function applyEvent(s: State, e: ServerEvent): State {
     case 'status':
       return {
         ...s,
-        agents: s.agents.map((ag) => (ag.name === e.node ? { ...ag, status: e.status } : ag)),
+        agents: s.agents.map((ag) => (ag.name === e.agent ? { ...ag, status: e.status } : ag)),
       }
     case 'activity': {
-      const list = s.activity[e.node] ?? []
-      return { ...s, activity: { ...s.activity, [e.node]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+      const list = s.activity[e.agent] ?? []
+      return { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
     }
-    case 'system':
-      return { ...s, systems: replaceBy(s.systems, e.system, (x) => x.owner) }
+    case 'partition':
+      return { ...s, partitions: replaceBy(s.partitions, e.partition, (x) => x.partition_agent) }
     case 'vocabulary':
       return { ...s, vocabulary: e.vocabulary }
     case 'wiki':

@@ -6,9 +6,9 @@ import { orderDocs, template, userDocProblem, wikiIndex, wikiName } from './wiki
 describe('wikis', () => {
   it('finds documents and their backlinks across wikis (N6)', () => {
     const pub = wikiOf('public', [doc('order-items', 'story', { links: ['create-order', 'ghost', 'order-items'] })])
-    const sys = wikiOf('system:orders', [doc('create-order'), doc('Ideas', 'note', { links: ['create-order', 'create-order'] })])
+    const sys = wikiOf('partition:orders', [doc('create-order'), doc('Ideas', 'note', { links: ['create-order', 'create-order'] })])
     const index = wikiIndex([pub, sys])
-    expect(index.byID.get('create-order')!.wiki.ref).toBe('system:orders')
+    expect(index.byID.get('create-order')!.wiki.ref).toBe('partition:orders')
     expect(index.backlinks.get('create-order')!.map((b) => b.doc.id)).toEqual(['Ideas', 'order-items'])
     expect(index.backlinks.get('order-items')).toBeUndefined()
   })
@@ -20,7 +20,7 @@ describe('wikis', () => {
 
   it('names wikis, checks names, and makes templates (D2, U6)', () => {
     expect(wikiName('public')).toBe('the public wiki')
-    expect(wikiName('system:orders')).toBe('orders')
+    expect(wikiName('partition:orders')).toBe('orders')
     expect(userDocProblem('Ideas for Q1')).toBeNull()
     for (const bad of ['', ' x', '.x', 'a/b', 'a:b', 'a?b', 'x'.repeat(201)]) expect(userDocProblem(bad)).not.toBeNull()
     expect(template('plan', 'Roadmap')).toBe('---\nkind: plan\nstatus: idea\n---\n\n')

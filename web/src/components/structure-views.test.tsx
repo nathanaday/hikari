@@ -10,7 +10,7 @@ import type { Finding, Plan, TopologyModel } from '@/lib/types'
 const p = plan as Plan
 const model = p.model as TopologyModel
 const findings: Finding[] = [
-  { severity: 'error', stage: 'topology', message: 'owns no system', path: 'services.lead', line: 9 },
+  { severity: 'error', stage: 'topology', message: 'has no partition', path: 'services.lead', line: 9 },
   { severity: 'warning', stage: 'start', message: 'no credential' },
 ]
 const props: InspectorProps = {
@@ -34,7 +34,7 @@ describe('the structure helpers', () => {
     expect(worst(findingsOf(findings, { kind: 'agent', id: 'dev' }))).toBeNull()
   })
   it('says what each agent does (decision 2)', () => {
-    expect(roles(model.agents.find((a) => a.id === 'lead')!, model)).toBe('orchestrator')
+    expect(roles(model.agents.find((a) => a.id === 'lead')!, model)).toBe('orchestration agent')
     expect(roles(model.agents.find((a) => a.id === 'dev')!, model)).toBe('owns project/app')
   })
 })
@@ -42,7 +42,7 @@ describe('the structure helpers', () => {
 describe('EntityList', () => {
   it('lists each group, names with ids, roles, and finding dots (SL1 to SL3)', () => {
     const html = renderToStaticMarkup(<EntityList model={model} findings={findings} selected="agent:lead" select={() => {}} />)
-    for (const text of ['Project', 'Repos', 'Agents', 'Sidecars', 'orchestrator', 'owns project/app']) expect(html).toContain(text)
+    for (const text of ['Project', 'Repositories', 'Agents', 'Sidecars', 'orchestration', 'owns project/app']) expect(html).toContain(text)
     expect(html).toMatch(/chief<span[^>]*>lead<\/span>/)
     expect(html).toContain('aria-label="error"')
     expect(html).toContain('aria-current="true"')
@@ -50,20 +50,20 @@ describe('EntityList', () => {
 })
 
 describe('the inspectors', () => {
-  it('picks the orchestrator of the project, or none (H24)', () => {
+  it('picks the orchestration agent of the project, or none (H24)', () => {
     const html = renderToStaticMarkup(<ProjectInspector {...props} />)
-    expect(html).toContain('Orchestrator')
+    expect(html).toContain('Orchestration agent')
     expect(html).toContain('>None<')
     expect(html).toContain('>chief<')
     expect(html).not.toMatch(/<option[^>]*value="dev"/)
   })
-  it('keeps a locked id, and shows what the orchestrator is (SI4, SI6)', () => {
+  it('keeps a locked id, and shows what the orchestration agent is (SI4, SI6)', () => {
     const locked = { ...model, agents: model.agents.map((a) => (a.id === 'lead' ? { ...a, id_locked: true } : a)) }
     const html = renderToStaticMarkup(<AgentInspector {...props} model={locked} id="lead" />)
-    expect(html).toContain('The store is keyed by this id')
-    expect(html).toContain('owns no system')
-    expect(html).toContain('The orchestrator owns no code')
-    expect(html).toContain('without an orchestrator')
+    expect(html).toContain('The vault is keyed by this id')
+    expect(html).toContain('has no partition')
+    expect(html).toContain('The orchestration agent owns no code')
+    expect(html).toContain('without an orchestration agent')
   })
   it('adds an agent that joins the room (SI7)', () => {
     const html = renderToStaticMarkup(<AddForm {...props} what="agent" />)
@@ -86,6 +86,6 @@ describe('Occurrences', () => {
     expect(html.match(/type="checkbox"/g)).toHaveLength(1)
     expect(html).toContain('checked=""')
     expect(html).toContain('Ship it soon, with @chief.')
-    expect(html).toContain('its owner updates it')
+    expect(html).toContain('its partition agent updates it')
   })
 })

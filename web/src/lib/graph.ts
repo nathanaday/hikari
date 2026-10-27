@@ -1,11 +1,11 @@
-import type { DeliverableInfo, DocKind, RepoInfo, SystemView, WikiDoc, WikiView } from './types'
+import type { DeliverableInfo, DocKind, RepoInfo, PartitionView, WikiDoc, WikiView } from './types'
 import { wikiName, type WikiIndex } from './wikis'
 
-export type NodeKind = 'system' | 'repo' | 'deliverable' | 'orchestrator' | 'doc'
+export type NodeKind = 'partition' | 'repo' | 'deliverable' | 'orchestration' | 'doc'
 export type Shape = 'circle' | 'square' | 'diamond' | 'hexagon'
 
 // GraphNode is one node as the canvas draws it. ref names what it stands
-// for: a system, a repository, a deliverable, the orchestrator, or a
+// for: a partition, a repository, a deliverable, the orchestration agent, or a
 // document id.
 export type GraphNode = {
   id: string
@@ -27,9 +27,9 @@ export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
 
 export const nodeID = (kind: NodeKind, ref: string) => `${kind}:${ref}`
 
-// systemRadius grows with the square root of the feature count, from 6 to
+// partitionRadius grows with the square root of the feature count, from 6 to
 // 18 pixels (rule U30).
-export function systemRadius(features: number): number {
+export function partitionRadius(features: number): number {
   return Math.min(18, 6 + 2 * Math.sqrt(features))
 }
 
@@ -39,33 +39,33 @@ export function featureRadius(neighbors: number): number {
   return Math.min(14, 5 + 1.5 * neighbors)
 }
 
-type TopologyInput = { systems: SystemView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; orchestrator?: string }
+type TopologyInput = { partitions: PartitionView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; orchestration?: string }
 
-// topologyGraph builds the topology map: systems, repositories, held
-// deliverables, and the orchestrator in the middle with an edge to each
-// system (rules U30 and U31, U1 of the wikis spec, and decision 5 of the
+// topologyGraph builds the topology map: partitions, repositories, held
+// deliverables, and the orchestration agent in the middle with an edge to each
+// partition (rules U30 and U31, U1 of the wikis spec, and decision 5 of the
 // remove-hubs spec).
-export function topologyGraph({ systems, repos, deliverables, orchestrator }: TopologyInput): Graph {
+export function topologyGraph({ partitions, repos, deliverables, orchestration }: TopologyInput): Graph {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
-  const names = new Set(systems.map((s) => s.owner))
-  for (const s of [...systems].sort(byOwner)) {
-    nodes.push({ id: nodeID('system', s.owner), kind: 'system', ref: s.owner, label: s.owner, shape: 'circle', radius: systemRadius(s.features.length) })
+  const names = new Set(partitions.map((s) => s.partition_agent))
+  for (const s of [...partitions].sort(byPartitionAgent)) {
+    nodes.push({ id: nodeID('partition', s.partition_agent), kind: 'partition', ref: s.partition_agent, label: s.partition_agent, shape: 'circle', radius: partitionRadius(s.features.length) })
   }
   for (const r of [...repos].sort(byName)) {
-    const members = r.systems.filter((s) => names.has(s))
+    const members = r.partitions.filter((s) => names.has(s))
     nodes.push({ id: nodeID('repo', r.name), kind: 'repo', ref: r.name, label: r.name, shape: 'square', radius: 10 })
-    for (const s of members) edges.push({ source: nodeID('system', s), target: nodeID('repo', r.name), dashed: false })
+    for (const s of members) edges.push({ source: nodeID('partition', s), target: nodeID('repo', r.name), dashed: false })
   }
   for (const d of [...deliverables].sort(byName)) {
     const holders = d.holders.filter((h) => names.has(h)).sort()
     if (holders.length === 0) continue
     nodes.push({ id: nodeID('deliverable', d.name), kind: 'deliverable', ref: d.name, label: d.name, shape: 'diamond', radius: 10 })
-    for (const h of holders) edges.push({ source: nodeID('deliverable', d.name), target: nodeID('system', h), dashed: false })
+    for (const h of holders) edges.push({ source: nodeID('deliverable', d.name), target: nodeID('partition', h), dashed: false })
   }
-  if (orchestrator) {
-    nodes.push({ id: nodeID('orchestrator', orchestrator), kind: 'orchestrator', ref: orchestrator, label: orchestrator, shape: 'hexagon', radius: 11 })
-    for (const s of [...names].sort()) edges.push({ source: nodeID('orchestrator', orchestrator), target: nodeID('system', s), dashed: false })
+  if (orchestration) {
+    nodes.push({ id: nodeID('orchestration', orchestration), kind: 'orchestration', ref: orchestration, label: orchestration, shape: 'hexagon', radius: 11 })
+    for (const s of [...names].sort()) edges.push({ source: nodeID('orchestration', orchestration), target: nodeID('partition', s), dashed: false })
   }
   const pairs = new Set<string>()
   const dashed = (a: string, b: string) => {
@@ -73,12 +73,12 @@ export function topologyGraph({ systems, repos, deliverables, orchestrator }: To
     const key = [a, b].sort().join('\n')
     if (pairs.has(key)) return
     pairs.add(key)
-    edges.push({ source: nodeID('system', a), target: nodeID('system', b), dashed: true })
+    edges.push({ source: nodeID('partition', a), target: nodeID('partition', b), dashed: true })
   }
-  for (const s of [...systems].sort(byOwner)) {
-    for (const r of s.grants?.releases ?? []) dashed(s.owner, r)
+  for (const s of [...partitions].sort(byPartitionAgent)) {
+    for (const r of s.grants?.releases ?? []) dashed(s.partition_agent, r)
     for (const providers of Object.values(s.providers ?? {})) {
-      for (const p of providers) dashed(s.owner, p)
+      for (const p of providers) dashed(s.partition_agent, p)
     }
   }
   return { nodes, edges }
@@ -96,7 +96,7 @@ export const docShape: Record<DocKind, Shape> = {
 
 export const docNodeID = (wiki: string, id: string) => `doc:${wiki}/${id}`
 
-// wikiGraph builds the wiki map of one system or of the public wiki: a node per document,
+// wikiGraph builds the wiki map of one partition or of the public wiki: a node per document,
 // and a smaller node for each document of another wiki that links one of
 // them or that one of them links, with an edge when either links the other
 // (rules U2 and U3).
@@ -156,5 +156,5 @@ export function neighborsOf(g: Graph, id: string): Set<string> {
   return out
 }
 
-const byOwner = (a: SystemView, b: SystemView) => a.owner.localeCompare(b.owner)
+const byPartitionAgent = (a: PartitionView, b: PartitionView) => a.partition_agent.localeCompare(b.partition_agent)
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)

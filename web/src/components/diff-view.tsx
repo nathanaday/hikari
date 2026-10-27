@@ -2,7 +2,7 @@ import { hunks } from '@/lib/topology'
 import type { DiffLine } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-// DiffView shows the changed lines of a compose file with three lines
+// DiffView shows the changed lines of a topology file with three lines
 // around each change, as a code review does (rules YY5 and F3).
 export function DiffView({ diff }: { diff: DiffLine[] }) {
   const lines = hunks(diff)

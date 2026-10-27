@@ -41,7 +41,7 @@ function useTopology(revision: string, mode: Mode) {
   return { data, error, reload }
 }
 
-// TopologyView is the compose file that the project runs from, with Start
+// TopologyView is the topology file that the project runs from, with Start
 // and Stop, and its Structure and YAML tabs (rules YV1 to YV6).
 export function TopologyView({ state, show }: { state: State; show: (v: View) => void }) {
   const { data, error, reload } = useTopology(state.revision, state.mode)
@@ -106,7 +106,7 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
                   size="sm"
                   onClick={start}
                   disabled={state.mode !== 'editing' || !data?.exists || savedErrors}
-                  title={savedErrors ? 'The compose file has errors; fix them first' : undefined}
+                  title={savedErrors ? 'The topology file has errors; fix them first' : undefined}
                   data-testid="start"
                 >
                   Start agents
@@ -117,11 +117,11 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {data?.exists ? (
               <>
-                The topology is <code className="text-xs">{data.file}</code>, a Docker compose file.{' '}
+                The topology is <code className="text-xs">{data.file}</code>, a Docker Compose file.{' '}
                 {!data.model ? '' : data.commits ? 'Each save is a commit in the project repository.' : 'Saves are not committed: the topology is not in a project repository.'}
               </>
             ) : (
-              'The topology is a Docker compose file. Its x-hikari keys describe the orchestrator, the agents, and their systems.'
+              'The topology is a Docker Compose file. Its x-hikari keys describe the orchestration agent, the agents, and their partitions.'
             )}
           </p>
           {data?.exists && (
@@ -153,7 +153,7 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
       )}
       {data?.exists && tab === 'structure' && !data.model && (
         <div className="flex-1 px-6 py-8 text-sm" data-testid="structure-broken">
-          <p className="font-medium">The compose file is not valid YAML, so the form cannot read it.</p>
+          <p className="font-medium">The topology file is not valid YAML, so the form cannot read it.</p>
           <p className="mt-1 text-muted-foreground">
             <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'topology', tab: 'yaml', line: data.findings[0]?.line })}>
               Fix it in the YAML tab
@@ -166,7 +166,7 @@ export function TopologyView({ state, show }: { state: State; show: (v: View) =>
   )
 }
 
-// CreateProject offers to create the compose file, and says what create
+// CreateProject offers to create the topology file, and says what create
 // writes (rule YV6).
 function CreateProject({ file, onCreated }: { file: string; onCreated: () => void }) {
   const [error, setError] = useState<string | null>(null)
@@ -183,14 +183,14 @@ function CreateProject({ file, onCreated }: { file: string; onCreated: () => voi
       <div className="mx-auto max-w-xl space-y-4">
         <h2 className="text-lg font-semibold">There is no {file} yet</h2>
         <p className="text-sm text-muted-foreground">
-          hikari reads the topology from {file}. Create the project, and hikari writes a starter topology with one orchestrator.
+          hikari reads the topology from {file}. Create the project, and hikari writes a starter topology with one orchestration agent.
         </p>
         <ul className="space-y-1.5 text-sm">
           <li>
-            In an empty directory, it makes a project repository: the compose file, the store, <code className="text-xs">.env.example</code>,{' '}
+            In an empty directory, it makes a project repository: the topology file, the vault, <code className="text-xs">.env.example</code>,{' '}
             <code className="text-xs">.gitignore</code>, and the host skills, in a first commit.
           </li>
-          <li>In a directory that holds other files, it writes only the compose file.</li>
+          <li>In a directory that holds other files, it writes only the topology file.</li>
         </ul>
         <div className="flex items-center gap-3">
           <Button onClick={create} disabled={busy} data-testid="create">

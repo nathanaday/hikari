@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { MessagesSquare, Zap } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
-import { NodeAvatar } from '@/components/node-avatar'
+import { ParticipantAvatar } from '@/components/participant-avatar'
 import { TurnCard } from '@/components/turn-card'
-import { orchestratorOf } from '@/lib/rules'
+import { orchestrationOf } from '@/lib/rules'
 import type { State } from '@/lib/store'
 import { groupTurns, timeline, turnInView, type Turn } from '@/lib/turns'
 import type { Message } from '@/lib/types'
@@ -84,18 +84,18 @@ export function MessageList({ state }: { state: State }) {
 
 function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean; state: State; names: ReadonlySet<string> }) {
   const me = state.me
-  const isOrchestrator = orchestratorOf(state.participants) === m.from
+  const isOrchestration = orchestrationOf(state.participants) === m.from
   const time = new Date(m.time)
   const privateDM = !!m.to && m.from !== me && m.to !== me
 
   return (
     <div data-testid="message" className={`flex gap-3 px-4 hover:bg-neutral-50 md:px-6 ${compact ? 'py-0.5' : 'pt-2.5 pb-0.5'}`}>
-      <div className="w-8 shrink-0">{!compact && <NodeAvatar name={m.from} me={m.from === me} />}</div>
+      <div className="w-8 shrink-0">{!compact && <ParticipantAvatar name={m.from} me={m.from === me} />}</div>
       <div className="min-w-0 flex-1">
         {!compact && (
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm leading-5">
             <span className="font-medium">{m.from === me ? 'you' : m.from}</span>
-            {isOrchestrator && <span className="text-xs text-muted-foreground">orchestrator</span>}
+            {isOrchestration && <span className="text-xs text-muted-foreground">orchestration agent</span>}
             {state.view.kind === 'all' && (
               <span className="text-xs text-muted-foreground" data-testid="channel">
                 {m.to ? `to ${m.to === me ? 'you' : m.to}${privateDM ? ' · private' : ''}` : 'in the room'}

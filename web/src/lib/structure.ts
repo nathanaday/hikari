@@ -40,7 +40,7 @@ export function exists(s: Selection, m: TopologyModel): boolean {
 export function entityPaths(s: Selection): string[] {
   switch (s.kind) {
     case 'project':
-      return ['name', 'x-hikari.name', 'x-hikari.project', 'x-hikari.store', 'x-hikari.orchestration']
+      return ['name', 'x-hikari.name', 'x-hikari.project', 'x-hikari.vault', 'x-hikari.orchestration']
     case 'repo':
       return [`x-hikari.repos.${s.id}`]
     case 'agent':
@@ -67,14 +67,14 @@ export function worst(fs: Finding[]): Finding['severity'] | null {
 // roles says what an agent does (decision 2 of the structure view spec).
 export function roles(a: TopologyAgent, m: TopologyModel): string {
   const parts: string[] = []
-  if (m.project.orchestration === a.id) parts.push('orchestrator')
-  if (a.system) parts.push(`owns ${m.repos.find((r) => r.id === a.system!.repo)?.name ?? a.system.repo}${a.system.scope ? '/' + a.system.scope : ''}`)
-  if (!parts.length) parts.push('owns no system')
+  if (m.project.orchestration === a.id) parts.push('orchestration agent')
+  if (a.partition) parts.push(`owns ${m.repos.find((r) => r.id === a.partition!.repo)?.name ?? a.partition.repo}${a.partition.scope ? '/' + a.partition.scope : ''}`)
+  if (!parts.length) parts.push('has no partition')
   return parts.join(', ')
 }
 
-// systemsIn returns the agents whose system is in a repo.
-export const systemsIn = (repo: string, m: TopologyModel) => m.agents.filter((a) => a.system?.repo === repo)
+// partitionsIn returns the agents whose partition is in a repo.
+export const partitionsIn = (repo: string, m: TopologyModel) => m.agents.filter((a) => a.partition?.repo === repo)
 
-// owners returns the agents that own a system.
-export const owners = (m: TopologyModel) => m.agents.filter((a) => a.system)
+// partitionAgents returns the agents that have a partition.
+export const partitionAgents = (m: TopologyModel) => m.agents.filter((a) => a.partition)

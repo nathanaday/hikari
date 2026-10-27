@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type State } from './store'
-import type { Message, Snapshot, SystemView } from './types'
+import type { Message, Snapshot, PartitionView } from './types'
 import { allView } from './view'
 
 const snapshot: Snapshot = {
   me: 'user',
   agents: [
-    { name: 'lead', role: 'orchestrator', status: { state: 'idle' } },
-    { name: 'dev', role: 'owner', status: { state: 'idle' } },
+    { name: 'lead', role: 'orchestration', status: { state: 'idle' } },
+    { name: 'dev', role: 'partition', status: { state: 'idle' } },
   ],
   participants: [
-    { name: 'lead', role: 'orchestrator' },
-    { name: 'dev', role: 'owner' },
+    { name: 'lead', role: 'orchestration' },
+    { name: 'dev', role: 'partition' },
     { name: 'user', role: 'operator' },
   ],
   messages: [],
-  systems: [],
+  partitions: [],
   vocabulary: { version: 1, terms: [], interfaces: [] },
 }
 
@@ -73,55 +73,55 @@ describe('reducer', () => {
   })
 
   it('updates the status of one agent', () => {
-    const s = reducer(loaded(), { type: 'event', event: { type: 'status', node: 'dev', status: { state: 'working' } } })
+    const s = reducer(loaded(), { type: 'event', event: { type: 'status', agent: 'dev', status: { state: 'working' } } })
     expect(s.agents.map((a) => a.status.state)).toEqual(['idle', 'working'])
   })
 })
 
-const systemView = (owner: string, state: 'unbuilt' | 'current' = 'unbuilt'): SystemView => ({
+const partitionView = (partitionAgent: string, state: 'unbuilt' | 'current' = 'unbuilt'): PartitionView => ({
   version: 1,
-  system: { name: owner, interfaces: { provides: [], consumes: [] }, described_state: {} },
+  partition: { name: partitionAgent, interfaces: { provides: [], consumes: [] }, described_state: {} },
   features: [],
   state,
-  private: { layout: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, tests: {} } },
+  private: { code_map: { version: 1, parts: [], features: {} }, tests: { version: 1, suites: {}, tests: {} } },
   releases: [],
-  owner,
+  partition_agent: partitionAgent,
   repo: 'shop',
-  scope: `services/${owner}`,
+  scope: `services/${partitionAgent}`,
   branch: 'hikari/work',
   flags: null,
   providers: null,
 })
 
-describe('systems and the vocabulary', () => {
-  const withSystems = () =>
-    reducer(initialState({ kind: 'system', name: 'dev' }), {
+describe('partitions and the vocabulary', () => {
+  const withPartitions = () =>
+    reducer(initialState({ kind: 'partition', name: 'dev' }), {
       type: 'event',
-      event: { type: 'snapshot', snapshot: { ...snapshot, systems: [systemView('dev')] } },
+      event: { type: 'snapshot', snapshot: { ...snapshot, partitions: [partitionView('dev')] } },
     })
 
-  it('keeps a system view from the URL for a known system', () => {
-    expect(withSystems().view).toEqual({ kind: 'system', name: 'dev' })
-    const s = reducer(initialState({ kind: 'system', name: 'ghost' }), { type: 'event', event: { type: 'snapshot', snapshot } })
+  it('keeps a partition view from the URL for a known partition', () => {
+    expect(withPartitions().view).toEqual({ kind: 'partition', name: 'dev' })
+    const s = reducer(initialState({ kind: 'partition', name: 'ghost' }), { type: 'event', event: { type: 'snapshot', snapshot } })
     expect(s.view).toEqual(allView)
   })
 
-  it('keeps release and shared views for known systems only', () => {
+  it('keeps release and shared views for known partitions only', () => {
     const release = { kind: 'release', name: 'dev', deliverable: 'lib', version: '1.0.0' } as const
-    expect(reducer(withSystems(), { type: 'view', view: release }).view).toEqual(release)
-    expect(reducer(withSystems(), { type: 'view', view: { ...release, name: 'ghost' } }).view).toEqual(allView)
-    expect(reducer(withSystems(), { type: 'view', view: { kind: 'shared' } }).view).toEqual({ kind: 'shared' })
+    expect(reducer(withPartitions(), { type: 'view', view: release }).view).toEqual(release)
+    expect(reducer(withPartitions(), { type: 'view', view: { ...release, name: 'ghost' } }).view).toEqual(allView)
+    expect(reducer(withPartitions(), { type: 'view', view: { kind: 'shared' } }).view).toEqual({ kind: 'shared' })
   })
 
-  it('replaces a system map on a system event', () => {
-    const s = reducer(withSystems(), { type: 'event', event: { type: 'system', system: systemView('dev', 'current') } })
-    expect(s.systems).toHaveLength(1)
-    expect(s.systems[0].state).toBe('current')
+  it('replaces a feature map on a partition event', () => {
+    const s = reducer(withPartitions(), { type: 'event', event: { type: 'partition', partition: partitionView('dev', 'current') } })
+    expect(s.partitions).toHaveLength(1)
+    expect(s.partitions[0].state).toBe('current')
   })
 
   it('replaces the vocabulary on a vocabulary event', () => {
     const v = { version: 1, terms: [{ term: 'order', definition: 'x' }], interfaces: [] }
-    const s = reducer(withSystems(), { type: 'event', event: { type: 'vocabulary', vocabulary: v } })
+    const s = reducer(withPartitions(), { type: 'event', event: { type: 'vocabulary', vocabulary: v } })
     expect(s.vocabulary).toEqual(v)
   })
 })

@@ -7,8 +7,8 @@ import type { Peer } from './types'
 function room(name: string): Peer[] {
   const r = wake.rooms[name as keyof typeof wake.rooms]
   return [
-    ...(r.orchestrator ? [{ name: r.orchestrator, role: 'orchestrator' as const }] : []),
-    ...r.owners.map((n) => ({ name: n, role: 'owner' as const })),
+    ...(r.orchestration ? [{ name: r.orchestration, role: 'orchestration' as const }] : []),
+    ...r.partition_agents.map((n) => ({ name: n, role: 'partition' as const })),
     { name: 'user', role: 'operator' as const },
   ]
 }
