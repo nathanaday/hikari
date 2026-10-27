@@ -1,6 +1,21 @@
 # Spec: skill packs and the orchestration feature map
 
-Status: approved.
+Status: built. Docker was not running, so the live check of 2026-10-26 ran without containers, on the shop with `hikari up -no-launch`: through `hikari mcp`, `orders` and `inventory` wrote `create-order` and `reserve-stock`, and the orchestration agent's `change_wiki` wrote `customer-orders-items`, linking both, in `vault/orchestration/read-only/features/`; its health read `untested`, then `passing` and `failing` after `orders` recorded a passing and then a failing run; `orders`' `get_document` of `create-order` showed no backlink, its read of the orchestration feature was refused, and a `story` was refused with K10. Headless Chrome showed the Feature map tab on the orchestrator's page with the feature and its health, a click on the orchestrator on the Map opened its feature map with the two partition features around it, and each inspector listed its pack as from Hikari, with no console error; SIGINT stopped the server. No container ran, so the pack in a container's home was checked only by tests (`TestPacks`).
+
+Changes made during the build:
+
+1. **The Build procedure stays in `hikari-map-features`,** because the indexing turn follows it and names that skill (K2); it builds the documents, not the code. `hikari-do-work` holds the change of code: today's paragraph on keeping the documents true when you change code, `apply`, and Publish a release.
+2. **`hikari-validate-work` links the test map's reference by a relative path,** `../hikari-map-features/references/tests.md`, since the two skills sit side by side in `~/.claude/skills/`.
+3. **The driver removes every `hikari-` skill outside the agent's pack before it installs the pack,** which also removes `hikari-partition` and `hikari-orchestration` from an older home. The `hikari-` agents come with the partition pack.
+4. **The packs are `api.Packs`, by role.** The topology API's state and plan carry them as `packs`, and the inspector reads them from there, so the UI holds no copy of the names; its test reads them from the fixture.
+5. **An orchestration feature that links no partition feature is `untested`.** It shows its health as `health`; its principles and rules show `support`, as the public wiki's do.
+6. **A link to an agent document of another wiki that a wiki can link counts as a neighbor,** so an orchestration feature that links partition features has no "no neighbor" warning. A partition feature that links only a rule or a principle of the public wiki loses that warning too.
+7. **K11 needed no new filter:** `get_document` already took backlinks only from the wikis the reader can read; a test now holds it. The UI is yours, so a partition's wiki map shows the orchestration features that link its features.
+8. **`story` stays known as a retired kind,** so that its document is a problem and not a note; a create of kind `story` is refused with the same message. The lint retires the word, and the glossary lists it.
+9. **The `hikify` host skill drafts orchestration features** in `onboarding/wiki/orchestration/` and installs them in `vault/orchestration/read-only/features/`; its borrowed reference from the orchestration agent's `hikari-map-features` is `references/orchestration.md`.
+10. **The orchestration agent's page is its direct-message page,** with tabs Messages and Feature map. The tab opens the wiki map at `#/orchestration/map`, the view a Map click on the orchestration agent opens. The public wiki's map stays on the room's Wiki tab.
+11. **The orchestration feature map is labeled `orchestration`** in tool results and notices, comes first among the orchestration agent's readable wikis, and is sent to the UI again on every change of a partition, whose health it follows.
+12. **The system prompt lists the agent's pack,** and `change_wiki` is registered once for either kind of agent.
 
 Sources: `docs/brainstorm/shared-language.md` (questions F1 to F4, B7, and G1) and `shared-language-answers.md`. This is step 6 of the seven steps of the shared language. The names are those of `docs/glossary.md`.
 
