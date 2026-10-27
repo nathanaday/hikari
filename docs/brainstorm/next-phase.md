@@ -65,3 +65,9 @@ Notes: planted from the system graphs round, question D5. The git lens of the to
 map was to show each repository's commits ahead of and behind its remote. That needs
 answers first: whether hikari fetches, with whose credentials, which upstream the hikari
 branch compares with before it is pushed, and whether hikari pushes.
+
+## Secrets
+
+> Yes env is the structure for now, an established secret system is held out for future work.
+
+Notes: planted from question E7 of `shared-language.md`. The Phase 2 canvas draws secrets as a private file of a partition. Until that design, a partition's secrets are compose's `env_file` and `environment` on its service.
