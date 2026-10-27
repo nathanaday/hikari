@@ -27,7 +27,7 @@ import type { WikiView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import type { View } from '@/lib/view'
 import { linkTarget } from '@/lib/wiki'
-import { publicRef, featureMapRef, wikiIndex, wikiName } from '@/lib/wikis'
+import { featureMapRef, orchestrationRef, publicRef, wikiIndex, wikiName } from '@/lib/wikis'
 
 const lensKey = { topology: 'hikari.map.lens', wiki: 'hikari.wiki.lens' }
 
@@ -60,19 +60,19 @@ function makeHandoff(orchestration: string | undefined) {
 function handoff(from: string, to: string, orchestration: string | undefined): Handoff | undefined {
   const node = (key: string) => {
     const ref = key.slice('wiki:'.length)
-    return ref === publicRef ? nodeID('orchestration', orchestration ?? '') : nodeID('partition', ref.slice(ref.indexOf(':') + 1))
+    return ref === publicRef || ref === orchestrationRef ? nodeID('orchestration', orchestration ?? '') : nodeID('partition', ref.slice(ref.indexOf(':') + 1))
   }
   if (from === 'topology' && to.startsWith('wiki:')) return { kind: 'in', from: node(to) }
   if (from.startsWith('wiki:') && to === 'topology') return { kind: 'out', to: node(from) }
   return undefined
 }
 
-// MapView draws the topology map, and the wiki map of one partition or of the
-// public wiki, on one canvas (rules U30 to U45, and section 10 of the wikis
+// MapView draws the topology map, and the wiki map of one partition, of the
+// orchestration agent, or of the public wiki, on one canvas (rules U30 to U45, and section 10 of the wikis
 // spec).
 export function MapView({ state, show }: { state: State; show: (v: View) => void }) {
   const view: Extract<View, { kind: 'map' }> = state.view.kind === 'map' ? state.view : { kind: 'map' }
-  const ref = view.partition ? featureMapRef(view.partition) : view.public ? publicRef : null
+  const ref = view.partition ? featureMapRef(view.partition) : view.public ? publicRef : view.orchestration ? orchestrationRef : null
   const orchestration = orchestrationOf(state.participants)
   const wiki = ref ? state.wikis.find((w) => w.ref === ref) : undefined
   const [topoLens, setTopoLens] = useState<TopologyLens>(() => remembered(lensKey.topology, topologyLenses, 'activity'))
@@ -115,7 +115,9 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   const openWiki = (wikiRef: string, doc?: string) => {
     if (topoLens === 'tests' && !ref) pickWikiLens('tests')
     setCreating(false)
-    show(wikiRef === publicRef ? { kind: 'map', public: true, doc } : { kind: 'map', partition: wikiRef.slice(wikiRef.indexOf(':') + 1), doc })
+    if (wikiRef === publicRef) show({ kind: 'map', public: true, doc })
+    else if (wikiRef === orchestrationRef) show({ kind: 'map', orchestration: true, doc })
+    else show({ kind: 'map', partition: wikiRef.slice(wikiRef.indexOf(':') + 1), doc })
   }
   const back = () => {
     if (wikiLens === 'tests') pickTopologyLens('tests')
@@ -143,11 +145,14 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
     if (found) openWiki(found.wiki.ref, id)
   }
 
+  // The orchestration agent opens its feature map (rule K13 of the skill
+  // packs spec), or the public wiki when hikari has none for it.
+  const orchestrationWiki = state.wikis.some((w) => w.ref === orchestrationRef) ? orchestrationRef : publicRef
   const node = selected ? graph.nodes.find((n) => n.id === selected) : undefined
   const onClick = (id: string | null) => {
     const n = id ? graph.nodes.find((x) => x.id === id) : undefined
     if (n?.kind === 'partition') openWiki(featureMapRef(n.ref))
-    else if (n?.kind === 'orchestration') openWiki(publicRef)
+    else if (n?.kind === 'orchestration') openWiki(orchestrationWiki)
     else if (n?.kind === 'doc') selectDoc(n.ref)
     else if (wiki) selectDoc(null)
     else setTopoSelected(id)
@@ -160,7 +165,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   const onOpen = (id: string) => {
     const n = graph.nodes.find((x) => x.id === id)
     if (n?.kind === 'partition') openWiki(featureMapRef(n.ref))
-    if (n?.kind === 'orchestration') openWiki(publicRef)
+    if (n?.kind === 'orchestration') openWiki(orchestrationWiki)
   }
 
   if (state.partitions.length === 0 && !orchestration) {
@@ -226,7 +231,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
       {wiki && <WikiProblems wiki={wiki} />}
       <Legend lens={lens} dashed={!!view.partition} />
       {wiki && wiki.documents.length === 0 && (
-        <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-muted-foreground">{wiki.ref === publicRef ? 'The public wiki' : wikiName(wiki.ref)} has no documents yet.</p>
+        <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-muted-foreground">{wiki.ref === publicRef ? 'The public wiki' : wiki.ref === orchestrationRef ? 'The orchestration feature map' : wikiName(wiki.ref)} has no documents yet.</p>
       )}
     </GraphCanvas>
   )
@@ -257,8 +262,8 @@ function kindLine(n: GraphNode, state: State): string {
     return `partition · ${count} feature${count === 1 ? '' : 's'}`
   }
   if (n.kind === 'orchestration') {
-    const count = state.wikis.find((w) => w.ref === publicRef)?.documents.length ?? 0
-    return `orchestration agent · ${count} document${count === 1 ? '' : 's'} in the public wiki`
+    const count = state.wikis.find((w) => w.ref === orchestrationRef)?.documents.length ?? 0
+    return `orchestration agent · ${count} document${count === 1 ? '' : 's'} in its feature map`
   }
   if (n.kind === 'repo') return `repository · branch ${state.repos.find((r) => r.name === n.ref)?.branch ?? ''}`
   const holders = state.deliverables.find((d) => d.name === n.ref)?.holders ?? []
@@ -297,7 +302,6 @@ const swatch: Record<Color, string> = {
   outline: 'var(--lens-outline)',
   white: '#fff',
   feature: 'var(--kind-feature)',
-  story: 'var(--kind-story)',
   rule: 'var(--kind-rule)',
   principle: 'var(--kind-principle)',
   plan: 'var(--kind-plan)',

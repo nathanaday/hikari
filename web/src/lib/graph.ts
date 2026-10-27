@@ -87,7 +87,6 @@ export function topologyGraph({ partitions, repos, deliverables, orchestration }
 // docShape gives each kind its shape (rule U3).
 export const docShape: Record<DocKind, Shape> = {
   feature: 'circle',
-  story: 'circle',
   principle: 'diamond',
   rule: 'square',
   plan: 'circle',
@@ -96,7 +95,7 @@ export const docShape: Record<DocKind, Shape> = {
 
 export const docNodeID = (wiki: string, id: string) => `doc:${wiki}/${id}`
 
-// wikiGraph builds the wiki map of one partition or of the public wiki: a node per document,
+// wikiGraph builds the wiki map of a feature map or of the public wiki: a node per document,
 // and a smaller node for each document of another wiki that links one of
 // them or that one of them links, with an edge when either links the other
 // (rules U2 and U3).

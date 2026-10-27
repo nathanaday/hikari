@@ -13,7 +13,7 @@ export const wikiLenses: WikiLens[] = ['kind', 'tests', 'age']
 // white. outline is the gray outline of a neutral node. The kind colors
 // are the kind lens's (rule U4 of the wikis spec).
 export type Color = 'active' | 'waiting' | 'pass' | 'pending' | 'fail' | 'dirty' | 'none' | 'outline' | 'white' | DocColor
-export type DocColor = 'feature' | 'story' | 'rule' | 'principle' | 'plan'
+export type DocColor = 'feature' | 'rule' | 'principle' | 'plan'
 
 // Paint is how a lens draws one node: its fill and outline, how strong the
 // fill is (age), whether the outline pulses, and whether it is dashed.
@@ -156,7 +156,7 @@ export function age(created: string | undefined, ctx: { oldest: number; newest: 
   return minAge + (1 - minAge) * ((t - ctx.oldest) / (ctx.newest - ctx.oldest))
 }
 
-const kindColor: Record<DocKind, Color> = { feature: 'feature', story: 'story', rule: 'rule', principle: 'principle', plan: 'plan', note: 'none' }
+const kindColor: Record<DocKind, Color> = { feature: 'feature', rule: 'rule', principle: 'principle', plan: 'plan', note: 'none' }
 
 // kindPaint colors a document by its kind. A user document is lighter, so
 // that the agents' documents stand out.
@@ -237,6 +237,6 @@ export function legend(lens: Lens): LegendEntry[] {
         { paint: filled('active', { opacity: minAge }), label: 'oldest or unknown' },
       ]
     case 'kind':
-      return (['story', 'rule', 'principle', 'feature', 'plan', 'note'] as DocKind[]).map((k) => ({ paint: kindPaint(k), label: k }))
+      return (['feature', 'rule', 'principle', 'plan', 'note'] as DocKind[]).map((k) => ({ paint: kindPaint(k), label: k }))
   }
 }

@@ -8,8 +8,42 @@ import { mapStateLabel, roleLabel, shortCommit } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import type { RoomTab, View } from '@/lib/view'
+import { orchestrationOf } from '@/lib/rules'
+import { orchestrationRef } from '@/lib/wikis'
 
 type Props = { state: State; show: (v: View) => void; onMention: (name: string) => void }
+
+// TabButton is one tab of a page header.
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn('-mb-px border-b-2 px-1 pb-2 text-sm transition-colors', active ? 'border-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground')}
+    >
+      {children}
+    </button>
+  )
+}
+
+// OrchestrationTabs are the tabs of the orchestration agent's page: its
+// messages, and its feature map (rule K12 of the skill packs spec).
+function OrchestrationTabs({ state, name, show }: { state: State; name: string; show: (v: View) => void }) {
+  const v = state.view
+  const onMap = v.kind === 'map' && !!v.orchestration
+  const docs = state.wikis.find((w) => w.ref === orchestrationRef)?.documents.length ?? 0
+  return (
+    <div className="mt-3 -mb-3 flex gap-4">
+      <TabButton active={!onMap} onClick={() => show({ kind: 'dm', name })}>
+        Messages
+      </TabButton>
+      <TabButton active={onMap} onClick={() => show({ kind: 'map', orchestration: true })}>
+        {docs ? `Feature map (${docs})` : 'Feature map'}
+      </TabButton>
+    </div>
+  )
+}
 
 export function ConversationHeader({ state, show, onMention }: Props) {
   const v = state.view
@@ -48,6 +82,19 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           .
         </p>
       </>
+    ) : v.orchestration ? (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Network className="size-4 text-muted-foreground" />
+          {crumb}
+          <span className="font-normal text-muted-foreground">/</span>
+          {orchestrationOf(state.participants) ?? 'orchestration agent'}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          The orchestration feature map: features that cross partitions, each with the health of the partition features it links, its principles and rules, and your plans and notes.
+        </p>
+        {orchestrationOf(state.participants) && <OrchestrationTabs state={state} name={orchestrationOf(state.participants)!} show={show} />}
+      </>
     ) : v.public ? (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
@@ -57,7 +104,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           public wiki
         </h1>
         <p className="text-sm text-muted-foreground">
-          The public wiki: its stories, rules, and principles, your plans and notes, and the features of the partitions that they link.{' '}
+          The public wiki: its rules and principles, your plans and notes, and the features of the partitions that they link.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'room', tab: 'wiki' })}>
             Open the list
           </button>
@@ -71,7 +118,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           Map
         </h1>
         <p className="text-sm text-muted-foreground">
-          The orchestration agent and each partition, with its repository and the deliverables it holds. Click a partition to open its wiki, or the orchestration agent to open the public wiki.
+          The orchestration agent and each partition, with its repository and the deliverables it holds. Click a partition or the orchestration agent to open its feature map.
         </p>
       </>
     )
@@ -226,6 +273,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             )}
           </p>
           {agent.status.detail && <p className="mt-1 text-sm break-words text-red-600">{agent.status.detail}</p>}
+          {agent.role === 'orchestration' && <OrchestrationTabs state={state} name={agent.name} show={show} />}
         </div>
       </div>
     )

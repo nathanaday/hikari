@@ -62,6 +62,7 @@ export function StructureTab({ data, mode, reload, show, select: selectKey, onPe
   const model: TopologyModel = (plan?.model ?? data.model)!
   const findings: Finding[] = plan?.findings ?? data.findings
   const mounts = plan ? plan.mounts : data.mounts
+  const packs = (plan ?? data).packs ?? {}
   let selection = parseSelection(selectKey) ?? { kind: 'project' }
   if (!exists(selection, model)) selection = { kind: 'project' }
   const select = useCallback((s: Selection) => show({ kind: 'topology', select: selectionKey(s) }), [show])
@@ -101,7 +102,7 @@ export function StructureTab({ data, mode, reload, show, select: selectKey, onPe
     if (ops.length) setReview(true)
     else show({ kind: 'topology', tab: 'yaml', line })
   }
-  const inspector: InspectorProps = { model, findings, mounts, options, add, select, editYAML }
+  const inspector: InspectorProps = { model, findings, mounts, packs, options, add, select, editYAML }
   const key = selectionKey(selection)
 
   return (

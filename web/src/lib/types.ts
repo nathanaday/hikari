@@ -198,8 +198,10 @@ export type Vocabulary = {
 }
 
 // DocKind is the kind of a wiki document: agents write features,
-// principles, rules, and stories; the user writes plans and notes.
-export type DocKind = 'feature' | 'principle' | 'rule' | 'story' | 'plan' | 'note'
+// principles, and rules; the user writes plans and notes.
+export type DocKind = 'feature' | 'principle' | 'rule' | 'plan' | 'note'
+
+export type WikiScope = 'partition' | 'orchestration' | 'public'
 
 // WikiDoc is one document of a wiki, without its body.
 export type WikiDoc = {
@@ -210,8 +212,9 @@ export type WikiDoc = {
   // links are the documents it links, in any wiki.
   links: string[]
   status?: string
-  // health is a feature's; support sums the features that a document of
-  // the public wiki links.
+  // health is a feature's, which an orchestration feature takes from the
+  // partition features it links; support sums the features that a rule or
+  // a principle of the public wiki or the orchestration feature map links.
   health?: Health
   support?: Health
   created?: string
@@ -220,11 +223,12 @@ export type WikiDoc = {
   hash: string
 }
 
-// WikiView is the wiki of a partition, or the public wiki. ref is
-// "partition:<name>" or "public".
+// WikiView is the feature map of a partition or of the orchestration
+// agent, or the public wiki. ref is "partition:<name>", "orchestration", or
+// "public".
 export type WikiView = {
   ref: string
-  scope: 'partition' | 'public'
+  scope: WikiScope
   name: string
   documents: WikiDoc[]
   problems?: string[]
@@ -331,7 +335,12 @@ export type TopologyState = {
   mounts: Record<string, Mount[]> | null
   mode: Mode
   commits: boolean
+  // packs maps each role of an agent to its built-in skills (rule K14 of
+  // the skill packs spec).
+  packs: Packs
 }
+
+export type Packs = Partial<Record<'partition' | 'orchestration', string[]>>
 
 // Mount is one mount of an agent's container. host is relative to the
 // project when it is inside it, and "" for an empty directory that hides a
@@ -355,6 +364,7 @@ export type Plan = {
   // spec).
   model: TopologyModel | null
   mounts: Record<string, Mount[]> | null
+  packs: Packs
 }
 
 export type Saved = { revision: string; commit?: string; note?: string; skipped: string[] }

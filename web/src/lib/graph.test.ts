@@ -69,10 +69,11 @@ describe('wikiGraph', () => {
     doc('Ideas', 'note', { links: ['create-order'] }),
   ])
   const pub = wikiOf('public', [
-    doc('order-items', 'story', { name: 'Order items', links: ['create-order', 'reserve-stock'] }),
+    doc('order-items', 'rule', { name: 'Order items', links: ['create-order', 'reserve-stock'] }),
     doc('stock-never-negative', 'rule'),
   ])
   const inventory = wikiOf('partition:inventory', [doc('reserve-stock', 'feature')])
+  const orchestration = wikiOf('orchestration', [doc('customer-orders', 'feature', { name: 'A customer orders', health: 'failing', links: ['create-order', 'reserve-stock'] })])
   const index = wikiIndex([pub, orders, inventory])
 
   it('has a node per document with the shape of its kind (U2, U3)', () => {
@@ -103,7 +104,14 @@ describe('wikiGraph', () => {
     ])
   })
 
-  it('draws the stories of the public wiki with the features of the partitions', () => {
+  it('draws the orchestration feature map with the partition features it links (K13)', () => {
+    const g = wikiGraph(orchestration, wikiIndex([pub, orchestration, orders, inventory]))
+    expect(g.nodes.filter((n) => !n.foreign).map((n) => [n.ref, n.shape])).toEqual([['customer-orders', 'circle']])
+    expect(g.nodes.filter((n) => n.foreign).map((n) => n.label).sort()).toEqual(['create-order · orders', 'reserve-stock · inventory'])
+    expect(g.edges.length).toBe(2)
+  })
+
+  it('draws the rules of the public wiki with the features of the partitions', () => {
     const g = wikiGraph(pub, index)
     expect(g.nodes.filter((n) => n.foreign).map((n) => n.ref).sort()).toEqual(['create-order', 'never-oversell', 'reserve-stock'])
     expect(g.edges.length).toBe(3)

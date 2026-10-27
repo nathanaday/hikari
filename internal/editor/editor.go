@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
@@ -181,6 +182,9 @@ type State struct {
 	Mounts  map[string][]MountView `json:"mounts"`
 	Mode    string                 `json:"mode"`
 	Commits bool                   `json:"commits"`
+	// Packs maps each role of an agent to its built-in skills, which the
+	// inspector lists as from hikari (rule K14 of the skill packs spec).
+	Packs map[string][]string `json:"packs"`
 }
 
 func (e *Editor) State(ctx context.Context) (State, error) {
@@ -188,7 +192,7 @@ func (e *Editor) State(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	s := State{File: linked.Shown(e.File), Exists: ok, Revision: Revision(text, ok), Text: string(text), Findings: []topology.Finding{}, Mode: e.mode()}
+	s := State{File: linked.Shown(e.File), Exists: ok, Revision: Revision(text, ok), Text: string(text), Findings: []topology.Finding{}, Mode: e.mode(), Packs: api.Packs}
 	if ok {
 		s.Model = topoedit.ReadModel(text, e.dir())
 		var topo *topology.Topology
@@ -233,6 +237,7 @@ type Plan struct {
 	// text passes the checks (rule V14).
 	Mounts         map[string][]MountView `json:"mounts"`
 	AppliesAtStart bool                   `json:"applies_at_start"`
+	Packs          map[string][]string    `json:"packs"`
 }
 
 // ConflictError is a write whose revision is not the file's (rule TA2).
@@ -290,7 +295,7 @@ func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (
 		Revision: revision, Text: string(res.Text), Diff: topoedit.Diff(string(text), string(res.Text)),
 		Findings: findings, Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
 		Occurrences: topoedit.Occurrences(e.vault(m), res.Renames), AppliesAtStart: e.mode() == "running",
-		Model: topoedit.ReadModel(res.Text, e.dir()), Mounts: e.mounts(findings, topo),
+		Model: topoedit.ReadModel(res.Text, e.dir()), Mounts: e.mounts(findings, topo), Packs: api.Packs,
 	}, nil
 }
 

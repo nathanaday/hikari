@@ -17,6 +17,7 @@ const props: InspectorProps = {
   model,
   findings,
   mounts: p.mounts,
+  packs: p.packs,
   options: { deliverables: [], skills: ['python-style'], models: ['sonnet', 'opus', 'haiku'], templates: ['lead', 'dev'] },
   add: async () => null,
   select: () => {},
@@ -105,6 +106,15 @@ describe('the inspectors', () => {
     expect(lead).toContain('/hikari/partitions/dev')
     const broken = renderToStaticMarkup(<AgentInspector {...props} mounts={null} id="dev" />)
     expect(broken).toContain('The topology has errors, so hikari cannot say what this container mounts')
+  })
+  it('lists the skills of each agent: its pack from Hikari, and its granted skills (K14)', () => {
+    const skills = (html: string) => [...html.matchAll(/(hikari-[a-z-]+)<span class="text-muted-foreground">· from Hikari/g)].map((m) => m[1])
+    const dev = renderToStaticMarkup(<AgentInspector {...props} id="dev" />)
+    expect(skills(dev)).toEqual(p.packs.partition)
+    expect(dev).toContain('Skills it uses')
+    const lead = renderToStaticMarkup(<AgentInspector {...props} id="lead" />)
+    expect(skills(lead)).toEqual(p.packs.orchestration)
+    expect(p.packs.orchestration).not.toEqual(p.packs.partition)
   })
 })
 

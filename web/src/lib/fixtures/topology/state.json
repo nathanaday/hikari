@@ -64,5 +64,18 @@
     ]
   },
   "mode": "editing",
-  "commits": true
+  "commits": true,
+  "packs": {
+    "orchestration": [
+      "hikari-plan-work",
+      "hikari-health-check",
+      "hikari-map-features"
+    ],
+    "partition": [
+      "hikari-plan-work",
+      "hikari-do-work",
+      "hikari-validate-work",
+      "hikari-map-features"
+    ]
+  }
 }

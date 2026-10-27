@@ -12,7 +12,7 @@ export function PublicWiki({ orchestration, wiki, show }: { orchestration?: stri
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-testid="public-wiki">
       <div className="mx-auto max-w-3xl space-y-3">
         <p className="text-sm text-muted-foreground">
-          The stories, rules, and principles of the project, which {orchestration ?? 'the orchestration agent'} writes, and your plans and notes.{' '}
+          The rules and principles of the project, which {orchestration ?? 'the orchestration agent'} writes, and your plans and notes.{' '}
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', public: true })}>
             Open the wiki map
           </button>{' '}

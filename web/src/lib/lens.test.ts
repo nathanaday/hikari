@@ -123,10 +123,10 @@ describe('wiki lenses', () => {
     expect(docDetail('tests', node('old'), ctx)).toBe('passing')
     expect(docDetail('age', node('mid'), ctx)).toBe('created 2026-10-11 · document stale')
     expect(docDetail('tests', node('Roadmap'), ctx)).toBe('no tests')
-    const story: GraphNode = { id: 's', kind: 'doc', ref: 's', label: 's', shape: 'circle', radius: 5, docKind: 'story' }
-    const withStory = wikiContext([story], () => doc('s', 'story', { support: 'failing' }), [])
-    expect(docPaint('tests', story, withStory)).toMatchObject({ fill: 'fail' })
-    expect(docDetail('tests', story, withStory)).toBe('support failing')
+    const rule: GraphNode = { id: 's', kind: 'doc', ref: 's', label: 's', shape: 'square', radius: 5, docKind: 'rule' }
+    const withRule = wikiContext([rule], () => doc('s', 'rule', { support: 'failing' }), [])
+    expect(docPaint('tests', rule, withRule)).toMatchObject({ fill: 'fail' })
+    expect(docDetail('tests', rule, withRule)).toBe('support failing')
   })
 
   it('has a legend for every lens (U37)', () => {

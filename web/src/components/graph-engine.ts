@@ -663,7 +663,6 @@ function readColors(): Record<Color | 'edge' | 'label' | 'selected', string> {
     none: v('--lens-none', '#d4d4d4'),
     outline: v('--lens-outline', '#a3a3a3'),
     feature: v('--kind-feature', '#3b82f6'),
-    story: v('--kind-story', '#8b5cf6'),
     rule: v('--kind-rule', '#f59e0b'),
     principle: v('--kind-principle', '#475569'),
     plan: v('--kind-plan', '#a16207'),

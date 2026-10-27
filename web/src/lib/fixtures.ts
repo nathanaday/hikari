@@ -38,6 +38,6 @@ export function doc(id: string, kind: DocKind = 'feature', extra: Partial<WikiDo
 }
 
 export function wikiOf(ref: string, documents: WikiDoc[]): WikiView {
-  if (ref === 'public') return { ref, scope: 'public', name: 'public', documents }
+  if (ref === 'public' || ref === 'orchestration') return { ref, scope: ref, name: ref, documents }
   return { ref, scope: 'partition', name: ref.slice(ref.indexOf(':') + 1), documents }
 }

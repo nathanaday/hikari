@@ -16,8 +16,9 @@ export type View =
   | { kind: 'partition'; name: string }
   | { kind: 'release'; name: string; deliverable: string; version: string }
   // map is the topology map, or the wiki map of one partition, or with public
-  // the map of the public wiki; doc selects one of its documents.
-  | { kind: 'map'; partition?: string; public?: boolean; doc?: string }
+  // the map of the public wiki, or with orchestration the orchestration
+  // agent's feature map; doc selects one of its documents.
+  | { kind: 'map'; partition?: string; public?: boolean; orchestration?: boolean; doc?: string }
 
 export const allView: View = { kind: 'all' }
 
@@ -25,7 +26,7 @@ export const allView: View = { kind: 'all' }
 // share one key.
 export function viewKey(v: View): string {
   if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room') return v.kind
-  if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : 'map'
+  if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : v.orchestration ? 'map:@orchestration' : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
 }
@@ -38,6 +39,7 @@ export function viewHash(v: View): string {
     const doc = v.doc ? `/${encodeURIComponent(v.doc)}` : ''
     if (v.partition) return `#/map/${v.partition}${doc}`
     if (v.public) return `#/room/map${doc}`
+    if (v.orchestration) return `#/orchestration/map${doc}`
     return '#/map'
   }
   if (v.kind === 'room') return v.tab && v.tab !== 'messages' ? `#/room/${v.tab}` : '#/room'
@@ -56,6 +58,8 @@ export function parseHash(hash: string): View {
   if (map) return map[2] ? { kind: 'map', partition: map[1], doc: decodeURIComponent(map[2]) } : { kind: 'map', partition: map[1] }
   const publicMap = hash.match(/^#\/room\/map(?:\/([^/]+))?$/)
   if (publicMap) return publicMap[1] ? { kind: 'map', public: true, doc: decodeURIComponent(publicMap[1]) } : { kind: 'map', public: true }
+  const orchestrationMap = hash.match(/^#\/orchestration\/map(?:\/([^/]+))?$/)
+  if (orchestrationMap) return orchestrationMap[1] ? { kind: 'map', orchestration: true, doc: decodeURIComponent(orchestrationMap[1]) } : { kind: 'map', orchestration: true }
   const release = hash.match(/^#\/partition\/([\w-]+)\/release\/([\w-]+)\/([0-9A-Za-z.-]+)$/)
   if (release) return { kind: 'release', name: release[1], deliverable: release[2], version: release[3] }
   if (hash === '#/room') return { kind: 'room' }

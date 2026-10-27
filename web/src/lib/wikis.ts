@@ -1,14 +1,13 @@
-import type { DocKind, Health, WikiDoc, WikiView } from './types'
+import type { DocKind, Health, WikiDoc, WikiScope, WikiView } from './types'
 
 // The kinds that agents write, and the kinds that are the user's.
-export const agentKinds: DocKind[] = ['feature', 'principle', 'rule', 'story']
+export const agentKinds: DocKind[] = ['feature', 'principle', 'rule']
 export const userKinds: DocKind[] = ['plan', 'note']
 
 export const kindLabel: Record<DocKind, string> = {
   feature: 'feature',
   principle: 'principle',
   rule: 'rule',
-  story: 'story',
   plan: 'plan',
   note: 'note',
 }
@@ -16,6 +15,7 @@ export const kindLabel: Record<DocKind, string> = {
 export const isUserKind = (k: DocKind) => k === 'plan' || k === 'note'
 
 export const publicRef = 'public'
+export const orchestrationRef = 'orchestration'
 export const featureMapRef = (partition: string) => `partition:${partition}`
 
 // Located is a document with the wiki it is in.
@@ -48,7 +48,7 @@ export function wikiIndex(wikis: WikiView[]): WikiIndex {
 }
 
 // docHealth is what the tests lens shows for a document: a feature's
-// health, or a story's or a rule's support.
+// health, or a rule's or a principle's support.
 export function docHealth(d: WikiDoc): Health | undefined {
   return d.health ?? d.support
 }
@@ -56,14 +56,16 @@ export function docHealth(d: WikiDoc): Health | undefined {
 // orderDocs sorts documents for a list: by kind in the order of the kinds
 // table, then by name.
 export function orderDocs(docs: WikiDoc[]): WikiDoc[] {
-  const order: DocKind[] = ['story', 'rule', 'principle', 'feature', 'plan', 'note']
+  const order: DocKind[] = ['feature', 'rule', 'principle', 'plan', 'note']
   return [...docs].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || (a.name || a.id).localeCompare(b.name || b.id))
 }
 
-// wikiName says which wiki a ref names, for a label: "the public wiki" or
-// "orders".
+// wikiName says which wiki a ref names, for a label: "the public wiki",
+// "the orchestration feature map", or "orders".
 export function wikiName(ref: string): string {
-  return ref === publicRef ? 'the public wiki' : ref.slice(ref.indexOf(':') + 1)
+  if (ref === publicRef) return 'the public wiki'
+  if (ref === orchestrationRef) return 'the orchestration feature map'
+  return ref.slice(ref.indexOf(':') + 1)
 }
 
 // userDocName reports why a name cannot name a user document (rule D2), or
@@ -79,8 +81,8 @@ export function userDocProblem(name: string): string | null {
 
 // kindsOf returns the kinds a wiki holds: the agent kinds of its scope,
 // then the user's (section 2 of the wikis spec).
-export function kindsOf(scope: 'public' | 'partition'): DocKind[] {
-  return scope === 'public' ? ['story', 'rule', 'principle', 'plan', 'note'] : ['feature', 'principle', 'rule', 'plan', 'note']
+export function kindsOf(scope: WikiScope): DocKind[] {
+  return scope === 'public' ? ['rule', 'principle', 'plan', 'note'] : ['feature', 'principle', 'rule', 'plan', 'note']
 }
 
 // template is the text of a new document of kind: a plan or a note needs

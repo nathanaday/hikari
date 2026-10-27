@@ -16,6 +16,8 @@ describe('view', () => {
       { kind: 'map', partition: 'orders', doc: 'reserve-stock' },
       { kind: 'map', public: true },
       { kind: 'map', public: true, doc: 'Ideas for Q1' },
+      { kind: 'map', orchestration: true },
+      { kind: 'map', orchestration: true, doc: 'customer-orders' },
       { kind: 'room', tab: 'wiki' },
     ] as const) {
       expect(parseHash(viewHash(v))).toEqual(v)

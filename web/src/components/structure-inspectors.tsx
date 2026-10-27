@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { findingsOf, partitionAgents, partitionsIn, placeOf, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { branchProblem, nameProblem, urlProblem, validProjectName } from '@/lib/topology-rules'
-import type { Finding, Mount, TopologyAgent, TopologyFolder, TopologyModel } from '@/lib/types'
+import type { Finding, Mount, Packs, TopologyAgent, TopologyFolder, TopologyModel } from '@/lib/types'
 
 export type Options = { deliverables: string[]; skills: string[]; models: string[]; templates: string[] }
 
@@ -17,6 +17,8 @@ export type InspectorProps = {
   // mounts maps each agent's id to its mounts, or is null when the text
   // does not pass the checks.
   mounts: Record<string, Mount[]> | null
+  // packs are the built-in skills of each role, from the server.
+  packs: Packs
   options: Options
   // add plans one more operation, and returns the refusal, if any.
   add: (op: Op) => Promise<string | null>
@@ -250,6 +252,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
             />
           </Field>
         )}
+        <BuiltinSkills skills={(orchestration ? p.packs.orchestration : a.partition ? p.packs.partition : undefined) ?? []} />
         <Field label="Skills it uses" hint="Your skills in the vault's skills/, which its container reads at /hikari/skills/<name>.">
           <Chips
             items={a.skills.map((s) => ({ value: s, label: s }))}
@@ -278,6 +281,24 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
         }}
       />
     </div>
+  )
+}
+
+// BuiltinSkills lists the pack of hikari's own skills that the agent's role
+// gets (rule K14 of the skill packs spec). You cannot change it.
+function BuiltinSkills({ skills }: { skills: string[] }) {
+  if (skills.length === 0) return null
+  return (
+    <Field label="Skills from Hikari" hint="Hikari installs these in its container for the tasks of its role.">
+      <div className="flex flex-wrap gap-1.5" data-testid="builtin-skills">
+        {skills.map((s) => (
+          <Badge key={s} variant="secondary" className="gap-1 font-normal">
+            {s}
+            <span className="text-muted-foreground">· from Hikari</span>
+          </Badge>
+        ))}
+      </div>
+    </Field>
   )
 }
 
