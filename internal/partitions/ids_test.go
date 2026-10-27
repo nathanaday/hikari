@@ -65,7 +65,7 @@ func TestRenamedEntities(t *testing.T) {
 	}
 
 	_, err = f.m.ChangeWiki("chief", true, []wiki.Write{
-		{Op: "create", ID: "order-items", Kind: wiki.Story, Name: "Order items", Description: "A customer orders items.", Body: body("Through [[create-order]].")},
+		{Op: "create", ID: "order-items", Kind: wiki.Rule, Name: "Order items", Description: "An order holds the items a customer orders.", Body: body("Through [[create-order]].")},
 	})
 	must(t, err)
 	if _, err := os.Stat(filepath.Join(f.dir, "vault", "public", "wiki", "order-items.md")); err != nil {

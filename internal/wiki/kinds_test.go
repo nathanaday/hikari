@@ -9,7 +9,7 @@ import (
 )
 
 var partitionKinds = []string{Feature, Principle, Rule}
-var publicKinds = []string{Story, Rule, Principle}
+var publicKinds = []string{Rule, Principle}
 
 func TestKinds(t *testing.T) {
 	c := Check{Kinds: partitionKinds}
@@ -37,7 +37,8 @@ func TestKinds(t *testing.T) {
 		c    Check
 		want string
 	}{
-		"story in a partition":       {Write{Op: "create", ID: "s", Kind: Story, Name: "S", Description: "D.", Body: body("p")}, c, "holds feature, principle, rule"},
+		"story in a partition":       {Write{Op: "create", ID: "s", Kind: story, Name: "S", Description: "D.", Body: body("p")}, c, "K10: a story is no longer a kind; move it to the orchestration feature map"},
+		"feature in the public wiki": {Write{Op: "create", ID: "s", Kind: Feature, Name: "S", Description: "D.", Body: body("p")}, Check{Kinds: publicKinds}, "holds rule, principle"},
 		"no kind in the public wiki": {Write{Op: "create", ID: "s", Name: "S", Description: "D.", Body: body("p")}, Check{Kinds: publicKinds}, "needs a kind"},
 		"a plan":                     {Write{Op: "create", ID: "p", Kind: Plan, Name: "P", Description: "D.", Body: body("p")}, c, "T3"},
 		"interfaces":                 {Write{Op: "create", ID: "p", Kind: Principle, Name: "P", Description: "D.", Interfaces: []string{"x"}, Body: body("p")}, c, "W3"},
@@ -61,7 +62,7 @@ func TestKinds(t *testing.T) {
 
 func TestLinksAcrossWikis(t *testing.T) {
 	pub := Check{Kinds: publicKinds, Linkable: func(id string) bool { return id == "reserve-stock" }, Taken: map[string]bool{"reserve-stock": true}}
-	w, _, err := Apply(Wiki{}, []Write{{Op: "create", ID: "order-items", Kind: Story, Name: "Order items", Description: "A customer orders.", Body: body("Through [[systems/inventory/wiki/reserve-stock]] and [[reserve-stock.md|stock]].")}}, pub, now)
+	w, _, err := Apply(Wiki{}, []Write{{Op: "create", ID: "order-items", Kind: Rule, Name: "Order items", Description: "A customer orders.", Body: body("Through [[systems/inventory/wiki/reserve-stock]] and [[reserve-stock.md|stock]].")}}, pub, now)
 	if err != nil {
 		t.Fatalf("N1, N2: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestRelinkAcrossWikis(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := Open(dir, publicKinds)
 	c := Check{Kinds: publicKinds, Linkable: func(string) bool { return true }}
-	if _, err := s.Change([]Write{{Op: "create", ID: "order-items", Kind: Story, Name: "Order items", Description: "A customer orders.", Related: []string{"hold"}, Body: body("Through [[hold|holding]] and [[gone]].")}}, c, now); err != nil {
+	if _, err := s.Change([]Write{{Op: "create", ID: "order-items", Kind: Rule, Name: "Order items", Description: "A customer orders.", Related: []string{"hold"}, Body: body("Through [[hold|holding]] and [[gone]].")}}, c, now); err != nil {
 		t.Fatal(err)
 	}
 	note := "---\ntags: [z, a]\n---\nSee [[hold]] and [[gone|the old one]].\n"
@@ -162,7 +163,7 @@ func TestRelinkAcrossWikis(t *testing.T) {
 	}
 	d := s.Wiki()["order-items"]
 	if !strings.Contains(d.Body, "[[reserve-stock|holding]]") || strings.Contains(d.Body, "[[gone]]") || !slices.Equal(d.Related, []string{"reserve-stock"}) {
-		t.Errorf("N5: the story: %q %v", d.Body, d.Related)
+		t.Errorf("N5: the rule: %q %v", d.Body, d.Related)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "Thoughts.md"))
 	if string(data) != "---\ntags: [z, a]\n---\nSee [[reserve-stock]] and the old one.\n" {
@@ -190,22 +191,29 @@ func TestRender(t *testing.T) {
 	s, _ := Open(dir, publicKinds)
 	c := Check{Kinds: publicKinds}
 	if _, err := s.Change([]Write{
-		{Op: "create", ID: "order-items", Kind: Story, Name: "Order items", Description: "A customer orders.", Body: body("p")},
+		{Op: "create", ID: "order-items", Kind: Rule, Name: "Order items", Description: "A customer orders.", Body: body("p")},
 	}, c, now); err != nil {
 		t.Fatal(err)
 	}
 	raw := s.Raw("order-items")
-	if !strings.Contains(raw, "\nkind: story\n") || strings.Contains(raw, "described_commit") {
-		t.Errorf("D3: the story's header:\n%s", raw)
+	if !strings.Contains(raw, "\nkind: rule\n") || strings.Contains(raw, "described_commit") {
+		t.Errorf("D3: the rule's header:\n%s", raw)
 	}
-	if got := s.Files(Story); len(got) != 1 {
+	if got := s.Files(Rule); len(got) != 1 {
 		t.Errorf("L2: files of kinds: %v", got)
 	}
 
-	// The key flag of an older story is ignored.
-	os.WriteFile(filepath.Join(dir, "order-items.md"), []byte(strings.Replace(raw, "\nkind: story\n", "\nkind: story\nkey: true\n", 1)), 0o644)
+	// The key flag of an older document is ignored.
+	os.WriteFile(filepath.Join(dir, "order-items.md"), []byte(strings.Replace(raw, "\nkind: rule\n", "\nkind: rule\nkey: true\n", 1)), 0o644)
 	again, _ := Open(dir, publicKinds)
 	if d := again.Wiki()["order-items"]; d == nil || len(d.Extra) != 0 {
 		t.Errorf("an older key flag: %+v", d)
+	}
+
+	// K10: a story is a problem of its document, which says where it goes.
+	os.WriteFile(filepath.Join(dir, "a-story.md"), []byte(strings.NewReplacer("id: order-items", "id: a-story", "kind: rule", "kind: story").Replace(raw)), 0o644)
+	again.Reload()
+	if again.Wiki()["a-story"] != nil || !strings.Contains(strings.Join(again.Problems(), "\n"), "a-story.md: K10: document \"a-story\": a story is no longer a kind; move it to the orchestration feature map as a feature") {
+		t.Errorf("K10: %v", again.Problems())
 	}
 }

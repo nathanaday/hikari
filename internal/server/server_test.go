@@ -408,10 +408,10 @@ services:
 	if _, err := orders.ChangeWiki(ctx, false, []wiki.Write{{Op: "create", ID: "create-order", Name: "Create an order", Description: "Stores an order.", Body: &purpose}}); err != nil {
 		t.Fatal(err)
 	}
-	// One change sends the wiki, the partition, and the support of the public
-	// wiki.
+	// One change sends the wiki, the partition, the support of the public
+	// wiki, and the health of the orchestration feature map.
 	got := map[string]bool{}
-	for range 3 {
+	for range 4 {
 		e := <-events
 		switch {
 		case e.Type == "wiki" && e.Wiki.Ref == "partition:orders" && len(e.Wiki.Documents) == 1:
@@ -420,11 +420,13 @@ services:
 			got["partition"] = true
 		case e.Type == "wiki" && e.Wiki.Ref == "public":
 			got["public wiki"] = true
+		case e.Type == "wiki" && e.Wiki.Ref == "orchestration" && e.Wiki.Scope == "orchestration":
+			got["orchestration feature map"] = true
 		default:
 			t.Fatalf("event = %+v", e)
 		}
 	}
-	if len(got) != 3 {
+	if len(got) != 4 {
 		t.Errorf("events = %v", got)
 	}
 	if _, err := orders.ChangeWiki(ctx, false, []wiki.Write{{Op: "create", ID: "Bad ID", Name: "Bad", Description: "Bad.", Body: &purpose}}); err == nil || !strings.Contains(err.Error(), "W1") {

@@ -132,6 +132,11 @@ func (s Vault) OrchestrationReadOnly() string {
 	return filepath.Join(s.Root, OrchestrationDir, ReadOnlyDir)
 }
 
+// OrchestrationFeatureMap is the orchestration agent's feature map.
+func (s Vault) OrchestrationFeatureMap() string {
+	return filepath.Join(s.OrchestrationReadOnly(), FeaturesDir)
+}
+
 func (s Vault) OrchestrationCanEdit() string {
 	return filepath.Join(s.Root, OrchestrationDir, CanEditDir)
 }
@@ -168,7 +173,7 @@ func (s Vault) Prepare(partitions []string, orchestration bool) error {
 	}
 	if orchestration {
 		ro := s.OrchestrationReadOnly()
-		dirs = append(dirs, filepath.Join(ro, FeaturesDir), filepath.Join(ro, GrantedDir), s.OrchestrationCanEdit())
+		dirs = append(dirs, s.OrchestrationFeatureMap(), filepath.Join(ro, GrantedDir), s.OrchestrationCanEdit())
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {

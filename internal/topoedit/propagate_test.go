@@ -23,7 +23,7 @@ func writeVault(t *testing.T, files map[string]string) string {
 
 const story = `---
 id: order-items
-kind: story
+kind: rule
 name: "@dev and @qa"
 ---
 ## Purpose

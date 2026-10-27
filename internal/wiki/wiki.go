@@ -160,7 +160,10 @@ func (w Wiki) validateDoc(id string, c Check, strict bool) []error {
 		errs = append(errs, fmt.Errorf(rule+": "+format, args...))
 	}
 	kind := d.KindOf()
-	if !c.allows(kind) {
+	switch {
+	case kind == story:
+		fail("K10", "document %q: %s", id, storyProblem)
+	case !c.allows(kind):
 		fail("K1", "document %q is a %s, which this wiki does not hold", id, kind)
 	}
 	if !validID.MatchString(id) {
@@ -385,6 +388,8 @@ func Apply(w Wiki, writes []Write, c Check, now time.Time) (Wiki, Result, error)
 			switch {
 			case kind == Plan || kind == Note:
 				return nil, res, fmt.Errorf("%s: T3: plans and notes are the user's; agents never write one", where)
+			case kind == story:
+				return nil, res, fmt.Errorf("%s: K10: %s, with change_wiki", where, storyProblem)
 			case !slices.Contains(AgentKinds, kind):
 				return nil, res, fmt.Errorf("%s: a create needs a kind: %s", where, strings.Join(c.kinds(), ", "))
 			case !c.allows(kind):

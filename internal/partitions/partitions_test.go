@@ -737,8 +737,8 @@ func TestChangeFeatures(t *testing.T) {
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], `code-map.yaml still names the removed feature "place-order"`) {
 		t.Errorf("E10: notes %v", res.Notes)
 	}
-	if _, err := f.m.ChangeWiki("lead", false, nil); !errors.Is(err, ErrForbidden) {
-		t.Errorf("only partition agents change a feature map: %v", err)
+	if _, err := f.m.ChangeWiki("user", false, nil); !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrForbidden) {
+		t.Errorf("only agents with a feature map change one: %v", err)
 	}
 }
 

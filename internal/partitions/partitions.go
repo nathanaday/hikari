@@ -519,7 +519,7 @@ func (m *Manager) watchWikis(ctx context.Context) {
 				w := m.wikis[ref]
 				m.wikiMu.Lock()
 				reloaded := w.files.Reload()
-				if reloaded && w.scope == "partition" {
+				if reloaded && w.scope == scopePartition {
 					m.project(m.partitionAgents[w.name])
 				}
 				m.wikiMu.Unlock()

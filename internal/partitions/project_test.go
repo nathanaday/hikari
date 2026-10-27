@@ -196,6 +196,14 @@ func TestProjectWikiAuthors(t *testing.T) {
 		t.Errorf("C1: your commit holds %q", got)
 	}
 
+	// K9: a change of the orchestration feature map is the orchestration
+	// agent's.
+	_, err = m.ChangeWiki("lead", false, []wiki.Write{{Op: "create", ID: "order-flow", Name: "An order flows", Description: "A customer orders.", Body: body("Through [[create-order]].")}})
+	must(t, err)
+	if a, s, files := lastCommit(t, dir); a != "lead (hikari)" || s != "lead: change the orchestration feature map: create order-flow" || !slices.Equal(files, []string{"vault/orchestration/read-only/features/order-flow.md"}) {
+		t.Errorf("K9: %s | %s | %v", a, s, files)
+	}
+
 	// C4: a change in the UI is committed at once, as yours.
 	must(t, m.WriteDocument(api.PublicWikiRef, "Ideas", "More.\n"))
 	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: write Ideas in public" || !slices.Equal(files, []string{"vault/public/wiki/Ideas.md"}) {
@@ -204,10 +212,11 @@ func TestProjectWikiAuthors(t *testing.T) {
 
 	// C3: at stop, what is left in the wikis is yours.
 	write(t, dir, "vault/public/wiki/Later.md", "Later.\n")
+	write(t, dir, "vault/orchestration/read-only/features/Soon.md", "Soon.\n")
 	if errs := m.CommitAll(); len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: wiki edits left when hikari stopped" || !slices.Equal(files, []string{"vault/public/wiki/Later.md"}) {
+	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: wiki edits left when hikari stopped" || !slices.Equal(files, []string{"vault/orchestration/read-only/features/Soon.md", "vault/public/wiki/Later.md"}) {
 		t.Errorf("C3: %s | %s | %v", a, s, files)
 	}
 	if got := git(t, dir, "status", "--porcelain"); got != "" {
@@ -223,6 +232,8 @@ func TestIsUserPath(t *testing.T) {
 		"vault/partitions/orders/read-only/granted/spec.pdf":   true,
 		"vault/orchestration/can-edit/plan.md":                 true,
 		"vault/orchestration/read-only/granted/brief.md":       true,
+		"vault/orchestration/read-only/features/a.md":          true,
+		"vault/orchestration/read-only/features/x/a.md":        false,
 		"vault/partitions/orders/read-only/features/map.yaml":  false,
 		"vault/partitions/orders/read-only/releases/x/1.0.0/a": false,
 		"vault/partitions/orders/staging/lib/a.py":             false,

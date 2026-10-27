@@ -146,13 +146,18 @@ func (s *Server) partitionChanged(c partitions.Change) {
 		v := s.sys.PartitionView(c.Partition)
 		s.publish(Event{Type: "partition", Partition: &v})
 	}
-	// A partition's health is the support of the public wiki's documents.
+	// A partition's health is the support of the public wiki's documents,
+	// and the health of the orchestration feature map's.
 	refs := []string{}
 	if c.Wiki != "" {
 		refs = append(refs, c.Wiki)
 	}
-	if c.Partition != "" && c.Wiki != api.PublicWikiRef {
-		refs = append(refs, api.PublicWikiRef)
+	if c.Partition != "" {
+		for _, ref := range []string{api.PublicWikiRef, api.OrchestrationWikiRef} {
+			if ref != c.Wiki {
+				refs = append(refs, ref)
+			}
+		}
 	}
 	for _, ref := range refs {
 		if v, ok := s.sys.WikiView(ref); ok {

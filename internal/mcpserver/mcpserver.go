@@ -29,6 +29,9 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.3.0"}, nil)
 	addVocabularyReader(s, c)
 	addWikiReaders(s, c)
+	if self.Partition != nil || self.Orchestration {
+		addWikiWriter(s, c)
+	}
 	if self.Partition != nil {
 		addPartitionAgentTools(s, c)
 	}

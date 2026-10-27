@@ -1,7 +1,7 @@
 // Package wiki holds one wiki, of a partition or the public wiki: one markdown
 // document per entry, with a property header that the server checks and a
 // body for people and agents. A document has a kind: agents write features,
-// principles, rules, and stories; the user writes plans and notes.
+// principles, and rules; the user writes plans and notes.
 // Documents link each other with [[id]] links, also across wikis; a link
 // has no direction and no kind. An agent changes its wiki through one
 // change, which applies a set of writes as a whole or not at all.
@@ -24,16 +24,23 @@ const (
 	Feature   = "feature"
 	Principle = "principle"
 	Rule      = "rule"
-	Story     = "story"
 	Plan      = "plan"
 	Note      = "note"
 )
 
 // AgentKinds are the kinds that agents write; the others are the user's.
-var AgentKinds = []string{Feature, Principle, Rule, Story}
+var AgentKinds = []string{Feature, Principle, Rule}
 
 // Kinds names every kind.
-var Kinds = []string{Feature, Principle, Rule, Story, Plan, Note}
+var Kinds = []string{Feature, Principle, Rule, Plan, Note}
+
+// story is a kind no more: its documents are features of the orchestration
+// feature map (rule K10 of the skill packs spec). A document of this kind
+// is a problem, not a note.
+const story = "story"
+
+// storyProblem says where a story belongs now.
+const storyProblem = "a story is no longer a kind; move it to the orchestration feature map as a feature"
 
 // Document is one document of a wiki: its header and its body.
 type Document struct {
@@ -83,7 +90,7 @@ const timeLayout = "2006-01-02T15:04:05Z"
 // KindOf returns the document's kind: a document without a kind, or with a
 // kind that hikari does not know, is a note (rule K2).
 func (d *Document) KindOf() string {
-	if slices.Contains(Kinds, d.Kind) {
+	if slices.Contains(Kinds, d.Kind) || d.Kind == story {
 		return d.Kind
 	}
 	return Note
@@ -133,7 +140,7 @@ func Parse(text string) (*Document, error) {
 		case "kind":
 			d.Kind, err = scalar(val)
 		case "key":
-			// The key flag of an older story is ignored.
+			// The key flag of an older document is ignored.
 		case "status":
 			d.Status, err = scalar(val)
 		case "name":

@@ -17,18 +17,28 @@ import (
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 
-// The agent kinds of each scope of wiki (section 2 of the wikis spec).
+// The agent kinds of each scope of wiki (section 2 of the wikis spec, and
+// rules K4 and K10 of the skill packs spec).
 var (
-	partitionKinds = []string{wiki.Feature, wiki.Principle, wiki.Rule}
-	publicKinds    = []string{wiki.Story, wiki.Rule, wiki.Principle}
+	partitionKinds     = []string{wiki.Feature, wiki.Principle, wiki.Rule}
+	orchestrationKinds = []string{wiki.Feature, wiki.Principle, wiki.Rule}
+	publicKinds        = []string{wiki.Rule, wiki.Principle}
 	// releaseKinds are the documents a release copies (rule L2).
 	releaseKinds = []string{wiki.Feature, wiki.Principle, wiki.Rule}
 )
 
-// wikiOf is one wiki of the vault: a partition's or the public wiki.
+// The scopes of a wiki.
+const (
+	scopePartition     = "partition"
+	scopeOrchestration = "orchestration"
+	scopePublic        = "public"
+)
+
+// wikiOf is one wiki of the vault: a partition's feature map, the
+// orchestration feature map, or the public wiki.
 type wikiOf struct {
 	ref   string
-	scope string // "partition" or "public"
+	scope string
 	name  string
 	// author writes its agent documents: the partition agent, or the orchestration agent.
 	// The public wiki of a project without an orchestration agent has none.
@@ -38,10 +48,13 @@ type wikiOf struct {
 	files *wiki.Files
 }
 
-// label names the wiki for a person or an agent: "public", or the partition.
+// label names the wiki for a person or an agent: "public", "orchestration",
+// or the partition.
 func (w *wikiOf) label() string { return w.name }
 
-// openWikis opens the wiki of every partition and the public wiki (rule L1).
+// openWikis opens the wiki of every partition, the public wiki, and the
+// orchestration feature map when the topology names an orchestration agent
+// (rule L1, and K4 of the skill packs spec).
 func (m *Manager) openWikis() error {
 	for _, name := range m.topo.PartitionAgents() {
 		s, err := wiki.Open(m.vault.FeatureMap(name), partitionKinds)
@@ -49,7 +62,7 @@ func (m *Manager) openWikis() error {
 			return fmt.Errorf("agent %q: %w", name, err)
 		}
 		m.wikis[api.FeatureMapRef(name)] = &wikiOf{
-			ref: api.FeatureMapRef(name), scope: "partition", name: name, author: name,
+			ref: api.FeatureMapRef(name), scope: scopePartition, name: name, author: name,
 			dir: m.vault.Rel(m.vault.FeatureMap(name)), files: s,
 		}
 	}
@@ -58,16 +71,30 @@ func (m *Manager) openWikis() error {
 		return fmt.Errorf("the public wiki: %w", err)
 	}
 	m.wikis[api.PublicWikiRef] = &wikiOf{
-		ref: api.PublicWikiRef, scope: "public", name: "public", author: m.topo.Orchestration,
+		ref: api.PublicWikiRef, scope: scopePublic, name: "public", author: m.topo.Orchestration,
 		dir: m.vault.Rel(m.vault.PublicWiki()), files: s,
+	}
+	if m.topo.Orchestration == "" {
+		return nil
+	}
+	dir := m.vault.OrchestrationFeatureMap()
+	if s, err = wiki.Open(dir, orchestrationKinds); err != nil {
+		return fmt.Errorf("the orchestration feature map: %w", err)
+	}
+	m.wikis[api.OrchestrationWikiRef] = &wikiOf{
+		ref: api.OrchestrationWikiRef, scope: scopeOrchestration, name: api.OrchestrationWikiRef, author: m.topo.Orchestration,
+		dir: m.vault.Rel(dir), files: s,
 	}
 	return nil
 }
 
 // wikiRefs returns the refs of every wiki: the public wiki first, then the
-// partitions in name order (rule N1b).
+// orchestration feature map, then the partitions in name order (rule N1b).
 func (m *Manager) wikiRefs() []string {
 	out := []string{api.PublicWikiRef}
+	if _, ok := m.wikis[api.OrchestrationWikiRef]; ok {
+		out = append(out, api.OrchestrationWikiRef)
+	}
 	for _, name := range m.topo.PartitionAgents() {
 		out = append(out, api.FeatureMapRef(name))
 	}
@@ -75,23 +102,31 @@ func (m *Manager) wikiRefs() []string {
 }
 
 // linkableRefs returns the other wikis whose agent documents w can link
-// (rule N2).
+// (rule N2, and K5 of the skill packs spec): no wiki links the
+// orchestration feature map, which links all the others.
 func (m *Manager) linkableRefs(w *wikiOf) []string {
-	if w.scope == "partition" {
-		return []string{api.PublicWikiRef}
-	}
 	var out []string
+	switch w.scope {
+	case scopePartition:
+		return []string{api.PublicWikiRef}
+	case scopeOrchestration:
+		out = append(out, api.PublicWikiRef)
+	}
 	for _, name := range m.topo.PartitionAgents() {
 		out = append(out, api.FeatureMapRef(name))
 	}
 	return out
 }
 
-// readableRefs returns the wikis that agent reads (rules A1 to A3).
+// readableRefs returns the wikis that agent reads, its own first (rules A1
+// to A3, and K8 of the skill packs spec).
 func (m *Manager) readableRefs(agent string) []string {
 	var out []string
 	if _, ok := m.partitionAgents[agent]; ok {
 		out = append(out, api.FeatureMapRef(agent))
+	}
+	if _, ok := m.wikis[api.OrchestrationWikiRef]; ok && agent == m.topo.Orchestration {
+		out = append(out, api.OrchestrationWikiRef)
 	}
 	out = append(out, api.PublicWikiRef)
 	for _, sys := range m.topo.VisiblePartitions(agent) {
@@ -123,7 +158,7 @@ func (m *Manager) check(w *wikiOf) wiki.Check {
 	}
 	c.Linkable = func(id string) bool { return linkable[id] }
 	c.Known = func(id string) bool { return known[id] }
-	if w.scope == "partition" {
+	if w.scope == scopePartition {
 		o := m.partitionAgents[w.name]
 		mp := o.featureMap.Map()
 		c.Interfaces = map[string]bool{}
@@ -152,16 +187,19 @@ func (m *Manager) locate(id, from string) (*wikiOf, *wiki.Document) {
 	return nil, nil
 }
 
-// ChangeWiki applies one change to agent's own wiki, or with public set,
-// to the public wiki, which only the orchestration agent changes (rules T1 and
-// T2).
+// ChangeWiki applies one change to agent's own feature map, or with public
+// set, to the public wiki, which only the orchestration agent changes (rules
+// T1 and T2, and decision 2 of the skill packs spec).
 func (m *Manager) ChangeWiki(agent string, public bool, writes []wiki.Write) (api.ChangeResult, error) {
 	var w *wikiOf
 	if !public {
-		if _, err := m.partitionAgent(agent); err != nil {
-			return api.ChangeResult{}, fmt.Errorf("%w; the orchestration agent changes the public wiki with change_public_wiki", err)
+		if own, ok := m.wikis[api.OrchestrationWikiRef]; ok && agent == m.topo.Orchestration {
+			w = own
+		} else if _, err := m.partitionAgent(agent); err != nil {
+			return api.ChangeResult{}, err
+		} else {
+			w = m.wikis[api.FeatureMapRef(agent)]
 		}
-		w = m.wikis[api.FeatureMapRef(agent)]
 	} else {
 		if err := m.orchestration(agent, "changes the public wiki"); err != nil {
 			return api.ChangeResult{}, err
@@ -208,14 +246,17 @@ func (m *Manager) ChangeWiki(agent string, public bool, writes []wiki.Write) (ap
 		}
 	}
 	verb := "change the wiki"
-	if w.scope == "partition" {
+	switch w.scope {
+	case scopePartition:
 		o := m.partitionAgents[agent]
 		out.Notes = append(out.Notes, m.followFeatureChange(o, res, removed)...)
 		if err := m.project(o); err != nil {
 			out.Notes = append(out.Notes, "the map could not be written from the wiki: "+err.Error())
 		}
 		files = append(files, m.mapPath(agent))
-	} else {
+	case scopeOrchestration:
+		verb = "change the orchestration feature map"
+	default:
 		verb = "change the public wiki"
 	}
 	if note := m.commitVault(agent, fmt.Sprintf("%s: %s: %s", agent, verb, describeWrites(writes)), files...); note != "" {
@@ -265,7 +306,7 @@ func (m *Manager) commitUserEdits(message string, ws ...*wikiOf) {
 	var dirs []string
 	for _, w := range ws {
 		dirs = append(dirs, w.dir)
-		if w.scope == "partition" {
+		if w.scope == scopePartition {
 			// hikari writes the map beside the documents.
 			dirs = append(dirs, excludeSpec+path.Join(w.dir, vault.MapName))
 		}
@@ -276,7 +317,7 @@ func (m *Manager) commitUserEdits(message string, ws ...*wikiOf) {
 // wikiChange is the change of a wiki, with the partition it belongs to.
 func (m *Manager) wikiChange(w *wikiOf) Change {
 	c := Change{Wiki: w.ref}
-	if w.scope == "partition" {
+	if w.scope == scopePartition {
 		c.Partition = w.name
 	}
 	return c
@@ -293,8 +334,9 @@ func (m *Manager) featureHealth() map[string]string {
 	return out
 }
 
-// support sums the health of the features that a document of the public
-// wiki links (rule H2). It is "" for a document that links no feature.
+// support sums the health of the partition features that a document of the
+// public wiki or of the orchestration feature map links (rule H2, and K6 of
+// the skill packs spec). It is "" for a document that links no feature.
 func support(d *wiki.Document, health map[string]string) string {
 	var seen []string
 	for _, id := range d.Neighbors() {
@@ -311,6 +353,29 @@ func support(d *wiki.Document, health map[string]string) string {
 		}
 	}
 	return "untested"
+}
+
+// orchestrationHealth is the health of a feature of the orchestration
+// feature map: its support, and untested when it links no partition
+// feature (rule K6).
+func orchestrationHealth(d *wiki.Document, health map[string]string) string {
+	if s := support(d, health); s != "" {
+		return s
+	}
+	return "untested"
+}
+
+// health sets the health or the support of a document of w, by its kind.
+func (w *wikiOf) health(kind string, d *wiki.Document, health map[string]string) (feature, sup string) {
+	switch {
+	case w.scope == scopePartition && kind == wiki.Feature:
+		return health[d.ID], ""
+	case w.scope == scopeOrchestration && kind == wiki.Feature:
+		return orchestrationHealth(d, health), ""
+	case w.scope != scopePartition && (kind == wiki.Rule || kind == wiki.Principle):
+		return "", support(d, health)
+	}
+	return "", ""
 }
 
 func hash(text string) string {
@@ -334,12 +399,7 @@ func (m *Manager) wikiView(w *wikiOf, health map[string]string) api.WikiView {
 		if doc.Links == nil {
 			doc.Links = []string{}
 		}
-		switch {
-		case doc.Kind == wiki.Feature:
-			doc.Health = health[id]
-		case w.scope == "public" && (doc.Kind == wiki.Story || doc.Kind == wiki.Rule || doc.Kind == wiki.Principle):
-			doc.Support = support(d, health)
-		}
+		doc.Health, doc.Support = w.health(doc.Kind, d, health)
 		v.Documents = append(v.Documents, doc)
 	}
 	return v
@@ -365,7 +425,8 @@ func (m *Manager) WikiView(ref string) (api.WikiView, bool) {
 }
 
 // GetDocument returns a document of agent's readable wikis, with its
-// backlinks in them (rule T4).
+// backlinks in them: a reader sees only the backlinks from documents it can
+// read (rule T4, and K11 of the skill packs spec).
 func (m *Manager) GetDocument(agent, id string) (api.DocumentHit, error) {
 	readable := m.readableRefs(agent)
 	var w *wikiOf
@@ -398,16 +459,13 @@ func (m *Manager) GetDocument(agent, id string) (api.DocumentHit, error) {
 
 func (m *Manager) hit(w *wikiOf, id string, d *wiki.Document, health map[string]string) api.DocumentHit {
 	h := api.DocumentHit{Wiki: w.label(), ID: id, Kind: d.KindOf(), Name: d.Name, Description: d.Description}
-	switch {
-	case h.Kind == wiki.Feature:
-		h.Health = health[id]
+	h.Health, h.Support = w.health(h.Kind, d, health)
+	if w.scope == scopePartition && h.Kind == wiki.Feature {
 		for _, f := range m.view(m.partitionAgents[w.name]).Features {
 			if f.ID == id {
 				h.State = f.State
 			}
 		}
-	case w.scope == "public" && (h.Kind == wiki.Story || h.Kind == wiki.Rule || h.Kind == wiki.Principle):
-		h.Support = support(d, health)
 	}
 	return h
 }
@@ -461,7 +519,7 @@ func (m *Manager) noticeRefs(agent string) []string {
 	var out []string
 	visible := m.topo.VisiblePartitions(agent)
 	for _, ref := range m.readableRefs(agent) {
-		if w := m.wikis[ref]; w.scope == "partition" && slices.Contains(visible, w.name) {
+		if w := m.wikis[ref]; w.scope == scopePartition && slices.Contains(visible, w.name) {
 			continue
 		}
 		out = append(out, ref)
@@ -517,7 +575,8 @@ func IsUserPath(vaultRel, p string) bool {
 		return len(parts) >= 5 && parts[2] == vault.ReadOnlyDir &&
 			(parts[3] == vault.GrantedDir || parts[3] == vault.FeaturesDir && len(parts) == 5 && strings.HasSuffix(parts[4], ".md"))
 	case len(parts) >= 3 && parts[0] == vault.OrchestrationDir:
-		return parts[1] == vault.CanEditDir || len(parts) >= 4 && parts[1] == vault.ReadOnlyDir && parts[2] == vault.GrantedDir
+		return parts[1] == vault.CanEditDir || len(parts) >= 4 && parts[1] == vault.ReadOnlyDir &&
+			(parts[2] == vault.GrantedDir || parts[2] == vault.FeaturesDir && len(parts) == 4 && strings.HasSuffix(parts[3], ".md"))
 	}
 	return false
 }
@@ -545,7 +604,7 @@ func (m *Manager) userChange(ref, what, id string, fn func(*wikiOf) error) error
 	if err := fn(w); err != nil {
 		return err
 	}
-	if w.scope == "partition" {
+	if w.scope == scopePartition {
 		m.project(m.partitionAgents[w.name])
 	}
 	m.commitVault("", fmt.Sprintf("user: %s in %s", what, w.label()), path.Join(w.dir, id+".md"))

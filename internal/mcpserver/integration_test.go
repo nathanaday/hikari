@@ -145,12 +145,22 @@ services:
 		t.Errorf("search_wiki:\n%s", out)
 	}
 	if out, isErr := call(t, lead, "change_public_wiki", map[string]any{"writes": []map[string]any{
-		{"op": "create", "id": "customer-orders", "kind": "story", "name": "A customer orders", "description": "A customer places a sound order.", "body": "## Purpose\n\nThrough [[validate-order]] and [[create-order]].\n"},
+		{"op": "create", "id": "orders-are-sound", "kind": "rule", "name": "Orders are sound", "description": "Every order is checked before it is stored.", "body": "## Purpose\n\nThrough [[validate-order]].\n"},
 	}}); isErr || !strings.Contains(out, "Applied 1 write(s)") {
 		t.Fatalf("change_public_wiki: %s", out)
 	}
-	if out, _ := call(t, orders, "get_document", map[string]any{"id": "validate-order"}); !strings.Contains(out, "## Purpose") || !strings.Contains(out, "backlinks:") || !strings.Contains(out, "id: customer-orders") {
-		t.Errorf("get_document returns the document with its backlinks:\n%s", out)
+	// Decision 2: the orchestration agent's change_wiki writes its own
+	// feature map.
+	if out, isErr := call(t, lead, "change_wiki", map[string]any{"writes": []map[string]any{
+		{"op": "create", "id": "customer-orders", "name": "A customer orders", "description": "A customer places a sound order.", "body": "## Purpose\n\nThrough [[validate-order]] and [[create-order]].\n"},
+	}}); isErr || !strings.Contains(out, "Applied 1 write(s)") {
+		t.Fatalf("change_wiki of the orchestration agent: %s", out)
+	}
+	if out, _ := call(t, orders, "get_document", map[string]any{"id": "validate-order"}); !strings.Contains(out, "## Purpose") || !strings.Contains(out, "backlinks:") || !strings.Contains(out, "id: orders-are-sound") || strings.Contains(out, "customer-orders") {
+		t.Errorf("K11: get_document returns the document with the backlinks that orders can read:\n%s", out)
+	}
+	if out, _ := call(t, lead, "get_document", map[string]any{"id": "customer-orders"}); !strings.Contains(out, "wiki: orchestration") || !strings.Contains(out, "health: ") {
+		t.Errorf("K8: the orchestration agent reads its feature with its health:\n%s", out)
 	}
 	if _, err := orders.CallTool(context.Background(), &mcp.CallToolParams{Name: "define_term", Arguments: map[string]any{"term": "x", "definition": "y"}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
 		t.Errorf("a partition agent has no define_term tool, got %v", err)
