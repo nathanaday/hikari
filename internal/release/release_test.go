@@ -101,6 +101,9 @@ func TestLauncher(t *testing.T) {
 			t.Errorf("CP4 hikari-linux-%s is installed beside hikari: %v", a, err)
 		}
 	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".download.*")); len(left) > 0 {
+		t.Errorf("CP4 the launcher leaves no download folder: %v", left)
+	}
 	if link, err := os.Readlink(filepath.Join(home, "bin", "hikari")); err != nil || link != "9.9.9/hikari" {
 		t.Errorf("CP4 ~/.hikari/bin/hikari points at the new binary: %q, %v", link, err)
 	}

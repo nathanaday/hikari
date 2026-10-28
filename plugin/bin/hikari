@@ -9,10 +9,10 @@
 #   HIKARI_HOME          the machine folder, ~/.hikari by default.
 #   HIKARI_NO_DOWNLOAD   set to 1, it never downloads.
 version='0.1.0'
-checksums='fc23ea0b5c04a186ede92f488ea98c548ec23f42013500122b6052623a4e45be  hikari-0.1.0-darwin-amd64
-3cb3f6cce9fc2ee1ef999bdaa72fbce965a006a843f78af18d3cf8c81c218155  hikari-0.1.0-darwin-arm64
-686f38cd24bbf4a79c057f3f00fc393a355c421570442aa50dc8cc4fe1140a40  hikari-0.1.0-linux-amd64
-875f62036fc7e829347f5c929a0f614a6a5770c31c4863716c55487bbd50025e  hikari-0.1.0-linux-arm64'
+checksums='7d9a39a873bd72db9749f212a71fd47365a2f527e9bdf11beb31b2476480688b  hikari-0.1.0-darwin-amd64
+57e818185634bdc637a4214e1795fd56a0353e0f308eb5448f1e901c077ca6e6  hikari-0.1.0-darwin-arm64
+f5cf0ec71b248bcb6a5ee49ad5a17a6121205675173fa6487397944cb56e7fd2  hikari-0.1.0-linux-amd64
+4506245d82001750f79e21d888ed1fd35a0cac7b46bdfbdcf160160f6054bbb7  hikari-0.1.0-linux-arm64'
 
 missing() {
 	why=$1
@@ -117,4 +117,7 @@ ln -s "$version/hikari" "$home/bin/.link.$$" && mv -f "$home/bin/.link.$$" "$hom
 line="$(date -u +%Y-%m-%dT%H:%M:%SZ) installed hikari $version ($os-$arch) at $dir, from $base/$version/"
 echo "$line" >>"$home/install.log"
 echo "hikari: $line" >&2
+# exec ends this shell, so its trap never runs: clean up first.
+rm -rf "$tmp"
+trap - EXIT HUP INT TERM
 exec "$dir/hikari" "$@"

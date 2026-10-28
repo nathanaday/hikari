@@ -114,4 +114,7 @@ ln -s "$version/hikari" "$home/bin/.link.$$" && mv -f "$home/bin/.link.$$" "$hom
 line="$(date -u +%Y-%m-%dT%H:%M:%SZ) installed hikari $version ($os-$arch) at $dir, from $base/$version/"
 echo "$line" >>"$home/install.log"
 echo "hikari: $line" >&2
+# exec ends this shell, so its trap never runs: clean up first.
+rm -rf "$tmp"
+trap - EXIT HUP INT TERM
 exec "$dir/hikari" "$@"
