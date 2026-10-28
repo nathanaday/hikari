@@ -363,7 +363,7 @@ func TestIsRoot(t *testing.T) {
 }
 
 func TestLinuxBinaryMissing(t *testing.T) {
-	if _, err := LinuxBinary("riscv64"); err == nil || !strings.Contains(err.Error(), "make build") {
+	if _, err := LinuxBinary("riscv64"); err == nil || !strings.Contains(err.Error(), "make install") {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -439,5 +439,32 @@ services:
 	}
 	if billing["/hikari/grants/intake/releases"] != filepath.Join(vault, "partitions", "orders", "read-only", "releases") {
 		t.Errorf("ID12: a granted release mounts at the partition's name: %v", billing)
+	}
+}
+
+// TestLinuxBinaryThroughLink checks CP8 of the plugin spec: a link to the
+// binary, as ~/.hikari/bin/hikari is, finds the Linux binaries beside the
+// binary it names.
+func TestLinuxBinaryThroughLink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "0.1.0")
+	os.MkdirAll(real, 0o755)
+	for _, f := range []string{"hikari", "hikari-linux-arm64"} {
+		os.WriteFile(filepath.Join(real, f), []byte("x"), 0o755)
+	}
+	link := filepath.Join(dir, "hikari")
+	if err := os.Symlink("0.1.0/hikari", link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := linuxBinary(link, "darwin", "arm64", "arm64")
+	want, _ := filepath.EvalSymlinks(filepath.Join(real, "hikari-linux-arm64"))
+	if err != nil || got != want {
+		t.Errorf("linuxBinary through a link = %q, %v; want %q", got, err, want)
+	}
+	if _, err := linuxBinary(link, "darwin", "arm64", "amd64"); err == nil {
+		t.Error("a missing Linux binary is an error")
+	}
+	if got, _ := linuxBinary(link, "linux", "arm64", "arm64"); got != filepath.Join(filepath.Dir(want), "hikari") {
+		t.Errorf("on linux/arm64, hikari is its own Linux binary: %q", got)
 	}
 }

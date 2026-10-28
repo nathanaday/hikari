@@ -19,6 +19,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/nathanaday/hikari/internal/agentimage"
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/driver"
@@ -43,6 +44,9 @@ Usage:
   hikari check [flags] [topology.yaml]   run the checks of hikari up, and start nothing
   hikari push [topology.yaml]            push your branches of the linked repos and the project
   hikari status [flags] [topology.yaml]  show each partition's feature map and recorded tests
+  hikari send [flags] <message>          post a message to the room of the running project
+  hikari doctor [topology.yaml]          check this machine, and the project, for hikari up
+  hikari image                           build the hikari-agent image
   hikari version                         print the version
 
 Without a file, each command opens topology.yaml in the current directory.
@@ -50,6 +54,7 @@ Without a file, each command opens topology.yaml in the current directory.
 Internal commands (hikari starts these; you do not run them):
   hikari driver   the agent driver; each container runs it
   hikari mcp      the agent's MCP tools; Claude Code starts it on each turn
+  hikari hook     the hooks of the Hikari plugin for Claude Code
 `
 
 func main() {
@@ -74,6 +79,14 @@ func main() {
 		err = push(ctx, os.Args[2:])
 	case "status":
 		err = status(ctx, os.Args[2:])
+	case "send":
+		err = send(ctx, os.Args[2:])
+	case "doctor":
+		err = doctor(ctx, os.Args[2:])
+	case "image":
+		err = buildImage(ctx, os.Args[2:])
+	case "hook":
+		err = hook(os.Args[2:])
 	case "driver":
 		err = runDriver(ctx)
 	case "mcp":
@@ -140,6 +153,11 @@ func up(ctx context.Context, args []string) error {
 	defer httpSrv.Close()
 	url := fmt.Sprintf("http://%s/?token=%s", ln.Addr(), uiToken)
 	con.Println("  Web UI  " + con.Link(url))
+	if err := writeHost(ed.File, hostFile{URL: "http://" + ln.Addr().String(), Token: uiToken, PID: os.Getpid()}); err != nil {
+		log.Print(err)
+		con.Warn("hikari send cannot reach this run: " + err.Error())
+	}
+	defer removeHost(ed.File)
 	con.Println("")
 	go ed.Watch(ctx, host.TopologyChanged)
 
@@ -236,6 +254,19 @@ func launch(ctx context.Context, con *console.Console, p *launcher.Project, srv 
 		step.Fail(err)
 		return errShown
 	}
+	step := con.Step("Checking the " + agentimage.Name + " image")
+	state, err := agentimage.Ensure(ctx, log.Writer())
+	if err != nil {
+		return nil, fail(step, err)
+	}
+	switch state {
+	case agentimage.Missing:
+		step.Done("Built the " + agentimage.Name + " image")
+	case agentimage.Stale:
+		step.Done("Built the " + agentimage.Name + " image again, from a newer Dockerfile")
+	default:
+		step.Done("Checked the " + agentimage.Name + " image")
+	}
 	if slices.ContainsFunc(slices.Collect(maps.Values(topo.Services)), func(s topology.Service) bool { return s.Build }) {
 		step := con.Step("Building the images")
 		if err := p.Build(ctx); err != nil {
@@ -243,7 +274,7 @@ func launch(ctx context.Context, con *console.Console, p *launcher.Project, srv 
 		}
 		step.Done("Built the images")
 	}
-	step := con.Step("Checking the agent images")
+	step = con.Step("Checking the agent images")
 	in.Binaries, in.Users = map[string]string{}, map[string]string{}
 	for _, n := range topo.AgentNames() {
 		img, err := p.InspectAgent(ctx, n)
@@ -262,7 +293,7 @@ func launch(ctx context.Context, con *console.Console, p *launcher.Project, srv 
 	for _, n := range topo.AgentNames() {
 		p.Env = append(p.Env, launcher.TokenVar(topo.Agents[n].ID)+"="+srv.IssueToken(n))
 	}
-	err := p.Watch(ctx, func(service string, code int) {
+	err = p.Watch(ctx, func(service string, code int) {
 		log.Printf("[%s] container exited with code %d", service, code)
 		if agent, ok := topo.AgentOfService(service); ok {
 			s := api.Status{State: api.StateExited}
@@ -308,4 +339,16 @@ func runMCP(ctx context.Context) error {
 		return err
 	}
 	return mcpserver.New(c, self).Run(ctx, &mcp.StdioTransport{})
+}
+
+func buildImage(ctx context.Context, args []string) error {
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "Usage: hikari image")
+		os.Exit(2)
+	}
+	if err := agentimage.Build(ctx, os.Stdout); err != nil {
+		return err
+	}
+	fmt.Println("Built the " + agentimage.Name + " image.")
+	return nil
 }

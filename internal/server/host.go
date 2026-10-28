@@ -118,7 +118,7 @@ func (h *Host) Handler() http.Handler {
 	mux := http.NewServeMux()
 	ui := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			c, err := r.Cookie(uiCookie)
+			c, err := r.Cookie(UICookie)
 			if err != nil || !equal(c.Value, h.uiToken) {
 				writeError(w, http.StatusUnauthorized, "open the URL that hikari printed at startup")
 				return
@@ -270,7 +270,7 @@ func login(mux *http.ServeMux, uiToken string) {
 			return
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name: uiCookie, Value: uiToken, Path: "/",
+			Name: UICookie, Value: uiToken, Path: "/",
 			HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		})
 		w.WriteHeader(http.StatusNoContent)

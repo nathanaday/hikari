@@ -113,19 +113,27 @@ func isRoot(user string) bool {
 }
 
 // LinuxBinary returns the hikari binary for Linux on arch: this binary when
-// it is one, or else hikari-linux-<arch> next to it, which `make build`
-// writes (decision 5).
+// it is one, or else hikari-linux-<arch> next to it, which `make build` and
+// the plugin's launcher install (decision 5). A link to this binary, such
+// as ~/.hikari/bin/hikari, is followed first (rule CP8 of the plugin spec).
 func LinuxBinary(arch string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
+	return linuxBinary(self, runtime.GOOS, runtime.GOARCH, arch)
+}
+
+func linuxBinary(self, goos, goarch, arch string) (string, error) {
+	if real, err := filepath.EvalSymlinks(self); err == nil {
+		self = real
+	}
+	if goos == "linux" && goarch == arch {
 		return self, nil
 	}
 	p := filepath.Join(filepath.Dir(self), "hikari-linux-"+arch)
 	if _, err := os.Stat(p); err != nil {
-		return "", fmt.Errorf("no hikari binary for linux/%s at %s; build it with `make build`", arch, p)
+		return "", fmt.Errorf("no hikari binary for linux/%s at %s; install hikari again, with the plugin or with make install", arch, p)
 	}
 	return p, nil
 }

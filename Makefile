@@ -59,8 +59,9 @@ web/node_modules: web/package.json web/package-lock.json
 web/dist/index.html: web/node_modules $(UI_SRC)
 	cd web && npm run build
 
-image:
-	docker build -t hikari-agent .
+# The agent image comes from the Dockerfile that the binary embeds; see hikari image.
+image: build
+	bin/hikari image
 
 up: build image
 	@if [ "$(TOPOLOGY)" = examples/shop/topology.yaml ] && [ ! -d .hikari/demo/shop ]; then \

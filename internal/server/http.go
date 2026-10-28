@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	uiCookie = "hikari_ui"
+	// UICookie carries the UI's token; hikari send sets it too.
+	UICookie = "hikari_ui"
 	maxWait  = 60 * time.Second
 )
 
@@ -72,7 +73,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 
 	ui := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			c, err := r.Cookie(uiCookie)
+			c, err := r.Cookie(UICookie)
 			if err != nil || !equal(c.Value, uiToken) {
 				writeError(w, http.StatusUnauthorized, "open the URL that hikari printed at startup")
 				return
