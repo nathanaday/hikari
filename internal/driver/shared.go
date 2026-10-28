@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/vault"
 )
 
@@ -31,8 +32,10 @@ type sharedArea struct {
 	skills string
 	// role names the agent's pack of built-in skills, and builtins its
 	// skills.
-	role         string
-	builtins     []string
+	role     string
+	builtins []string
+	// extra are the skills of the agent's modules, by name.
+	extra        map[string]fs.FS
 	deliverables []string
 	granted      []string
 	warned       map[string]bool
@@ -44,7 +47,13 @@ func newSharedArea(self api.Self, deliverables, granted []string) (*sharedArea, 
 		return nil, err
 	}
 	role := packRole(self)
-	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, role: role, builtins: api.Packs[role], deliverables: deliverables, granted: granted, warned: map[string]bool{}}, nil
+	extra := map[string]fs.FS{}
+	for _, m := range modules.Named(self.Modules) {
+		for _, sk := range m.Skills(role) {
+			extra[sk.Name] = sk.Files
+		}
+	}
+	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, role: role, builtins: modules.Pack(role, self.Modules), extra: extra, deliverables: deliverables, granted: granted, warned: map[string]bool{}}, nil
 }
 
 // packRole returns the role whose pack self gets (rule K1 of the skill packs
@@ -79,7 +88,7 @@ func (s *sharedArea) sync() string {
 	}
 	for _, name := range s.granted {
 		switch {
-		case slices.Contains(api.BuiltinSkills, name) || strings.HasPrefix(name, api.AgentPrefix):
+		case slices.Contains(modules.BuiltinSkills(), name) || strings.HasPrefix(name, api.AgentPrefix):
 			s.warnOnce(name, "ignoring the skill %s; the prefix %s is reserved for hikari's own skills", name, api.AgentPrefix)
 			continue
 		case slices.Contains(s.deliverables, name):
@@ -126,13 +135,17 @@ func (s *sharedArea) files(kind, ext string) []string {
 func (s *sharedArea) writeBuiltin(skill string) {
 	dir := filepath.Join(s.skillsDir(), skill)
 	os.RemoveAll(dir)
+	var files fs.FS = builtin
 	root := "skills/" + s.role + "/" + skill
-	err := fs.WalkDir(builtin, root, func(path string, d fs.DirEntry, err error) error {
+	if f, ok := s.extra[skill]; ok {
+		files, root = f, "."
+	}
+	err := fs.WalkDir(files, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
-		data, err := builtin.ReadFile(path)
+		data, err := fs.ReadFile(files, path)
 		if err != nil {
 			return err
 		}

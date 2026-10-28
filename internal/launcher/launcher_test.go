@@ -468,3 +468,37 @@ func TestLinuxBinaryThroughLink(t *testing.T) {
 		t.Errorf("on linux/arm64, hikari is its own Linux binary: %q", got)
 	}
 }
+
+// TestModuleMounts checks TK20 of the task pipeline spec: with the tasks
+// module on, the orchestration agent reads the tasks, and a partition agent
+// mounts nothing of them.
+func TestModuleMounts(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "shop", ".git"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "shop", "orders"), 0o755)
+	src := `name: shop
+x-hikari:
+  repos: {shop: {path: shop, branch: hikari}}
+  orchestration: lead
+  modules: [tasks]
+services:
+  lead: {image: hikari-agent, x-hikari: {}}
+  orders: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: orders}]}}}
+`
+	topo, err := topology.Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(agent string) bool {
+		return slices.ContainsFunc(VaultMounts(topo, agent), func(m Mount) bool {
+			return m.Target == "/hikari/tasks" && m.ReadOnly && m.Source == filepath.Join(dir, "vault", "tasks")
+		})
+	}
+	if !has("lead") || has("orders") {
+		t.Errorf("TK20 the orchestration agent alone mounts the tasks: lead %v, orders %v", has("lead"), has("orders"))
+	}
+	topo.Modules = nil
+	if has("lead") {
+		t.Error("MO5 without the module, no mount")
+	}
+}

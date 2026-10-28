@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/workspace"
 )
@@ -72,6 +73,11 @@ func VaultMounts(t *topology.Topology, agent string) []Mount {
 	}
 	for _, sk := range t.Agents[agent].Grants.Skills {
 		mounts = append(mounts, Mount{Source: st.SkillDir(sk), Target: api.SkillPath(sk), ReadOnly: true})
+	}
+	for _, m := range modules.Of(t) {
+		for _, mt := range m.Mounts(t, agent) {
+			mounts = append(mounts, Mount(mt))
+		}
 	}
 	return mounts
 }

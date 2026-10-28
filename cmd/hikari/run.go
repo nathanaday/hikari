@@ -185,6 +185,7 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	sys.Watch(runCtx)
 	cur.journal = &lazyFile{path: filepath.Join(runDir, "messages.jsonl")}
 	srv := server.New(topo, cur.journal, sys)
+	srv.WatchModules(runCtx)
 	r.host.Attach(srv)
 	cur.sys, cur.topo = sys, topo
 	dash := newDashboard(con, srv, topo.AgentNames(), r.url, logPath)

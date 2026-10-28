@@ -42,6 +42,10 @@ type Event struct {
 	// Revision is the topology file's new revision, in a topology event
 	// (rule TA8 of the topology API spec).
 	Revision string `json:"revision,omitempty"`
+	// Module and View are a module's name and its new view, in a module
+	// event (rule MO4 of the task pipeline spec).
+	Module string `json:"module,omitempty"`
+	View   any    `json:"view,omitempty"`
 }
 
 type AgentView struct {
@@ -78,6 +82,8 @@ type Snapshot struct {
 	Wikis []api.WikiView `json:"wikis"`
 	// Activity holds the recent steps of each agent.
 	Activity map[string][]api.Activity `json:"activity"`
+	// Modules holds the view of each module that the project turns on.
+	Modules map[string]any `json:"modules"`
 }
 
 type delivery struct {
@@ -107,6 +113,8 @@ type Server struct {
 	// message ID when each agent's current turn began.
 	activity  map[string][]api.Activity
 	turnStart map[string]int64
+	// modules are the host halves of the project's modules.
+	modules []openModule
 }
 
 // maxActivity is the most entries kept per agent. Older turns are dropped
@@ -133,6 +141,7 @@ func New(topo *topology.Topology, journal io.Writer, sys *partitions.Manager) *S
 		s.status[n] = api.Status{State: api.StateStarting}
 	}
 	sys.OnChange(s.partitionChanged)
+	s.openModules()
 	return s
 }
 
@@ -404,6 +413,7 @@ func (s *Server) Self(agent string) api.Self {
 	self.Releases = s.topo.ReadableReleases(agent)
 	self.Deliverables = s.sys.Deliverables(agent)
 	self.Skills = a.Grants.Skills
+	self.Modules = s.topo.Modules
 	for _, m := range self.VisiblePartitions {
 		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
 			if self.PartitionAgentGrants == nil {
@@ -430,6 +440,12 @@ func (s *Server) participants() []api.Peer {
 			peer.Description = "The human operator."
 		}
 		out = append(out, peer)
+	}
+	if len(s.modules) > 0 {
+		// hikari speaks for its modules, before the user (decision 3 of
+		// the task pipeline spec).
+		sys := api.Peer{Name: topology.System, Role: s.topo.Role(topology.System), Description: "hikari itself, which writes the messages of its modules."}
+		out = append(out[:len(out)-1], sys, out[len(out)-1])
 	}
 	return out
 }
@@ -495,6 +511,7 @@ func (s *Server) snapshot() Snapshot {
 	snap.Repos = s.sys.Repos()
 	snap.Deliverables = s.deliverables(s.sys.Vault())
 	snap.Wikis = s.sys.Wikis()
+	snap.Modules = s.moduleViews()
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {
 		snap.Activity[n] = slices.Clone(list)

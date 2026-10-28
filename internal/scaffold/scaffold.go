@@ -52,6 +52,8 @@ x-hikari:
   # repos:                   # a repository that holds a partition's code
   #   app: {url: https://github.com/you/app.git}   # cloned into repos/app by: hikari sync
   orchestration: orchestrator   # every other agent has a partition
+  # The task pipeline: stubs, scopes, and queues of work, in vault/tasks/.
+  modules: [tasks]
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]

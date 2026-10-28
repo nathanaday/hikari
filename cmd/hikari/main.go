@@ -28,6 +28,7 @@ import (
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
+	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/server"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -95,8 +96,12 @@ func main() {
 	case "help", "-h", "-help", "--help":
 		fmt.Print(usage)
 	default:
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		cmd, ok := modules.Command(os.Args[1])
+		if !ok {
+			fmt.Fprint(os.Stderr, usage)
+			os.Exit(2)
+		}
+		err = cmd(ctx, os.Args[2:])
 	}
 	if errors.Is(err, errShown) {
 		os.Exit(1)
@@ -183,7 +188,7 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	// configuration, so hikari commits them as yours (rule C5 of the wikis
 	// spec).
 	if repo.Branch() == p.Branch {
-		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !partitions.IsUserPath(topo.VaultInProject(), path) }) {
+		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !userPath(topo, path) }) {
 			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: wiki edits made while hikari was stopped"); err != nil {
 				return nil, fmt.Errorf("the project repository: commit your wiki edits: %w", err)
 			}
@@ -349,4 +354,16 @@ func buildImage(ctx context.Context, args []string) error {
 	}
 	fmt.Println("Built the " + agentimage.Name + " image.")
 	return nil
+}
+
+// userPath reports whether path, relative to the project repository, holds
+// your knowledge: a wiki document, or a document of a module (rule MO4 of
+// the task pipeline spec).
+func userPath(topo *topology.Topology, path string) bool {
+	vaultRel := topo.VaultInProject()
+	if partitions.IsUserPath(vaultRel, path) {
+		return true
+	}
+	rel, ok := strings.CutPrefix(path, vaultRel+"/")
+	return ok && modules.UserPath(topo, rel)
 }

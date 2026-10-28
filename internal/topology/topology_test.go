@@ -60,6 +60,9 @@ func TestParseErrors(t *testing.T) {
 		"reserved name":    {compose("  orchestration: user", "  user: {x-hikari: {}}"), "reserved"},
 		"C3 bad name":      {compose("  orchestration: a_b", "  a_b: {x-hikari: {}}"), `invalid agent name "a_b"`},
 		"unreachable":      {compose(orch, "  a: {x-hikari: {}}\n  b: {x-hikari: {}}"), `agent "b" has no partition and is not the orchestration agent`},
+		"MO3 unknown":      {compose(orch+"\n  modules: [tasks, chores]", "  a: {x-hikari: {}}"), `"chores" is not a module; the modules are tasks`},
+		"MO3 twice":        {compose(orch+"\n  modules: [tasks, tasks]", "  a: {x-hikari: {}}"), `"tasks" is listed twice`},
+		"hikari is taken":  {compose("  orchestration: hikari", "  hikari: {x-hikari: {}}"), `agent name "hikari" is reserved for hikari itself`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -614,5 +617,20 @@ func TestDraft(t *testing.T) {
 	bad := strings.Replace(src, "path: src", "path: ../src", 1)
 	if _, err := parse([]byte(bad), dir, true); err == nil || !strings.Contains(err.Error(), "must be a relative path") {
 		t.Errorf("DR1 a draft keeps the other rules: %v", err)
+	}
+}
+
+// TestModules checks MO3 of the task pipeline spec.
+func TestModules(t *testing.T) {
+	topo, err := Parse([]byte(compose("  orchestration: a\n  modules: [tasks]", "  a: {x-hikari: {}}")), t.TempDir())
+	if err != nil || !slices.Equal(topo.Modules, []string{"tasks"}) || !topo.HasModule("tasks") {
+		t.Fatalf("modules = %v, %v", topo, err)
+	}
+	if topo.Role(System) != "system" || slices.Contains(topo.Participants(), System) {
+		t.Error("hikari has the role system, and is no participant of the room")
+	}
+	topo, _ = Parse([]byte(compose("  orchestration: a", "  a: {x-hikari: {}}")), t.TempDir())
+	if len(topo.Modules) != 0 || topo.HasModule("tasks") {
+		t.Errorf("MO5 a project without the key has no module: %v", topo.Modules)
 	}
 }

@@ -32,6 +32,15 @@ import (
 // and is driven from the web UI instead of a container.
 const User = "user"
 
+// System is the reserved name of hikari itself, which sends the messages of
+// its modules (decision 3 of the task pipeline spec). It has no turn and no
+// inbox.
+const System = "hikari"
+
+// KnownModules are the modules that x-hikari.modules can turn on (rule MO3
+// of the task pipeline spec). A test holds it equal to the registry.
+var KnownModules = []string{"tasks"}
+
 // ProjectRepo is the reserved repo name of the project repository: the git
 // repository that holds the topology file, when x-hikari.project is set.
 const ProjectRepo = "project"
@@ -162,6 +171,8 @@ type Topology struct {
 	// Orchestration is the name of the agent that x-hikari.orchestration
 	// names, or empty when the project has no orchestration agent.
 	Orchestration string
+	// Modules are the modules that x-hikari.modules turns on.
+	Modules []string
 
 	// File is the topology file, when the topology came from Load.
 	File string
@@ -203,6 +214,8 @@ type hikariKeys struct {
 	Repos   map[string]Repo `yaml:"repos"`
 	// Orchestration is the service id of the orchestration agent.
 	Orchestration string `yaml:"orchestration"`
+	// Modules turns on modules by name.
+	Modules []string `yaml:"modules"`
 }
 
 type projectKeys struct {
@@ -334,6 +347,16 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 		fail("x-hikari", "x-hikari: %v", err)
 	}
 	t.Vault, t.Repos, t.Orchestration = keys.Vault, keys.Repos, keys.Orchestration
+	for _, m := range keys.Modules {
+		switch {
+		case !slices.Contains(KnownModules, m):
+			fail("x-hikari.modules", "x-hikari.modules: %q is not a module; the modules are %s", m, strings.Join(KnownModules, ", "))
+		case slices.Contains(t.Modules, m):
+			fail("x-hikari.modules", "x-hikari.modules: %q is listed twice", m)
+		default:
+			t.Modules = append(t.Modules, m)
+		}
+	}
 	if keys.Name != "" {
 		t.Name = keys.Name
 	}
@@ -659,6 +682,8 @@ func (t *Topology) validate() error {
 	for _, name := range t.AgentNames() {
 		if name == User {
 			fail("services."+name, "agent name %q is reserved for the human operator", User)
+		} else if name == System {
+			fail("services."+name, "agent name %q is reserved for hikari itself", System)
 		} else if !validName.MatchString(name) {
 			fail("services."+name, "invalid agent name %q: use lowercase letters, digits, and dashes", name)
 		}
@@ -1057,6 +1082,8 @@ func (t *Topology) Role(name string) string {
 	switch {
 	case name == User:
 		return "operator"
+	case name == System:
+		return "system"
 	case name == t.Orchestration:
 		return "orchestration"
 	}
@@ -1094,3 +1121,6 @@ func (t *Topology) Workspace(agent string) workspace.Workspace {
 func (t *Topology) VaultOf() vault.Vault {
 	return vault.Vault{Root: t.Vault, Partitions: t.PartitionIDs()}
 }
+
+// HasModule reports whether x-hikari.modules turns on the module name.
+func (t *Topology) HasModule(name string) bool { return slices.Contains(t.Modules, name) }

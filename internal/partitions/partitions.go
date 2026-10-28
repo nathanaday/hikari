@@ -221,6 +221,15 @@ func (m *Manager) commitVault(agent, message string, paths ...string) string {
 	return ""
 }
 
+// CommitVault commits paths of the vault, relative to it, as agent, or as
+// the user when agent is empty: a module's writes (rule MO2 of the task
+// pipeline spec).
+func (m *Manager) CommitVault(agent, message string, paths ...string) {
+	if problem := m.commitVault(agent, message, paths...); problem != "" {
+		log.Print(problem)
+	}
+}
+
 // CommitAsUser commits paths of the project repository, relative to it,
 // with the user's identity, on the project branch: the topology editor's
 // saves during a run (rule TC4 of the topology API spec). It shares the

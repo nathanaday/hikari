@@ -110,6 +110,9 @@ type TurnContext struct {
 	// NoLocalResults says that the map records test runs that this machine
 	// has no results of (rule SY10 of the linked repositories spec).
 	NoLocalResults bool `json:"no_local_results,omitempty"`
+	// Notices are the modules' lines for the turn (rule MO4 of the task
+	// pipeline spec).
+	Notices []string `json:"notices,omitempty"`
 }
 
 // WikiChange names the changed documents of one wiki. Wiki is its label:

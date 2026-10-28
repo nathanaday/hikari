@@ -87,6 +87,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	s.vaultRoutes(mux, ui)
+	s.moduleRoutes(mux, ui)
 	// The user's changes to the wikis (rules U6, U8, and C4 of the wikis
 	// spec). {ref} is public or partition:<name>.
 	userWrite := func(fn func(r *http.Request, ref string) error) http.HandlerFunc {
@@ -202,7 +203,9 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		return rel, nil
 	})
 	handle("GET /api/agent/turn-context", func(r *http.Request, agent string) (any, error) {
-		return sys.TurnContext(agent), nil
+		tc := sys.TurnContext(agent)
+		tc.Notices = s.moduleNotices(agent)
+		return tc, nil
 	})
 
 	handle("GET /api/agent/partitions", func(r *http.Request, agent string) (any, error) {

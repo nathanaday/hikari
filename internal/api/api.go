@@ -58,6 +58,9 @@ type Self struct {
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
 	// Skills lists the skills of the vault that the agent is granted.
 	Skills []string `json:"skills,omitempty"`
+	// Modules lists the modules that the project turns on (rule MO4 of the
+	// task pipeline spec).
+	Modules []string `json:"modules,omitempty"`
 	// PartitionAgentGrants maps each partition agent, for the orchestration agent, to the partitions
 	// whose releases it is granted.
 	PartitionAgentGrants map[string][]string `json:"partition_agent_grants,omitempty"`

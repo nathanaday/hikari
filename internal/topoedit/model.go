@@ -33,6 +33,8 @@ type Project struct {
 	// Orchestration is x-hikari.orchestration: the service id of the
 	// orchestration agent, or "".
 	Orchestration string `json:"orchestration"`
+	// Modules is x-hikari.modules.
+	Modules []string `json:"modules,omitempty"`
 }
 
 type Repo struct {
@@ -141,6 +143,7 @@ type srcHikari struct {
 	} `yaml:"project"`
 	Repos         map[string]srcRepo `yaml:"repos"`
 	Orchestration string             `yaml:"orchestration"`
+	Modules       []string           `yaml:"modules"`
 }
 
 type srcRepo struct {
@@ -180,7 +183,7 @@ func ReadModel(text []byte, dir string) *Model {
 	var f srcFile
 	yaml.Unmarshal(text, &f)
 	m := &Model{Repos: []Repo{}, Agents: []Agent{}, Sidecars: []Sidecar{}}
-	m.Project = Project{ID: f.Name, Name: f.Name, Vault: f.Hikari.Vault, Orchestration: f.Hikari.Orchestration}
+	m.Project = Project{ID: f.Name, Name: f.Name, Vault: f.Hikari.Vault, Orchestration: f.Hikari.Orchestration, Modules: f.Hikari.Modules}
 	if f.Hikari.Name != "" {
 		m.Project.Name = f.Hikari.Name
 	}

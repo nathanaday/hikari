@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/modules"
 )
 
 type postArgs struct {
@@ -37,6 +38,9 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 	}
 	if self.Orchestration {
 		addOrchestrationTools(s, c)
+	}
+	for _, m := range modules.Named(self.Modules) {
+		m.Tools(s, c, self)
 	}
 
 	mcp.AddTool(s, &mcp.Tool{

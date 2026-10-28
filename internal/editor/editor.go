@@ -22,6 +22,7 @@ import (
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
+	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/topoedit"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -190,6 +191,9 @@ func (e *Editor) State(ctx context.Context) (State, error) {
 	s := State{File: linked.Shown(e.File), Exists: ok, Revision: Revision(text, ok), Text: string(text), Findings: []topology.Finding{}, Mode: e.mode(), Packs: api.Packs}
 	if ok {
 		s.Model = topoedit.ReadModel(text, e.dir())
+		if s.Model != nil {
+			s.Packs = modules.Packs(s.Model.Project.Modules)
+		}
 		var topo *topology.Topology
 		s.Findings, topo = lint(ctx, text, e.File)
 		s.Mounts = e.mounts(s.Findings, topo)
@@ -290,7 +294,7 @@ func (e *Editor) Plan(ctx context.Context, revision string, ops []topoedit.Op) (
 		Revision: revision, Text: string(res.Text), Diff: topoedit.Diff(string(text), string(res.Text)),
 		Findings: findings, Effects: nonNil(res.Effects), Summary: nonNil(res.Summary),
 		Occurrences: topoedit.Occurrences(e.vault(m), res.Renames), AppliesAtStart: e.mode() == "running",
-		Model: topoedit.ReadModel(res.Text, e.dir()), Mounts: e.mounts(findings, topo), Packs: api.Packs,
+		Model: topoedit.ReadModel(res.Text, e.dir()), Mounts: e.mounts(findings, topo), Packs: modules.Packs(packModules(topo)),
 	}, nil
 }
 
@@ -602,4 +606,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
+}
+
+// packModules are the modules of topo, which is nil when the plan does not
+// load.
+func packModules(topo *topology.Topology) []string {
+	if topo == nil {
+		return nil
+	}
+	return topo.Modules
 }

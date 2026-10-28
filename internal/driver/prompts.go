@@ -8,6 +8,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/mcpserver"
+	"github.com/nathanaday/hikari/internal/modules"
 )
 
 func partitionAgentPrompt(self api.Self) string {
@@ -255,6 +256,7 @@ func turnNotices(self api.Self, tc api.TurnContext) string {
 		}
 		notes = append(notes, note)
 	}
+	notes = append(notes, tc.Notices...)
 	if len(notes) == 0 {
 		return ""
 	}
@@ -302,7 +304,7 @@ func branches(s *api.SelfPartition) string {
 func sharedPrompt(self api.Self) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and the deliverables in deliverables/. It is read-only.\n", api.PublicDir)
-	if pack := api.Packs[packRole(self)]; len(pack) > 0 {
+	if pack := modules.Pack(packRole(self), self.Modules); len(pack) > 0 {
 		fmt.Fprintf(&b, "\nHikari gives you these skills, for the tasks of your role: %s. Load the one that the task names.\n", strings.Join(pack, ", "))
 	}
 	if len(self.Skills) > 0 {
