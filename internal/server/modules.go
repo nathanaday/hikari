@@ -130,7 +130,7 @@ func (h *moduleHost) Commit(author, message string, paths ...string) {
 // Notify sends a direct message from hikari, which wakes an agent (rule
 // MO2, and decision 3 of the task pipeline spec).
 func (h *moduleHost) Notify(to, body string) {
-	if _, err := h.s.direct(topology.System, to, body); err != nil {
+	if _, err := h.s.direct(topology.Hikari, to, body); err != nil {
 		log.Printf("module %s: notify %s: %v", h.name, to, err)
 	}
 }

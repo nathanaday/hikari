@@ -20,7 +20,7 @@ export function orchestrationOf(participants: Peer[]): string | undefined {
 // orchestration agent, every agent it mentions, and every agent when the
 // orchestration agent, or anyone in a room without one, posts without mentions.
 export function wakeTargets(participants: Peer[], from: string, body: string, to?: string): string[] {
-  const agents = participants.filter((p) => p.role !== 'operator' && p.role !== 'system')
+  const agents = participants.filter((p) => p.role !== 'operator' && p.role !== 'hikari')
   if (to) return agents.some((p) => p.name === to) ? [to] : []
   const names = new Set(participants.map((p) => p.name))
   const mentioned = new Set(mentionsIn(body).filter((n) => names.has(n)))

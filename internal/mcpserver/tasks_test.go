@@ -126,7 +126,7 @@ services:
 	}
 	msgs := srv.Take(context.Background(), "lead", 0)
 	if !slices.ContainsFunc(msgs, func(m api.Message) bool {
-		return m.From == topology.System && strings.Contains(m.Body, "The queue api started [[cancel-orders]]")
+		return m.From == topology.Hikari && strings.Contains(m.Body, "The queue api started [[cancel-orders]]")
 	}) {
 		t.Errorf("TK13 hikari tells lead the scope started: %+v", msgs)
 	}

@@ -83,7 +83,7 @@ type Host interface {
 	// map, or in the orchestration feature map when partition is empty.
 	Health(partition, id string) (string, bool)
 	// Commit commits paths of the vault, relative to it, as author: an
-	// agent, topology.User, or topology.System.
+	// agent, topology.User, or topology.Hikari.
 	Commit(author, message string, paths ...string)
 	// Notify sends to a direct message from hikari.
 	Notify(to, body string)

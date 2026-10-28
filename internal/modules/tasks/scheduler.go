@@ -48,8 +48,8 @@ func (c *Change) note(to, body string) {
 	}
 }
 
-// System is hikari's own name as a writer and a sender.
-const System = "hikari"
+// Hikari is hikari's own name as a writer and a sender.
+const Hikari = "hikari"
 
 // User is the user's name as a writer.
 const User = "user"
@@ -122,7 +122,7 @@ func (s *Store) follow(t *Task, c *Change) {
 	if next == t.Status {
 		return
 	}
-	s.setScope(t, System, next, "")
+	s.setScope(t, Hikari, next, "")
 	if next == Validating {
 		c.note(s.check.Orchestration, fmt.Sprintf("Every part of [[%s]] is done. Validate it: follow the Validate a scope procedure of the hikari-scope-work skill.", t.ID))
 	}
@@ -148,17 +148,17 @@ func (s *Store) Schedule(c *Change) error {
 		}
 		if reason := s.blockers(t); reason != "" {
 			if t.Status != Waiting || t.Wait != reason {
-				s.setScope(t, System, Waiting, reason)
+				s.setScope(t, Hikari, Waiting, reason)
 				t.Wait = reason
 				f, err := s.saveTask(t)
 				if err != nil {
 					return err
 				}
-				c.wrote(System, f)
+				c.wrote(Hikari, f)
 			}
 			continue
 		}
-		s.setScope(t, System, Started, "the queue "+q.ID+" started it")
+		s.setScope(t, Hikari, Started, "the queue "+q.ID+" started it")
 		t.Wait = ""
 
 		for _, p := range t.Partitions {
@@ -168,7 +168,7 @@ func (s *Store) Schedule(c *Change) error {
 		if err != nil {
 			return err
 		}
-		c.wrote(System, f)
+		c.wrote(Hikari, f)
 		if s.check.Orchestration != "" {
 			c.note(s.check.Orchestration, fmt.Sprintf("The queue %s started [[%s]]. Follow the Carry out a scope procedure of the hikari-scope-work skill.", q.ID, t.ID))
 		} else {

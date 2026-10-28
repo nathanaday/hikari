@@ -32,10 +32,10 @@ import (
 // and is driven from the web UI instead of a container.
 const User = "user"
 
-// System is the reserved name of hikari itself, which sends the messages of
+// Hikari is the reserved name of hikari itself, which sends the messages of
 // its modules (decision 3 of the task pipeline spec). It has no turn and no
 // inbox.
-const System = "hikari"
+const Hikari = "hikari"
 
 // KnownModules are the modules that x-hikari.modules can turn on (rule MO3
 // of the task pipeline spec). A test holds it equal to the registry.
@@ -682,8 +682,8 @@ func (t *Topology) validate() error {
 	for _, name := range t.AgentNames() {
 		if name == User {
 			fail("services."+name, "agent name %q is reserved for the human operator", User)
-		} else if name == System {
-			fail("services."+name, "agent name %q is reserved for hikari itself", System)
+		} else if name == Hikari {
+			fail("services."+name, "agent name %q is reserved for hikari itself", Hikari)
 		} else if !validName.MatchString(name) {
 			fail("services."+name, "invalid agent name %q: use lowercase letters, digits, and dashes", name)
 		}
@@ -1082,8 +1082,8 @@ func (t *Topology) Role(name string) string {
 	switch {
 	case name == User:
 		return "operator"
-	case name == System:
-		return "system"
+	case name == Hikari:
+		return "hikari"
 	case name == t.Orchestration:
 		return "orchestration"
 	}

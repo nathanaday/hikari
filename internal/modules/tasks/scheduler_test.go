@@ -70,7 +70,7 @@ func TestSchedule(t *testing.T) {
 	if got := notesTo(c, "lead"); len(got) != 1 || !strings.Contains(got[0], "The queue api started [[coupons]]") {
 		t.Errorf("TK13 hikari tells the orchestration agent: %v", c.Notes)
 	}
-	if c.Writes[0].Author != User || !slices.Contains(c.Writes[1].Paths, "coupons.md") || c.Writes[1].Author != System {
+	if c.Writes[0].Author != User || !slices.Contains(c.Writes[1].Paths, "coupons.md") || c.Writes[1].Author != Hikari {
 		t.Errorf("G3 the queue's state is yours, the start is hikari's: %+v", c.Writes)
 	}
 

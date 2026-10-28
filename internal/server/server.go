@@ -444,7 +444,7 @@ func (s *Server) participants() []api.Peer {
 	if len(s.modules) > 0 {
 		// hikari speaks for its modules, before the user (decision 3 of
 		// the task pipeline spec).
-		sys := api.Peer{Name: topology.System, Role: s.topo.Role(topology.System), Description: "hikari itself, which writes the messages of its modules."}
+		sys := api.Peer{Name: topology.Hikari, Role: s.topo.Role(topology.Hikari), Description: "hikari itself, which writes the messages of its modules."}
 		out = append(out[:len(out)-1], sys, out[len(out)-1])
 	}
 	return out

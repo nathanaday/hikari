@@ -55,12 +55,12 @@ func (i *instance) settle(c *Change) {
 	if filled, err := i.store.Fill(); err != nil {
 		log.Printf("tasks: %v", err)
 	} else {
-		c.wrote(System, filled...)
+		c.wrote(Hikari, filled...)
 	}
 	if synced, err := i.store.SyncQueues(); err != nil {
 		log.Printf("tasks: %v", err)
 	} else {
-		c.wrote(System, synced...)
+		c.wrote(Hikari, synced...)
 	}
 	if err := i.store.Schedule(c); err != nil {
 		log.Printf("tasks: %v", err)

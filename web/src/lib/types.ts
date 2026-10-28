@@ -11,8 +11,8 @@ export type Message = {
   woke?: string[]
 }
 
-// system is hikari itself, which writes the messages of its modules.
-export type Role = 'orchestration' | 'partition' | 'operator' | 'system'
+// hikari is hikari itself, which writes the messages of its modules.
+export type Role = 'orchestration' | 'partition' | 'operator' | 'hikari'
 
 export type Peer = {
   name: string

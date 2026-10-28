@@ -626,8 +626,8 @@ func TestModules(t *testing.T) {
 	if err != nil || !slices.Equal(topo.Modules, []string{"tasks"}) || !topo.HasModule("tasks") {
 		t.Fatalf("modules = %v, %v", topo, err)
 	}
-	if topo.Role(System) != "system" || slices.Contains(topo.Participants(), System) {
-		t.Error("hikari has the role system, and is no participant of the room")
+	if topo.Role(Hikari) != "hikari" || slices.Contains(topo.Participants(), Hikari) {
+		t.Error("hikari has the role hikari, and is no participant of the room")
 	}
 	topo, _ = Parse([]byte(compose("  orchestration: a", "  a: {x-hikari: {}}")), t.TempDir())
 	if len(topo.Modules) != 0 || topo.HasModule("tasks") {

@@ -103,7 +103,7 @@ func TestInstance(t *testing.T) {
 		return nil, errorsJoin(err, err2)
 	})
 	i.do("start", func(c *Change) (any, error) { return nil, i.store.SetQueueState("q", Running, c) })
-	if got := h.authors(); !slices.Equal(got, []string{"inventory", "lead", User, User, System}) {
+	if got := h.authors(); !slices.Equal(got, []string{"inventory", "lead", User, User, Hikari}) {
 		t.Errorf("G3 each write is committed as its writer: %v", got)
 	}
 	if len(h.notes) != 1 || h.notes[0].To != "lead" || !strings.Contains(h.notes[0].Body, "started [[cancel]]") {
@@ -125,7 +125,7 @@ func TestInstance(t *testing.T) {
 	before := len(h.authors())
 	i.reload()
 	got := h.authors()[before:]
-	if !slices.Equal(got, []string{User, System}) || !slices.Contains(h.commits[before].paths, "tasks/gift-wrap.md") {
+	if !slices.Equal(got, []string{User, Hikari}) || !slices.Contains(h.commits[before].paths, "tasks/gift-wrap.md") {
 		t.Errorf("TK7 your edit, then hikari's fill: %v %+v", got, h.commits[before:])
 	}
 	v := i.View().(View)

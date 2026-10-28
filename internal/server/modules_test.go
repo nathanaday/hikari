@@ -22,7 +22,7 @@ func TestModulesWired(t *testing.T) {
 	for _, p := range s.participants() {
 		names = append(names, p.Name)
 	}
-	if !slices.Equal(names, []string{"lead", "critic", "writer", topology.System, topology.User}) {
+	if !slices.Equal(names, []string{"lead", "critic", "writer", topology.Hikari, topology.User}) {
 		t.Errorf("decision 3: hikari comes before the user: %v", names)
 	}
 	if _, ok := s.snapshot().Modules["tasks"]; !ok {
@@ -31,15 +31,15 @@ func TestModulesWired(t *testing.T) {
 	h := &moduleHost{s: s, name: "tasks"}
 	h.Notify("lead", "The queue api started [[x]].")
 	msgs := s.Take(t.Context(), "lead", 0)
-	if len(msgs) != 1 || msgs[0].From != topology.System || msgs[0].To != "lead" {
+	if len(msgs) != 1 || msgs[0].From != topology.Hikari || msgs[0].To != "lead" {
 		t.Errorf("decision 3: hikari's message wakes lead: %+v", msgs)
 	}
-	if _, err := s.Send("writer", apiSend(topology.System, "hi")); err == nil {
+	if _, err := s.Send("writer", apiSend(topology.Hikari, "hi")); err == nil {
 		t.Error("decision 3: no agent sends to hikari")
 	}
 
 	plain, _ := newTestServer(t)
-	if len(plain.Self("writer").Modules) != 0 || len(plain.snapshot().Modules) != 0 || slices.ContainsFunc(plain.participants(), func(p apiPeer) bool { return p.Name == topology.System }) {
+	if len(plain.Self("writer").Modules) != 0 || len(plain.snapshot().Modules) != 0 || slices.ContainsFunc(plain.participants(), func(p apiPeer) bool { return p.Name == topology.Hikari }) {
 		t.Error("MO5 a project without modules has none of them")
 	}
 }
