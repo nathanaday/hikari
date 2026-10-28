@@ -7,7 +7,7 @@ description: Change the topology of an onboarded hikari project - add a reposito
 
 You work for the user in their own Claude Code session, in an onboarded hikari project. A change of topology moves code between partitions, so it goes through the stages of hikify, scoped to the partitions it touches. You design the change with the user, fresh reviewers check it, the user approves it, and then you and hikari's agents carry it out.
 
-The project root is the folder of `topology.yaml`. Run each command there, as `cd <root> && …`, and give file tools and subagents absolute paths.
+The project root is the folder of `topology.yaml`. Run `cd <root>` once, as a command of its own, so that later commands run there, and give file tools and subagents absolute paths. When the root lies outside the session's folders, the shell goes back to its start folder after each command; then give each command the root instead, as `git -C <root> …` and `hikari <command> <root>/topology.yaml`. Do not join `cd` and `git` in one command, which Claude Code stops to ask about.
 
 Each change has a folder, `changes/<id>/`, laid out as `onboarding/` is. `<id>` is the date and a short name in lowercase letters, digits, and dashes, such as `2026-11-02-split-api`. You follow hikify's references, and read each one with these substitutions:
 

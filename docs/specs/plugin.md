@@ -1,6 +1,35 @@
 # Spec: the Hikari plugin
 
-Status: specified.
+Status: built. Checked on 2026-10-27, on this machine with Docker:
+
+- **The launcher**, pinned to a release of the code, installed hikari from a local copy of that release into an empty `HIKARI_HOME`: the host's binary and both Linux binaries, the link, and the log. It then ran the installed binary with no download.
+- **`hikari doctor`** reported this machine's state, including the older install in `/opt/hikari`, whose 0.0.1 comes first on the PATH.
+- **`hikari image`** built `hikari-agent` from the embedded Dockerfile, with its label, and Claude Code 2.1.306 runs in it.
+- **`hikari send`** reached a run of the shop started with `-no-launch`: a post to the room woke the orchestrator, and a direct message woke `orders`. `host.json` went away at stop.
+- **The session-start hook** printed nothing at the repository root, and the shop's name and its run inside the shop.
+- **A headless session** with an empty `CLAUDE_CONFIG_DIR` and only the plugin loaded took the example prompt in a folder holding the two repositories of `examples/onboard`. It invoked `hikari:hikari`, which ran doctor through the plugin's launcher. The launcher installed hikari from the local release. The session listed both repositories with their origins, told the path ahead, and asked for the repositories, the name, and the credential.
+
+  On the answers that followed, it made the project with `hikari init`, handed off to `hikari:containerize-repo`, linked and synced both repositories, sent the two surveys in parallel, committed `onboarding/state.md`, and stopped at the question of the ignore lines.
+
+- **The trigger eval** of `plugin/evals/` passed all five cases, with one run each: the four requests that name hikari invoked a Hikari skill, and the request to reverse a linked list invoked none.
+- **`go vet ./...`, `go test -race ./...`, `npm test`, `npm run build`, `make build`, and `claude plugin validate`** on the repository root and on `plugin/` passed.
+
+Not checked: the release workflow and an install from the marketplace, which need the tag `0.1.0` pushed to GitHub, and a containerize run with agents.
+
+Changes made during the build:
+
+1. **Releases are reproducible across machines.** The UI built in a `node:22.14.0` container and on macOS gave the same bytes, and so did the Go binaries built on macOS and in a `golang:1.26.0` container. `.node-version` pins Node for the release workflow and CI.
+2. **`make version` does not commit** (decision 3). It sets the version and pins; you commit, and push the tag.
+3. **The launcher cleans up before it runs hikari.** Its last `exec` ends the shell before the shell's trap runs, so the live check found an empty download folder left behind. The launcher now removes it first, and a test holds it.
+4. **CP13 was built with the move of the skills (CP17),** in build step 3, so that each commit passed its tests.
+5. **The `sudo` line of the PATH entry runs in your own terminal** (CP18), where `sudo` can ask for your password.
+6. **A plugin variable appears only in a `SKILL.md`.** Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in a skill's body, not in the references it reads, so `references/setup.md` names the launcher by the path that the front door used.
+7. **The skills change into the project root with a `cd` of its own** (decision 8). The live check found that Claude Code asks for approval of a `cd` joined with `git` in one command. When the root lies outside the session's folders, the skills give each command the root instead.
+8. **The README's Quickstart starts from your own repositories,** and the shop stays the example for a checkout, since it needs `make demo-repo` (CP24).
+9. **The server exports `UICookie`,** so that `hikari send` signs in with the same cookie as the web UI.
+10. **`hikari up` checks the image at every start,** as its own step before the compose build, and writes docker's build output to the run's log.
+11. **The names test skips hikify's borrowed copies,** which are the agents' own text and name the agents' fields.
+12. **The eval suite is `plugin/evals/`:** five cases of one run each, with `tool_used` graders on the Skill tool. The sketch and the request for work may reach their skill directly or through the front door.
 
 Sources: the conversation of 2026-10-27, which listed the gaps between today's onboarding and a plugin, and agreed the proposal that closed them. The names are those of `docs/glossary.md`.
 
@@ -31,7 +60,7 @@ From the conversation:
 5. **The image keeps its name, `hikari-agent`, with a label.** Every topology and partition Dockerfile names `hikari-agent`, so a rebuilt image needs no edit to any of them. The label `hikari.dockerfile` holds the sha256 of the embedded Dockerfile, and `hikari up` builds the image again when the label differs. The image holds no hikari binary, since the binary is mounted at run time, so a new hikari version rebuilds the image only when the Dockerfile changed.
 6. **`hikari up` writes the address of its UI to `.hikari/host.json`,** beside the topology file, readable only by you, and removes it at stop. `hikari send` reads it and posts as you, with the UI's token as its cookie. The UI's secret stays a secret of your user account, as it is today in the terminal's scrollback.
 7. **`hikari sync` removes the old host skill copies.** A project made before the plugin holds `.claude/skills/containerize-repo/` and `.claude/skills/hikify/`, and a session there would see them beside the plugin's. Sync removes such a folder only when its `.gitignore` is the one hikari wrote, so a skill of your own with the same name stays.
-8. **The skills run each command in the project root.** A session may start outside the project, and its working directory persists only inside its own folders. Each skill names the root, runs commands as `cd <root> && …`, and gives subagents absolute paths.
+8. **The skills run each command in the project root.** A session may start outside the project, and its working directory persists only inside its own folders. Each skill names the root, changes into it with a `cd` of its own, or else gives each command the root (`git -C <root>`, `hikari <command> <root>/topology.yaml`), and gives subagents absolute paths.
 9. **A topology change keeps its record in `changes/<id>/`,** laid out as `onboarding/` is, with `<id>` the date and a short name. It reads hikify's references with that folder in place of `onboarding/`, so the two skills share one description of each stage.
 10. **The front door's day-to-day route is its own skill, `room`.** Talking to running agents is the most frequent request after onboarding, and its description has to trigger on requests that name no stage.
 11. **Hikify's two borrowed references are committed copies.** `make skills` copies them from the agents' skill packs into `plugin/skills/hikify/references/`, and a test fails when a copy differs from its source.

@@ -7,7 +7,7 @@ description: Work with the agents of a running hikari project from this session 
 
 You work for the user in their own Claude Code session, in a hikari project whose agents run under `hikari up`. The agents talk to each other and to the user only through one room, and you post there as the user, with `hikari send`. A request that spans partitions goes to the orchestration agent, which plans it from the feature maps and sends each part to the partition agent whose folders hold the code. You do not change the partitions' code yourself: that is the agents' work, each in its own container.
 
-The project root is the folder of `topology.yaml`. Run each command there, as `cd <root> && …`.
+The project root is the folder of `topology.yaml`. Run `cd <root>` once, as a command of its own, so that later commands run there. When the root lies outside the session's folders, the shell goes back to its start folder after each command; then give each command the root instead, as `git -C <root> …` and `hikari <command> <root>/topology.yaml`. Do not join `cd` and `git` in one command, which Claude Code stops to ask about.
 
 ## Rules
 

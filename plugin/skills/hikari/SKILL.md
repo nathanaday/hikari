@@ -54,7 +54,7 @@ Then load the next skill, and follow its procedure in this conversation.
 1. Agree a name with the user: lowercase letters, digits, and dashes. Propose one from the repositories or the folder.
 2. The project goes in a new folder inside the working folder, `<working folder>/<name>`. When the working folder is inside a git repository, make the project beside that repository instead, and say so: a project inside another repository's tree would be part of that tree.
 3. Run `hikari init <path>`. When git has no identity, it commits nothing and says how to commit; set the identity with the user first.
-4. The project root is now `<path>`. Run every later command there, as `cd <path> && …`, and give file tools and subagents absolute paths.
+4. The project root is now `<path>`. Run `cd <path>` once, as a command of its own, so that later commands run there, and give file tools and subagents absolute paths. When the project lies outside the session's folders, give each command the root instead, as `git -C <path> …` and `hikari <command> <path>/topology.yaml`.
 5. Ask the user to set a credential for the agents: copy `.env.example` to `.env` in the project, and set `CLAUDE_CODE_OAUTH_TOKEN` to a token from `claude setup-token`, run in their own terminal, or set `ANTHROPIC_API_KEY`. Never read, write, or print a credential yourself. `hikari doctor <path>/topology.yaml` says when one is set.
 6. When `propose-topology` ran in this conversation, write its proposal to `onboarding/proposal.md`, and commit it.
 7. Go to `containerize-repo` with the repositories: for each one, its origin URL, or its path when it has no origin, and one sentence on what it does, drawn from its README, which the user confirms.
