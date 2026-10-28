@@ -14,7 +14,9 @@ Status: built. Checked on 2026-10-27, on this machine with Docker:
 - **The trigger eval** of `plugin/evals/` passed all five cases, with one run each: the four requests that name hikari invoked a Hikari skill, and the request to reverse a linked list invoked none.
 - **`go vet ./...`, `go test -race ./...`, `npm test`, `npm run build`, `make build`, and `claude plugin validate`** on the repository root and on `plugin/` passed.
 
-Not checked: the release workflow and an install from the marketplace, which need the tag `0.1.0` pushed to GitHub, and a containerize run with agents.
+- **The release of 0.1.0:** the workflow on the tag built the same bytes as the pins and published them, the launcher installed hikari from that release on GitHub into an empty `HIKARI_HOME`, and the plugin installed from the marketplace into an empty `CLAUDE_CONFIG_DIR`, with its six skills, after the fix of note 13.
+
+Not checked: a containerize run with agents.
 
 Changes made during the build:
 
@@ -30,6 +32,7 @@ Changes made during the build:
 10. **`hikari up` checks the image at every start,** as its own step before the compose build, and writes docker's build output to the run's log.
 11. **The names test skips hikify's borrowed copies,** which are the agents' own text and name the agents' fields.
 12. **The eval suite is `plugin/evals/`:** five cases of one run each, with `tool_used` graders on the Skill tool. The sketch and the request for work may reach their skill directly or through the front door.
+13. **The marketplace names the repository by its HTTPS URL.** Claude Code expands the `owner/repo` shorthand of a `git-subdir` source to an SSH URL, which fails on a machine with no SSH key for GitHub. After the release of 0.1.0, an install from the marketplace failed that way, and installed once the entry named `https://github.com/nathanaday/hikari.git`.
 
 Sources: the conversation of 2026-10-27, which listed the gaps between today's onboarding and a plugin, and agreed the proposal that closed them. The names are those of `docs/glossary.md`.
 

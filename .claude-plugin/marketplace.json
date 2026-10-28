@@ -10,7 +10,7 @@
       "name": "hikari",
       "source": {
         "source": "git-subdir",
-        "url": "nathanaday/hikari",
+        "url": "https://github.com/nathanaday/hikari.git",
         "path": "plugin",
         "ref": "0.1.0"
       },
