@@ -12,13 +12,14 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featuremap"
+	"github.com/nathanaday/hikari/internal/hostfile"
 	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
 const (
 	// UICookie carries the UI's token; hikari send sets it too.
-	UICookie = "hikari_ui"
+	UICookie = hostfile.Cookie
 	maxWait  = 60 * time.Second
 )
 

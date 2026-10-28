@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/hostfile"
 	"github.com/nathanaday/hikari/internal/server"
 )
 
@@ -59,10 +60,10 @@ func TestSend(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := writeHost(file, hostFile{URL: srv.URL, Token: "secret", PID: os.Getpid()}); err != nil {
+	if err := hostfile.Write(file, hostfile.Host{URL: srv.URL, Token: "secret", PID: os.Getpid()}); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := os.Stat(hostPath(file)); st.Mode().Perm() != 0o600 {
+	if st, _ := os.Stat(hostfile.Path(file)); st.Mode().Perm() != 0o600 {
 		t.Errorf("CP11 host.json is readable only by you: %v", st.Mode())
 	}
 	m, err := sendMessage(t.Context(), file, "orchestrator", "Please carry out the plan.")
@@ -70,19 +71,19 @@ func TestSend(t *testing.T) {
 		t.Errorf("CP12 a direct message reaches the server: %+v, %v", got, err)
 	}
 
-	writeHost(file, hostFile{URL: srv.URL, Token: "wrong", PID: os.Getpid()})
+	hostfile.Write(file, hostfile.Host{URL: srv.URL, Token: "wrong", PID: os.Getpid()})
 	if _, err := sendMessage(t.Context(), file, "", "hi"); err == nil || !strings.Contains(err.Error(), "open the URL") {
 		t.Errorf("the server's error is shown: %v", err)
 	}
 
-	writeHost(file, hostFile{URL: srv.URL, Token: "secret", PID: 1 << 22})
+	hostfile.Write(file, hostfile.Host{URL: srv.URL, Token: "secret", PID: 1 << 22})
 	if _, err := sendMessage(t.Context(), file, "", "hi"); err == nil || !strings.Contains(err.Error(), "not running") {
 		t.Errorf("CP12 a dead process is not running: %v", err)
 	}
 
-	writeHost(file, hostFile{URL: srv.URL, Token: "secret", PID: os.Getpid()})
-	removeHost(file)
-	if _, err := os.Stat(hostPath(file)); !errors.Is(err, os.ErrNotExist) {
+	hostfile.Write(file, hostfile.Host{URL: srv.URL, Token: "secret", PID: os.Getpid()})
+	hostfile.Remove(file)
+	if _, err := os.Stat(hostfile.Path(file)); !errors.Is(err, os.ErrNotExist) {
 		t.Error("CP11 hikari up removes its host.json at stop")
 	}
 }
@@ -113,7 +114,7 @@ func TestSessionStart(t *testing.T) {
 	if strings.Contains(got, "units") {
 		t.Errorf("a done change is not open:\n%s", got)
 	}
-	writeHost(filepath.Join(dir, "topology.yaml"), hostFile{URL: "http://127.0.0.1:7420", Token: "secret", PID: os.Getpid()})
+	hostfile.Write(filepath.Join(dir, "topology.yaml"), hostfile.Host{URL: "http://127.0.0.1:7420", Token: "secret", PID: os.Getpid()})
 	got = sessionStart(dir)
 	if !strings.Contains(got, "hikari runs for it, with its UI at http://127.0.0.1:7420") || strings.Contains(got, "secret") {
 		t.Errorf("a run is named, without its token:\n%s", got)

@@ -25,6 +25,7 @@ import (
 	"github.com/nathanaday/hikari/internal/driver"
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/gitrepo"
+	"github.com/nathanaday/hikari/internal/hostfile"
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
@@ -47,6 +48,8 @@ Usage:
   hikari send [flags] <message>          post a message to the room of the running project
   hikari doctor [topology.yaml]          check this machine, and the project, for hikari up
   hikari image                           build the hikari-agent image
+  hikari task <command>                  plant stubs, list the pipeline, set statuses (the tasks module)
+  hikari queue <command>                 make, arrange, start, and pause queues (the tasks module)
   hikari version                         print the version
 
 Without a file, each command opens topology.yaml in the current directory.
@@ -156,11 +159,11 @@ func up(ctx context.Context, args []string) error {
 	defer httpSrv.Close()
 	url := fmt.Sprintf("http://%s/?token=%s", ln.Addr(), uiToken)
 	con.Println("  Web UI  " + con.Link(url))
-	if err := writeHost(ed.File, hostFile{URL: "http://" + ln.Addr().String(), Token: uiToken, PID: os.Getpid()}); err != nil {
+	if err := hostfile.Write(ed.File, hostfile.Host{URL: "http://" + ln.Addr().String(), Token: uiToken, PID: os.Getpid()}); err != nil {
 		log.Print(err)
 		con.Warn("hikari send cannot reach this run: " + err.Error())
 	}
-	defer removeHost(ed.File)
+	defer hostfile.Remove(ed.File)
 	con.Println("")
 	go ed.Watch(ctx, host.TopologyChanged)
 

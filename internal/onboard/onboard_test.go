@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/modules"
 )
 
 // pluginSkills is the plugin's skills folder, from this package.
@@ -97,6 +97,8 @@ func TestSkillsNameEachOther(t *testing.T) {
 // only the built-in skills, the agents' tools, and hikari's commands.
 func TestNamesBuilt(t *testing.T) {
 	src, _ := filepath.Glob("../mcpserver/*.go")
+	modSrc, _ := filepath.Glob("../modules/*/*.go")
+	src = append(src, modSrc...)
 	tools := map[string]bool{}
 	for _, f := range src {
 		data, _ := os.ReadFile(f)
@@ -123,12 +125,12 @@ func TestNamesBuilt(t *testing.T) {
 			}
 		}
 		for _, name := range skill.FindAllString(text, -1) {
-			if name != "hikari-agent" && !slices.Contains(api.BuiltinSkills, name) {
+			if name != "hikari-agent" && !slices.Contains(modules.BuiltinSkills(), name) {
 				t.Errorf("%s names %s, which is no built-in skill", p, name)
 			}
 		}
 		for _, m := range command.FindAllStringSubmatch(text, -1) {
-			if !strings.Contains(string(main), `case "`+m[1]+`"`) {
+			if _, module := modules.Command(m[1]); !module && !strings.Contains(string(main), `case "`+m[1]+`"`) {
 				t.Errorf("%s names hikari %s, which is no command", p, m[1])
 			}
 		}

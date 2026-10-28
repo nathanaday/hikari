@@ -609,3 +609,45 @@ func (s *Store) SyncQueues() ([]string, error) {
 	}
 	return out, nil
 }
+
+// TaskView is t, for the UI and the tools.
+func (s *Store) TaskView(t *Task) TaskView {
+	text := s.texts[taskPath(t.ID)]
+	return TaskView{ID: t.ID, Name: t.Name, Stage: t.Stage, Author: t.Author, Status: t.Status, Block: t.Block, Wait: t.Wait, Queue: s.QueueOf(t.ID),
+		Partitions: nonNil(t.Partitions), Features: nonNil(t.Features), Needs: nonNil(t.Needs), Parts: nonNil(t.Parts), Created: t.Created, Updated: t.Updated,
+		File: path.Join(Dir, taskPath(t.ID)), Hash: fmt.Sprintf("%x-%d", len(text), t.Updated.Unix())}
+}
+
+// View is the whole pipeline, for the UI and hikari task list (rule TK27):
+// the stubs and the drafts by when they were made, and the queues by id.
+func (s *Store) View(orchestration string, partitions []string) View {
+	v := View{Stubs: []TaskView{}, Drafts: []TaskView{}, Queues: []QueueView{}, Problems: []Problem{}, Orchestration: orchestration, Partitions: nonNil(partitions)}
+	ids := sortedKeys(s.Tasks)
+	slices.SortStableFunc(ids, func(a, b string) int { return s.Tasks[a].Created.Compare(s.Tasks[b].Created) })
+	for _, id := range ids {
+		t := s.Tasks[id]
+		switch {
+		case t.Stage == StageStub:
+			v.Stubs = append(v.Stubs, s.TaskView(t))
+		case s.QueueOf(id) == "":
+			v.Drafts = append(v.Drafts, s.TaskView(t))
+		}
+	}
+	for _, qid := range sortedKeys(s.Queues) {
+		q := s.Queues[qid]
+		qv := QueueView{ID: q.ID, Name: q.Name, State: q.State, Scopes: []TaskView{}, File: path.Join(Dir, queuePath(q.ID))}
+		if qv.State == "" {
+			qv.State = Paused
+		}
+		for _, id := range q.Scopes {
+			if t := s.Tasks[id]; t != nil {
+				qv.Scopes = append(qv.Scopes, s.TaskView(t))
+			}
+		}
+		v.Queues = append(v.Queues, qv)
+	}
+	for _, f := range sortedKeys(s.Problems) {
+		v.Problems = append(v.Problems, Problem{File: path.Join(Dir, f), Reason: s.Problems[f]})
+	}
+	return v
+}

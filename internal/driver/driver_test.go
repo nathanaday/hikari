@@ -11,6 +11,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featuremap"
+	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/wiki"
 )
@@ -499,5 +500,34 @@ func TestRestorePrompt(t *testing.T) {
 	n := turnNotices(partitionAgent, api.TurnContext{MapState: "current", NoLocalResults: true})
 	if !strings.Contains(n, "run each suite") {
 		t.Errorf("SY10 notice lacks the restore step:\n%s", n)
+	}
+}
+
+// TestModulePacks checks MO4 of the task pipeline spec: a module's skills
+// join the pack of each kind of agent, and leave it when the module is off.
+func TestModulePacks(t *testing.T) {
+	for role, want := range map[string]string{api.RolePartition: "hikari-task-work", api.RoleOrchestration: "hikari-scope-work"} {
+		s, _, _ := newTestShared(t, role)
+		self := api.Self{Name: "x", Modules: []string{"tasks"}}
+		s.builtins = modules.Pack(role, self.Modules)
+		s.extra = map[string]fs.FS{}
+		for _, m := range modules.Named(self.Modules) {
+			for _, sk := range m.Skills(role) {
+				s.extra[sk.Name] = sk.Files
+			}
+		}
+		s.sync()
+		data, err := os.ReadFile(filepath.Join(s.skillsDir(), want, "SKILL.md"))
+		if err != nil || !strings.HasPrefix(string(data), "---\nname: "+want+"\n") {
+			t.Errorf("MO4 %s gets %s: %v", role, want, err)
+		}
+		if p := sharedPrompt(api.Self{Partition: map[bool]*api.SelfPartition{true: {}}[role == api.RolePartition], Orchestration: role == api.RoleOrchestration, Modules: []string{"tasks"}}); !strings.Contains(p, want) {
+			t.Errorf("MO4 the prompt lists %s:\n%s", want, p)
+		}
+		s.builtins, s.extra = api.Packs[role], nil
+		s.sync()
+		if _, err := os.Stat(filepath.Join(s.skillsDir(), want)); err == nil {
+			t.Errorf("MO5 without the module, %s goes", want)
+		}
 	}
 }

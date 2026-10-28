@@ -56,6 +56,11 @@ func TestRetiredWords(t *testing.T) {
 		return err
 	})
 	readTree(t, "../../plugin/skills", func(path, text string) { texts["plugin/skills/"+path] = text })
+	readTree(t, "../modules", func(path, text string) {
+		if strings.HasSuffix(path, ".md") {
+			texts["internal/modules/"+path] = text
+		}
+	})
 	readTree(t, "../../web/src/components", func(path, text string) {
 		if strings.Contains(path, ".test.") || filepath.Dir(path) == "ui" {
 			return // tests assert text, and ui/ holds the vendored components

@@ -206,6 +206,12 @@ func (c *Client) PostActivity(ctx context.Context, a Activity) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/activity", a, nil)
 }
 
+// Call sends one request of the agent API, such as a module's route
+// below /api/agent/<module>, and decodes its answer into out.
+func (c *Client) Call(ctx context.Context, method, path string, in, out any) error {
+	return c.do(ctx, method, path, in, out)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {

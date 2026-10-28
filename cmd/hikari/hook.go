@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/nathanaday/hikari/internal/hostfile"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/version"
 )
@@ -64,7 +65,7 @@ func sessionStart(dir string) string {
 	if len(open) > 0 {
 		fmt.Fprintf(&b, "Open topology changes in changes/: %s.\n", strings.Join(open, ", "))
 	}
-	if h, ok := liveHost(file); ok {
+	if h, ok := hostfile.Live(file); ok {
 		fmt.Fprintf(&b, "hikari runs for it, with its UI at %s; post to its room with hikari send.\n", h.URL)
 	} else {
 		b.WriteString("hikari is not running for it.\n")
