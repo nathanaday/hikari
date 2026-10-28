@@ -54,10 +54,14 @@ type Task struct {
 	// Features and Needs hold the ids that their [[id]] links name.
 	Features []string
 	Needs    []string
-	// Status, Queue, and Parts are hikari's (rule TK7).
+	// Status, Queue, and Parts are hikari's (rule TK7). Block is the
+	// reason of a block that the scope itself has, not one of its parts.
 	Status string
-	Queue  string
-	Parts  []Part
+	Block  string
+	// Wait says why a waiting scope cannot start yet.
+	Wait  string
+	Queue string
+	Parts []Part
 	// Extra holds the properties that hikari does not name, in their
 	// order (B4).
 	Extra []Property
@@ -92,7 +96,7 @@ type Property struct {
 }
 
 var (
-	taskKeys  = []string{"version", "id", "kind", "stage", "name", "author", "created", "updated", "partitions", "features", "needs", "status", "queue", "parts"}
+	taskKeys  = []string{"version", "id", "kind", "stage", "name", "author", "created", "updated", "partitions", "features", "needs", "status", "block", "wait", "queue", "parts"}
 	queueKeys = []string{"version", "id", "kind", "name", "state", "created", "updated", "scopes"}
 	validID   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	link      = regexp.MustCompile(`^\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]$`)
@@ -233,6 +237,10 @@ func ParseTask(text string) (*Task, error) {
 			t.Needs, err = links(key, val)
 		case "status":
 			t.Status, err = scalar(key, val)
+		case "block":
+			t.Block, err = scalar(key, val)
+		case "wait":
+			t.Wait, err = scalar(key, val)
 		case "queue":
 			var q []string
 			if q, err = links(key, val); err == nil && len(q) > 0 {
@@ -388,6 +396,12 @@ func (t *Task) Format() string {
 	}
 	if t.Status != "" {
 		h.add("status", str(t.Status))
+	}
+	if t.Block != "" {
+		h.add("block", str(t.Block))
+	}
+	if t.Wait != "" {
+		h.add("wait", str(t.Wait))
 	}
 	if t.Queue != "" {
 		h.add("queue", str("[["+t.Queue+"]]"))

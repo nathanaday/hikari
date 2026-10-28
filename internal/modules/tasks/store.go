@@ -35,10 +35,14 @@ type Store struct {
 type Check struct {
 	// Partitions are the partition agents of the topology.
 	Partitions []string
+	// Orchestration is the orchestration agent, or "".
+	Orchestration string
 	// Feature reports whether id is a feature of partition's feature map,
 	// or of the orchestration feature map when partition is empty. A nil
 	// Feature checks no feature.
 	Feature func(partition, id string) bool
+	// Health is the health of a feature, as Feature names it.
+	Health func(partition, id string) (string, bool)
 }
 
 // Open reads the store of dir, which it makes when missing.
@@ -499,7 +503,7 @@ func (s *Store) ChangeQueue(op QueueOp) ([]string, error) {
 		q := s.Queues[from]
 		q.Scopes = slices.DeleteFunc(q.Scopes, func(id string) bool { return id == t.ID })
 		delete(s.queueOf, t.ID)
-		t.Queue, t.Status, t.Parts = "", "", nil
+		t.Queue, t.Status, t.Parts, t.Wait = "", "", nil, ""
 		fq, err := s.saveQueue(q)
 		if err != nil {
 			return nil, err
@@ -592,7 +596,7 @@ func (s *Store) SyncQueues() ([]string, error) {
 		case want != "" && t.Status == "":
 			t.Status, changed = Queued, true
 		case want == "" && t.Status != "" && movable(t):
-			t.Status, t.Parts, changed = "", nil, true
+			t.Status, t.Parts, t.Wait, changed = "", nil, "", true
 		}
 		if !changed {
 			continue
