@@ -28,7 +28,9 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Integration agent.** Planted, not built. It will get every release and knowledge file and run the end-to-end suites, with mocks where they are needed, once the home of those suites is settled.
 
-**Hikari agent.** A Claude Code session on the host with hikari's host skills, such as `containerize-repo` and `hikify`. It helps you work with a hikari project, and does not work on the code.
+**Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It does not work on the code.
+
+**Hikari plugin.** The Claude Code plugin that carries the host skills and installs the hikari binary of its own version. Its front door is the `hikari` skill, which routes a request to the skill of the stage you are at.
 
 **Driver.** The part of the hikari binary that runs in every agent's container, as `hikari driver`. It takes the agent's messages from the server and gives them to Claude Code.
 

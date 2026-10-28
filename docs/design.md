@@ -434,11 +434,23 @@ skills run in your own Claude Code session on the host, where you decide
 as the work goes. Hikari's own agents make the code changes later, each in
 its own folders.
 
-The binary carries these host skills and writes them into the project's
-`.claude/skills/`. A skill versioned in the project would drift from the
-binary that checks the topology it writes. Each skill's folder holds a
-`.gitignore` of `*`, so git ignores it without a line in the project's own
-ignore file, and a new host skill never breaks an older project.
+The Hikari plugin carries these host skills, and its version is the binary's.
+A skill must match the binary that checks the topology it writes, and an
+earlier design kept the skills in the binary for that reason, which wrote them
+into each project's `.claude/skills/`. That design reached a session only
+inside a project, so a request such as "take these repos and build a hikari
+topology" had no skill to reach before a project existed. A plugin reaches
+every session on the machine. One version for both keeps the match: the
+plugin's launcher runs only the binary of the plugin's own version, and
+`hikari sync` removes the copies that the earlier binary wrote.
+
+One skill, `hikari`, is the front door. Its description matches any request
+that names hikari, and it finds where you stand, from the folder, the
+repositories, and `onboarding/state.md`, before it hands you to the skill of
+the stage. Each stage's skill then keeps a description of its own work, so
+that "continue the design" reaches hikify without the front door. Talking to
+running agents is its own skill, `room`, because it is the most frequent
+request after onboarding and names no stage.
 
 Containerize changes no code. It wraps each repository as one partition, and
 the partition agents' first turns map the code and record the tests. That
@@ -467,6 +479,42 @@ That branch is the one the agents work on and the one you review and
 merge, so a separate branch would only delay the agents. A new repository
 reaches `repos/` only by a clone from its remote, so that every clone,
 yours or a teammate's, has the same origin.
+
+## The plugin pins the binary it installs
+
+Claude Code has no install step for a plugin, so the plugin's `bin/hikari` is
+a launcher: a short shell script that runs `~/.hikari/bin/<version>/hikari`,
+and on its first run downloads that binary from the GitHub release of the
+version. It downloads the binary of the machine and both Linux binaries, which
+hikari mounts into the containers, and installs each one only when its sha256
+matches the checksum pinned in the launcher. A release builds the same bytes
+on every machine (the toolchain of `go.mod`, `-trimpath`, and the Node version
+of `.node-version` for the UI), so `make version` pins the checksums of a
+build on your machine, and the release workflow, which runs on the version's
+tag, refuses to publish a build whose bytes differ. A release starts from its
+tag, not from every push to main, because most commits to main change the
+binary without being a release.
+
+The launcher needs no sudo: it writes only to `~/.hikari`. A hook never
+downloads, because a hook runs at every session start with a short timeout;
+the first `hikari doctor` of the front door does. Your own terminal needs one
+PATH entry for `~/.hikari/bin`, which only `sudo` can write in `/etc/paths.d`,
+so `hikari doctor` prints that line for you to run. A build of a checkout
+installs into the same folder with `make install`, so one PATH entry serves
+both, and the launcher runs your build of its own version.
+
+The binary embeds the Dockerfile of `hikari-agent`, so a machine without a
+checkout can build it, and `hikari up` builds it when it is missing. The image
+keeps its name, because every topology and partition Dockerfile names it, and
+carries a label with the sha256 of the Dockerfile, so a new hikari rebuilds it
+only when the Dockerfile changed. The image holds no hikari binary, since
+hikari mounts its own.
+
+`hikari send` lets your session post to the room. It reads
+`.hikari/host.json`, which `hikari up` writes beside the topology file with
+the UI's address and token, readable only by you, and removes at stop. The
+session then posts as you, through the same endpoint as the web UI, so the
+server needs no second way to sign in.
 
 ## /hikari: the same paths in every container
 

@@ -287,7 +287,7 @@ hikari sync
 hikari check
 ```
 
-`hikari sync` also writes the host skills in `.claude/skills/` again, for the new binary. `hikari check` runs every check of `hikari up`, and names each move left: `compose.yaml`, the keys `store`, `hubs`, `system`, and `tests`, a partition of `repo`, `scope`, and `read`, the directories `store/`, `shared/`, `hubs/`, and `systems/`, a vocabulary file without `terms.yaml`, and a `layout.yaml` without `code-map.yaml`. Each message ends with the section of this guide that makes the move. Fix each one, commit, and run `hikari check` again until it passes.
+`hikari sync` also removes the host skills that an older binary wrote in `.claude/skills/`; the Hikari plugin carries them now. `hikari check` runs every check of `hikari up`, and names each move left: `compose.yaml`, the keys `store`, `hubs`, `system`, and `tests`, a partition of `repo`, `scope`, and `read`, the directories `store/`, `shared/`, `hubs/`, and `systems/`, a vocabulary file without `terms.yaml`, and a `layout.yaml` without `code-map.yaml`. Each message ends with the section of this guide that makes the move. Fix each one, commit, and run `hikari check` again until it passes.
 
 `hikari check` cannot see three things, which show at the next start instead:
 

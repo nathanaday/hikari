@@ -56,7 +56,24 @@ A partition agent works inside its small context until its own tests pass. Hikar
 
 ## Quickstart
 
-You need Go 1.25 or later, Node.js 22.12 or later, Docker, and a Claude subscription or an Anthropic API key.
+You need Claude Code, Docker, and a Claude subscription or an Anthropic API key. Install the Hikari plugin in Claude Code:
+
+```
+/plugin marketplace add nathanaday/hikari
+/plugin install hikari@hikari
+```
+
+Then open Claude Code in the folder that holds your repositories, and ask in your own words:
+
+```
+Take these repos, build a hikari-friendly topology, and start working in hikari containers.
+```
+
+The plugin's `hikari` skill takes it from there. On first use it installs the hikari binary of the plugin's version, checks Docker with `hikari doctor`, and makes a project for your repositories. Then it walks you through each stage of [onboarding](#bring-your-own-repositories), asking before each step that changes anything. The binary goes in `~/.hikari/bin`; `hikari doctor` gives you the one `sudo` line that puts it on your terminal's PATH, where you run `hikari up`.
+
+`hikari up` prints the address of the web UI. Open it to post in the room, watch each agent's turns as they happen, and browse the feature maps. The address holds a secret token, so do not share it. Press Ctrl-C to stop every container.
+
+To try the shop example from a checkout of this repository, you also need Go 1.26 or later and Node.js 22.12 or later:
 
 ```sh
 claude setup-token                                 # make a long-lived token
@@ -65,7 +82,7 @@ make demo-repo                                     # a small shop repository to 
 make up                                            # build Hikari and start the shop's agents
 ```
 
-`make up` prints the address of the web UI. Open it to post in the room, watch each agent's turns as they happen, and browse the feature maps. The address holds a secret token, so do not share it. Press Ctrl-C to stop every container.
+`make install` puts your build of the checkout where the plugin runs it, so the plugin and your terminal both use it.
 
 ## A Project Is One File
 
@@ -104,7 +121,7 @@ Save it as `topology.yaml` and run `hikari up`. Each folder appears in the agent
 
 ## Bring Your Own Repositories
 
-`hikari init ~/code/myproject` creates a project repository with skills for your own Claude Code session. Run `/containerize-repo` there to wrap each repository as one partition, with no change to its code, and record a baseline of every test. Then run `/hikify`: it works with you to draw cleaner partitions, plans the moves, has fresh reviewers check the plan, and carries it out. The [onboarding guide](docs/guides/onboarding.md) walks through both.
+Onboarding turns your repositories into a project through two skills of the plugin, which the `hikari` skill hands you to. `containerize-repo` wraps each repository as one partition, with no change to its code, and hikari's agents record a baseline of every test. `hikify` works with you to draw cleaner partitions, plans the moves, has fresh reviewers check the plan, and carries it out. Before you commit to either, `propose-topology` sketches a topology from reading the code. After onboarding, `room` posts your requests to the agents from your session, and `change-topology` splits, merges, or adds partitions as the project grows. The [onboarding guide](docs/guides/onboarding.md) walks through each one.
 
 ## Learn More
 

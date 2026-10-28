@@ -1,9 +1,12 @@
 # Bring your repositories into hikari
 
-This guide shows you how to turn a set of existing git repositories into a hikari project. You start from an empty project. You then work with Claude Code in two skills:
+This guide shows you how to turn a set of existing git repositories into a hikari project. You work with Claude Code, in the skills of the Hikari plugin:
 
+- `hikari`, the front door, installs hikari, finds where you stand, and hands you to the skill of the stage.
 - `containerize-repo` runs each repository in hikari, with no change to its code.
 - `hikify` refactors the repositories into isolated partitions, shared libraries, and flows across partitions whose parts are tested, as you decide.
+
+Two more serve before and after onboarding: `propose-topology` sketches a topology from reading the code, before anything runs, and `change-topology` changes the partitions of an onboarded project. `room` posts your requests to the running agents from your session.
 
 You are the authority on the layout of your project. The skills propose, show, and ask. They do not refactor code before you approve a plan. They do not push or create a remote repository unless you approve that action in the conversation.
 
@@ -30,9 +33,15 @@ When you finish, the project repository holds the topology, the wikis, and the U
 
 You need:
 
-- hikari, built from this repository with `make build`, and the `hikari-agent` image, built with `make image`. Put `bin/` on your `PATH`, or call `bin/hikari` by its full path.
-- Docker (Docker Desktop on macOS).
-- Claude Code on your machine, for your own session.
+- Claude Code on your machine, with the Hikari plugin:
+
+  ```
+  /plugin marketplace add nathanaday/hikari
+  /plugin install hikari@hikari
+  ```
+
+  The plugin installs the hikari binary of its own version in `~/.hikari/bin` on first use. `hikari doctor` gives you the one `sudo` line that puts that folder on your terminal's PATH, where you run `hikari up`.
+- Docker (Docker Desktop on macOS). `hikari up` builds the `hikari-agent` image on its first start.
 - A credential for the agent containers: a token from `claude setup-token`, or an Anthropic API key.
 - Read access to each repository from your machine. `hikari sync` uses your own git and SSH settings.
 
@@ -42,7 +51,7 @@ Onboarding costs agent time. Each partition agent reads its whole repository on 
 
 | Stage | Who works | What you do | What you get |
 |---|---|---|---|
-| 1. Make the project | you | run `hikari init` | an empty project repository |
+| 1. Make the project | your Claude Code session | name the repositories and the project, set a credential | an empty project repository |
 | 2. Containerize | your Claude Code session, then the partition agents | give the repository URLs, approve ignore lines, start hikari | one partition for each repository, and a baseline of every test |
 | 3. Design | your session, with reviewer subagents | answer questions, approve the orchestration features and the plan | a target topology, features of the orchestration feature map, a change plan, and a test ledger |
 | 4. Carry out | your session, then the agents | approve new remotes, start hikari, post one message | new repositories and libraries, refactored partitions |
@@ -52,16 +61,17 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 ## 1. Make the project
 
-1. Make the project repository in an empty folder:
+1. Open Claude Code in the folder that holds your repositories, and say what you want:
 
-   ```sh
-   hikari init ~/code/myproject
-   cd ~/code/myproject
+   ```
+   Take these repos, build a hikari-friendly topology, and start working in hikari containers.
    ```
 
-   This writes `topology.yaml`, `.gitignore`, `.env.example`, the vault, and the two skills in `.claude/skills/`, and makes the first commit.
+   The `hikari` skill runs `hikari doctor`, which installs hikari on first use, and asks you to fix what it reports, such as a Docker that does not run. It lists the git repositories it finds, with their origins, and asks which ones the project takes. To see a sketch of the topology before anything runs, ask for one: `propose-topology` reads the code and changes nothing.
 
-2. Copy `.env.example` to `.env`, and set your credential:
+2. The skill agrees a name with you, and makes the project in a new folder with `hikari init`, which writes `topology.yaml`, `.gitignore`, `.env.example`, and the vault, and makes the first commit. To make a project by hand, run `hikari init ~/code/myproject`, and open Claude Code there.
+
+3. Copy `.env.example` to `.env` in the project, and set your credential. The session never reads or writes it:
 
    ```sh
    cp .env.example .env
@@ -73,7 +83,7 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
    Git ignores `.env`. Never commit it.
 
-3. If other people will run agents for this project, also set your own branch in `.env`:
+4. If other people will run agents for this project, also set your own branch in `.env`:
 
    ```sh
    HIKARI_BRANCH=hikari-alex
@@ -83,16 +93,10 @@ Each stage records its progress in `onboarding/state.md`. You can stop after any
 
 ## 2. Containerize
 
-1. Open Claude Code in the project folder:
-
-   ```sh
-   claude
-   ```
-
-2. Run the skill, and give it each repository's URL with one sentence on what it does:
+1. The `hikari` skill hands you to `containerize-repo` with the repositories you chose. In a project you made by hand, run it yourself, and give it each repository's URL, or the folder of a clone, with one sentence on what it does:
 
    ```
-   /containerize-repo
+   /hikari:containerize-repo
    The repositories:
    - https://github.com/acme/server.git: the HTTP service that registers accounts.
    - https://github.com/acme/cli.git: the command that registers an account from the terminal.
@@ -121,11 +125,13 @@ You can stop here. The project now runs each repository in hikari as it is.
 
 ## 3. Design the refactor
 
-Run the second skill in the same project:
+The `hikari` skill hands you to the second skill when containerize is done, or you run it in the project:
 
 ```
-/hikify
+/hikari:hikify
 ```
+
+When `propose-topology` sketched a topology before containerize, its proposal is `onboarding/proposal.md`. Hikify takes your answers in it as decisions, and checks the rest against the maps and the baseline.
 
 ### Analysis
 
@@ -182,13 +188,13 @@ Tell the session to start the restructure. hikari must be stopped.
    hikari up topology.yaml
    ```
 
-4. **Start the plan.** When the new partitions have finished their first turns, post the message that the session gives you in the room, in the web UI. It looks like this:
+4. **Start the plan.** When the new partitions have finished their first turns, the session shows you the message that starts the plan, and posts it to the room with `hikari send` once you agree. It looks like this:
 
    ```
    @orchestrator Please carry out the plan [[hikify-plan]], from step S5. Follow the Carry out a plan procedure of the hikari-plan-work skill.
    ```
 
-   Agents act on a plan only when you ask.
+   Agents act on a plan only when you ask. You can also post it yourself in the web UI.
 
 5. **Watch.** The orchestration agent posts the state of each step in the room. It sends a step to its partition agent only after the releases that the step needs exist. For example, the consumers move to a new library only after the library's first release. The partition agents change only their own code. When a step waits for you or for the session, the orchestration agent says so in the room.
 
@@ -212,7 +218,8 @@ The dry run proves that a teammate gets the same project from one clone. When ev
 
 - **Review and merge.** The agents' work and the restructure are on the hikari branch of each repository, or on your own branch when you set `HIKARI_BRANCH`. Review them and merge them into your own branches with git. hikari never merges.
 - **Keep `onboarding/`.** It records why the project has its shape: the reports, the decisions, the reviews, and the ledger.
-- **Keep working.** The project is now an ordinary hikari project. Plan new work as plan documents in the wikis, and ask the orchestration agent to carry them out.
+- **Keep working.** The project is now an ordinary hikari project. Ask your session for work, and `room` posts it to the orchestration agent and follows the replies; or post in the web UI. Plan larger work as plan documents in the wikis, and ask the orchestration agent to carry them out.
+- **Change the partitions.** To add a repository, split or merge partitions, or extract a library later, ask your session; `change-topology` runs the stages of hikify for the partitions that change, with its record in `changes/<id>/`.
 
 ## Teammates
 
@@ -252,7 +259,7 @@ To share your agents' work, run `hikari push topology.yaml`. It pushes your bran
 
 ## Stop and continue later
 
-`onboarding/state.md` records the stage, your decisions, and the open questions. To continue, open Claude Code in the project and run the skill of the stage: `/containerize-repo` during containerize, `/hikify` after it. The skill reads `state.md` and continues from there.
+`onboarding/state.md` records the stage, your decisions, and the open questions. To continue, open Claude Code in the project; the start of the session names the stage. Ask to continue, and the `hikari` skill hands you to the skill of the stage, which reads `state.md` and continues from there. You can also run that skill yourself: `/hikari:containerize-repo` during containerize, `/hikari:hikify` after it.
 
 The skills commit each of their files at once, as you, so the project is always clean for the next `hikari up`.
 
@@ -264,31 +271,39 @@ The skills commit each of their files at once, as you, so the project is always 
 | `topology.target.yaml` | the target topology, until the restructure replaces `topology.yaml` with it |
 | `repos/<name>/` | the clone of each linked repository; git ignores it |
 | `onboarding/state.md` | the stage, your decisions, and the open questions |
+| `onboarding/proposal.md` | the sketch of `propose-topology`, with your answers, when it ran before containerize |
 | `onboarding/baseline.md` | every test and its outcome at the end of containerize |
 | `onboarding/analysis/` | a report for each repository, and the synthesis |
 | `onboarding/topology.md` | the target topology in plain words, with a diagram |
 | `onboarding/vault/` | drafts of the vault's documents, plans, and deliverables, at the paths where they will live, until the restructure copies them into `vault/` |
 | `onboarding/review/<n>.md` | the findings of each review round, with their resolutions |
 | `onboarding/verification.md` | the ledger: where each baseline test goes, and the result |
-| `.claude/skills/` | the two skills; `hikari sync` replaces them, so do not edit them |
+| `changes/<id>/` | the record of each topology change after onboarding, laid out as `onboarding/` |
 | `.hikari/runs/<run>/` | the log and the messages of each run of hikari |
+| `.hikari/host.json` | the address of the running `hikari up`, readable only by you, for `hikari send`; it goes when hikari stops |
 
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `hikari doctor [topology.yaml]` | checks the binary, the PATH, Docker, the image, git, and the project's credential, and says how to fix each problem |
 | `hikari init <dir>` | makes a new project repository |
-| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote, writes the skills, and reports what was not pushed |
+| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote, removes the skill copies of hikari before the plugin, and reports what was not pushed |
 | `hikari check topology.yaml` | runs every check of `hikari up`, and starts nothing |
 | `hikari check -draft topology.target.yaml` | checks a target topology whose new repositories do not exist yet |
 | `hikari status [-tests] topology.yaml` | shows each partition's map and recorded tests; with `-tests`, each test |
-| `hikari up topology.yaml` | starts the project |
+| `hikari up topology.yaml` | starts the project, and builds the `hikari-agent` image when it is missing |
+| `hikari send [-to <agent>] <message>` | posts a message as you to the room of the running project, or to one agent |
+| `hikari image` | builds the `hikari-agent` image again, such as for a newer Claude Code |
 | `hikari push topology.yaml` | pushes your branches, linked repositories first |
 
 ## Problems and fixes
 
 | What you see | What to do |
 |---|---|
+| `hikari doctor` reports a problem | The `hikari` skill says how to fix each line; ask it, or follow the fix that doctor prints. |
+| `the hikari that the PATH finds first … is not hikari <version>` | An older install comes first on your PATH, such as one in `/opt/hikari`. Remove it with the command that doctor prints. |
+| `hikari is not running for topology.yaml` | `hikari send` needs a running `hikari up` for that topology file. Start it in your own terminal. |
 | `the linked repo <name> is not cloned` | Run `hikari sync topology.yaml`. |
 | `<repo> has uncommitted changes` | Commit or stash the changes it names, then start again. |
 | `cannot listen on 127.0.0.1:7420` | Another hikari runs. Stop it, or start with `hikari up -listen 127.0.0.1:7431 topology.yaml`. |
@@ -303,11 +318,13 @@ The skills commit each of their files at once, as you, so the project is always 
 
 `examples/onboard` holds two small Python repositories before hikari: a server and a command that share a copied `accounts` module, with one difference between the copies. The server also has a browser test that cannot run in a container.
 
+From a checkout of this repository:
+
 ```sh
 make example-onboard
 cp .env .hikari/demo/onboard/project/.env
 cd .hikari/demo/onboard/project
-claude
+claude --plugin-dir ../../../../plugin
 ```
 
-The command prints the `file://` URLs of the two repositories. Give them to `/containerize-repo`, then run `/hikify`. The skill must find the copied module, ask you which behavior is right, propose an `accounts` library, and leave the browser test in its repository for integration.
+`--plugin-dir` loads the plugin of the checkout for that session; with the plugin installed, a plain `claude` does. The command prints the `file://` URLs of the two repositories. Give them to `/hikari:containerize-repo`, then run `/hikari:hikify`. The skill must find the copied module, ask you which behavior is right, propose an `accounts` library, and leave the browser test in its repository for integration.
