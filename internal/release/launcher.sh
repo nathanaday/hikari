@@ -1,0 +1,117 @@
+#!/bin/sh
+# The hikari launcher, made by `make pin` from internal/release/launcher.sh: do not edit.
+# It runs the hikari binary of this plugin's version, @VERSION@. When that binary is not
+# installed yet, it downloads it once from hikari's GitHub release, with the Linux binaries
+# that hikari mounts into its containers, checks each file's sha256 against the checksums
+# below, which the plugin pins, and installs them in ~/.hikari/bin/@VERSION@/. It writes
+# nowhere else, and needs no sudo. A hook never downloads.
+#   HIKARI_BIN           runs that binary instead; nothing is downloaded.
+#   HIKARI_HOME          the machine folder, ~/.hikari by default.
+#   HIKARI_NO_DOWNLOAD   set to 1, it never downloads.
+version='@VERSION@'
+checksums='@CHECKSUMS@'
+
+missing() {
+	why=$1
+	shift
+	if [ "$1" = hook ]; then
+		# A hook never breaks a session; in a project, the session start says what is missing.
+		if [ "$2" = session-start ] && [ -f topology.yaml ]; then
+			echo "hikari: $why."
+		fi
+		[ -t 0 ] || cat >/dev/null
+		exit 0
+	fi
+	echo "hikari: $why." >&2
+	exit 1
+}
+
+if [ -n "$HIKARI_BIN" ]; then
+	if [ -x "$HIKARI_BIN" ]; then
+		exec "$HIKARI_BIN" "$@"
+	fi
+	missing "HIKARI_BIN names $HIKARI_BIN, which is no executable file" "$@"
+fi
+home=$HIKARI_HOME
+if [ -z "$home" ]; then
+	home=$HOME/.hikari
+fi
+dir=$home/bin/$version
+if [ -x "$dir/hikari" ]; then
+	exec "$dir/hikari" "$@"
+fi
+if [ "$1" = hook ]; then
+	missing "hikari $version is not installed yet; the hikari skill installs it" "$@"
+fi
+if [ "$HIKARI_NO_DOWNLOAD" = 1 ]; then
+	missing "hikari $version is not installed at $dir/hikari, and HIKARI_NO_DOWNLOAD is 1" "$@"
+fi
+
+case $(uname -s) in
+Darwin) os=darwin ;;
+Linux) os=linux ;;
+*) missing "hikari has no release for $(uname -s)" "$@" ;;
+esac
+case $(uname -m) in
+arm64 | aarch64) arch=arm64 ;;
+x86_64 | amd64) arch=amd64 ;;
+*) missing "hikari has no release for $(uname -m)" "$@" ;;
+esac
+if ! command -v curl >/dev/null 2>&1; then
+	missing "curl is not installed, so hikari $version cannot be downloaded" "$@"
+fi
+base=$HIKARI_RELEASE_BASE
+proto==https
+if [ -z "$base" ]; then
+	base=https://github.com/nathanaday/hikari/releases/download
+else
+	# Only tests set the base. The checksums still decide what installs.
+	proto=all
+fi
+
+# Each file: the name it installs as, and its asset. The host's binary goes last, so that
+# $dir/hikari exists only when the Linux binaries beside it do.
+files=
+for a in arm64 amd64; do
+	if [ "$os" != linux ] || [ "$a" != "$arch" ]; then
+		files="$files hikari-linux-$a:hikari-$version-linux-$a"
+	fi
+done
+files="$files hikari:hikari-$version-$os-$arch"
+
+mkdir -p "$dir" || missing "cannot make $dir" "$@"
+tmp=$dir/.download.$$
+trap 'rm -rf "$tmp" "$home/bin/.link.$$"' EXIT HUP INT TERM
+mkdir -p "$tmp" || missing "cannot make $tmp" "$@"
+echo "hikari: downloading hikari $version for $os-$arch, with its Linux binaries, from $base/$version/" >&2
+for f in $files; do
+	name=${f%%:*}
+	asset=${f#*:}
+	want=$(printf '%s\n' "$checksums" | awk -v a="$asset" '$2 == a { print $1 }')
+	if [ -z "$want" ]; then
+		missing "this plugin pins no $asset; set HIKARI_BIN to a binary of your own" "$@"
+	fi
+	url=$base/$version/$asset
+	if ! curl -fsSL --proto "$proto" --retry 2 -o "$tmp/$name" "$url"; then
+		missing "the download of $url failed" "$@"
+	fi
+	if command -v shasum >/dev/null 2>&1; then
+		got=$(shasum -a 256 "$tmp/$name" | awk '{ print $1 }')
+	else
+		got=$(sha256sum "$tmp/$name" | awk '{ print $1 }')
+	fi
+	if [ "$got" != "$want" ]; then
+		missing "the download of $url has sha256 $got, not the $want that this plugin pins, so nothing was installed" "$@"
+	fi
+	chmod 755 "$tmp/$name" || missing "cannot install $dir/$name" "$@"
+done
+for f in $files; do
+	name=${f%%:*}
+	mv -f "$tmp/$name" "$dir/$name" || missing "cannot install $dir/$name" "$@"
+done
+# ~/.hikari/bin/hikari names the binary last installed, for your terminal's PATH.
+ln -s "$version/hikari" "$home/bin/.link.$$" && mv -f "$home/bin/.link.$$" "$home/bin/hikari"
+line="$(date -u +%Y-%m-%dT%H:%M:%SZ) installed hikari $version ($os-$arch) at $dir, from $base/$version/"
+echo "$line" >>"$home/install.log"
+echo "hikari: $line" >&2
+exec "$dir/hikari" "$@"

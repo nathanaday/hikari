@@ -4,20 +4,51 @@ export
 TOPOLOGY ?= examples/shop/topology.yaml
 LINUX_ARCHS = amd64 arm64
 UI_SRC = $(shell find web/src web/public -type f) web/index.html web/package.json web/vite.config.ts web/tsconfig.json web/tsconfig.app.json
-unexport UI_SRC
+# The binary and the plugin share one version: plugin.json's.
+VERSION := $(shell sed -n 's/.*"version": "\([^"]*\)".*/\1/p' plugin/.claude-plugin/plugin.json | head -1)
+GO_LDFLAGS := -ldflags "-X github.com/nathanaday/hikari/internal/version.Version=$(VERSION)"
+# A release builds with the toolchain of go.mod, so every machine makes the same bytes.
+TOOLCHAIN := go$(shell sed -n 's/^go //p' go.mod)
+RELEASE_FLAGS := -trimpath -buildvcs=false -ldflags "-s -w -X github.com/nathanaday/hikari/internal/version.Version=$(VERSION)"
+PLATFORMS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
+SHA256 := $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || echo "shasum -a 256")
+unexport UI_SRC VERSION GO_LDFLAGS TOOLCHAIN RELEASE_FLAGS PLATFORMS SHA256
 
-.PHONY: example-onboard build install ui image up dev-ui test clean demo-repo
+.PHONY: example-onboard build install ui image up dev-ui test clean demo-repo release pin version skills
 
 # The Linux binaries are what hikari mounts into each agent's container.
 build: web/dist/index.html
-	go build -o bin/hikari ./cmd/hikari
+	go build $(GO_LDFLAGS) -o bin/hikari ./cmd/hikari
 	for arch in $(LINUX_ARCHS); do \
-		GOOS=linux GOARCH=$$arch CGO_ENABLED=0 go build -o bin/hikari-linux-$$arch ./cmd/hikari || exit 1; \
+		GOOS=linux GOARCH=$$arch CGO_ENABLED=0 go build $(GO_LDFLAGS) -o bin/hikari-linux-$$arch ./cmd/hikari || exit 1; \
 	done
 
-# Install the binaries in /opt/hikari/bin, on the system PATH; see install.sh.
+# Install this checkout's build where the plugin's launcher runs it, in
+# ~/.hikari/bin/<version>/, with ~/.hikari/bin on the system PATH; see install.sh.
 install:
 	./install.sh
+
+# release builds the binary of each platform into build/release, with its checksums.
+release: web/dist/index.html
+	rm -rf build/release && mkdir -p build/release
+	for p in $(PLATFORMS); do \
+		CGO_ENABLED=0 GOTOOLCHAIN=$(TOOLCHAIN) GOOS=$${p%/*} GOARCH=$${p#*/} \
+			go build $(RELEASE_FLAGS) -o build/release/hikari-$(VERSION)-$${p%/*}-$${p#*/} ./cmd/hikari || exit 1; \
+	done
+	cd build/release && $(SHA256) hikari-* > checksums.txt
+
+# pin copies the checksums into the plugin and writes the launcher that holds them.
+pin: release
+	mkdir -p plugin/release
+	cp build/release/checksums.txt plugin/release/checksums.txt
+	go run ./internal/release/pin
+
+# version sets V as the version of the plugin and of its marketplace entry, then pins
+# the binaries of that version. Commit, then push the tag V to publish the release.
+version:
+	@test -n "$(V)" || (echo "Usage: make version V=<major.minor.patch>" && exit 1)
+	go run ./internal/release/pin -set $(V)
+	$(MAKE) pin
 
 ui: web/dist/index.html
 

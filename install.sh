@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Build hikari from this checkout and install it in $HIKARI_PREFIX/bin
-# (default /opt/hikari/bin), with that directory on the system PATH.
-# It asks for sudo only on the first run, to make the directory and the PATH entry.
+# Build hikari from this checkout and install it where the plugin's launcher
+# runs it: $HIKARI_HOME/bin/<version>/ (default ~/.hikari), with
+# $HIKARI_HOME/bin/hikari pointing at it, and $HIKARI_HOME/bin on the system
+# PATH. It asks for sudo only on the first run, to write the PATH entry.
 set -euo pipefail
 
-prefix="${HIKARI_PREFIX:-/opt/hikari}"
-bindir="$prefix/bin"
+home="${HIKARI_HOME:-$HOME/.hikari}"
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 make -C "$repo" build
-
-if [ ! -d "$bindir" ] || [ ! -w "$bindir" ]; then
-	echo "making $bindir (needs sudo once)"
-	sudo mkdir -p "$bindir"
-	sudo chown -R "$(id -un)" "$prefix"
-fi
+version="$("$repo/bin/hikari" version | awk '{ print $2 }')"
+dir="$home/bin/$version"
+mkdir -p "$dir"
 
 # The host binary looks for hikari-linux-<arch> next to itself, so they install together.
 # Each file is copied beside its target and renamed over it, so a running hikari keeps its file.
 for f in "$repo"/bin/hikari "$repo"/bin/hikari-linux-*; do
 	name="$(basename "$f")"
-	cp "$f" "$bindir/.$name.new"
-	mv -f "$bindir/.$name.new" "$bindir/$name"
+	cp "$f" "$dir/.$name.new"
+	mv -f "$dir/.$name.new" "$dir/$name"
 done
+ln -s "$version/hikari" "$home/bin/.link.$$"
+mv -f "$home/bin/.link.$$" "$home/bin/hikari"
 
+bindir="$home/bin"
 if [ -d /etc/paths.d ]; then
 	entry=/etc/paths.d/hikari
 	line="$bindir"
@@ -36,7 +36,10 @@ if [ "$(cat "$entry" 2>/dev/null)" != "$line" ]; then
 	echo "$line" | sudo tee "$entry" >/dev/null
 fi
 
-echo "installed $("$bindir/hikari" version) ($(git -C "$repo" rev-parse --short HEAD)) in $bindir"
+echo "installed $("$dir/hikari" version) ($(git -C "$repo" rev-parse --short HEAD)) in $dir"
+if [ -d /opt/hikari/bin ]; then
+	echo "an older install is in /opt/hikari; remove it with: sudo rm -rf /opt/hikari"
+fi
 case ":$PATH:" in
 *":$bindir:"*) ;;
 *) echo "open a new shell to put $bindir on your PATH" ;;

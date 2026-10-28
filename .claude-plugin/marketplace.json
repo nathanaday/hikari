@@ -1,0 +1,22 @@
+{
+  "name": "hikari",
+  "owner": {
+    "name": "nathanaday",
+    "url": "https://github.com/nathanaday"
+  },
+  "description": "Hikari: teams of Claude Code agents, each in its own container, that each see one partition of your code.",
+  "plugins": [
+    {
+      "name": "hikari",
+      "source": {
+        "source": "git-subdir",
+        "url": "nathanaday/hikari",
+        "path": "plugin",
+        "ref": "0.1.0"
+      },
+      "description": "Bring your repositories into hikari from any Claude Code session, and work with hikari's containerized agents. Installs the hikari binary on first use.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}
