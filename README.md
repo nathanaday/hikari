@@ -54,6 +54,10 @@ A partition agent works inside its small context until its own tests pass. Hikar
   <img alt="A plan splits into three partition loops of edit, test, and map, which join into one end-to-end health check that sends failures back" src="docs/images/loops-light.svg">
 </picture>
 
+### A Pipeline of Work
+
+Work starts as a stub: an idea in a few words, planted from the web UI, a terminal, Obsidian, or your Claude Code session. The orchestration agent scopes a stub with you into a scope that names the partitions it touches and the features whose health says it is done. You order scopes into queues, and a running queue starts them one after another, one scope at a time in each partition. Each partition agent reports the status of its part, and hikari grants done only when the scope's features pass. Every task is a markdown file in the vault. The [task pipeline guide](docs/guides/tasks.md) follows one idea from stub to done.
+
 ## Quickstart
 
 You need Claude Code, Docker, and a Claude subscription or an Anthropic API key. Install the Hikari plugin in Claude Code:
@@ -129,5 +133,6 @@ Onboarding turns your repositories into a project through two skills of the plug
 - [Glossary](docs/glossary.md): every Hikari term in one place
 - [The vault](docs/guides/vault.md): where each file lives, and where each container sees it
 - [Onboarding guide](docs/guides/onboarding.md): bring existing repositories into a project
+- [Task pipeline](docs/guides/tasks.md): stubs, scopes, and queues of work
 - [Migration guide](docs/guides/migrating.md): move a project from before the glossary's words to now
 - [Shop example](examples/shop/): two partitions and an orchestration agent

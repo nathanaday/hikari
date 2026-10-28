@@ -20,6 +20,8 @@ x-hikari:
   repos:
     shop: {path: ../../.hikari/demo/shop, branch: hikari/demo}
   orchestration: orchestrator
+  # The task pipeline: stubs, scopes, and queues in vault/tasks/.
+  modules: [tasks]
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]

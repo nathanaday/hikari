@@ -46,6 +46,20 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
 
+**Module.** A piece of hikari that a project turns on in `x-hikari.modules`. It owns a directory of the vault, its tools, a skill for each kind of agent, its routes, its commands, and a tab of the UI, behind one interface in the binary. `tasks` is the first.
+
+**Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads. Its stage says what it is: a stub or a scope.
+
+**Stub.** A task in its first stage: an idea in a few words, planted by you or an agent, and not yet scoped.
+
+**Scope.** A task that the orchestration agent wrote from a stub with you: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. A scope outside any queue is a draft; one in a queue is approved.
+
+**Part.** The share of a scope that one partition does. Its partition agent reports its status.
+
+**Queue.** An ordered list of scopes, `vault/tasks/queues/<id>.md`. A running queue starts its scopes in order, and a partition works on one scope at a time across all queues.
+
+**Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes.
+
 **Apply.** Commit a partition's changes to its source repositories: one commit in each repository whose writable folders changed. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
 
 ## Retired Words
@@ -64,3 +78,4 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 | story | orchestration feature | A flow across partitions is a feature of the orchestration feature map. |
 | layout, code layout | code map | The private document of where each feature lives. |
 | `commit_changes` | `apply` | The name of the event in the glossary. |
+| work order | task | The pipeline's documents are tasks: stubs, then scopes. |

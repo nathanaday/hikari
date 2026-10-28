@@ -516,6 +516,59 @@ the UI's address and token, readable only by you, and removes at stop. The
 session then posts as you, through the same endpoint as the web UI, so the
 server needs no second way to sign in.
 
+## Modules extend hikari through one interface
+
+A module is a piece of hikari that a project turns on in `x-hikari.modules`:
+it owns a directory of the vault, its tools, a skill for each kind of agent,
+its routes, its commands, and a tab of the UI. The server, the MCP server, the
+driver, the launcher, and the commands each ask the enabled modules for their
+share through one interface, and know nothing else of them, so a project that
+leaves a module out has none of its tools, skills, or files.
+
+Modules are compiled into the binary, not loaded at run time. One binary keeps
+one version, which the plugin's launcher relies on, and a module needs nothing
+that the other parts of hikari cannot test. The interface has two halves,
+because a module runs in two places: its agent half (tools, skills, mounts)
+needs only the agent's `Self` in a container, and its host half (routes,
+notices, its view) runs in `hikari up`, with a `Host` that gives it the
+topology, the health of a feature, a commit as a writer, and a message from
+`hikari`. The interface is only as wide as the first module needs; a second
+module widens it.
+
+`hikari` is a sender of its own, for the messages that a module writes, such
+as "the queue api started [[cancel]]". Writing them as you would say that you
+wrote messages you did not write.
+
+## The task pipeline keeps work as documents
+
+Every task is a markdown document with a property header, so it opens in
+Obsidian, diffs in git, and takes your own properties without a migration:
+hikari owns the properties it names and leaves the rest. A stub needs only a
+name, so planting an idea costs nothing, and a stub becomes a scope in its own
+file, with its stage as a property, so that every link to it holds. The scope
+keeps your words as its Request, which the orchestration agent never changes.
+
+A queue is its own document with its scopes in order, not a `next` link on
+each scope. Moving one scope then rewrites one file, and two edits cannot
+break a chain. Putting a scope in a queue approves it, so there is no separate
+approval to remember; until then it is a draft that the orchestration agent
+may revise.
+
+A partition works on one scope at a time, across all queues. A partition agent
+is one container, so two scopes at once would mix its context and its commits;
+parallel queues run in parallel where their partitions differ, and in turn
+where they share one.
+
+The server, not the agent, grants done. A partition agent asks for it, and the
+server grants it only when the health of the scope's features in that
+partition passes, which is the rule that hikari computes health and the agent
+never reports its own result, applied to the pipeline. The status lives in the
+task's properties, with a line in its log for each change, so Obsidian shows
+the state of every task without the UI. The pipeline adds no new way of
+working: the agents work as their plan, do, and validate skills say, and the
+pipeline's skills tell them to report each change of their part through a
+tool.
+
 ## /hikari: the same paths in every container
 
 Every container sees its hikari documents under `/hikari`, not in its
