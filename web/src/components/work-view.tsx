@@ -327,7 +327,7 @@ function TaskPanel({ task: t, state, close, run }: { task: TaskView; state: Stat
               <div key={p} className="flex items-center gap-2">
                 <span className="w-24 truncate text-xs">{p}</span>
                 {part ? <StatusChip status={part.status} /> : <span className="text-xs text-muted-foreground">not started</span>}
-                {part && <StatusSelect label={`Set ${p}'s status`} onPick={(s) => setStatus(p, s)} parts />}
+                {part && <StatusSelect label={`Set the status of ${p}`} onPick={(s) => setStatus(p, s)} parts />}
               </div>
             )
           })}

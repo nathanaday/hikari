@@ -65,6 +65,11 @@ func (s *Store) logLine(who, subject, from, to, note string) string {
 	return line
 }
 
+// refused logs a refused done (rules TK14, TK16, and TK18).
+func (s *Store) refused(t *Task, who, subject string, why []string) {
+	t.Body = appendLog(t.Body, fmt.Sprintf("%s %s asked for done of %s: refused, since %s", s.now().UTC().Format(timeLayout), who, subject, strings.Join(why, ", ")))
+}
+
 // setScope sets t's status, with a line in its log (rule TK18).
 func (s *Store) setScope(t *Task, who, status, note string) {
 	if t.Status == status {
@@ -322,8 +327,8 @@ func (s *Store) setPartStatus(t *Task, caller, part, status, note string, c *Cha
 	if status == Done && caller != User {
 		if refused := s.notPassing(t, part); len(refused) > 0 {
 			g = Grant{Status: Testing, Refused: refused}
-			status = Testing
-			note = "done refused: " + strings.Join(refused, ", ")
+			s.refused(t, caller, "the part of "+part, refused)
+			status, note = Testing, ""
 		}
 	}
 	from := t.PartStatus(part)
@@ -382,6 +387,7 @@ func (s *Store) setScopeStatus(t *Task, caller, status, note string, c *Change) 
 			return Grant{}, fmt.Errorf("[[%s]] is %s; a scope is done only after every part is done and it is validating", t.ID, t.Status)
 		}
 		if refused := s.notPassing(t, ""); len(refused) > 0 {
+			s.refused(t, caller, "the scope", refused)
 			return Grant{Status: Validating, Refused: refused}, nil
 		}
 		s.setScope(t, caller, Done, note)

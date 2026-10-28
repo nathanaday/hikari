@@ -214,7 +214,8 @@ func TestStatuses(t *testing.T) {
 	for _, want := range []string{
 		"hikari set the scope to started (was queued): the queue q started it",
 		"inventory set the part of inventory to blocked (was testing): the stock API is down",
-		"orders set the part of orders to testing (was started): done refused: [[create-order]] is failing",
+		"orders asked for done of the part of orders: refused, since [[create-order]] is failing",
+		"lead asked for done of the scope: refused, since [[customer-orders-items]] is failing",
 		"lead set the scope to blocked (was validating): the flow fails at payment",
 		"lead set the scope to done (was validating): it works",
 	} {

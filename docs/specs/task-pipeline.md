@@ -1,6 +1,28 @@
 # Spec: The Task Pipeline, and Modules
 
-Status: specified.
+Status: built. Checked on 2026-10-28 on the shop, started with `-no-launch`, through the agents' API and the UI's API, with headless Chrome at each step:
+
+- **Stubs and scopes:** `orders` and `inventory` each planted a stub, `inventory` could not read `orders`' stub, and the orchestrator scoped both: `cancel-orders` for `orders` and `inventory`, and `restock-alerts` for `inventory`. A scope by `orders` was refused.
+- **Queues:** the orchestrator made two queues, `api` and `stock`, and you started both from the UI's route. `cancel-orders` started, and `restock-alerts` waited, with "inventory is busy with [[cancel-orders]]" in the Work tab.
+- **Statuses:** both parts went to `started`, then `testing`. `orders` recorded a failing run of `create-order`, and its `done` was refused, with a line in the log. A block of `inventory` blocked the scope, and clearing it unblocked it. After a passing run, both parts were granted `done`, and the scope was `validating`.
+- **Done:** the orchestrator's `done` finished the scope, and `restock-alerts` started.
+- **The UI and the messages:** the task's panel showed its request and its log, and `inventory`'s page listed both scopes. The run's messages held hikari's six messages to the orchestrator.
+
+- **The Hikari plugin:** a trigger case of `claude plugin eval`, "stub this for later", reached a Hikari skill.
+
+No container ran, so an agent's turn with the skills was not checked.
+
+Changes made during the build:
+
+1. **The `hikari` sender's role is `hikari`, not `system`** (decision 3), since the glossary retires "system". Its code name is `topology.Hikari`.
+2. **A scope has two more properties that hikari owns:** `block`, the reason of a block that the scope itself has, as opposed to one of its parts, so that a part's block clears without clearing the scope's own; and `wait`, the current reason of a waiting scope, which changes without a new log line.
+3. **A refused `done` is a line of the log** (TK18), "orders asked for done of the part of orders: refused, since [[create-order]] is failing", since a refusal changes no status, and the live check showed that the history needs it.
+4. **`UserPath` is on the module, not on its host half** (MO1), since `hikari up` commits your edits before it opens the modules.
+5. **`.hikari/host.json` is a package of its own, `internal/hostfile`,** which `hikari send`, the hook, and the module's CLI share, with the server's cookie name.
+6. **Queues go in the order of their ids** (TK13): when a partition frees, the running queue whose id sorts first takes it, even when a scope of another queue waited longer.
+7. **When two queue documents list one scope, the queue whose id sorts first keeps it,** and the other has a problem (TK5).
+8. **Without an orchestration agent,** hikari sends each partition agent its part when a queue starts a scope.
+9. **The shop example turns the module on,** so that `make up` shows the Work tab.
 
 Sources: `docs/brainstorm/task-pipeline.md` and `task-pipeline-answers.md`. The names are those of `docs/glossary.md`, with the terms of the round: task, stub, scope, part, queue, status, and module.
 
@@ -27,7 +49,7 @@ From the round and its answers:
 
 1. **Two halves of a module.** A module runs on the host in `hikari up`, and in each container in `hikari mcp` and `hikari driver`. The interface has an agent half (tools, skills, mounts, commands) that needs only the topology or the agent's `Self`, and a host half that the server opens with a `Host`: what a module may ask of the running hikari.
 2. **The registry is one package, `internal/modules`,** that lists the modules. The interface is `internal/module`, and the tasks module is `internal/modules/tasks`, so that the server, the MCP server, the driver, the launcher, and the commands import the registry, and the module imports neither the server nor the partitions.
-3. **The `hikari` sender is a participant with the role `system`,** listed after the agents and before you. It never has a turn, and no agent can send to it. An agent may not be named `hikari`.
+3. **The `hikari` sender is a participant with the role `hikari`,** listed after the agents and before you. It never has a turn, and no agent can send to it. An agent may not be named `hikari`.
 4. **A scope's own status changes only in these ways:** the server sets `queued`, `waiting`, `started`, and `validating`, and follows the parts to `testing` and `blocked`; the orchestration agent sets `blocked` with a reason, clears a block, and asks for `done`; you may set any status, since you are the authority on the project, and your `done` needs no health.
 5. **Pause finishes the current scope.** A paused queue starts no next scope; the scope in progress goes on, since its agents are already at work.
 6. **The server wakes the orchestration agent only when it must act:** a queue's scope starts, a part is done, a part is blocked, a block is cleared, or every part is done. The other changes reach it in the notice of its next turn.
