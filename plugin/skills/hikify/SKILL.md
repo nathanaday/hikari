@@ -20,6 +20,8 @@ You draft every document of the vault in `onboarding/vault/`, which mirrors the 
 
 Read `references/principles.md` first. Every boundary and every plan step must keep its two principles.
 
+The project root is the folder of `topology.yaml`. Run each command there, as `cd <root> && …`, and give file tools and subagents absolute paths.
+
 ## Rules
 
 1. Start only when `onboarding/state.md` records `containerize: done`. Otherwise tell the user to run the containerize-repo skill first, and stop.
@@ -32,6 +34,8 @@ Read `references/principles.md` first. Every boundary and every plan step must k
 The stages, in `state.md`: `hikify: analysis`, `hikify: topology`, `hikify: plan`, `hikify: review`, `hikify: approved`, then `hikify: restructure`, `hikify: execute`, `hikify: verify`, and `hikify: done`. Read `state.md` at the start and continue from its stage.
 
 ## Stage 1: Analysis
+
+When `onboarding/proposal.md` exists, the propose-topology skill wrote it before containerize. Read it first: record each choice that the user made in it, under `## Your answers`, in `state.md` as a decision, and treat the rest as hypotheses that the analysis checks against the maps and the baseline.
 
 1. For each repository, send one fresh subagent with the brief in `references/analysis.md`, all in one message so that they run in parallel. Each writes `onboarding/analysis/<repo>.md`.
 2. Read the reports, and write `onboarding/analysis/synthesis.md` in the form of `references/synthesis.md`: the duplicated code with its differences, the boundaries you propose with their reasons, the suites left for integration, and the questions.

@@ -9,6 +9,8 @@ You work for the user in their own Claude Code session, in a hikari project repo
 
 The user is the authority on the project. Propose, show, and ask; do not decide for them what they did not say. Where the request already answers a question, use the answer and do not ask again.
 
+The project root is the folder of `topology.yaml`. Run each command there, as `cd <root> && …`, and give file tools and subagents absolute paths.
+
 ## Rules
 
 1. Change no file inside a clone in `repos/`, except the ignore lines of step 4, and only with the user's approval.
@@ -21,10 +23,12 @@ The user is the authority on the project. Propose, show, and ask; do not decide 
 
 ### 1. Start
 
-Read `onboarding/state.md` if it exists, and continue from its stage. Otherwise ask the user for:
+Read `onboarding/state.md` if it exists, and continue from its stage. Otherwise ask the user for what the request, or the hikari skill, did not give:
 
-- each repository: its remote URL, and one sentence on what it does;
+- each repository: its remote URL, or the folder of a clone on this machine, and one sentence on what it does;
 - the project's purpose in one sentence, for the orchestration agent's description.
+
+Link a clone by its origin URL, from `git -C <folder> remote get-url origin`. When a clone has no origin, ask the user whether to link it by its `file://` URL, which works on this machine only, or to make a remote first.
 
 Write `onboarding/state.md` from `references/state.md`, and commit.
 
@@ -40,7 +44,7 @@ Stop and tell the user if a clone fails. Their machine's git settings decide acc
 
 ### 3. Survey
 
-For each repository, send one fresh subagent with the brief in `references/survey.md`, all in one message so they run in parallel. Each subagent reads one repository and returns its findings. Write the findings of each repository into `state.md` under its name, and commit.
+For each repository, send one fresh subagent with the brief in `references/survey.md` and the absolute path of its clone, `<root>/repos/<name>`, all in one message so they run in parallel. Each subagent reads one repository and returns its findings. Write the findings of each repository into `state.md` under its name, and commit.
 
 ### 4. Ignore lines
 
@@ -80,7 +84,7 @@ When the user agrees, commit, and set the stage in `state.md` to `containerize: 
 
 ### 7. Run
 
-Ask the user to start hikari in a terminal of their own and leave it running:
+Run `hikari doctor topology.yaml`, and fix each problem with the user. Then ask the user to start hikari in a terminal of their own and leave it running:
 
 ```sh
 hikari up topology.yaml
@@ -103,6 +107,10 @@ When every partition agent is done, write `onboarding/baseline.md`:
 - for each partition, the failing tests and the suites left out, from `state.md`.
 
 Set the stage in `state.md` to `containerize: done`, with the date, and commit. Tell the user that the project is containerized. Summarize the baseline in a few lines. Name the hikify skill as the next step, which refactors the repositories against a target topology.
+
+## Add a repository
+
+To add a repository to a project whose stage is `containerize: done`, for the user or for the change-topology skill, follow steps 2 to 8 for that repository alone. Add its section to `state.md` under Repositories. In step 8, add its baseline to `onboarding/baseline.md` under a heading with the date and the repository's name, and leave the stage at `containerize: done`.
 
 ## References
 

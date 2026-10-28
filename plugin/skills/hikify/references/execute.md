@@ -32,11 +32,13 @@ Set the stage to `hikify: execute`, and commit. Ask the user to start hikari in 
 hikari up topology.yaml
 ```
 
-When the agents have connected and finished their first turns (`hikari status` shows each new partition described), ask the user to post this in the room, with the orchestration agent's name and the plan's first step that is not yours:
+When the agents have connected and finished their first turns (`hikari status` shows each new partition described), post this to the room once the user agrees, with the orchestration agent's name and the plan's first step that is not yours:
 
+```sh
+hikari send "@<orchestration agent> Please carry out the plan [[hikify-plan]], from step S<n>. Follow the Carry out a plan procedure of the hikari-plan-work skill."
 ```
-@<orchestration agent> Please carry out the plan [[hikify-plan]], from step S<n>. Follow the Carry out a plan procedure of the hikari-plan-work skill.
-```
+
+`hikari send` posts as the user, through the running `hikari up`. When it says that hikari is not running, ask the user to start it.
 
 The orchestration agent then sends each step to its actor when the step's needs are met, and posts the state of the steps in the room. Follow the run from files. Do not talk to an agent.
 
