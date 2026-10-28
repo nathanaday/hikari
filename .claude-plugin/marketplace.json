@@ -12,10 +12,10 @@
         "source": "git-subdir",
         "url": "https://github.com/nathanaday/hikari.git",
         "path": "plugin",
-        "ref": "0.1.0"
+        "ref": "0.2.0"
       },
       "description": "Bring your repositories into hikari from any Claude Code session, and work with hikari's containerized agents. Installs the hikari binary on first use.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development"
     }
   ]

@@ -1,6 +1,6 @@
 {
   "name": "hikari",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hikari splits your code into partitions and gives each to its own Claude Code agent, in its own Docker container, with an orchestration agent that plans across them. This plugin brings your repositories into hikari from any session: a front door that routes a request to the right stage, the skills that containerize repositories, design and carry out a target topology, propose one before onboarding, and change it later, and a skill that works with the running agents. Pairs with the hikari binary, which the plugin installs on first use.",
   "author": {
     "name": "nathanaday",
