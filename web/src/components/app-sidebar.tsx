@@ -1,4 +1,4 @@
-import { Activity, BookOpen, FileCode2, MessagesSquare, Network } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, ListChecks, MessagesSquare, Network } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -68,6 +68,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
             <SidebarGroup>
               <SidebarMenu>
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
+                {state.modules.tasks && item({ kind: 'work' }, 'Work', <ListChecks />)}
                 {state.partitions.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
                 {item({ kind: 'shared' }, 'Vault', <BookOpen />)}
                 {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}

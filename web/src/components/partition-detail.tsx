@@ -3,7 +3,8 @@ import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
 import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
-import type { Feature, Interface, Manifest, Private, PartitionView } from '@/lib/types'
+import type { Feature, Interface, Manifest, Private, PartitionView, TaskView } from '@/lib/types'
+import { StatusChip } from '@/components/work-view'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -199,6 +200,14 @@ function openFeature(e: React.MouseEvent, id: string) {
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 
+// scopesOf lists the scopes of the task pipeline that name a partition
+// (rule TK29 of the task pipeline spec).
+function scopesOf(state: State, partition: string): TaskView[] {
+  const work = state.modules.tasks
+  if (!work) return []
+  return [...work.queues.flatMap((q) => q.scopes), ...work.drafts].filter((t) => t.partitions.includes(partition))
+}
+
 export function PartitionDetail({ state, partition: v }: { state: State; partition: PartitionView }) {
   const partitionAgent = state.agents.find((a) => a.name === v.partition_agent)
   const flags = v.flags ?? []
@@ -311,6 +320,22 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 <p className="text-sm text-muted-foreground">No releases yet.</p>
               )}
             </Section>
+            {scopesOf(state, v.partition_agent).length > 0 && (
+              <Section title="Scopes">
+                <ul className="space-y-1" data-testid="partition-scopes">
+                  {scopesOf(state, v.partition_agent).map((t) => (
+                    <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
+                      <a href={`#/work/${encodeURIComponent(t.id)}`} className="hover:underline">
+                        {t.name}
+                      </a>
+                      <StatusChip status={t.status} />
+                      {t.parts.find((p) => p.partition === v.partition_agent) && <StatusChip status={t.parts.find((p) => p.partition === v.partition_agent)!.status} label="part" />}
+                      {t.queue && <span className="text-xs text-muted-foreground">in {t.queue}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
             <Section title={`Features (${v.features.length})`}>
               {v.features.length ? (
                 <div className="border-t">

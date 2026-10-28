@@ -1,4 +1,4 @@
-import { BookOpen, Boxes, MessagesSquare, Network, Package } from 'lucide-react'
+import { BookOpen, Boxes, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -244,6 +244,18 @@ export function ConversationHeader({ state, show, onMention }: Props) {
           <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'map', partition: sys.partition_agent })}>
             Feature map
           </button>
+        </p>
+      </>
+    )
+  } else if (v.kind === 'work') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <ListChecks className="size-4 text-muted-foreground" />
+          Work
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          The task pipeline: your stubs, the scopes that the orchestration agent writes from them, and the queues that run them. Each task is a document in vault/tasks/, which Obsidian opens too.
         </p>
       </>
     )

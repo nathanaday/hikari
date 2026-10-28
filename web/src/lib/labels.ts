@@ -10,6 +10,7 @@ export const roleLabel: Record<Role, string> = {
   orchestration: 'orchestration agent',
   partition: 'partition agent',
   operator: 'operator',
+  system: 'hikari',
 }
 
 // shortCommit writes <repo>@<commit> with seven characters of the commit,

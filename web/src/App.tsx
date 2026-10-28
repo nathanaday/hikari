@@ -11,6 +11,7 @@ import { SharedView } from '@/components/shared-view'
 import { PartitionDetail } from '@/components/partition-detail'
 import { TopologyView } from '@/components/topology-view'
 import { VocabularyPanel } from '@/components/vocabulary-panel'
+import { WorkView } from '@/components/work-view'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useHikari } from '@/hooks/use-hikari'
@@ -40,6 +41,8 @@ export default function App() {
     main = <ReleaseView key={`${v.name}/${v.deliverable}@${v.version}`} partition={v.name} deliverable={v.deliverable} version={v.version} />
   } else if (v.kind === 'shared') {
     main = <SharedView />
+  } else if (v.kind === 'work') {
+    main = <WorkView state={state} show={show} task={v.task} send={send} />
   } else if (v.kind === 'room' && v.tab === 'wiki') {
     main = <PublicWiki orchestration={orchestrationOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
   } else if (v.kind === 'room' && v.tab === 'vocabulary') {
@@ -65,7 +68,7 @@ export default function App() {
             <>
               <ConversationHeader state={state} show={show} onMention={mention} />
               {main}
-              {v.kind !== 'map' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+              {v.kind !== 'map' && v.kind !== 'work' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
             </>
           )}
         </SidebarInset>

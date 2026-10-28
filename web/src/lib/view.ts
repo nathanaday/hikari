@@ -19,13 +19,15 @@ export type View =
   // the map of the public wiki, or with orchestration the orchestration
   // agent's feature map; doc selects one of its documents.
   | { kind: 'map'; partition?: string; public?: boolean; orchestration?: boolean; doc?: string }
+  // work is the task pipeline's Work tab, with task open.
+  | { kind: 'work'; task?: string }
 
 export const allView: View = { kind: 'all' }
 
 // viewKey names a conversation for unread counts. The tabs of the room
 // share one key.
 export function viewKey(v: View): string {
-  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room') return v.kind
+  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work') return v.kind
   if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : v.orchestration ? 'map:@orchestration' : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
@@ -42,6 +44,7 @@ export function viewHash(v: View): string {
     if (v.orchestration) return `#/orchestration/map${doc}`
     return '#/map'
   }
+  if (v.kind === 'work') return v.task ? `#/work/${encodeURIComponent(v.task)}` : '#/work'
   if (v.kind === 'room') return v.tab && v.tab !== 'messages' ? `#/room/${v.tab}` : '#/room'
   if (v.kind === 'release') return `#/partition/${v.name}/release/${v.deliverable}/${v.version}`
   return `#/${v.kind}/${v.name}`
@@ -49,6 +52,9 @@ export function viewHash(v: View): string {
 
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
+  if (hash === '#/work') return { kind: 'work' }
+  const work = hash.match(/^#\/work\/([^/]+)$/)
+  if (work) return { kind: 'work', task: decodeURIComponent(work[1]) }
   if (hash === '#/topology') return { kind: 'topology' }
   const select = hash.match(/^#\/topology\?select=([^&]+)$/)
   if (select) return { kind: 'topology', select: decodeURIComponent(select[1]) }

@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -31,6 +31,8 @@ export type State = {
   wikis: WikiView[]
   // activity holds the recent steps of each agent, oldest first.
   activity: Record<string, Activity[]>
+  // modules holds the view of each module that the project turns on.
+  modules: Modules
   view: View
   // unread counts messages per conversation key that arrived while another
   // view was open.
@@ -62,6 +64,7 @@ export function initialState(view: View): State {
     deliverables: [],
     wikis: [],
     activity: {},
+    modules: {},
     view,
     unread: {},
   }
@@ -71,10 +74,11 @@ const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 
 // resolve returns v if it names an agent or a partition of s, and All activity
 // if not. Without agents, only the Topology view exists (rule YV5).
-function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode'>): View {
+function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
   if (v.kind === 'room') return v
+  if (v.kind === 'work') return s.modules.tasks ? v : allView
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'partition' || v.kind === 'release') && s.partitions.some((x) => x.partition_agent === v.name)) return v
   if (v.kind === 'shared') return v
@@ -124,7 +128,8 @@ function applyEvent(s: State, e: ServerEvent): State {
         deliverables: e.snapshot.deliverables ?? [],
         wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
-        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running' }),
+        modules: e.snapshot.modules ?? {},
+        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {} }),
         unread: {},
       }
     }
@@ -154,6 +159,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, wikis: replaceBy(s.wikis, e.wiki, (x) => x.ref) }
     case 'topology':
       return { ...s, revision: e.revision }
+    case 'module':
+      return { ...s, modules: { ...s.modules, [e.module]: e.view } }
   }
 }
 

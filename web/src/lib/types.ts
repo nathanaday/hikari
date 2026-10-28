@@ -11,7 +11,8 @@ export type Message = {
   woke?: string[]
 }
 
-export type Role = 'orchestration' | 'partition' | 'operator'
+// system is hikari itself, which writes the messages of its modules.
+export type Role = 'orchestration' | 'partition' | 'operator' | 'system'
 
 export type Peer = {
   name: string
@@ -258,7 +259,47 @@ export type Snapshot = {
   deliverables?: DeliverableInfo[]
   wikis?: WikiView[]
   activity?: Record<string, Activity[]>
+  // modules holds the view of each module that the project turns on.
+  modules?: Modules
 }
+
+// The task pipeline, the tasks module (rule TK27 of the task pipeline spec).
+export type TaskStatus = 'queued' | 'waiting' | 'started' | 'blocked' | 'testing' | 'validating' | 'done'
+
+export type TaskPart = { partition: string; status: TaskStatus }
+
+export type TaskView = {
+  id: string
+  name: string
+  stage: 'stub' | 'scope'
+  author?: string
+  // status is empty for a stub and for a draft scope.
+  status?: TaskStatus
+  block?: string
+  wait?: string
+  queue?: string
+  partitions: string[]
+  features: string[]
+  needs: string[]
+  parts: TaskPart[]
+  created?: string
+  updated?: string
+  file: string
+  hash: string
+}
+
+export type QueueView = { id: string; name: string; state: 'running' | 'paused'; scopes: TaskView[]; file: string }
+
+export type TasksView = {
+  stubs: TaskView[]
+  drafts: TaskView[]
+  queues: QueueView[]
+  problems: { file: string; reason: string }[]
+  orchestration: string
+  partitions: string[]
+}
+
+export type Modules = { tasks?: TasksView }
 
 // RepoInfo is one repository of the topology with the partitions in it.
 export type RepoInfo = { name: string; branch: string; partitions: string[] }
@@ -275,6 +316,7 @@ export type ServerEvent =
   | { type: 'vocabulary'; vocabulary: Vocabulary }
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
+  | { type: 'module'; module: string; view: unknown }
 
 // SendRequest posts to the room, or sends a direct message when to is set.
 export type SendRequest = { to?: string; body: string }
