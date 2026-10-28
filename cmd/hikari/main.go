@@ -28,7 +28,6 @@ import (
 	"github.com/nathanaday/hikari/internal/launcher"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/mcpserver"
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/server"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -133,7 +132,6 @@ func up(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	ed.WriteSkills = onboard.Write
 	log.SetOutput(editLog())
 	con := console.New(os.Stdout)
 	printBanner(con)

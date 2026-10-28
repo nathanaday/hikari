@@ -109,7 +109,7 @@ func Empty(entries []os.DirEntry) bool {
 
 // WriteProject writes a new project repository in dir and commits it with
 // the user's git identity. It reports whether it made the commit.
-func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, error) {
+func WriteProject(dir, name string) (bool, error) {
 	entries, err := os.ReadDir(dir)
 	switch {
 	case err == nil && !Empty(entries):
@@ -139,9 +139,6 @@ func WriteProject(dir, name string, writeSkills func(dir string) error) (bool, e
 		return false, err
 	}
 	if err := gitIn(dir, "init", "--quiet", "--initial-branch=main"); err != nil {
-		return false, err
-	}
-	if err := writeSkills(dir); err != nil {
 		return false, err
 	}
 	if err := gitIn(dir, "config", "user.email"); err != nil {

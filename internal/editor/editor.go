@@ -36,12 +36,7 @@ type Committer func(paths []string, message string) (string, error)
 // Editor edits one topology file.
 type Editor struct {
 	// File is the topology file's absolute path.
-	File string
-	// WriteSkills writes the host skills into a new project repository.
-	// The command sets it, so that this package needs nothing of the
-	// agents' side.
-	WriteSkills func(dir string) error
-
+	File      string
 	mu        sync.Mutex
 	committer Committer
 	running   bool
@@ -411,11 +406,7 @@ func (e *Editor) Create() (Saved, error) {
 	}
 	saved := Saved{Skipped: []string{}}
 	if scaffold.Empty(entries) && filepath.Base(e.File) == scaffold.TopologyFile {
-		writeSkills := e.WriteSkills
-		if writeSkills == nil {
-			writeSkills = func(string) error { return nil }
-		}
-		committed, err := scaffold.WriteProject(dir, name, writeSkills)
+		committed, err := scaffold.WriteProject(dir, name)
 		if err != nil {
 			return Saved{}, err
 		}

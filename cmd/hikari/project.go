@@ -130,7 +130,7 @@ func syncProject(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return showResults(con, linked.Sync(topo, *from, writeSkills))
+	return showResults(con, linked.Sync(topo, *from, removeOldSkills))
 }
 
 // push pushes your branches (rules PS1 to PS5).
@@ -244,11 +244,15 @@ func counts(m map[string]int, keys ...string) string {
 	return strings.Join(parts, ", ")
 }
 
-// writeSkills writes the host skills into the project repository (rule HS2
-// of the containerize spec).
-func writeSkills(dir string) linked.Result {
-	if err := onboard.Write(dir); err != nil {
-		return linked.Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
+// removeOldSkills removes the host skill copies that hikari wrote into the
+// project before the plugin (rule CP13 of the plugin spec).
+func removeOldSkills(dir string) []linked.Result {
+	removed, err := onboard.RemoveCopies(dir)
+	if err != nil {
+		return []linked.Result{{Repo: topology.ProjectRepo, Text: "remove the old host skills: " + err.Error(), Failed: true}}
 	}
-	return linked.Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
+	if len(removed) == 0 {
+		return nil
+	}
+	return []linked.Result{{Repo: topology.ProjectRepo, Text: "removed the old host skills " + strings.Join(removed, ", ") + " from " + onboard.SkillsDir + "; the Hikari plugin holds them now"}}
 }

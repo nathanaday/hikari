@@ -27,7 +27,7 @@ func Failed(results []Result) bool {
 // it, and reports how each branch compares with the remote. With from set,
 // a branch that neither exists nor is on the remote starts from the
 // remote's from. It never merges, rebases, resets, or checks out.
-func Sync(topo *topology.Topology, from string, writeSkills SkillWriter) []Result {
+func Sync(topo *topology.Topology, from string, cleanup Cleanup) []Result {
 	var out []Result
 	add := func(repo, text string, failed bool) {
 		out = append(out, Result{Repo: repo, Text: text, Failed: failed})
@@ -43,8 +43,8 @@ func Sync(topo *topology.Topology, from string, writeSkills SkillWriter) []Resul
 			add(topology.ProjectRepo, text, failed)
 		}
 		out = append(out, mapFindings(topo, topology.ProjectRepo, repo)...)
-		if writeSkills != nil {
-			out = append(out, writeSkills(p.Path))
+		if cleanup != nil {
+			out = append(out, cleanup(p.Path)...)
 		}
 	}
 	for _, name := range topo.Linked() {
@@ -81,10 +81,11 @@ func Sync(topo *topology.Topology, from string, writeSkills SkillWriter) []Resul
 	return out
 }
 
-// SkillWriter writes the host skills into the project repository at dir
-// (rule HS2 of the containerize spec), and says what it wrote. The command
-// passes it, so that this package needs nothing of the agents' side.
-type SkillWriter func(dir string) Result
+// Cleanup tidies the project repository at dir, and says what it did: it
+// removes the host skill copies that hikari wrote before the plugin (rule
+// CP13 of the plugin spec). The command passes it, so that this package
+// needs nothing of the skills.
+type Cleanup func(dir string) []Result
 
 // track makes branch from the remote when it is missing (rule SY4), or
 // says how it compares with the remote (SY5).

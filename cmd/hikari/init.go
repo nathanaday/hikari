@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/scaffold"
 )
 
@@ -43,7 +42,7 @@ func initProject(args []string) error {
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`).MatchString(*name) {
 		return fmt.Errorf("cannot make a project name from %q; give one with -name (lowercase letters, digits, dashes, and underscores)", filepath.Base(dir))
 	}
-	committed, err := scaffold.WriteProject(dir, *name, onboard.Write)
+	committed, err := scaffold.WriteProject(dir, *name)
 	if err != nil {
 		return err
 	}
@@ -53,6 +52,6 @@ func initProject(args []string) error {
 	}
 	fmt.Printf("Next:\n  cp %s %s    and set a credential\n  hikari up %s\n",
 		filepath.Join(dir, ".env.example"), filepath.Join(dir, ".env"), filepath.Join(dir, scaffold.TopologyFile))
-	fmt.Printf("\nTo bring existing repositories into the project, open Claude Code in %s and run /containerize-repo.\n", dir)
+	fmt.Printf("\nTo bring existing repositories into the project, open Claude Code in %s with the Hikari plugin, and ask it to bring them in.\n", dir)
 	return nil
 }

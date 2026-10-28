@@ -154,7 +154,8 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 	if f := Check(tp, false); len(f) != 1 || !strings.Contains(f[0].Text, "app is not cloned; run: hikari sync") {
 		t.Errorf("CK1 a missing clone: %+v", f)
 	}
-	want(t, Sync(tp, "", skills), false, "ok project: wrote the host skills containerize-repo, hikify into .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
+	write(t, alex, ".claude/skills/hikify/.gitignore", "# hikari writes this skill; hikari sync replaces it.\n*\n")
+	want(t, Sync(tp, "", skills), false, "ok project: removed the old host skills hikify from .claude/skills", "ok app: cloned "+appURL, "app: has no hikari-alex yet", "project: has no hikari-alex yet")
 	tp = topo(t, alex, "hikari-alex", appURL)
 	if f := Check(tp, false); len(f) != 0 {
 		t.Errorf("CK1 after sync: %+v", f)
@@ -269,8 +270,8 @@ func TestCheck(t *testing.T) {
 	if f := Check(tp, false); len(f) != 0 {
 		t.Errorf("CK1 wiki edits on the project branch: %+v", f)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".claude/skills/containerize-repo/SKILL.md")); err != nil {
-		t.Errorf("HS2 sync writes the host skills: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".claude/skills")); err == nil {
+		t.Error("CP13 sync writes no host skills")
 	}
 	write(t, dir, ".gitignore", ".env\n")
 	f := Check(tp, false)
@@ -311,12 +312,16 @@ runs:
 	}
 }
 
-// skills writes the host skills as hikari sync does.
-func skills(dir string) Result {
-	if err := onboard.Write(dir); err != nil {
-		return Result{Repo: topology.ProjectRepo, Text: "write the host skills: " + err.Error(), Failed: true}
+// skills removes the old host skill copies as hikari sync does.
+func skills(dir string) []Result {
+	removed, err := onboard.RemoveCopies(dir)
+	if err != nil {
+		return []Result{{Repo: topology.ProjectRepo, Text: "remove the old host skills: " + err.Error(), Failed: true}}
 	}
-	return Result{Repo: topology.ProjectRepo, Text: "wrote the host skills " + strings.Join(onboard.Names(), ", ") + " into " + onboard.SkillsDir}
+	if len(removed) == 0 {
+		return nil
+	}
+	return []Result{{Repo: topology.ProjectRepo, Text: "removed the old host skills " + strings.Join(removed, ", ") + " from " + onboard.SkillsDir}}
 }
 
 // TestOldLayout checks rule V11: each old layout fails the start checks,

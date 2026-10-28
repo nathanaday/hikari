@@ -43,6 +43,12 @@ pin: release
 	cp build/release/checksums.txt plugin/release/checksums.txt
 	go run ./internal/release/pin
 
+# skills copies the references that hikify borrows from the agents' skills into the
+# plugin; a test fails when a copy differs from its source.
+skills:
+	cp internal/driver/skills/partition/hikari-map-features/references/wiki.md plugin/skills/hikify/references/wiki.md
+	cp internal/driver/skills/orchestration/hikari-map-features/SKILL.md plugin/skills/hikify/references/orchestration.md
+
 # version sets V as the version of the plugin and of its marketplace entry, then pins
 # the binaries of that version. Commit, then push the tag V to publish the release.
 version:

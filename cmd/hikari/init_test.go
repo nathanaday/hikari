@@ -11,7 +11,6 @@ import (
 
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/linked"
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/testmap"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -42,7 +41,7 @@ func TestProjectName(t *testing.T) {
 func TestWriteProject(t *testing.T) {
 	gitEnv(t, true)
 	dir := filepath.Join(t.TempDir(), "p3")
-	committed, err := scaffold.WriteProject(dir, "p3", onboard.Write)
+	committed, err := scaffold.WriteProject(dir, "p3")
 	if err != nil || !committed {
 		t.Fatalf("writeProject = %v, %v", committed, err)
 	}
@@ -57,13 +56,13 @@ func TestWriteProject(t *testing.T) {
 		}
 	}
 	repo := gitrepo.Open(dir)
-	for _, p := range []string{".env", ".hikari/", "repos/app/", ".obsidian/workspace.json", ".DS_Store", ".claude/settings.local.json", ".claude/skills/containerize-repo/SKILL.md"} {
+	for _, p := range []string{".env", ".hikari/", "repos/app/", ".obsidian/workspace.json", ".DS_Store", ".claude/settings.local.json"} {
 		if !repo.IsIgnored(p) {
 			t.Errorf("PR23 %s is not ignored", p)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".claude/skills/containerize-repo/SKILL.md")); err != nil {
-		t.Errorf("HS2 init writes the host skills: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".claude")); err == nil {
+		t.Error("CP13 init writes no skills; the Hikari plugin holds them")
 	}
 	if repo.IsIgnored(".claude/skills/mine/SKILL.md") {
 		t.Error("a skill of your own stays versioned")
@@ -87,7 +86,7 @@ func TestWriteProject(t *testing.T) {
 		}
 	}
 
-	if _, err := scaffold.WriteProject(dir, "p3", onboard.Write); err == nil || !strings.Contains(err.Error(), "not empty") {
+	if _, err := scaffold.WriteProject(dir, "p3"); err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("PR23 a second init = %v", err)
 	}
 }
@@ -97,7 +96,7 @@ func TestWriteProjectWithoutIdentity(t *testing.T) {
 	t.Setenv("GIT_AUTHOR_EMAIL", "")
 	t.Setenv("EMAIL", "")
 	dir := filepath.Join(t.TempDir(), "p")
-	committed, err := scaffold.WriteProject(dir, "p", onboard.Write)
+	committed, err := scaffold.WriteProject(dir, "p")
 	if err != nil || committed {
 		t.Errorf("PR24 without an identity = %v, %v", committed, err)
 	}

@@ -1,95 +1,48 @@
-// Package onboard holds the host skills: the skills that hikari writes into
-// a project for your own Claude Code session (rules HS1 to HS5 of the
-// containerize spec).
+// Package onboard holds what the binary keeps of the host skills, which live
+// in the Hikari plugin, in plugin/skills/: the removal of the copies that
+// hikari wrote into projects before the plugin (decision 7 of the plugin
+// spec), and the tests that the host skills name only what hikari builds.
 package onboard
 
 import (
-	"embed"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"slices"
-
-	"github.com/nathanaday/hikari/internal/driver"
 )
 
-//go:embed skills
-var skills embed.FS
-
-// borrowed maps each host skill's file to the file of the agents' skills
-// that it repeats, so that both come from one source.
-var borrowed = map[string]map[string]string{
-	"hikify": {
-		"references/wiki.md":          "skills/partition/hikari-map-features/references/wiki.md",
-		"references/orchestration.md": "skills/orchestration/hikari-map-features/SKILL.md",
-	},
-}
+// Retired are the host skills that hikari wrote into a project's
+// .claude/skills/ before the plugin.
+var Retired = []string{"containerize-repo", "hikify"}
 
 // SkillsDir is the folder of a project that holds Claude Code's skills.
 const SkillsDir = ".claude/skills"
 
-// Names returns the names of the host skills, sorted.
-func Names() []string {
-	entries, _ := skills.ReadDir("skills")
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			out = append(out, e.Name())
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// selfIgnore is the .gitignore in each host skill's folder: git ignores
-// the folder, this file included, with no line in the project's own
-// .gitignore.
+// selfIgnore is the .gitignore that hikari wrote into each host skill's
+// folder, which marks the folder as hikari's.
 const selfIgnore = "# hikari writes this skill; hikari sync replaces it.\n*\n"
 
-// Write writes every host skill into the project at dir, and replaces what
-// is there (rule HS2 of the containerize spec).
-func Write(dir string) error {
-	for _, name := range Names() {
-		dst := filepath.Join(dir, filepath.FromSlash(SkillsDir), name)
-		if err := os.RemoveAll(dst); err != nil {
-			return err
+// borrowed maps each of hikify's references to the file of the agents'
+// skills that it copies (decision 11 of the plugin spec); make skills
+// copies them.
+var borrowed = map[string]string{
+	"hikify/references/wiki.md":          "partition/hikari-map-features/references/wiki.md",
+	"hikify/references/orchestration.md": "orchestration/hikari-map-features/SKILL.md",
+}
+
+// RemoveCopies removes each retired host skill that hikari wrote into the
+// project at dir, and returns the names it removed. A folder whose
+// .gitignore is not hikari's is a skill of your own, and stays.
+func RemoveCopies(dir string) ([]string, error) {
+	var removed []string
+	for _, name := range Retired {
+		folder := filepath.Join(dir, filepath.FromSlash(SkillsDir), name)
+		data, err := os.ReadFile(filepath.Join(folder, ".gitignore"))
+		if err != nil || string(data) != selfIgnore {
+			continue
 		}
-		root := path.Join("skills", name)
-		err := fs.WalkDir(skills, root, func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			rel, _ := filepath.Rel(root, p)
-			target := filepath.Join(dst, rel)
-			if d.IsDir() {
-				return os.MkdirAll(target, 0o755)
-			}
-			data, err := skills.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(target, data, 0o644)
-		})
-		if err != nil {
-			return err
+		if err := os.RemoveAll(folder); err != nil {
+			return removed, err
 		}
-		for rel, src := range borrowed[name] {
-			data, err := driver.BuiltinFile(src)
-			if err != nil {
-				return err
-			}
-			target := filepath.Join(dst, filepath.FromSlash(rel))
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(target, data, 0o644); err != nil {
-				return err
-			}
-		}
-		if err := os.WriteFile(filepath.Join(dst, ".gitignore"), []byte(selfIgnore), 0o644); err != nil {
-			return err
-		}
+		removed = append(removed, name)
 	}
-	return nil
+	return removed, nil
 }

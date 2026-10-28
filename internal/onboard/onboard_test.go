@@ -1,9 +1,9 @@
 package onboard
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -13,64 +13,81 @@ import (
 	"github.com/nathanaday/hikari/internal/api"
 )
 
-func TestWrite(t *testing.T) {
-	if got := Names(); !slices.Equal(got, []string{"containerize-repo", "hikify"}) {
-		t.Fatalf("HS1 Names() = %v", got)
-	}
-	dir := t.TempDir()
-	git := func(args ...string) string {
-		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-		return string(out)
-	}
-	git("init", "--quiet")
-	stale := filepath.Join(dir, ".claude/skills/hikify/old.md")
-	os.MkdirAll(filepath.Dir(stale), 0o755)
-	os.WriteFile(stale, []byte("old"), 0o644)
-	os.MkdirAll(filepath.Join(dir, ".claude/skills/mine"), 0o755)
-	os.WriteFile(filepath.Join(dir, ".claude/skills/mine/SKILL.md"), []byte("mine"), 0o644)
-	if err := Write(dir); err != nil {
+// pluginSkills is the plugin's skills folder, from this package.
+const pluginSkills = "../../plugin/skills"
+
+func skillText(t *testing.T, rel string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(pluginSkills, rel))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(stale); err == nil {
-		t.Error("HS2 a write replaces what is there")
+	return string(data)
+}
+
+// TestRemoveCopies checks decision 7 of the plugin spec: sync removes the
+// copies that hikari wrote, and leaves a skill of your own.
+func TestRemoveCopies(t *testing.T) {
+	dir := t.TempDir()
+	put := func(rel, text string) {
+		p := filepath.Join(dir, SkillsDir, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
 	}
-	if got := git("status", "--porcelain", "--untracked-files=all"); got != "?? .claude/skills/mine/SKILL.md\n" {
-		t.Errorf("HS3 git sees only the user's own skill:\n%s", got)
+	put("hikify/SKILL.md", "old")
+	put("hikify/.gitignore", selfIgnore)
+	put("containerize-repo/SKILL.md", "mine, under the same name")
+	put("mine/SKILL.md", "mine")
+	removed, err := RemoveCopies(dir)
+	if err != nil || !slices.Equal(removed, []string{"hikify"}) {
+		t.Fatalf("RemoveCopies = %v, %v", removed, err)
 	}
-	for _, f := range []string{"SKILL.md", "references/principles.md", "references/review.md", "references/wiki.md", "references/orchestration.md"} {
-		if _, err := os.Stat(filepath.Join(dir, ".claude/skills/hikify", f)); err != nil {
-			t.Errorf("hikify lacks %s: %v", f, err)
+	for rel, want := range map[string]bool{"hikify": false, "containerize-repo/SKILL.md": true, "mine/SKILL.md": true} {
+		if _, err := os.Stat(filepath.Join(dir, SkillsDir, rel)); (err == nil) != want {
+			t.Errorf("%s kept = %v, want %v", rel, err == nil, want)
 		}
 	}
-	public, _ := os.ReadFile(filepath.Join(dir, ".claude/skills/hikify/references/orchestration.md"))
-	if !strings.Contains(string(public), "## The document") {
-		t.Error("decision 6: the orchestration reference comes from the agents' skill")
+	if removed, _ := RemoveCopies(t.TempDir()); len(removed) != 0 {
+		t.Errorf("a project with no copies: %v", removed)
 	}
 }
 
+// TestBorrowed checks decision 11 of the plugin spec: hikify's borrowed
+// references are copies of the agents' skills.
+func TestBorrowed(t *testing.T) {
+	for copy, src := range borrowed {
+		want, err := os.ReadFile(filepath.Join("../driver/skills", src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := skillText(t, copy); !bytes.Equal([]byte(got), want) {
+			t.Errorf("plugin/skills/%s differs from internal/driver/skills/%s; run make skills", copy, src)
+		}
+	}
+}
+
+var referenceName = regexp.MustCompile(`(?:\.\./[a-z-]+/)?references/[a-z-]+\.md`)
+
+// TestSkillsNameEachOther checks that the host skills agree where they meet,
+// and that each reference a skill names exists.
 func TestSkillsNameEachOther(t *testing.T) {
-	c, _ := skills.ReadFile("skills/containerize-repo/SKILL.md")
-	h, _ := skills.ReadFile("skills/hikify/SKILL.md")
-	if !strings.Contains(string(c), "hikify") || !strings.Contains(string(h), "containerize: done") || !strings.Contains(string(h), "containerize-repo") {
+	c, h := skillText(t, "containerize-repo/SKILL.md"), skillText(t, "hikify/SKILL.md")
+	if !strings.Contains(c, "hikify") || !strings.Contains(h, "containerize: done") || !strings.Contains(h, "containerize-repo") {
 		t.Error("C3: hikify starts where containerize ends, and each names the other")
 	}
-	for name, data := range map[string][]byte{"containerize-repo": c, "hikify": h} {
-		if !strings.HasPrefix(string(data), "---\nname: "+name+"\ndescription: ") {
+	entries, err := os.ReadDir(pluginSkills)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		text := skillText(t, name+"/SKILL.md")
+		if !strings.HasPrefix(text, "---\nname: "+name+"\ndescription: ") {
 			t.Errorf("%s: the front matter names the skill", name)
 		}
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.Contains(line, "references/") {
-				for _, f := range strings.Fields(line) {
-					if i := strings.Index(f, "references/"); i >= 0 {
-						ref := strings.Trim(f[i:], "`.,:;)")
-						if _, err := skills.ReadFile("skills/" + name + "/" + ref); err != nil && borrowed[name][ref] == "" {
-							t.Errorf("%s names %s, which it lacks", name, ref)
-						}
-					}
-				}
+		for _, ref := range referenceName.FindAllString(text, -1) {
+			if _, err := os.Stat(filepath.Join(pluginSkills, name, ref)); err != nil {
+				t.Errorf("%s names %s, which does not exist", name, ref)
 			}
 		}
 	}
@@ -92,12 +109,14 @@ func TestNamesBuilt(t *testing.T) {
 	snake := regexp.MustCompile("`([a-z]+(?:_[a-z]+)+)`")
 	skill := regexp.MustCompile(`hikari-[a-z]+(?:-[a-z]+)*`)
 	command := regexp.MustCompile("`hikari ([a-z]+)")
-	fs.WalkDir(skills, "skills", func(p string, d fs.DirEntry, err error) error {
+	fs.WalkDir(os.DirFS(pluginSkills), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		data, _ := skills.ReadFile(p)
-		text := string(data)
+		if borrowed[p] != "" {
+			return nil // the agents' own text, which names their own fields
+		}
+		text := skillText(t, p)
 		for _, m := range snake.FindAllStringSubmatch(text, -1) {
 			if !tools[m[1]] && !slices.Contains(notTools, m[1]) {
 				t.Errorf("%s names %s, which is no tool", p, m[1])

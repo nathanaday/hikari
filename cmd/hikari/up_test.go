@@ -9,7 +9,6 @@ import (
 
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/editor"
-	"github.com/nathanaday/hikari/internal/onboard"
 	"github.com/nathanaday/hikari/internal/scaffold"
 	"github.com/nathanaday/hikari/internal/server"
 )
@@ -64,7 +63,7 @@ func TestRunnerStartAndStop(t *testing.T) {
 		t.Setenv(k+"_EMAIL", "user@example.com")
 	}
 	dir := filepath.Join(t.TempDir(), "demo")
-	if _, err := scaffold.WriteProject(dir, "demo", onboard.Write); err != nil {
+	if _, err := scaffold.WriteProject(dir, "demo"); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"add", "--all"}, {"commit", "--quiet", "-m", "start"}} {
