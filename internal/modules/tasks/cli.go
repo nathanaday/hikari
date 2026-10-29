@@ -98,10 +98,9 @@ func taskCommand(ctx context.Context, args []string) error {
 			fmt.Fprint(os.Stderr, taskUsage)
 			os.Exit(2)
 		}
-		name, body := stubName(words)
 		var v TaskView
 		if t.live() {
-			if err := t.call(ctx, http.MethodPost, "/stub", StubRequest{Name: name, Body: body}, &v); err != nil {
+			if err := t.call(ctx, http.MethodPost, "/stub", StubRequest{Name: words}, &v); err != nil {
 				return err
 			}
 		} else {
@@ -109,7 +108,7 @@ func taskCommand(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			task, _, err := st.PlantStub(name, body, User)
+			task, _, err := st.PlantStub(words, "", User)
 			if err != nil {
 				return err
 			}
@@ -140,24 +139,6 @@ func taskCommand(ctx context.Context, args []string) error {
 	fmt.Fprint(os.Stderr, taskUsage)
 	os.Exit(2)
 	return nil
-}
-
-// stubName takes a stub's name from its words: the first line, cut at a
-// word near 60 characters, and the rest is the body.
-func stubName(words string) (string, string) {
-	first, _, _ := strings.Cut(words, "\n")
-	name := strings.TrimRight(strings.TrimSpace(first), ".")
-	if len(name) > 60 {
-		cut := strings.LastIndex(name[:60], " ")
-		if cut < 20 {
-			cut = 60
-		}
-		name = strings.TrimRight(name[:cut], ",;:") + "…"
-	}
-	if strings.TrimSpace(words) == name {
-		return name, ""
-	}
-	return name, words
 }
 
 func (t *target) view(ctx context.Context) (View, error) {

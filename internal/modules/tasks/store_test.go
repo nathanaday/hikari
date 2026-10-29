@@ -77,6 +77,10 @@ func TestStubs(t *testing.T) {
 	if again, _, _ := s.PlantStub("Coupons at checkout", "", "orders"); again.ID != "coupons-at-checkout-2" || again.Author != "orders" {
 		t.Errorf("TK8 a second stub of the name gets its own id: %+v", again)
 	}
+	long := strings.Repeat("word ", 20) + "end"
+	if t2, _, err := s.PlantStub(long, "", "user"); err != nil || strings.HasSuffix(t2.Name, "end") || strings.TrimSpace(t2.Body) != long {
+		t.Errorf("PlantStub(long) = %q, %q, %v: the name is cut and the body holds the words", t2.Name, t2.Body, err)
+	}
 	if _, _, err := s.PlantStub("  ", "x", "user"); err == nil {
 		t.Error("a stub needs a name")
 	}

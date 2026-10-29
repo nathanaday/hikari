@@ -71,8 +71,7 @@ export function WorkView({
   const plant = async () => {
     const lines = stub.trim()
     if (!lines) return
-    const [first] = lines.split('\n')
-    const err = await call('/stub', { name: first.slice(0, 80), body: lines === first ? '' : lines })
+    const err = await call('/stub', { name: lines })
     setError(err)
     if (!err) setStub('')
   }

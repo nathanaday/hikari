@@ -158,9 +158,12 @@ func TestStubName(t *testing.T) {
 		"Coupons at checkout.\nThe code is printed.": {"Coupons at checkout", "Coupons at checkout.\nThe code is printed."},
 		strings.Repeat("word ", 20):                  {strings.TrimSpace(strings.Repeat("word ", 12)) + "…", strings.TrimSpace(strings.Repeat("word ", 20))},
 	} {
-		name, body := stubName(strings.TrimSpace(in))
+		name, body := stubName(in, "")
 		if name != want[0] || body != want[1] {
 			t.Errorf("stubName(%q) = %q, %q", in, name, body)
 		}
+	}
+	if name, body := stubName(strings.Repeat("word ", 20), "Why."); body != "Why." || !strings.HasSuffix(name, "…") {
+		t.Errorf("stubName with a body = %q, %q", name, body)
 	}
 }

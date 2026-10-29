@@ -313,9 +313,30 @@ func (s *Store) taken(id string) bool {
 	return task || file
 }
 
-// PlantStub writes a stub (rule TK8).
+// stubName takes a stub's name from its words: the first line, cut at a
+// word near 60 characters. When the name does not hold all the words and
+// the body is empty, the words become the body, so nothing is lost.
+func stubName(words, body string) (string, string) {
+	words = strings.TrimSpace(words)
+	first, _, _ := strings.Cut(words, "\n")
+	name := strings.TrimRight(strings.TrimSpace(first), ".")
+	if len(name) > 60 {
+		cut := strings.LastIndex(name[:60], " ")
+		if cut < 20 {
+			cut = 60
+		}
+		name = strings.TrimRight(name[:cut], ",;:") + "…"
+	}
+	if strings.TrimSpace(body) == "" && (strings.Contains(words, "\n") || strings.HasSuffix(name, "…")) {
+		body = words
+	}
+	return name, body
+}
+
+// PlantStub writes a stub (rule TK8). The name's first line names it, cut
+// near 60 characters; see stubName.
 func (s *Store) PlantStub(name, body, author string) (*Task, []string, error) {
-	name = strings.TrimSpace(name)
+	name, body = stubName(name, body)
 	if name == "" {
 		return nil, nil, errors.New("a stub needs a name")
 	}
