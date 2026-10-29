@@ -96,7 +96,7 @@ services:
     systems/<s>/releases/        ignored
 ```
 
-- **PR12.** When the store is in a project repository, hikari writes `store/.gitignore` with the lines `systems/*/staging/` and `systems/*/releases/`, and keeps it so. Outside a project repository, hikari writes no ignore file.
+- **PR12.** When the store is in a project repository, hikari writes `store/.gitignore` with the lines `systems/*/staging/` and `systems/*/releases/`, and keeps it so. Outside a project repository, hikari writes no ignore file. `releases.md` (rule RL2) narrows the second line to the products and the tag links of releases, so that their records travel.
 - **PR13.** Every other file of the store is versioned.
 
 ## 4. Commits

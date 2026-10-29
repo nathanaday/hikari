@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
-	"github.com/nathanaday/hikari/internal/vault"
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/testmap"
+	"github.com/nathanaday/hikari/internal/vault"
 	"github.com/nathanaday/hikari/internal/wiki"
 )
 

@@ -8,6 +8,8 @@ Hubs were removed in `remove-hubs.md`.
 
 Terms changed in `shared-language-names.md`; see `docs/glossary.md`.
 
+`releases.md` makes the record of a release travel with the vault, adds tags, remotes, and pins, and moves the `latest` link under `tags/`.
+
 Sources: `docs/brainstorm/deliverables.md` and `deliverables-answers.md`. This spec replaces section 5 (Releases) of `docs/specs/shared-store.md`, its rules R1 to R11, its decisions 1 and 7 where they concern releases, and the `release-docs` skill (H5).
 
 ## Summary

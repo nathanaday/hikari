@@ -1,0 +1,17 @@
+# A remote: how a product is pushed to and pulled from a home outside the
+# vault. hikari runs these commands on this machine, with sh -c, in the vault's
+# directory, with your environment and HIKARI_PARTITION, HIKARI_DELIVERABLE,
+# HIKARI_VERSION, HIKARI_DIGEST, HIKARI_PRODUCT (the directory to upload, or
+# the empty directory to fill), HIKARI_RELEASE (the record: release.yaml and
+# SHA256SUMS), and HIKARI_VAULT. hikari checks a pulled product against the
+# record's SHA256SUMS. This one keeps the products in a directory on this
+# machine; a real project would write gh, aws, or its own tool here.
+version: 1
+description: A directory on this machine, ${SHOP_RELEASES:-$HOME/.hikari/shop-releases}.
+push: |
+  dest="${SHOP_RELEASES:-$HOME/.hikari/shop-releases}/$HIKARI_PARTITION/$HIKARI_DELIVERABLE/$HIKARI_VERSION"
+  mkdir -p "$dest" && cp -R "$HIKARI_PRODUCT"/. "$dest"/ && cp "$HIKARI_RELEASE/SHA256SUMS" "$dest.SHA256SUMS"
+pull: |
+  src="${SHOP_RELEASES:-$HOME/.hikari/shop-releases}/$HIKARI_PARTITION/$HIKARI_DELIVERABLE/$HIKARI_VERSION"
+  cp -R "$src"/. "$HIKARI_PRODUCT"/
+timeout: 2m

@@ -35,9 +35,10 @@ Host paths start at `examples/shop/`, except the code and the private files, whi
 | `vault/public/policies/writing.md` | `/hikari/public/policies/writing.md` | `/hikari/public/policies/writing.md` | `/hikari/public/policies/writing.md` |
 | `vault/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` |
 | `vault/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` |
+| `vault/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` |
 | `vault/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | none |
 
-The orchestration agent writes the vocabulary and the rules and principles of the public wiki, through its tools. The policies, the deliverables, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
+The orchestration agent writes the vocabulary and the rules and principles of the public wiki, through its tools. The policies, the deliverables, the remotes, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
 
 ### The Partition `orders`
 
@@ -46,6 +47,8 @@ The orchestration agent writes the vocabulary and the rules and principles of th
 | `vault/partitions/orders/read-only/features/map.yaml` | `/hikari/self/features/map.yaml` | none | `/hikari/partitions/orders/features/map.yaml` |
 | `vault/partitions/orders/read-only/features/<id>.md` | `/hikari/self/features/<id>.md` | none | `/hikari/partitions/orders/features/<id>.md` |
 | `vault/partitions/orders/read-only/releases/python-library/<version>/` | `/hikari/self/releases/python-library/<version>/` | none | `/hikari/partitions/orders/releases/python-library/<version>/` |
+| `vault/partitions/orders/read-only/releases/python-library/tags/<tag>` | `/hikari/self/releases/python-library/tags/<tag>` | none | `/hikari/partitions/orders/releases/python-library/tags/<tag>` |
+| `vault/partitions/orders/read-only/pins.yaml` | `/hikari/self/pins.yaml` | none | `/hikari/partitions/orders/pins.yaml` |
 | `vault/partitions/orders/read-only/granted/<file>` | `/hikari/self/granted/<file>` | none | `/hikari/partitions/orders/granted/<file>` |
 | `vault/partitions/orders/can-edit/<file>` | `/hikari/can-edit/<file>` (writable) | none | none |
 | `vault/partitions/orders/staging/python-library/` | `/hikari/staging/python-library/` (writable) | none | none |
@@ -69,7 +72,7 @@ The orchestration agent writes the vocabulary and the rules and principles of th
 | `.hikari/demo/shop/services/inventory/` | none | `/workspace/shop/services/inventory/` (writable) | none |
 | `.hikari/demo/shop/services/inventory/.hikari/private/` | none | `/hikari/private/` (writable) | none |
 
-`orders` reads the releases of `inventory`, because the topology grants them, and nothing else of `inventory`. A release holds `release.yaml`, `SHA256SUMS`, the product in `product/`, and the feature map at release time in `features/`, and `latest` points at the newest version.
+`orders` reads the releases of `inventory`, because the topology grants them, and nothing else of `inventory`. A release holds `release.yaml`, `SHA256SUMS`, the product in `product/`, and the feature map at release time in `features/`. Beside the versions, `tags.yaml` names the tags of the deliverable, and `tags/<tag>` links the version each names; `latest` is the newest. `release.yaml`, `SHA256SUMS`, `features/`, and `tags.yaml` are committed with the vault; `product/` and `tags/` are not. The product is pushed to and pulled from the deliverable's remote, `vault/public/remotes/<name>/remote.yaml`, whose commands hikari runs on the host. `orders` records the release it uses in `vault/partitions/orders/read-only/pins.yaml`, through `pin_release`, and `hikari sync` pulls the products of the pins on a clone.
 
 ### The Orchestration Agent
 

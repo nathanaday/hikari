@@ -20,10 +20,10 @@ Write `README.md` at the top of the staging directory, and more pages under `doc
 2. How to use it: add the release's `product/` directory to `PYTHONPATH`, then the import.
 3. Each interface that the release provides, from your public map: what it does, its inputs and outputs, its errors, and a short example with a one-line explanation.
 4. Its limits and known problems, from the map's findings.
-5. What changed in this version, compared with the previous release in `/hikari/self/releases/python-library/latest/`, when there is one.
+5. What changed in this version, compared with the previous release in `/hikari/self/releases/python-library/tags/latest/`, when there is one.
 
 Follow the policies in `/hikari/public/policies/`.
 
 ## Publish
 
-Run `check_release` with `python-library` and fix every problem. Then run `publish_release` with `python-library`, the version, and notes that say what changed.
+Run `check_release` with `python-library` and fix every problem. Then run `publish_release` with `python-library`, the version, notes that say what changed, and the tag `dev` when your prompt says you may set it. hikari pushes the product to the `local-dir` remote. A release that proves out is promoted with `tag_release` to `staging`; the user promotes to `production`.

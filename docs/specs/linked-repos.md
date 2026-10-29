@@ -94,7 +94,7 @@ For the project repository, and then for each linked repository, `sync` does the
 - **SY8.** `sync` exits with status 1 when a repository could not be cloned, has another origin, or a map's commit is missing. Being behind or ahead is not a failure.
 - **SY9.** `sync` needs no `.env`. Compose warns about unset variables, and `sync` shows the warnings.
 - **SY10.** **Test results.** An owner whose map records test runs, but whose scope has no results file, has run no tests on this machine. The map keeps the recorded tests and health of each feature until a run on this machine records results. The owner's first turn runs its suites and records them, as a restore turn when nothing else starts one.
-- **SY11.** **Releases.** When a tester pins a release that this machine does not have, the owner's first turn publishes it again: at the same version when its code has not changed since, else at a new version. Then the owner sends the tester a direct message. The tester takes no restore turn while its pins are missing. The message wakes it, and it pins again and runs its tests.
+- **SY11.** Replaced by `releases.md`: the record of a release travels with the vault, and `sync` pulls the product of each pinned release through its deliverable's remote (rule PN5 there).
 
 ## 3. `hikari check`
 

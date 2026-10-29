@@ -90,6 +90,7 @@ demo-repo:
 	rm -rf examples/shop/vault
 	mkdir -p examples/shop/vault
 	cp -R examples/shop/seed/. examples/shop/vault/
+	rm -rf "$${SHOP_RELEASES:-$$HOME/.hikari/shop-releases}"
 
 example-onboard: build
 	rm -rf .hikari/demo/onboard

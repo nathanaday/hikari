@@ -45,6 +45,7 @@ services:
       grants:
         deliverables: [python-library]
         releases: [inventory]
+        pins: {inventory: [staging, production]}   # orders may pin only these tags of inventory
         skills: [python-style]
 
   inventory:
@@ -58,6 +59,7 @@ services:
         test: python3 -m pytest -q shop/services/inventory/tests -o pythonpath=shop/services/inventory -p no:cacheprovider -o junit_family=xunit1 --junitxml=/hikari/private/reports/all.xml
       grants:
         deliverables: [python-library]
+        tags: {python-library: [dev, staging]}     # inventory may set these tags; you promote to production
         skills: [python-style]
 
   orders-mock:

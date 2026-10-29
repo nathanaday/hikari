@@ -1,8 +1,12 @@
-# A deliverable: what a release of this kind must contain and where it must
-# go. SKILL.md beside it tells the partition agent how to make the product. The
-# topology grants a deliverable to a partition agent with grants.deliverables.
+# A deliverable: what a release of this kind must contain, where its products
+# live, which tags it carries, and where it must also go. SKILL.md beside it
+# tells the partition agent how to make the product. The topology grants a
+# deliverable to a partition agent with grants.deliverables, and grants.tags
+# restricts the tags the holder may set.
 version: 1
 description: A Python package that other partitions add to their PYTHONPATH, with docs for engineers who cannot see the code.
+remote: local-dir                # public/remotes/local-dir: where the products are pushed and pulled
+tags: [dev, staging, production] # the tags a release may carry; latest is hikari's
 layout:
   require:
     - README.md                # the docs index

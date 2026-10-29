@@ -437,10 +437,12 @@ Each person's agents commit to their own branch. The branch comes from
 compose interpolation, `${HIKARI_BRANCH:-hikari}`, and `.env` sets it for
 each machine. hikari reads no `.env` of its own; compose already reads it.
 
-A fresh clone lacks what git does not version: test results and releases. A
-missing results file is no evidence, so the map keeps the health that the
-teammate's machine recorded, instead of dropping every feature to pending and
-committing the drop. The partition agent's first turn runs its suites again.
+A fresh clone lacks what git does not version: test results and the products
+of releases. A missing results file is no evidence, so the map keeps the
+health that the teammate's machine recorded, instead of dropping every feature
+to pending and committing the drop. The partition agent's first turn runs its
+suites again. The records of releases do travel, and `hikari sync` pulls the
+products that the pins need; see "Releases travel as records".
 
 ## Onboarding runs in your own session
 
@@ -671,6 +673,38 @@ directory into the release, and the partition agent could still write to it.
 A container cannot get a new bind mount while it runs, so release grants
 are part of the topology and take effect when the container starts. A grant
 covers every version of a partition, and the consumer chooses a version.
+
+## Releases travel as records
+
+A release is a record and a product. The record is small text that hikari
+writes: the manifest, the checksums, and the feature map at release time. It
+is committed to the vault on your branch, so a clone of the project holds the
+whole catalog, and `list_releases` and `hikari release list` read it from the
+files. The product is the bytes, which stay out of git; the directory that
+holds them is a cache, and a release can be present as a record whose product
+is absent on this machine.
+
+hikari does not know where products live, because every project does that
+differently: an OS image goes to large storage, a small library to GitHub
+releases, and some teams build in CI and forbid local uploads. So a remote is
+the project's own pair of commands in the vault, `push` and `pull`, the way
+git and Docker use helpers. hikari runs them on the host, where `hikari sync`
+and `hikari push` already use your credentials, with the release's facts in
+the environment, and it checks a pulled product against the committed
+checksums. A deliverable names its remote. A release built elsewhere is
+recorded by pulling it through the same remote, and gets the same checks and
+the same record as one built in the container.
+
+Versions never change, and tags are mutable names for them: `latest` is
+hikari's, and the deliverable declares the others, such as `dev`, `staging`,
+and `production`, which hikari gives no meaning. The grant says which tags a
+holder may set, so promotion is a tag move by whoever the project trusts with
+it, with no rebuild and no second upload.
+
+A consumer declares the release it uses as a pin, by version or by a tag it
+follows. The pin is a file hikari writes through a tool, checked against the
+release grants, so an agent can bump a dependency without a topology change,
+and `hikari sync` pulls the products of the pins on a fresh clone.
 
 ## Shared knowledge reaches agents as Claude Code expects it
 

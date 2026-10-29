@@ -253,7 +253,7 @@ A teammate starts from a clone of the project repository:
    hikari up topology.yaml
    ```
 
-A fresh clone has no test results and no releases, because git does not version them. The maps keep the health that the other machine recorded. On its first turn, each partition agent runs its tests again.
+A fresh clone has no test results and no products of releases, because git does not version them. The maps keep the health that the other machine recorded, and on its first turn each partition agent runs its tests again. The records of releases travel with the vault, and `hikari sync` pulls the product of each release that a partition pins, through the deliverable's remote; a deliverable without a remote must be published again on this machine. `hikari release list` shows the catalog with the products this machine has.
 
 To share your agents' work, run `hikari push topology.yaml`. It pushes your branch of each linked repository first, then of the project. It never forces.
 
@@ -288,7 +288,8 @@ The skills commit each of their files at once, as you, so the project is always 
 |---|---|
 | `hikari doctor [topology.yaml]` | checks the binary, the PATH, Docker, the image, git, and the project's credential, and says how to fix each problem |
 | `hikari init <dir>` | makes a new project repository |
-| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote and checks them out in the new clones, removes the skill copies of hikari before the plugin, and reports what was not pushed |
+| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote and checks them out in the new clones, removes the skill copies of hikari before the plugin, pulls the products of the pinned releases, and reports what was not pushed |
+| `hikari release list\|tag\|untag\|pull\|pin\|unpin` | lists the catalog of releases, moves tags, pulls a product, and pins a release for a consumer partition |
 | `hikari check topology.yaml` | runs every check of `hikari up`, and starts nothing |
 | `hikari check -draft topology.target.yaml` | checks a target topology whose new repositories do not exist yet |
 | `hikari status [-tests] topology.yaml` | shows each partition's map and recorded tests; with `-tests`, each test |

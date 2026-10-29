@@ -28,6 +28,16 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Integration agent.** Planted, not built. It will get every release and knowledge file and run the end-to-end suites, with mocks where they are needed, once the home of those suites is settled.
 
+**Release.** A published product of one deliverable of a partition, at one version, which never changes. Its record, `release.yaml`, `SHA256SUMS`, and the feature map copy, travels with the vault; its product, the files in `product/`, stays out of git and is pushed to and pulled from the deliverable's remote.
+
+**Remote.** The project's own `push` and `pull` commands in `vault/public/remotes/<name>/remote.yaml`, which hikari runs on the host to move a product to and from its home outside the vault. hikari ships no remote of its own.
+
+**Tag.** A mutable name for one version of a deliverable of a partition, such as `staging` or `production`. The deliverable declares its tags, the grant says which a holder may set, and `latest` is hikari's. hikari gives a tag no meaning.
+
+**Pin.** A partition's declaration, in its `pins.yaml`, of a release of another partition that it uses: a version, or a tag it follows. `hikari sync` pulls the products of the pins.
+
+**Catalog.** Every release record in the vault, listed by `list_releases` and `hikari release list`.
+
 **Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It runs in your terminal, or in the panel of the web UI, where `hikari up` runs it for you in the project root, as you, with your permissions asked. It is not in the room, and it does not work on the code.
 
 **Panel.** Your chat with the hikari agent, anchored to the right of the web UI's page: your messages, its turns, a card for each permission it asks for, and the model, the effort, and the permission mode of its next turn. Hikari, the cat, toggles it.

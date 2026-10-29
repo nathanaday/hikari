@@ -1,6 +1,13 @@
 # Spec: releases that travel
 
-Status: draft, being built.
+Status: built. Checked in a live run of the shop on 2026-10-29: inventory published 0.1.0 with the tag `dev`, hikari pushed the product to the `local-dir` remote, a tag outside `grants.tags` and a pin outside `grants.pins` were refused, orders pinned `staging`, the product was removed and `hikari release pull` and `hikari sync` brought it back and checked it, `hikari release list` and the UI showed the tags, the remote, and the pin, and the room carried the announcements.
+
+## Changes made during the build
+
+1. The user's `hikari release pin` and `pull` pull in the CLI process, not through the server, because a call through the running hikari times out after 30 seconds and a pull can take longer. The server's pin for the user records the pin only; the agents' `pin_release` pulls in the server.
+2. `tags.yaml` and `pins.yaml` written by `hikari release` while hikari is stopped count as your edits, so `hikari up` commits them as yours, like your wiki edits. That commit's message is now "user: vault edits ...".
+3. A pin by a version is refused when `grants.pins` names the partition, as PN4 says; the shop's `orders` therefore pins `staging` or `production` only.
+4. The UI's partition page shows the pins only once the partition is described, like the rest of that page.
 
 Source: `docs/brainstorm/releases.md`. This spec extends `docs/specs/deliverables.md`: the record of a release, tags, remotes, pins, and the listing. It replaces rule SY11 of `docs/specs/linked-repos.md`, and the ignore lines of rule PR12 of `docs/specs/project-repo.md` where they concern releases.
 
