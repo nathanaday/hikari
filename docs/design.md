@@ -311,6 +311,21 @@ while other tests wait for a run. `pending` is not `stale`: a stale document
 is behind the code and `mark_map_current` clears it; pending results are
 behind the code and only a run clears them.
 
+The server computes health often. Every view of a partition needs its
+report, and the public wiki and the orchestration feature map sum the health
+of every partition into the support of their documents, so one change of a
+map reaches the UI through the reports of every partition. A report is kept
+with a stamp of what it was computed from: the results file, the private
+documents, and the names, sizes, and modification times of the code and test
+files it hashes. A view then walks the file tree instead of reading and
+hashing it, and the results file, which can run to a megabyte, is parsed
+once per change of it. A change sends the UI one view per partition it
+moved: the partition itself, and each other partition whose flags or
+providers it changed, which the server tells by comparing them with the last
+change. A project of a dozen partitions once rebuilt every partition's view
+for each of them, hundreds of reports for one recorded run, and its server
+fell behind the agents.
+
 Test names, files, and failure messages stay private. The public map shows
 each feature's health and counts of its touching tests. Results change with
 every run, so the server keeps them out of commits with an ignore file; they

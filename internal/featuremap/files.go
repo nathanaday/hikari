@@ -329,6 +329,9 @@ func (s *Files) IsDir(p string) bool {
 // PrivatePath returns the host path of a file in the private directory.
 func (s *Files) PrivatePath(file string) string { return privatePath(s.root, file) }
 
+// PrivateStamp identifies the current version of the private documents.
+func (s *Files) PrivateStamp() string { return s.privateStamp() }
+
 // privateStamp identifies the current version of the private documents.
 func (s *Files) privateStamp() string {
 	var b strings.Builder
@@ -447,6 +450,50 @@ func ContentHash(ws workspace.Workspace, paths []string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16], nil
+}
+
+// ContentStamp identifies the contents of the workspace paths of ws by
+// their names, sizes, and modification times, without reading them. It
+// moves whenever ContentHash would, so a caller can keep a hash, or what
+// it computed from one, until the stamp moves.
+func ContentStamp(ws workspace.Workspace, paths []string) string {
+	h := sha256.New()
+	stamp := func(rel string, info fs.FileInfo) {
+		fmt.Fprintf(h, "file\x00%s\x00%d\x00%d\x00", rel, info.Size(), info.ModTime().UnixNano())
+	}
+	sorted := slices.Sorted(slices.Values(paths))
+	for _, p := range slices.Compact(sorted) {
+		abs, ok := ws.Host(filepath.ToSlash(p))
+		var info fs.FileInfo
+		var err error
+		if ok {
+			info, err = os.Stat(abs)
+		}
+		if !ok || err != nil {
+			fmt.Fprintf(h, "missing\x00%s\x00", p)
+			continue
+		}
+		if !info.IsDir() {
+			stamp(p, info)
+			continue
+		}
+		err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(abs, path)
+			stamp(filepath.Join(p, rel), info)
+			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(h, "error\x00%s\x00%v\x00", p, err)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func hashFile(h io.Writer, rel, abs string) error {

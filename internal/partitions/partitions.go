@@ -7,6 +7,7 @@ package partitions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -40,10 +41,15 @@ var (
 
 // Change names what changed: a feature map, the vocabulary, or a wiki.
 type Change struct {
+	// Partition is the partition whose map changed.
 	Partition  string
 	Vocabulary bool
 	// Wiki is the ref of a wiki that changed.
 	Wiki string
+	// Dependents names the other partitions whose flags or providers the
+	// change moved: they come from the vocabulary and from the maps of
+	// every other partition.
+	Dependents []string
 }
 
 type partitionAgent struct {
@@ -64,6 +70,20 @@ type partitionAgent struct {
 	// dirty says, for each repo, whether the partition's writable folders
 	// in it had uncommitted changes at the last check (rule N4).
 	dirty map[string]bool
+	// report is the last test report, kept until what it was computed
+	// from changes.
+	report reportCache
+}
+
+// reportCache holds a partition's parsed results and the report computed
+// from them, each with a key that names what it was computed from.
+type reportCache struct {
+	mu           sync.Mutex
+	resultsStamp string
+	results      testmap.Results
+	problem      string
+	key          string
+	report       testmap.Report
 }
 
 // folders returns the paths of o's writable folders in repo.
@@ -101,7 +121,11 @@ type Manager struct {
 	// seenDocs holds, for each agent and each wiki it hears about, the
 	// hash of each document as of its last turn (rule E1).
 	seenDocs map[string]map[string]map[string]string
-	onChange func(Change)
+	// interfaces holds, for each partition, the flags and the providers
+	// of its view as of the last change, so that a change reaches only
+	// the partitions it moved.
+	interfaces map[string]string
+	onChange   func(Change)
 }
 
 // New prepares every repo of topo (rules G1 to G5) and loads the feature maps,
@@ -117,6 +141,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 		seen:            map[string]int{},
 		seenDocs:        map[string]map[string]map[string]string{},
 		wikis:           map[string]*wikiOf{},
+		interfaces:      map[string]string{},
 		onChange:        func(Change) {},
 	}
 	for name, r := range topo.Repos {
@@ -181,6 +206,7 @@ func New(topo *topology.Topology) (*Manager, error) {
 			m.seenDocs[agent][ref] = m.snapshot(m.wikis[ref])
 		}
 	}
+	m.movedInterfaces("")
 	return m, nil
 }
 
@@ -372,18 +398,64 @@ func (m *Manager) noLocalResults(o *partitionAgent) bool {
 
 // testReport computes the health of the features ids of o from its test
 // map and its results. The string is the problem of the results file.
+// Every view of the partition and of the public wikis needs the report,
+// so it is kept until the results, the private documents, ids, or the
+// code and the test files they name change.
 func (m *Manager) testReport(o *partitionAgent, priv featuremap.Private, ids []string) (testmap.Report, string) {
-	results, err := testmap.LoadResults(o.featureMap.PrivatePath(testmap.ResultsFile))
-	problem := ""
-	if err != nil {
-		problem = err.Error()
+	c := &o.report
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	resultsPath := o.featureMap.PrivatePath(testmap.ResultsFile)
+	if stamp := fileStamp(resultsPath); stamp != c.resultsStamp {
+		results, err := testmap.LoadResults(resultsPath)
+		c.resultsStamp, c.results, c.problem = stamp, results, ""
+		if err != nil {
+			c.problem = err.Error()
+		}
+	}
+	sortedIDs := slices.Sorted(slices.Values(ids))
+	var paths []string
+	for _, id := range sortedIDs {
+		paths = append(paths, priv.Code(id)...)
+	}
+	for _, run := range c.results.Runs {
+		for _, t := range run.Tests {
+			if t.File != "" {
+				paths = append(paths, t.File)
+			}
+		}
+	}
+	key := strings.Join([]string{c.resultsStamp, o.featureMap.PrivateStamp(), strings.Join(sortedIDs, "\x00"), featuremap.ContentStamp(o.ws, paths)}, "|")
+	if key == c.key {
+		return c.report, c.problem
 	}
 	ws := o.ws
 	hashes := testmap.Hashes{
 		File: func(rel string) string { h, _ := featuremap.ContentHash(ws, []string{rel}); return h },
 		Code: func(id string) string { h, _ := featuremap.ContentHash(ws, priv.Code(id)); return h },
 	}
-	return testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.featureMap), results, ids, hashes), problem
+	c.key = key
+	c.report = testmap.Compute(priv.Tests, testmap.NewMatcher(priv.Tests, o.featureMap), c.results, ids, hashes)
+	return c.report, c.problem
+}
+
+// fileStamp identifies the current contents of a host file by its size
+// and modification time.
+func fileStamp(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "missing"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+// featureIDs returns the ids of the features of mp, in map order.
+func featureIDs(mp *featuremap.Map) []string {
+	ids := make([]string, len(mp.Features))
+	for i, f := range mp.Features {
+		ids[i] = f.ID
+	}
+	return ids
 }
 
 // Deliverables returns the deliverables that agent holds, with their
@@ -466,38 +538,45 @@ func (m *Manager) OnChange(fn func(Change)) {
 	m.onChange = fn
 }
 
-// changed reports c, and also every partition whose view depends on it: a
-// partition's flags and providers come from the vocabulary and from the maps
-// of every other partition.
+// changed reports c, with the other partitions whose view it moved: a
+// partition's flags and providers come from the vocabulary and from the
+// maps of every other partition (rule U6 of the system maps spec).
 func (m *Manager) changed(c Change) {
+	if c.Partition != "" || c.Vocabulary {
+		c.Dependents = m.movedInterfaces(c.Partition)
+	}
 	m.mu.Lock()
 	fn := m.onChange
 	m.mu.Unlock()
-	if c.Wiki != "" {
-		fn(Change{Wiki: c.Wiki})
-	}
-	if c.Vocabulary {
-		fn(Change{Vocabulary: true})
-	}
-	if c.Partition != "" || c.Vocabulary {
-		for _, name := range m.peers(c.Partition) {
-			fn(Change{Partition: name})
-		}
-	}
+	fn(c)
 }
 
-// peers returns partition first, then every other partition agent.
-func (m *Manager) peers(partition string) []string {
+// movedInterfaces records the flags and the providers of every partition,
+// and returns the partitions other than except whose flags or providers
+// moved since the last call.
+func (m *Manager) movedInterfaces(except string) []string {
+	names := m.topo.PartitionAgents()
+	providers, known := m.providers(names), m.vocabularyNames()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []string
-	if partition != "" {
-		out = append(out, partition)
-	}
-	for _, name := range m.topo.PartitionAgents() {
-		if name != partition {
+	for _, name := range names {
+		stamp := m.interfaceStamp(name, providers, known)
+		if stamp != m.interfaces[name] && name != except {
 			out = append(out, name)
 		}
+		m.interfaces[name] = stamp
 	}
 	return out
+}
+
+// interfaceStamp identifies the flags and the providers of a partition's
+// view.
+func (m *Manager) interfaceStamp(name string, providers map[string][]string, known map[string]bool) string {
+	mp := m.partitionAgents[name].featureMap.Map()
+	flags := vocab.Check(interfaceNames(mp.Partition.Interfaces.Provides), interfaceNames(mp.Partition.Interfaces.Consumes), known, keys(providers))
+	data, _ := json.Marshal([]any{flags, providersOf(mp.Partition.Interfaces.Consumes, providers, name)})
+	return string(data)
 }
 
 // Watch reloads hand edits of the map files and the feature wikis, and
@@ -751,10 +830,7 @@ func (m *Manager) partitionAgentView(o *partitionAgent) featuremap.PartitionAgen
 	priv, _ := o.featureMap.Private()
 	changed := m.changedPaths(o, mp)
 	w := o.wiki.Wiki()
-	ids := make([]string, len(mp.Features))
-	for i, f := range mp.Features {
-		ids[i] = f.ID
-	}
+	ids := featureIDs(mp)
 	rep, resultsProblem := m.testReport(o, priv, ids)
 	described := func(id string) bool { return w[id] != nil && len(w[id].DescribedCommits) > 0 }
 	paths := func(id string) []string { return append(priv.Code(id), rep.Features[id].Files...) }
