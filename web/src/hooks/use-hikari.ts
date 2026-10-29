@@ -81,6 +81,24 @@ export function useHikari() {
 
   const show = useCallback((view: View) => dispatch({ type: 'view', view }), [])
 
+  // The panel's open state is a convenience kept in the browser (rule
+  // HA14).
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('hikari.panel.open') === 'true') dispatch({ type: 'panel', open: true })
+    } catch {
+      // Without storage, the panel starts closed.
+    }
+  }, [])
+  const setPanel = useCallback((open: boolean) => {
+    dispatch({ type: 'panel', open })
+    try {
+      localStorage.setItem('hikari.panel.open', String(open))
+    } catch {
+      // The open state is a convenience.
+    }
+  }, [])
+
   // send returns an error message, or null when the server accepted the message.
   const send = useCallback(async (req: SendRequest): Promise<string | null> => {
     const res = await fetch('/api/ui/send', {
@@ -94,5 +112,5 @@ export function useHikari() {
     return body.error ?? res.statusText
   }, [])
 
-  return { state, show, send }
+  return { state, show, send, setPanel }
 }

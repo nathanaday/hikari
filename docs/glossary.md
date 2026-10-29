@@ -28,7 +28,13 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Integration agent.** Planted, not built. It will get every release and knowledge file and run the end-to-end suites, with mocks where they are needed, once the home of those suites is settled.
 
-**Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It does not work on the code.
+**Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It runs in your terminal, or in the panel of the web UI, where `hikari up` runs it for you in the project root, as you, with your permissions asked. It is not in the room, and it does not work on the code.
+
+**Panel.** Your chat with the hikari agent, anchored to the right of the web UI's page: your messages, its turns, a card for each permission it asks for, and the model, the effort, and the permission mode of its next turn. Hikari, the cat, toggles it.
+
+**Hikari (the cat).** The white pixel-art cat at the top right of the page, which toggles the panel and shows the mood of the run.
+
+**Mood.** What the cat shows: asleep when nothing happens, content while an agent works, alarmed when an agent fails or a scope is blocked, and thinking while the hikari agent works.
 
 **Hikari plugin.** The Claude Code plugin that carries the host skills and installs the hikari binary of its own version. Its front door is the `hikari` skill, which routes a request to the skill of the stage you are at.
 

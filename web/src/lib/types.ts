@@ -285,6 +285,8 @@ export type Snapshot = {
   // far (rules FD2 and FD6).
   feed?: Entry[]
   cost?: number
+  // assistant is the hikari agent's view, or why the run has none.
+  assistant?: AssistantView
 }
 
 // The task pipeline, the tasks module (rule TK27 of the task pipeline spec).
@@ -325,6 +327,46 @@ export type TasksView = {
 
 export type Modules = { tasks?: TasksView }
 
+// The hikari agent (rule HA7 of the hikari agent spec).
+export type AssistantMessage = { id: number; time: string; text: string }
+
+// AssistantPrompt is a permission that a turn asked for; answer is set once
+// given.
+export type AssistantPrompt = {
+  id: string
+  turn: number
+  time: string
+  tool: string
+  input?: unknown
+  description?: string
+  answer?: 'allow' | 'deny'
+  message?: string
+}
+
+export type AssistantStatus = {
+  session: string
+  model: string
+  effort: string
+  permission_mode: string
+  state: 'idle' | 'working'
+  cost: number
+  commands: string[]
+}
+
+export type AssistantView = AssistantStatus & {
+  enabled: boolean
+  reason?: string
+  messages: AssistantMessage[]
+  activity: Activity[]
+  prompts: AssistantPrompt[]
+}
+
+export type AssistantEvent =
+  | { type: 'message'; message: AssistantMessage }
+  | { type: 'activity'; activity: Activity }
+  | { type: 'prompt'; prompt: AssistantPrompt }
+  | { type: 'status'; status: AssistantStatus }
+
 // RepoInfo is one repository of the topology with the partitions in it.
 export type RepoInfo = { name: string; branch: string; partitions: string[] }
 
@@ -342,6 +384,7 @@ export type ServerEvent =
   | { type: 'topology'; revision: string }
   | { type: 'module'; module: string; view: unknown }
   | { type: 'feed'; entry: Entry }
+  | { type: 'assistant'; assistant: AssistantEvent }
 
 // SendRequest posts to the room, or sends a direct message when to is set.
 export type SendRequest = { to?: string; body: string }

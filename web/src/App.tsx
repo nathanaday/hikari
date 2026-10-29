@@ -1,5 +1,7 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
+import { AssistantPanel } from '@/components/assistant-panel'
+import { Cat } from '@/components/cat'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
 import { FeedView } from '@/components/feed-view'
@@ -16,16 +18,27 @@ import { WorkView } from '@/components/work-view'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useHikari } from '@/hooks/use-hikari'
+import { moodOf, pendingPrompt } from '@/lib/assistant'
 import { orchestrationOf } from '@/lib/rules'
 import { viewKey } from '@/lib/view'
 
 export default function App() {
-  const { state, show, send } = useHikari()
+  const { state, show, send, setPanel } = useHikari()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const key = viewKey(state.view)
   const draft = drafts[key] ?? ''
   const setDraft = useCallback((text: string) => setDrafts((d) => ({ ...d, [key]: text })), [key])
+
+  // Esc closes the panel (rule HA12).
+  useEffect(() => {
+    if (!state.panel) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPanel(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state.panel, setPanel])
 
   if (state.connection === 'signed-out') return <SignIn />
   if (!state.loaded) {
@@ -64,16 +77,28 @@ export default function App() {
     <TooltipProvider>
       <SidebarProvider>
         <AppSidebar state={state} show={show} />
-        <SidebarInset className="h-svh min-w-0">
-          {v.kind === 'topology' ? (
-            <TopologyView state={state} show={show} />
-          ) : (
-            <>
-              <ConversationHeader state={state} show={show} onMention={mention} />
-              {main}
-              {v.kind !== 'map' && v.kind !== 'work' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
-            </>
-          )}
+        <SidebarInset className="h-svh min-w-0 flex-row">
+          <div className="relative flex h-full min-w-0 flex-1 flex-col">
+            {v.kind === 'topology' ? (
+              <TopologyView state={state} show={show} />
+            ) : (
+              <>
+                <ConversationHeader state={state} show={show} onMention={mention} />
+                {main}
+                {v.kind !== 'map' && v.kind !== 'work' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+              </>
+            )}
+            {state.mode === 'running' && (
+              <Cat
+                mood={moodOf(state)}
+                attention={pendingPrompt(state) ? 'prompt' : state.assistantUnread ? 'unread' : undefined}
+                open={state.panel}
+                onClick={() => setPanel(!state.panel)}
+                className="absolute top-1.5 right-3"
+              />
+            )}
+          </div>
+          {state.mode === 'running' && state.panel && <AssistantPanel state={state} close={() => setPanel(false)} />}
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

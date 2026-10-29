@@ -100,3 +100,39 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Hikari, the cat: her colors and the motion of each mood. */
+:root {
+  --cat-fur: #ffffff;
+  --cat-outline: #52525b;
+  --cat-pink: #f9a8d4;
+  --cat-eye: #27272a;
+}
+
+@keyframes cat-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.04); }
+}
+@keyframes cat-nod {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(1.5px); }
+}
+@keyframes cat-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1.5px); }
+  75% { transform: translateX(1.5px); }
+}
+@keyframes cat-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+@keyframes cat-mark {
+  0% { opacity: 0; transform: translateY(2px); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3px); }
+}
+.cat-breathe { animation: cat-breathe 3s ease-in-out infinite; transform-origin: 50% 100%; }
+.cat-nod { animation: cat-nod 1.4s ease-in-out infinite; }
+.cat-shake { animation: cat-shake 0.4s ease-in-out infinite; }
+.cat-bob { animation: cat-bob 1.8s ease-in-out infinite; }
+.cat-mark { animation: cat-mark 1.8s ease-in-out infinite; }

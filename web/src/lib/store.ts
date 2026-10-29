@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -37,6 +37,11 @@ export type State = {
   // run's cost so far.
   feed: Entry[]
   cost: number
+  // assistant is the hikari agent; panel says whether its panel is open,
+  // and assistantUnread that a turn ended while it was closed (rule HA18).
+  assistant: AssistantView
+  panel: boolean
+  assistantUnread: boolean
   view: View
   // unread counts messages per conversation key that arrived while another
   // view was open.
@@ -47,6 +52,7 @@ export type Action =
   | { type: 'event'; event: ServerEvent }
   | { type: 'view'; view: View }
   | { type: 'connection'; connection: Connection }
+  | { type: 'panel'; open: boolean }
 
 export function initialState(view: View): State {
   return {
@@ -71,10 +77,15 @@ export function initialState(view: View): State {
     modules: {},
     feed: [],
     cost: 0,
+    assistant: assistantOff,
+    panel: false,
+    assistantUnread: false,
     view,
     unread: {},
   }
 }
+
+export const assistantOff: AssistantView = { enabled: false, session: '', model: '', effort: '', permission_mode: 'default', state: 'idle', cost: 0, commands: [], messages: [], activity: [], prompts: [] }
 
 // maxFeed is the most entries kept, as the server keeps them.
 const maxFeed = 500
@@ -102,6 +113,8 @@ export function reducer(s: State, a: Action): State {
   switch (a.type) {
     case 'connection':
       return { ...s, connection: a.connection }
+    case 'panel':
+      return { ...s, panel: a.open, assistantUnread: a.open ? false : s.assistantUnread }
     case 'view': {
       const view = s.loaded ? resolve(a.view, s) : a.view
       const unread = { ...s.unread }
@@ -140,6 +153,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         modules: e.snapshot.modules ?? {},
         feed: e.snapshot.feed ?? [],
         cost: e.snapshot.cost ?? 0,
+        assistant: e.snapshot.assistant ?? assistantOff,
         view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {} }),
         unread: {},
       }
@@ -161,6 +175,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       }
     case 'feed':
       return { ...s, feed: [...s.feed.slice(-(maxFeed - 1)), e.entry] }
+    case 'assistant':
+      return applyAssistant(s, e.assistant)
     case 'activity': {
       const list = s.activity[e.agent] ?? []
       return { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
@@ -175,6 +191,27 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, revision: e.revision }
     case 'module':
       return { ...s, modules: { ...s.modules, [e.module]: e.view } }
+  }
+}
+
+function applyAssistant(s: State, e: AssistantEvent): State {
+  const a = s.assistant
+  switch (e.type) {
+    case 'message':
+      return { ...s, assistant: { ...a, messages: replaceBy(a.messages, e.message, (m) => String(m.id)) } }
+    case 'activity':
+      return { ...s, assistant: { ...a, activity: replaceBy(a.activity, e.activity, (x) => String(x.id)) } }
+    case 'prompt':
+      return { ...s, assistant: { ...a, prompts: replaceBy(a.prompts, e.prompt, (p) => p.id) } }
+    case 'status': {
+      const ended = a.state === 'working' && e.status.state === 'idle'
+      const reset = e.status.session !== a.session && e.status.session === ''
+      return {
+        ...s,
+        assistant: { ...a, ...e.status, enabled: true, messages: reset ? [] : a.messages, activity: reset ? [] : a.activity, prompts: reset ? [] : a.prompts },
+        assistantUnread: s.assistantUnread || (ended && !s.panel),
+      }
+    }
   }
 }
 

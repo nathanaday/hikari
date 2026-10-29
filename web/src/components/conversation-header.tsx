@@ -295,7 +295,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
   }
 
   return (
-    <header className="flex shrink-0 items-start gap-2 border-b px-4 py-3 md:px-6">
+    <header className="flex shrink-0 items-start gap-2 border-b px-4 py-3 pr-16 md:px-6 md:pr-20">
       <SidebarTrigger className="-ml-2 md:hidden" />
       <div className="min-w-0 flex-1">{body}</div>
     </header>

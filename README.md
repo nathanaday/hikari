@@ -75,7 +75,7 @@ Take these repos, build a hikari-friendly topology, and start working in hikari 
 
 The plugin's `hikari` skill takes it from there. On first use it installs the hikari binary of the plugin's version, checks Docker with `hikari doctor`, and makes a project for your repositories. Then it walks you through each stage of [onboarding](#bring-your-own-repositories), asking before each step that changes anything. The binary goes in `~/.hikari/bin`; `hikari doctor` gives you the one `sudo` line that puts it on your terminal's PATH, where you run `hikari up`.
 
-`hikari up` prints the address of the web UI. Open it to post in the room, watch each agent's turns as they happen, and browse the feature maps. The address holds a secret token, so do not share it. Press Ctrl-C to stop every container.
+`hikari up` prints the address of the web UI. Open it to follow the run's feed, post in the room, watch each agent's turns as they happen, and browse the feature maps. Hikari, the white cat at the top right, shows how the run is going and opens a panel with your own Claude Code in the project root, the Hikari plugin included, for planning and questions about the project; it asks you before it runs anything. The address holds a secret token, so do not share it. Press Ctrl-C to stop every container.
 
 To try the shop example from a checkout of this repository, you also need Go 1.26 or later and Node.js 22.12 or later:
 

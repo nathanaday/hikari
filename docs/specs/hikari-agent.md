@@ -1,6 +1,22 @@
 # Spec: The Hikari Agent in the UI
 
-Status: draft.
+Status: built. Checked on 2026-10-28 on the shop, started with `-no-launch`, with Claude Code 2.1.312 on this machine and headless Chrome:
+
+- **The cat and the panel.** Hikari sat asleep at the top right of All activity, a click opened the panel idle, Esc closed it, and the panel came back with its width.
+- **A turn through two prompts.** "Run `touch panel-check.txt`, then `rm panel-check.txt`" started a turn (the cat thinking), and each command asked: a card with the tool, its description, and the command, under the live turn. With the panel closed, the cat wore a question mark. Allow on each let the turn end with the reply "Both ran: panel-check.txt was created and then removed in the project root." and its cost in the header.
+- **Completion and the menus.** `/hikari:ro` listed `/hikari:room`, and Tab wrote `/hikari:room `; the model and effort menus set `haiku` and `low`, which the next turn's flags carried.
+- **Stop.** A turn asked to count to 200 was stopped after two seconds: the card said `failed · 2.5s` with "stopped", and the agent was idle for the next message.
+- **Resume.** After `hikari up` restarted with a new binary, the panel showed the three past turns, and "what did I ask you before this message?" was answered from the earlier turn, with the same session.
+- **An allowlisted command asks nothing.** `ls` ran with no prompt, since the account's settings allow it, which is Claude Code's own rule.
+
+Changes made during the build:
+
+1. **The reply shows under a folded turn** (HA16), labelled "Reply" in place of "Closing note": a turn card folds when it ends, and the live check found the reply hidden behind its chevron.
+2. **A turn that you stopped does not alarm the cat** (HA12), since the stop was yours.
+3. **The tap's `Resume(turn, id)`** continues a kept transcript's numbering; `go vet` refused the name `Seek`.
+4. **The hikari agent's events reach the UI through a channel,** so that no lock is held while the server publishes, since the snapshot reads the agent's view under the server's lock.
+5. **A turn that was running when hikari stopped** is closed on load with the error "hikari stopped during the turn", so that the transcript never shows a turn still live.
+6. **A session's slash commands are sorted,** since Claude Code lists them in load order.
 
 Sources: `docs/brainstorm/hikari-in-the-ui.md` (sections B to D) and `hikari-in-the-ui-answers.md`, and a probe of Claude Code 2.1.312 on 2026-10-28: with `--input-format stream-json`, `--output-format stream-json`, and `--permission-prompt-tool stdio`, a headless session writes a `control_request` of subtype `can_use_tool` (the tool's name, its input, a description, and suggestions) to stdout, waits for a `control_response` on stdin (`allow` with the input, or `deny` with a message), and its `init` message lists the session's slash commands, model, and permission mode. The names are those of `docs/glossary.md`, with the terms of the round: hikari agent, panel, Hikari, and mood.
 

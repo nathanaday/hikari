@@ -25,7 +25,11 @@ const liveSteps = 6
 
 // TurnCard shows one turn of an agent in the timeline: its steps live while
 // the agent works, then one summary line that expands to the whole turn.
-export function TurnCard({ turn, names }: { turn: Turn; names: ReadonlySet<string> }) {
+// children, when given, show inside the expanded turn after its steps,
+// such as the permission prompts of the hikari agent; reply shows the
+// closing text under a folded turn too, since it is the hikari agent's
+// answer (rule HA16 of the hikari agent spec).
+export function TurnCard({ turn, names, children, reply }: { turn: Turn; names: ReadonlySet<string>; children?: React.ReactNode; reply?: boolean }) {
   const [open, setOpen] = useState<boolean | null>(null)
   const expanded = open ?? turn.live
   const steps = expanded && (open || turn.steps.length <= liveSteps) ? turn.steps : turn.steps.slice(-liveSteps)
@@ -75,10 +79,11 @@ export function TurnCard({ turn, names }: { turn: Turn; names: ReadonlySet<strin
                 <Step key={s.id} step={s} names={names} />
               ))}
             </ol>
-            {turn.end && <Closing end={turn.end} names={names} />}
+            {children}
+            {turn.end && <Closing end={turn.end} names={names} label={reply ? 'Reply' : undefined} />}
           </div>
         )}
-        {!expanded && turn.end?.unheard && <Closing end={turn.end} names={names} />}
+        {!expanded && turn.end && (turn.end.unheard || reply) && <Closing end={turn.end} names={names} label={reply ? 'Reply' : undefined} />}
       </div>
     </div>
   )
@@ -128,7 +133,7 @@ function Step({ step, names }: { step: Activity; names: ReadonlySet<string> }) {
 
 // Closing shows how the turn ended: its error, or its closing text. Text
 // that reached no one is marked, because it may be a question for you.
-function Closing({ end, names }: { end: Activity; names: ReadonlySet<string> }) {
+function Closing({ end, names, label = 'Closing note' }: { end: Activity; names: ReadonlySet<string>; label?: string }) {
   if (end.error) {
     return (
       <p className="mt-1 flex items-start gap-1.5 text-sm text-red-600" data-testid="closing">
@@ -146,7 +151,7 @@ function Closing({ end, names }: { end: Activity; names: ReadonlySet<string> }) 
       className={cn('mt-1 rounded border px-2.5 py-1.5 text-sm', question ? 'border-amber-200 bg-amber-50' : 'border-neutral-100 bg-neutral-50')}
     >
       <p className={cn('mb-0.5 text-xs', question ? 'text-amber-800' : 'text-muted-foreground')}>
-        {question ? 'Asks something, but sent it to no one. Reply by message.' : end.unheard ? 'Closing note · sent to no one' : 'Closing note'}
+        {question ? 'Asks something, but sent it to no one. Reply by message.' : end.unheard ? `${label} · sent to no one` : label}
       </p>
       <Markdown text={end.text} names={names} />
     </div>

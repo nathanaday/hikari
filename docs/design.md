@@ -907,6 +907,34 @@ A tool call is not an entry. The strip shows the step an agent is on, and the
 turn card keeps the rest; an entry per tool call would bury the messages. An
 agent's `idle` is not an entry either, since every ended turn makes one.
 
+## The hikari agent runs as you, and asks
+
+The containers' agents run headless with every permission skipped, because a
+container holds only the partition's folders and the agent's own files, and
+nobody sits at it to answer. The hikari agent is the opposite case: it runs
+on your machine, in the project root, with your own Claude Code, your plugins,
+your settings, and your login, so that the panel has what a terminal session
+has. A page in a browser then drives a session that can run any command as
+you, so the panel asks. Claude Code lets a headless session route its
+permission prompts to the host over its own stream, and hikari turns each one
+into a card with Allow and Deny, and answers when you click. Bypass is a
+choice in the menu, marked as such, never the default. The agent runs only
+when `hikari up` listens on this machine, unless `-agent on` says otherwise.
+
+The hikari agent is not in the room. It takes no agent token, and the
+containers' agents never see it; it posts to the room as you, with `hikari
+send`, when you ask it to. Its cost is yours, through your login, and shows
+in the panel apart from the run's cost, which the project's credential pays.
+
+Each message runs one process of Claude Code, as the driver runs a container's
+turn, and the session id carries the conversation from turn to turn and from
+run to run. One process per turn means a change of the model, the effort, or
+the permission mode takes effect at the next turn with nothing to restart, and
+Stop is a kill that loses nothing, since Claude Code writes its session as it
+goes. The panel's own record, the transcript in `.hikari/assistant/`, holds
+what the panel shows, so that a reload or a restart shows the past turns
+without reading Claude Code's files.
+
 ## The map draws its own canvas
 
 The Map view is a force graph in the style of Obsidian's graph. `d3-force`
