@@ -314,7 +314,36 @@ func TestDeliverableGrants(t *testing.T) {
 	if got := topo.Agents["orders"].Grants.Deliverables; !slices.Equal(got, []string{"python-library", "docs"}) {
 		t.Errorf("T13 deliverables = %v", got)
 	}
+	src = partitionsTopology(repo, strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {deliverables: [lib], tags: {lib: [dev, 'rc-[0-9]+']}, releases: [inventory], pins: {inventory: [production]}}", 1))
+	topo, err = Parse([]byte(src), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := topo.Agents["orders"].Grants
+	if !slices.Equal(g.Tags["lib"], []string{"dev", "rc-[0-9]+"}) || !slices.Equal(g.Pins["inventory"], []string{"production"}) {
+		t.Errorf("TG4, PN4 grants = %+v", g)
+	}
+	allowed := []string{"dev", "staging", "production", "rc-[0-9]+"}
+	for tag, want := range map[string]bool{"dev": true, "rc-2": true, "staging": false, "production": false, "other": false} {
+		if g.MayTag("lib", tag, allowed) != want {
+			t.Errorf("TG4 MayTag(%q) = %v", tag, !want)
+		}
+	}
+	if !(Grants{}).MayTag("lib", "staging", allowed) || (Grants{}).MayTag("lib", "other", allowed) {
+		t.Error("TG4 without grants.tags, any tag of the deliverable")
+	}
+	for ref, want := range map[string]bool{"production": true, "staging": false, "1.0.0": false} {
+		if g.MayPin("inventory", ref) != want {
+			t.Errorf("PN4 MayPin(%q) = %v", ref, !want)
+		}
+	}
+	if !(Grants{}).MayPin("inventory", "1.0.0") {
+		t.Error("PN4 without grants.pins, any version")
+	}
 	for name, c := range map[string]struct{ services, want string }{
+		"TG4 not held":            {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {deliverables: [lib], tags: {docs: [dev]}}", 1), `"docs" is not a deliverable the agent holds`},
+		"TG4 bad pattern":         {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {deliverables: [lib], tags: {lib: ['(']}}", 1), `tag pattern "(" is not a valid pattern`},
+		"PN4 not granted":         {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {pins: {inventory: [production]}}", 1), `"inventory" is not in grants.releases`},
 		"T13 bad name":            {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {deliverables: [Python_Lib]}", 1), `deliverable "Python_Lib" is not a valid name`},
 		"T13 twice":               {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {deliverables: [lib, lib]}", 1), `deliverable "lib" is granted twice`},
 		"T14 not partition agent": {validPartitionAgents + "  writer: {x-hikari: {grants: {deliverables: [lib]}}}\n", `only an agent with a partition can hold deliverables`},

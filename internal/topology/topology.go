@@ -68,6 +68,31 @@ type Grants struct {
 	Deliverables []string `yaml:"deliverables"`
 	// Skills lists skills of the vault's skills/ (rule V7).
 	Skills []string `yaml:"skills"`
+	// Tags restricts, for a held deliverable, the tags the agent may set
+	// to those that match its patterns (rule TG4 of the releases spec).
+	Tags map[string][]string `yaml:"tags"`
+	// Pins restricts, for a partition in Releases, what the agent may pin
+	// to the tags that match its patterns (rule PN4).
+	Pins map[string][]string `yaml:"pins"`
+}
+
+// MayTag reports whether the agent may set tag on deliverable, given the
+// deliverable's own patterns (rule TG4): any tag of the deliverable, or,
+// when the grant restricts it, one that matches the grant's patterns too.
+func (g Grants) MayTag(deliverable, tag string, allowed []string) bool {
+	if !vault.MatchesTag(allowed, tag) {
+		return false
+	}
+	patterns, restricted := g.Tags[deliverable]
+	return !restricted || vault.MatchesTag(patterns, tag)
+}
+
+// MayPin reports whether the agent may pin ref, a version or a tag, of a
+// partition (rule PN4): anything, or, when the grant restricts it, a tag
+// that matches the grant's patterns.
+func (g Grants) MayPin(partition, ref string) bool {
+	patterns, restricted := g.Pins[partition]
+	return !restricted || (!vault.ValidVersion(ref) && vault.MatchesTag(patterns, ref))
 }
 
 // Partition is the folders that one agent's container mounts as its
@@ -237,7 +262,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && len(a.Grants.Skills) == 0
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && len(a.Grants.Skills) == 0 && len(a.Grants.Tags) == 0 && len(a.Grants.Pins) == 0
 }
 
 // Load reads a topology file through `docker compose config`, so that hikari
@@ -586,6 +611,13 @@ func (t *Topology) rekey() {
 			a.Partition = &p
 		}
 		a.Grants.Releases = mapNames(a.Grants.Releases, agent)
+		if len(a.Grants.Pins) > 0 {
+			pins := map[string][]string{}
+			for id, patterns := range a.Grants.Pins {
+				pins[agent(id)] = patterns
+			}
+			a.Grants.Pins = pins
+		}
 		agents[a.Name] = a
 	}
 	if t.Orchestration != "" {
@@ -897,6 +929,22 @@ func (t *Topology) validatePartitions() []error {
 				fail(name, "grants.deliverables", "cannot hold the deliverable %q: only an agent with a partition can hold deliverables", d)
 			}
 			seen[d] = true
+		}
+		for _, d := range slices.Sorted(maps.Keys(a.Grants.Tags)) {
+			if !slices.Contains(a.Grants.Deliverables, d) {
+				fail(name, "grants.tags", "%q is not a deliverable the agent holds", d)
+			}
+			if _, bad := vault.CompileTagPatterns(a.Grants.Tags[d]); len(bad) > 0 {
+				fail(name, "grants.tags", "%s: %v", d, bad[0])
+			}
+		}
+		for _, p := range slices.Sorted(maps.Keys(a.Grants.Pins)) {
+			if !slices.Contains(a.Grants.Releases, p) {
+				fail(name, "grants.pins", "%q is not in grants.releases", p)
+			}
+			if _, bad := vault.CompileTagPatterns(a.Grants.Pins[p]); len(bad) > 0 {
+				fail(name, "grants.pins", "%s: %v", p, bad[0])
+			}
 		}
 		seen = map[string]bool{}
 		for _, sk := range a.Grants.Skills {
