@@ -109,11 +109,40 @@ type checkArgs struct {
 	Deliverable string `json:"deliverable" jsonschema:"the name of the deliverable whose product you staged"`
 }
 
+type tagArgs struct {
+	Deliverable string `json:"deliverable" jsonschema:"the deliverable you hold"`
+	Version     string `json:"version" jsonschema:"a released version of it"`
+	Tag         string `json:"tag" jsonschema:"the tag to point at the version: one the deliverable declares, and that you may set"`
+}
+
+type recordArgs struct {
+	Deliverable string   `json:"deliverable" jsonschema:"the deliverable you hold, whose remote has a pull command"`
+	Version     string   `json:"version" jsonschema:"the semver version that was built and published elsewhere, greater than the last release"`
+	Notes       string   `json:"notes" jsonschema:"what changed in this version"`
+	Tags        []string `json:"tags,omitempty" jsonschema:"tags to set on the version, among those the deliverable declares and you may set"`
+}
+
+type releaseRefArgs struct {
+	Partition   string `json:"partition" jsonschema:"the partition whose release it is"`
+	Deliverable string `json:"deliverable" jsonschema:"the deliverable"`
+	Ref         string `json:"ref" jsonschema:"a version, such as 1.2.0, or a tag, such as production"`
+}
+
+type pinRemoveArgs struct {
+	Partition   string `json:"partition" jsonschema:"the partition whose release you pinned"`
+	Deliverable string `json:"deliverable" jsonschema:"the deliverable"`
+}
+
+type listReleasesArgs struct {
+	Partition string `json:"partition,omitempty" jsonschema:"one partition, or empty for every partition whose releases you read"`
+}
+
 type publishArgs struct {
 	Deliverable  string              `json:"deliverable" jsonschema:"the name of the deliverable to publish"`
 	Version      string              `json:"version" jsonschema:"a semver version, such as 1.2.0, greater than the last release of this deliverable"`
 	Notes        string              `json:"notes" jsonschema:"what changed in this version, in one or two sentences"`
 	Certificates []vault.Certificate `json:"certificates,omitempty" jsonschema:"one certificate for each target of the deliverable, after you published there; leave it out when the deliverable has no targets"`
+	Tags         []string            `json:"tags,omitempty" jsonschema:"tags to set on the new version, among those the deliverable declares and you may set; latest is set by hikari"`
 }
 
 type commitArgs struct {
@@ -194,11 +223,53 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		Name:        "publish_release",
 		Description: "Publish the product you staged in /hikari/staging/<deliverable>/ as a release of that deliverable, which never changes. It runs the checks of check_release, checks the version and the certificates, writes the manifest, and announces the release in the room.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a publishArgs) (*mcp.CallToolResult, any, error) {
-		rel, err := c.PublishRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Certificates: a.Certificates})
+		rel, err := c.PublishRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Certificates: a.Certificates, Tags: a.Tags})
 		if err != nil {
 			return nil, nil, err
 		}
-		return text(fmt.Sprintf("Published %s %s %s from %s: %d file(s). It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, shortCommits(rel.SourceCommits), rel.Product.Files, api.SelfDir, rel.Deliverable, rel.Version)), nil, nil
+		return text(published(rel, a.Tags)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "record_release",
+		Description: "Record a release of a deliverable you hold that was built and published elsewhere, such as by a CI workflow: hikari pulls the version through the deliverable's remote into /hikari/staging/<deliverable>/, which must be empty, checks it as publish_release does, writes the record, and announces the release.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a recordArgs) (*mcp.CallToolResult, any, error) {
+		rel, err := c.RecordRelease(ctx, api.PublishRequest{Deliverable: a.Deliverable, Version: a.Version, Notes: a.Notes, Tags: a.Tags})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(published(rel, a.Tags)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "tag_release",
+		Description: "Point a tag of a deliverable you hold at one of its released versions, such as staging or production. A tag is a mutable name for a version; the deliverable declares which tags exist, and your grant may restrict the ones you set. latest is hikari's. The change is announced in the room.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a tagArgs) (*mcp.CallToolResult, any, error) {
+		if err := c.TagRelease(ctx, api.TagRequest{Deliverable: a.Deliverable, Version: a.Version, Tag: a.Tag}); err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("%s now points at %s %s, at %s/releases/%s/tags/%s.", a.Tag, a.Deliverable, a.Version, api.SelfDir, a.Deliverable, a.Tag)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "pin_release",
+		Description: "Pin the release of another partition that your work uses: a version, or a tag that you then follow. The partition must be one whose releases the topology grants you. hikari records the pin and pulls the product onto this machine when it is absent. Pin what you integrate, so that a clone of the project gets it too.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseRefArgs) (*mcp.CallToolResult, any, error) {
+		out, err := c.PinRelease(ctx, api.PinRequest{Partition: a.Partition, Deliverable: a.Deliverable, Ref: a.Ref})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Pinned %s %s %s; %s. It is at %s/%s/%s.", a.Partition, a.Deliverable, a.Ref, out.Note, api.ReleasesPath(a.Partition), a.Deliverable, refPath(out.Pin))), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "unpin_release",
+		Description: "Remove your pin on a release of another partition.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a pinRemoveArgs) (*mcp.CallToolResult, any, error) {
+		if err := c.UnpinRelease(ctx, api.PinRequest{Partition: a.Partition, Deliverable: a.Deliverable}); err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Unpinned %s %s.", a.Partition, a.Deliverable)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -217,6 +288,78 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		}
 		return text(fmt.Sprintf("Committed %s.", shortCommits(commits))), nil, nil
 	})
+}
+
+// published says what a publish or a record made.
+func published(rel vault.Manifest, tags []string) string {
+	tagged := ""
+	if len(tags) > 0 {
+		tagged = ", tagged " + strings.Join(tags, ", ")
+	}
+	return fmt.Sprintf("Published %s %s %s from %s: %d file(s)%s. It is in %s/releases/%s/%s/.", rel.Partition, rel.Deliverable, rel.Version, shortCommits(rel.SourceCommits), rel.Product.Files, tagged, api.SelfDir, rel.Deliverable, rel.Version)
+}
+
+// refPath is where a pin's release is under its deliverable: the version,
+// or the tag's link.
+func refPath(p vault.Pin) string {
+	if p.Tag != "" {
+		return "tags/" + p.Tag
+	}
+	return p.Version
+}
+
+// addReleaseReaders adds the tools that read the catalog and pull products,
+// for every agent (rules RM7 and LS1 of the releases spec).
+func addReleaseReaders(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_releases",
+		Description: "List the catalog of releases you can read: for each partition, its releases with their tags, when each was released, its notes, its remote, whether its product is on this machine, and the partitions that pin it. A release without its product can be pulled with pull_release when its deliverable has a remote.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a listReleasesArgs) (*mcp.CallToolResult, any, error) {
+		out, err := c.ListReleases(ctx, a.Partition)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(out) == 0 {
+			return text("No releases yet."), nil, nil
+		}
+		return text(formatReleases(out)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "pull_release",
+		Description: "Get the product of a release you can read onto this machine, through its deliverable's remote, when it is absent. hikari checks the pulled files against the release's SHA256SUMS.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a releaseRefArgs) (*mcp.CallToolResult, any, error) {
+		version, err := c.PullRelease(ctx, api.ReleaseRef{Partition: a.Partition, Deliverable: a.Deliverable, Ref: a.Ref})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("The product of %s %s %s is on this machine.", a.Partition, a.Deliverable, version)), nil, nil
+	})
+}
+
+// formatReleases renders the catalog as lines.
+func formatReleases(entries []api.ReleaseEntry) string {
+	var b strings.Builder
+	for _, e := range entries {
+		product := "product present"
+		if !e.Product {
+			product = "product absent"
+		}
+		notes, _, _ := strings.Cut(strings.TrimSpace(e.Notes), "\n")
+		fmt.Fprintf(&b, "- %s %s %s", e.Partition, e.Deliverable, e.Version)
+		if len(e.Tags) > 0 {
+			fmt.Fprintf(&b, " [%s]", strings.Join(e.Tags, ", "))
+		}
+		fmt.Fprintf(&b, ": %s; released %s; %s", notes, e.Released.Format("2006-01-02"), product)
+		if e.Remote != "" {
+			fmt.Fprintf(&b, "; remote %s", e.Remote)
+		}
+		if len(e.PinnedBy) > 0 {
+			fmt.Fprintf(&b, "; pinned by %s", strings.Join(e.PinnedBy, ", "))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 type partitionArgs struct {

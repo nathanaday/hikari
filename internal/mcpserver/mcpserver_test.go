@@ -36,8 +36,8 @@ func toolNames(t *testing.T, self api.Self) []string {
 }
 
 var (
-	everyone           = []string{"check_inbox", "get_document", "get_vocabulary", "list_agents", "post", "search_wiki", "send_direct_message"}
-	partitionAgentOnly = []string{"check_release", "apply", "get_my_partition", "mark_map_current", "publish_release", "record_test_run", "set_partition_info"}
+	everyone           = []string{"check_inbox", "get_document", "get_vocabulary", "list_agents", "post", "search_wiki", "send_direct_message", "list_releases", "pull_release"}
+	partitionAgentOnly = []string{"check_release", "apply", "get_my_partition", "mark_map_current", "publish_release", "record_test_run", "set_partition_info", "record_release", "tag_release", "pin_release", "unpin_release"}
 	// featureMap is the tool of both kinds of agent that changes its own
 	// feature map (decision 2 of the skill packs spec).
 	featureMap    = []string{"change_wiki"}

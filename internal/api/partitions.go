@@ -92,6 +92,9 @@ type SelfPartition struct {
 	Folders []Folder    `json:"folders"`
 	Repos   []RepoState `json:"repos"`
 	WorkDir string      `json:"work_dir"`
+	// Pins are the releases of other partitions that the partition uses
+	// (rule PN7 of the releases spec).
+	Pins []vault.Pin `json:"pins"`
 }
 
 // TurnContext tells the driver what changed before an agent's next turn.
@@ -243,8 +246,11 @@ type OrchestrationPartition struct {
 	featuremap.View `yaml:",inline"`
 	Folders         []Folder     `yaml:"folders" json:"folders"`
 	Flags           []vocab.Flag `yaml:"flags,omitempty" json:"flags"`
-	// Releases lists the partition's releases, newest first.
-	Releases []vault.Manifest `yaml:"releases,omitempty" json:"releases"`
+	// Releases lists the partition's releases, newest first, with their
+	// tags and whether each product is on this machine.
+	Releases []ReleaseEntry `yaml:"releases,omitempty" json:"releases"`
+	// Pins are the releases of other partitions that the partition uses.
+	Pins []vault.Pin `yaml:"pins,omitempty" json:"pins"`
 	// Providers maps each interface the partition consumes to the visible
 	// partitions that provide it.
 	Providers map[string][]string `yaml:"providers,omitempty" json:"providers"`
@@ -259,7 +265,8 @@ type PartitionView struct {
 	Dirty          bool                `json:"dirty"`
 	Grants         Grants              `json:"grants"`
 	Private        featuremap.Private  `json:"private"`
-	Releases       []vault.Manifest    `json:"releases"`
+	Releases       []ReleaseEntry      `json:"releases"`
+	Pins           []vault.Pin         `json:"pins"`
 	PartitionAgent string              `json:"partition_agent"`
 	Folders        []Folder            `json:"folders"`
 	Repos          []RepoState         `json:"repos"`
@@ -288,6 +295,48 @@ type PublishRequest struct {
 	Version      string              `json:"version"`
 	Notes        string              `json:"notes"`
 	Certificates []vault.Certificate `json:"certificates,omitempty"`
+	// Tags are set on the new version in the same change (rule TG5).
+	Tags []string `json:"tags,omitempty"`
+}
+
+// ReleaseEntry is one release of the catalog (rule LS1), with the
+// partitions that pin it.
+type ReleaseEntry struct {
+	vault.Release
+	PinnedBy []string `json:"pinned_by"`
+}
+
+// ReleaseRef names a release by a version or a tag.
+type ReleaseRef struct {
+	Partition   string `json:"partition"`
+	Deliverable string `json:"deliverable"`
+	Ref         string `json:"ref"`
+}
+
+// TagRequest points a tag of a deliverable at a version (rule TG3).
+type TagRequest struct {
+	Deliverable string `json:"deliverable"`
+	Version     string `json:"version"`
+	Tag         string `json:"tag"`
+}
+
+// PinRequest pins a release of a partition (rule PN2), or names the pin
+// to remove.
+type PinRequest struct {
+	Partition   string `json:"partition"`
+	Deliverable string `json:"deliverable"`
+	Ref         string `json:"ref,omitempty"`
+}
+
+// PinResponse is the pin that was set, with a note on its product.
+type PinResponse struct {
+	Pin  vault.Pin `json:"pin"`
+	Note string    `json:"note"`
+}
+
+// PullResponse is the version a pull resolved.
+type PullResponse struct {
+	Version string `json:"version"`
 }
 
 type CheckRequest struct {
@@ -357,6 +406,44 @@ func (c *Client) PublishRelease(ctx context.Context, req PublishRequest) (vault.
 	var m vault.Manifest
 	err := c.do(ctx, http.MethodPost, "/api/agent/releases", req, &m)
 	return m, err
+}
+
+// RecordRelease records a release built elsewhere (rule RM8).
+func (c *Client) RecordRelease(ctx context.Context, req PublishRequest) (vault.Manifest, error) {
+	var m vault.Manifest
+	err := c.do(ctx, http.MethodPost, "/api/agent/releases/record", req, &m)
+	return m, err
+}
+
+// ListReleases lists the catalog the agent reads, or one partition of it.
+func (c *Client) ListReleases(ctx context.Context, partition string) ([]ReleaseEntry, error) {
+	var out []ReleaseEntry
+	err := c.do(ctx, http.MethodGet, "/api/agent/releases?partition="+url.QueryEscape(partition), nil, &out)
+	return out, err
+}
+
+// TagRelease points a tag at a version.
+func (c *Client) TagRelease(ctx context.Context, req TagRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/releases/tag", req, nil)
+}
+
+// PullRelease gets the product of a release, and returns the version.
+func (c *Client) PullRelease(ctx context.Context, req ReleaseRef) (string, error) {
+	var out PullResponse
+	err := c.do(ctx, http.MethodPost, "/api/agent/releases/pull", req, &out)
+	return out.Version, err
+}
+
+// PinRelease pins a release of a granted partition.
+func (c *Client) PinRelease(ctx context.Context, req PinRequest) (PinResponse, error) {
+	var out PinResponse
+	err := c.do(ctx, http.MethodPost, "/api/agent/pins", req, &out)
+	return out, err
+}
+
+// UnpinRelease removes a pin.
+func (c *Client) UnpinRelease(ctx context.Context, req PinRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/pins/remove", req, nil)
 }
 
 // CheckRelease checks the staged product of a deliverable without

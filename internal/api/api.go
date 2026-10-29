@@ -74,6 +74,12 @@ type Self struct {
 type DeliverableInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	// Remote is the deliverable's remote, when it has one; Tags are its tag
+	// patterns; MayTag are the holder's patterns when the grant restricts
+	// them (section 6 of the releases spec).
+	Remote string   `json:"remote,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
+	MayTag []string `json:"may_tag,omitempty"`
 }
 
 // The built-in skills, which always come from the binary. No skill of the

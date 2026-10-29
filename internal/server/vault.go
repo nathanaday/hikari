@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"github.com/nathanaday/hikari/internal/api"
 	"io/fs"
 	"net/http"
 	"os"
@@ -15,6 +16,29 @@ import (
 
 // maxVaultFile is the largest vault file that the UI can read.
 const maxVaultFile = 512 << 10
+
+// userTagRequest sets a tag as the user; an empty version removes it.
+type userTagRequest struct {
+	Partition   string `json:"partition"`
+	Deliverable string `json:"deliverable"`
+	Tag         string `json:"tag"`
+	Version     string `json:"version"`
+}
+
+// userPinRequest pins for a consumer as the user.
+type userPinRequest struct {
+	api.PinRequest
+	Consumer string `json:"consumer"`
+}
+
+// remoteEntry is one remote of the vault, for the UI (rule LS3).
+type remoteEntry struct {
+	sharedEntry
+	Description string `json:"description"`
+	Push        bool   `json:"push"`
+	Pull        bool   `json:"pull"`
+	Problems    string `json:"problems,omitempty"`
+}
 
 type releaseDetail struct {
 	Manifest vault.Manifest `json:"manifest"`
@@ -55,6 +79,7 @@ type sharedListing struct {
 	Policies     []sharedEntry      `json:"policies"`
 	Skills       []skillEntry       `json:"skills"`
 	Deliverables []deliverableEntry `json:"deliverables"`
+	Remotes      []remoteEntry      `json:"remotes"`
 }
 
 // vaultRoutes serves the vault to the UI: a release, the public area and
@@ -92,6 +117,56 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		writeJSON(w, http.StatusOK, detail)
 	}))
 
+	// The user's release operations (rules TG6, RM7, PN8, LS2): the CLI and
+	// the UI call them through the running hikari.
+	user := func(pattern string, fn func(r *http.Request) (any, error)) {
+		mux.HandleFunc(pattern, ui(func(w http.ResponseWriter, r *http.Request) {
+			out, err := fn(r)
+			if err != nil {
+				writePartitionError(w, err)
+				return
+			}
+			if out == nil {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		}))
+	}
+	user("GET /api/ui/releases", func(r *http.Request) (any, error) {
+		return s.sys.AllReleases(), nil
+	})
+	user("POST /api/ui/releases/tag", func(r *http.Request) (any, error) {
+		var req userTagRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return nil, s.sys.TagAsUser(req.Partition, req.Deliverable, req.Tag, req.Version)
+	})
+	user("POST /api/ui/releases/pull", func(r *http.Request) (any, error) {
+		var req api.ReleaseRef
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		version, err := s.sys.PullAsUser(r.Context(), req)
+		return api.PullResponse{Version: version}, err
+	})
+	user("POST /api/ui/pins", func(r *http.Request) (any, error) {
+		var req userPinRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		pin, note, err := s.sys.PinAsUser(r.Context(), req.Consumer, req.PinRequest)
+		return api.PinResponse{Pin: pin, Note: note}, err
+	})
+	user("POST /api/ui/pins/remove", func(r *http.Request) (any, error) {
+		var req userPinRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return nil, s.sys.UnpinAsUser(req.Consumer, req.PinRequest)
+	})
+
 	mux.HandleFunc("GET /api/ui/vault/public", ui(func(w http.ResponseWriter, r *http.Request) {
 		listing := sharedListing{
 			Policies: sharedFiles(st, st.Public(vault.Policies), ".md"),
@@ -111,6 +186,7 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 			}
 		}
 		listing.Deliverables = s.deliverables(st)
+		listing.Remotes = s.remotes(st)
 		writeJSON(w, http.StatusOK, listing)
 	}))
 
@@ -123,6 +199,22 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(data)
 	}))
+}
+
+// remotes lists every remote in the vault (rule LS3).
+func (s *Server) remotes(st vault.Vault) []remoteEntry {
+	out := []remoteEntry{}
+	names, _ := st.RemoteNames()
+	for _, name := range names {
+		entry := remoteEntry{sharedEntry: sharedEntry{Name: name, Path: st.Rel(filepath.Join(st.RemoteDir(name), vault.RemoteFile))}}
+		if r, err := st.LoadRemote(name); err != nil {
+			entry.Problems = err.Error()
+		} else {
+			entry.Description, entry.Push, entry.Pull = r.Description, r.Push != "", r.Pull != ""
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // deliverables lists every deliverable in the vault with the agents that

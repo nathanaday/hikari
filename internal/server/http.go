@@ -204,6 +204,59 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		}
 		return rel, nil
 	})
+	handle("POST /api/agent/releases/record", func(r *http.Request, agent string) (any, error) {
+		var req api.PublishRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		rel, err := sys.RecordRelease(r.Context(), agent, req)
+		if err != nil {
+			return nil, err
+		}
+		body := fmt.Sprintf("Released %s %s %s: %s", agent, rel.Deliverable, rel.Version, rel.Notes)
+		if _, err := s.Send(agent, api.SendRequest{Body: body}); err != nil {
+			return nil, err
+		}
+		return rel, nil
+	})
+	handle("GET /api/agent/releases", func(r *http.Request, agent string) (any, error) {
+		return sys.ListReleases(agent, r.URL.Query().Get("partition"))
+	})
+	handle("POST /api/agent/releases/tag", func(r *http.Request, agent string) (any, error) {
+		var req api.TagRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if err := sys.TagRelease(agent, req); err != nil {
+			return nil, err
+		}
+		body := fmt.Sprintf("Tagged %s %s %s as %s", agent, req.Deliverable, req.Version, req.Tag)
+		_, err := s.Send(agent, api.SendRequest{Body: body})
+		return nil, err
+	})
+	handle("POST /api/agent/releases/pull", func(r *http.Request, agent string) (any, error) {
+		var req api.ReleaseRef
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		version, err := sys.PullRelease(r.Context(), agent, req)
+		return api.PullResponse{Version: version}, err
+	})
+	handle("POST /api/agent/pins", func(r *http.Request, agent string) (any, error) {
+		var req api.PinRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		pin, note, err := sys.PinRelease(r.Context(), agent, req)
+		return api.PinResponse{Pin: pin, Note: note}, err
+	})
+	handle("POST /api/agent/pins/remove", func(r *http.Request, agent string) (any, error) {
+		var req api.PinRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return nil, sys.UnpinRelease(agent, req)
+	})
 	handle("GET /api/agent/turn-context", func(r *http.Request, agent string) (any, error) {
 		tc := sys.TurnContext(agent)
 		tc.Notices = s.moduleNotices(agent)

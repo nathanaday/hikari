@@ -371,7 +371,7 @@ services:
 	}
 	deliverable := filepath.Join(dir, "vault", "public", "deliverables", "lib")
 	os.MkdirAll(deliverable, 0o755)
-	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
+	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\ntags: [staging]\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
 	sys, err := partitions.New(topo)
 	if err != nil {
@@ -496,7 +496,7 @@ services:
 	}
 	deliverable := filepath.Join(dir, "vault", "public", "deliverables", "lib")
 	os.MkdirAll(deliverable, 0o755)
-	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\n"), 0o644)
+	os.WriteFile(filepath.Join(deliverable, "deliverable.yaml"), []byte("version: 1\ndescription: The library.\nlayout: {require: [README.md]}\ntags: [staging]\n"), 0o644)
 	os.WriteFile(filepath.Join(deliverable, "SKILL.md"), []byte("# lib\n"), 0o644)
 	sys, err := partitions.New(topo)
 	if err != nil {
@@ -541,6 +541,25 @@ services:
 	}
 	if lead := s.Self("lead"); len(lead.PartitionAgentDeliverables["orders"]) != 1 {
 		t.Errorf("Self.OwnerDeliverables = %+v", lead.PartitionAgentDeliverables)
+	}
+	if self.Deliverables[0].Tags[0] != "staging" {
+		t.Errorf("PS1 Self.Deliverables carries the tags: %+v", self.Deliverables)
+	}
+
+	// TG3: a tag is announced; LS1: the catalog lists it.
+	if err := orders.TagRelease(ctx, api.TagRequest{Deliverable: "lib", Version: "1.0.0", Tag: "staging"}); err != nil {
+		t.Fatal(err)
+	}
+	msgs = s.Take(ctx, "lead", time.Second)
+	if len(msgs) != 1 || msgs[0].Body != "Tagged orders lib 1.0.0 as staging" {
+		t.Errorf("TG3 announcement = %+v", msgs)
+	}
+	lead := &api.Client{URL: srv.URL, Token: s.IssueToken("lead"), HTTP: srv.Client()}
+	if list, err := lead.ListReleases(ctx, ""); err != nil || len(list) != 1 || !slices.Equal(list[0].Tags, []string{"latest", "staging"}) || !list[0].Product {
+		t.Errorf("LS1 catalog = %+v, %v", list, err)
+	}
+	if _, err := lead.PullRelease(ctx, api.ReleaseRef{Partition: "orders", Deliverable: "lib", Ref: "staging"}); err != nil {
+		t.Errorf("RM7 a present product pulls as a no-op: %v", err)
 	}
 }
 

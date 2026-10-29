@@ -162,6 +162,10 @@ func New(topo *topology.Topology) (*Manager, error) {
 		}
 		m.commitOwnFiles()
 	}
+	if err := m.refreshCatalog(); err != nil {
+		return nil, fmt.Errorf("vault %s: %w", m.vault.Root, err)
+	}
+	m.warnings = append(m.warnings, m.pinWarnings()...)
 	for _, name := range topo.PartitionAgents() {
 		ws := topo.Workspace(name)
 		maps, _, err := featuremap.Open(ws, m.vault.MapFile(name), name, topo.Agents[name].Partition.Test)
@@ -463,11 +467,11 @@ func featureIDs(mp *featuremap.Map) []string {
 func (m *Manager) Deliverables(agent string) []api.DeliverableInfo {
 	var out []api.DeliverableInfo
 	for _, name := range m.topo.Agents[agent].Grants.Deliverables {
-		info := api.DeliverableInfo{Name: name}
+		info := api.DeliverableInfo{Name: name, MayTag: m.topo.Agents[agent].Grants.Tags[name]}
 		if d, err := m.vault.LoadDeliverable(name); err != nil {
 			info.Description = "(invalid: " + err.Error() + ")"
 		} else {
-			info.Description = d.Description
+			info.Description, info.Remote, info.Tags = d.Description, d.Remote, d.Tags
 		}
 		out = append(out, info)
 	}
@@ -776,7 +780,7 @@ func (m *Manager) Self(agent string) *api.SelfPartition {
 	if !ok {
 		return nil
 	}
-	return &api.SelfPartition{Folders: folders(o), Repos: m.repoStates(o), WorkDir: api.WorkspaceRoot}
+	return &api.SelfPartition{Folders: folders(o), Repos: m.repoStates(o), WorkDir: api.WorkspaceRoot, Pins: m.Pins(agent)}
 }
 
 func (m *Manager) partitionAgent(agent string) (*partitionAgent, error) {
@@ -1090,14 +1094,30 @@ func (m *Manager) Commit(agent, message string) ([]string, error) {
 }
 
 // PublishRelease publishes the staged product of a deliverable as a
-// release (rules R16 and R17). The map must be current and the private
-// documents valid.
+// release (rules R16, R17, RM5, TG5). The map must be current and the
+// private documents valid.
 func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (vault.Manifest, error) {
+	if _, err := m.holds(agent, req.Deliverable); err != nil {
+		return vault.Manifest{}, err
+	}
+	return m.publish(agent, req, "", false)
+}
+
+// publish runs the checks of a publish, writes the release, and commits
+// its record (rule RL3).
+func (m *Manager) publish(agent string, req api.PublishRequest, remote string, noPush bool) (vault.Manifest, error) {
 	o, err := m.holds(agent, req.Deliverable)
 	if err != nil {
 		return vault.Manifest{}, err
 	}
 	v, problems := m.releaseProblems(o)
+	if d, err := m.vault.LoadDeliverable(req.Deliverable); err == nil {
+		for _, tag := range req.Tags {
+			if err := m.mayTag(agent, req.Deliverable, d, tag); err != nil {
+				problems = append(problems, err.Error())
+			}
+		}
+	}
 	if len(problems) > 0 {
 		return vault.Manifest{}, errors.New(strings.Join(problems, "\n"))
 	}
@@ -1107,12 +1127,14 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (vault.Ma
 	}
 	rel, err := m.vault.Publish(context.Background(), vault.PublishInput{
 		Partition: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
-		Certificates: req.Certificates, SourceCommits: v.Partition.DescribedState.Commits, Map: public,
+		Certificates: req.Certificates, Tags: req.Tags, Remote: remote, NoPush: noPush,
+		SourceCommits: v.Partition.DescribedState.Commits, Map: public,
 		Features: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),
 	})
 	if err != nil {
 		return vault.Manifest{}, err
 	}
+	m.commitVault(agent, fmt.Sprintf("%s: release %s %s", agent, req.Deliverable, req.Version), m.vault.RecordPaths(agent, req.Deliverable, req.Version)...)
 	m.changed(Change{Partition: agent})
 	return rel, nil
 }
@@ -1213,11 +1235,11 @@ func (m *Manager) GetPartition(agent, name string) (api.OrchestrationPartition, 
 	known := m.vocabularyNames()
 	providers := m.providers(names)
 	v := m.view(o)
-	releases, _ := m.vault.Releases(name)
 	return api.OrchestrationPartition{
 		View:      v,
 		Folders:   folders(o),
-		Releases:  releases,
+		Releases:  m.catalog(name),
+		Pins:      m.Pins(name),
 		Flags:     vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), known, keys(providers)),
 		Providers: providersOf(v.Partition.Interfaces.Consumes, providers, name),
 	}, nil
@@ -1271,7 +1293,6 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 	v := m.partitionAgentView(o)
 	priv, _ := o.featureMap.Private()
 	providers := m.providers(m.topo.PartitionAgents())
-	releases, _ := m.vault.Releases(name)
 	repos := m.repoStates(o)
 	dirty := slices.ContainsFunc(repos, func(r api.RepoState) bool { return r.Dirty })
 	grants := m.topo.Agents[name].Grants
@@ -1280,7 +1301,8 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 		Dirty:              dirty,
 		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills)},
 		Private:            priv,
-		Releases:           releases,
+		Releases:           m.catalog(name),
+		Pins:               m.Pins(name),
 		PartitionAgent:     name,
 		Folders:            folders(o),
 		Repos:              repos,
