@@ -1,18 +1,18 @@
 #!/bin/sh
 # The hikari launcher, made by `make pin` from internal/release/launcher.sh: do not edit.
-# It runs the hikari binary of this plugin's version, 0.2.1. When that binary is not
+# It runs the hikari binary of this plugin's version, 0.2.2. When that binary is not
 # installed yet, it downloads it once from hikari's GitHub release, with the Linux binaries
 # that hikari mounts into its containers, checks each file's sha256 against the checksums
-# below, which the plugin pins, and installs them in ~/.hikari/bin/0.2.1/. It writes
+# below, which the plugin pins, and installs them in ~/.hikari/bin/0.2.2/. It writes
 # nowhere else, and needs no sudo. A hook never downloads.
 #   HIKARI_BIN           runs that binary instead; nothing is downloaded.
 #   HIKARI_HOME          the machine folder, ~/.hikari by default.
 #   HIKARI_NO_DOWNLOAD   set to 1, it never downloads.
-version='0.2.1'
-checksums='9363c14fd40d8bba17bee3bed3fbd5a04886e739607b7bdb86202924a6078373  hikari-0.2.1-darwin-amd64
-5585a14fcb5b1c26dff95cbeba1e61183a3b9d9a4109a5871cf99f8fe130090e  hikari-0.2.1-darwin-arm64
-6386b116c21ba573bb8f039b10f9c0c4287ed7e01863b57166c558f4b8fad463  hikari-0.2.1-linux-amd64
-ad376a3b5d7163cb6b47b72c62a24b7d9a7dca94a436deaeb16a99eaa87c22ca  hikari-0.2.1-linux-arm64'
+version='0.2.2'
+checksums='95ffdce963a9f589367e5b0703ed27f9fd3526f10bcf09eabe98ca3546beafcd  hikari-0.2.2-darwin-amd64
+77d1395b0f6bf0311e10b5f543c93591cc8c6f4f7ea79b0c9898b32d86d5511f  hikari-0.2.2-darwin-arm64
+2d98861745e74ce499952d4f2610d999bcb5e3293b7fd53e633d580c0f01bffc  hikari-0.2.2-linux-amd64
+18e9fbaf9e973f158e8f787bf92a5f56c009ded2554e86f899830997230ba247  hikari-0.2.2-linux-arm64'
 
 missing() {
 	why=$1
