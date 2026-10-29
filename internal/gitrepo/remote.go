@@ -74,6 +74,14 @@ func (r *Repo) MakeBranch(branch, remote, from string) error {
 	return err
 }
 
+// Checkout checks out the local branch.
+func (r *Repo) Checkout(branch string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, err := r.git("checkout", "--quiet", branch)
+	return err
+}
+
 // Compare counts the commits that branch has and remote's branch lacks
 // (ahead), and the other way around (behind).
 func (r *Repo) Compare(branch, remote string) (ahead, behind int, err error) {

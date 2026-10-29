@@ -26,7 +26,9 @@ func Failed(results []Result) bool {
 // the missing linked repos, fetches, makes your branch where the remote has
 // it, and reports how each branch compares with the remote. With from set,
 // a branch that neither exists nor is on the remote starts from the
-// remote's from. It never merges, rebases, resets, or checks out.
+// remote's from. In a clone it has just made, it checks out your branch,
+// so that hikari up reads the folders of that branch; elsewhere it never
+// merges, rebases, resets, or checks out.
 func Sync(topo *topology.Topology, from string, cleanup Cleanup) []Result {
 	var out []Result
 	add := func(repo, text string, failed bool) {
@@ -50,7 +52,8 @@ func Sync(topo *topology.Topology, from string, cleanup Cleanup) []Result {
 	for _, name := range topo.Linked() {
 		r := topo.Repos[name]
 		var repo *gitrepo.Repo
-		if slices.Contains(topo.Missing, name) {
+		fresh := slices.Contains(topo.Missing, name)
+		if fresh {
 			cloned, err := gitrepo.Clone(r.URL, r.Path)
 			if err != nil {
 				add(name, "clone: "+err.Error(), true)
@@ -70,6 +73,13 @@ func Sync(topo *topology.Topology, from string, cleanup Cleanup) []Result {
 			}
 		}
 		text, failed := track(repo, r.Branch, from)
+		if fresh && !failed && repo.HasBranch(r.Branch) {
+			if err := repo.Checkout(r.Branch); err != nil {
+				text, failed = "checkout "+r.Branch+": "+err.Error(), true
+			} else {
+				text += ", and checked it out"
+			}
+		}
 		add(name, text, failed)
 		out = append(out, mapFindings(topo, name, repo)...)
 	}

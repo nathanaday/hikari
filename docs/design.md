@@ -426,8 +426,10 @@ nested git history.
 `hikari sync` does the network work, and `hikari up` does none: `up`
 refuses a missing clone instead of cloning, so a start never surprises
 you. `sync` clones, fetches, and makes a local branch only where none
-exists. It never merges, rebases, or resets, because those decisions are
-yours. `hikari push` never forces, and it pushes the project repository
+exists. In a clone it has just made it checks out that branch, because a
+default branch may lack the folders that your branch has, and nothing
+local is there yet to disturb. Elsewhere it never merges, rebases, resets,
+or checks out, because those decisions are yours. `hikari push` never forces, and it pushes the project repository
 last: a map records the commit that it describes, and a teammate must
 never get a map whose commit is not on the remote.
 

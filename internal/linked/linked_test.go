@@ -173,12 +173,15 @@ func TestTeammateGetsTheSameProject(t *testing.T) {
 	// Bob starts from Alex's work (decision 6).
 	bob := clone(t, projectURL)
 	bt := topo(t, bob, "hikari-bob", appURL)
-	want(t, Sync(bt, "hikari-alex", skills), false, "project: made hikari-bob from origin/hikari-alex", "app: made hikari-bob from origin/hikari-alex")
+	want(t, Sync(bt, "hikari-alex", skills), false, "project: made hikari-bob from origin/hikari-alex", "app: made hikari-bob from origin/hikari-alex, and checked it out")
 	if a, b := git(t, filepath.Join(bob, "repos/app"), "rev-parse", "hikari-bob"), git(t, filepath.Join(alex, "repos/app"), "rev-parse", "hikari-alex"); a != b {
 		t.Error("Bob's app branch starts from Alex's")
 	}
+	if git(t, filepath.Join(bob, "repos/app"), "branch", "--show-current") != "hikari-bob" {
+		t.Error("SY4 sync checks out your branch in the clone it made")
+	}
 	if git(t, bob, "branch", "--show-current") != "main" {
-		t.Error("SY5 sync never checks out")
+		t.Error("SY5 sync never checks out the project repository")
 	}
 
 	// Alex pushes the map but not the code: Bob's sync names the missing

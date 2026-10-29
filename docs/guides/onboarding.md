@@ -238,7 +238,7 @@ A teammate starts from a clone of the project repository:
    hikari sync -from hikari-alex topology.yaml
    ```
 
-   `sync` never merges, rebases, or resets. It reports how each branch compares with the remote, and names each map whose commit was not pushed.
+   `sync` checks out your branch in each repository it clones, and never merges, rebases, or resets. It reports how each branch compares with the remote, and names each map whose commit was not pushed.
 
 3. Copy `.env.example` to `.env`. Set a credential, and set your own branch:
 
@@ -288,7 +288,7 @@ The skills commit each of their files at once, as you, so the project is always 
 |---|---|
 | `hikari doctor [topology.yaml]` | checks the binary, the PATH, Docker, the image, git, and the project's credential, and says how to fix each problem |
 | `hikari init <dir>` | makes a new project repository |
-| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote, removes the skill copies of hikari before the plugin, and reports what was not pushed |
+| `hikari sync [-from <branch>] topology.yaml` | clones missing repositories, makes your branches from the remote and checks them out in the new clones, removes the skill copies of hikari before the plugin, and reports what was not pushed |
 | `hikari check topology.yaml` | runs every check of `hikari up`, and starts nothing |
 | `hikari check -draft topology.target.yaml` | checks a target topology whose new repositories do not exist yet |
 | `hikari status [-tests] topology.yaml` | shows each partition's map and recorded tests; with `-tests`, each test |
