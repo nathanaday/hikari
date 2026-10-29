@@ -330,6 +330,9 @@ func TestUIRequiresToken(t *testing.T) {
 		if e := next(); e.Type != "message" || e.Message.From != "user" {
 			t.Fatalf("message event = %+v", e)
 		}
+		if e := next(); e.Type != "feed" || e.Entry.Who != "user" {
+			t.Fatalf("feed event = %+v", e)
+		}
 	}
 
 	resp, _ = browser.Post(srv.URL+"/api/ui/send", "application/json", strings.NewReader(`{"to":"nope","body":"hello"}`))

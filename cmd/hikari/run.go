@@ -44,6 +44,7 @@ type run struct {
 	dir     string
 	logFile *os.File
 	journal *lazyFile
+	feed    *lazyFile
 	sys     *partitions.Manager
 	topo    *topology.Topology
 	stop    func()
@@ -161,7 +162,8 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 		}
 		return nil, findings
 	}
-	step.Done(fmt.Sprintf("Read %s %s", con.Bold(topo.Name), con.Dim("· "+describe(topo))))
+	read := fmt.Sprintf("Read %s %s", con.Bold(topo.Name), con.Dim("· "+describe(topo)))
+	step.Done(read)
 	for _, w := range topo.Warnings {
 		con.Warn(w)
 	}
@@ -185,6 +187,11 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	sys.Watch(runCtx)
 	cur.journal = &lazyFile{path: filepath.Join(runDir, "messages.jsonl")}
 	srv := server.New(topo, cur.journal, sys)
+	// The steps so far reach the feed once the server exists (rule FD4).
+	cur.feed = &lazyFile{path: filepath.Join(runDir, "feed.jsonl")}
+	srv.FeedTo(cur.feed)
+	srv.Step(console.Plain(read), nil)
+	srv.Step(console.Plain(prepared(topo)), nil)
 	srv.WatchModules(runCtx)
 	r.host.Attach(srv)
 	cur.sys, cur.topo = sys, topo
@@ -223,9 +230,13 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 		stopContainers = func() { stop(); os.RemoveAll(emptyDir) }
 		step = con.Step("Waiting for the agents to connect")
 		if dash.waitConnected(ctx, time.Minute) {
-			step.Done(fmt.Sprintf("Connected %d agents", len(topo.Agents)))
+			connected := fmt.Sprintf("Connected %d agents", len(topo.Agents))
+			step.Done(connected)
+			srv.Step(connected, nil)
 		} else if ctx.Err() == nil {
-			step.Fail(fmt.Errorf("not every agent connected within a minute; see %s", logPath))
+			err := fmt.Errorf("not every agent connected within a minute; see %s", logPath)
+			step.Fail(err)
+			srv.Step("Waiting for the agents to connect", err)
 		}
 	}
 	cur.stop = func() {
@@ -250,6 +261,9 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 func (cur *run) close() {
 	if cur.journal != nil {
 		cur.journal.Close()
+	}
+	if cur.feed != nil {
+		cur.feed.Close()
 	}
 	cur.logFile.Close()
 }

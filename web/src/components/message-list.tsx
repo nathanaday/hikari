@@ -86,21 +86,15 @@ function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean
   const me = state.me
   const isOrchestration = orchestrationOf(state.participants) === m.from
   const time = new Date(m.time)
-  const privateDM = !!m.to && m.from !== me && m.to !== me
 
   return (
-    <div data-testid="message" className={`flex gap-3 px-4 hover:bg-neutral-50 md:px-6 ${compact ? 'py-0.5' : 'pt-2.5 pb-0.5'}`}>
+    <div id={`message-${m.id}`} data-testid="message" className={`flex gap-3 px-4 hover:bg-neutral-50 md:px-6 ${compact ? 'py-0.5' : 'pt-2.5 pb-0.5'}`}>
       <div className="w-8 shrink-0">{!compact && <ParticipantAvatar name={m.from} me={m.from === me} />}</div>
       <div className="min-w-0 flex-1">
         {!compact && (
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm leading-5">
             <span className="font-medium">{m.from === me ? 'you' : m.from}</span>
             {isOrchestration && <span className="text-xs text-muted-foreground">orchestration agent</span>}
-            {state.view.kind === 'all' && (
-              <span className="text-xs text-muted-foreground" data-testid="channel">
-                {m.to ? `to ${m.to === me ? 'you' : m.to}${privateDM ? ' · private' : ''}` : 'in the room'}
-              </span>
-            )}
             <time dateTime={m.time} title={time.toLocaleString()} className="text-xs text-muted-foreground">
               {time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
             </time>

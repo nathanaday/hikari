@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
+import { FeedView } from '@/components/feed-view'
 import { MapView } from '@/components/map-view'
 import { MessageList } from '@/components/message-list'
 import { PublicWiki } from '@/components/public-wiki'
@@ -33,7 +34,9 @@ export default function App() {
 
   const v = state.view
   let main: React.ReactNode
-  if (v.kind === 'map') {
+  if (v.kind === 'all') {
+    main = <FeedView state={state} show={show} />
+  } else if (v.kind === 'map') {
     main = <MapView state={state} show={show} />
   } else if (v.kind === 'partition') {
     main = <PartitionDetail state={state} partition={state.partitions.find((x) => x.partition_agent === v.name)!} />

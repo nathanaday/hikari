@@ -125,6 +125,34 @@ const (
 	ActivityDone     = "done"     // the turn ended; Text is its closing text
 )
 
+// Entry kinds (rule FD1 of the feed spec).
+const (
+	EntryMessage = "message" // a message; Text is its body
+	EntryTurn    = "turn"    // an ended turn, with its summary
+	EntryStatus  = "status"  // an agent connected, failed, or exited
+	EntryModule  = "module"  // a line of a module, such as a task's status
+	EntryStep    = "step"    // a start-up step of hikari up
+)
+
+// Entry is one entry of the feed: what the terminal prints as one line, and
+// what All activity lists. Message, Turn, and Task link what it summarizes.
+type Entry struct {
+	ID   int64     `json:"id"`
+	Time time.Time `json:"time"`
+	Kind string    `json:"kind"`
+	// Who is the sender, the agent, "hikari" for a module, or empty for a
+	// step; To is a message's recipient, or empty for the room.
+	Who   string `json:"who,omitempty"`
+	To    string `json:"to,omitempty"`
+	Text  string `json:"text"`
+	Error bool   `json:"error,omitempty"`
+	// Message is a message's id, Turn the turn's id of Who, and Task a
+	// task's id.
+	Message int64  `json:"message,omitempty"`
+	Turn    int64  `json:"turn,omitempty"`
+	Task    string `json:"task,omitempty"`
+}
+
 // Activity is one step of an agent's turn, for the live view. The driver
 // sends an entry when a step starts and again when it changes, with the
 // same ID, so the server replaces it.

@@ -871,6 +871,27 @@ TUI: the terminal keeps its scrollback, and output to a pipe stays plain
 text. Each run keeps its records in one folder, `.hikari/runs/<run-id>/`, and
 writes `messages.jsonl` only when the run has a message.
 
+## The feed has one producer
+
+The lines that the terminal prints are what a person reads most during a run:
+one per message, one per ended turn, one when an agent connects, fails, or
+exits, and one per change of a task's status. The UI showed the same events as
+whole messages and turn cards, which say more and skim worse. So All activity
+shows the same lines, under a strip of the agents' states and the run's cost,
+which is the terminal's footer.
+
+The server makes the entries, and the terminal and the UI both show them. An
+earlier terminal derived its lines from the event stream on its own, and a UI
+that did the same, in a second language, would drift from it. One producer
+keeps the two the same, and gives a third reader, such as a session on the
+host, the run's events as text in `feed.jsonl`, next to `messages.jsonl`. The
+entries carry their links as ids, and the UI resolves them with the rules it
+already has for messages and turns, so the server repeats none of them.
+
+A tool call is not an entry. The strip shows the step an agent is on, and the
+turn card keeps the rest; an entry per tool call would bury the messages. An
+agent's `idle` is not an entry either, since every ended turn makes one.
+
 ## The map draws its own canvas
 
 The Map view is a force graph in the style of Obsidian's graph. `d3-force`

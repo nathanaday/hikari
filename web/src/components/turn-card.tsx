@@ -34,7 +34,7 @@ export function TurnCard({ turn, names }: { turn: Turn; names: ReadonlySet<strin
   const failed = turn.end?.error
 
   return (
-    <div data-testid="turn" data-live={turn.live || undefined} className="px-4 py-1.5 md:px-6">
+    <div id={`turn-${turn.agent}-${turn.id}`} data-testid="turn" data-live={turn.live || undefined} className="px-4 py-1.5 md:px-6">
       <div className={cn('rounded-lg border bg-white', turn.live && 'border-neutral-300', failed && 'border-red-200')}>
         <button
           type="button"

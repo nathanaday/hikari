@@ -135,6 +135,12 @@ func (h *moduleHost) Notify(to, body string) {
 	}
 }
 
+func (h *moduleHost) Feed(text, task string) {
+	h.s.mu.Lock()
+	defer h.s.mu.Unlock()
+	h.s.feed(api.Entry{Kind: api.EntryModule, Who: topology.Hikari, Text: text, Task: task})
+}
+
 func (h *moduleHost) Changed() {
 	view := h.s.moduleView(h.name)
 	h.s.mu.Lock()

@@ -46,6 +46,8 @@ type Event struct {
 	// event (rule MO4 of the task pipeline spec).
 	Module string `json:"module,omitempty"`
 	View   any    `json:"view,omitempty"`
+	// Entry is a new entry of the feed, in a feed event (rule FD2).
+	Entry *api.Entry `json:"entry,omitempty"`
 }
 
 type AgentView struct {
@@ -84,6 +86,10 @@ type Snapshot struct {
 	Activity map[string][]api.Activity `json:"activity"`
 	// Modules holds the view of each module that the project turns on.
 	Modules map[string]any `json:"modules"`
+	// Feed holds the recent entries of the feed, and Cost the run's cost
+	// so far (rules FD2 and FD6).
+	Feed []api.Entry `json:"feed"`
+	Cost float64     `json:"cost"`
 }
 
 type delivery struct {
@@ -115,6 +121,13 @@ type Server struct {
 	turnStart map[string]int64
 	// modules are the host halves of the project's modules.
 	modules []openModule
+	// entries are the recent entries of the feed, nextEntry the id of the
+	// last one, feedJournal where each is appended, and cost the run's
+	// cost so far.
+	entries     []api.Entry
+	nextEntry   int64
+	feedJournal io.Writer
+	cost        float64
 }
 
 // maxActivity is the most entries kept per agent. Older turns are dropped
@@ -282,6 +295,7 @@ func (s *Server) deliver(m api.Message, recipients []recipient) api.Message {
 		s.journal.Write(append(line, '\n'))
 	}
 	s.publish(Event{Type: "message", Message: &m})
+	s.feed(api.Entry{Kind: api.EntryMessage, Who: m.From, To: m.To, Text: m.Body, Message: m.ID, Time: m.Time})
 	return m
 }
 
@@ -350,8 +364,13 @@ func (s *Server) Requeue(agent string, msgs []api.Message) {
 func (s *Server) SetStatus(agent string, st api.Status) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	from := s.status[agent]
 	s.status[agent] = st
+	s.cost += st.Cost
 	s.publish(Event{Type: "status", Agent: agent, Status: &st})
+	if e := statusEntry(agent, from, st); e != nil {
+		s.feed(*e)
+	}
 }
 
 // AddActivity records a step of agent's turn. An entry with the ID of a kept
@@ -387,6 +406,22 @@ func (s *Server) AddActivity(agent string, a api.Activity) {
 	}
 	s.activity[agent] = list
 	s.publish(Event{Type: "activity", Agent: agent, Activity: &a})
+	if a.Kind == api.ActivityDone {
+		var steps []api.Activity
+		for _, x := range list {
+			if x.Turn == a.Turn && x.Kind != api.ActivityDone {
+				steps = append(steps, x)
+			}
+		}
+		text := "turn done"
+		if a.Error {
+			text = "turn failed"
+		}
+		if summary := turnSummary(steps, a); summary != "" {
+			text += " · " + summary
+		}
+		s.feed(api.Entry{Kind: api.EntryTurn, Who: agent, Text: text, Error: a.Error, Turn: a.Turn})
+	}
 }
 
 func (s *Server) sentSince(agent string, id int64) bool {
@@ -512,6 +547,11 @@ func (s *Server) snapshot() Snapshot {
 	snap.Deliverables = s.deliverables(s.sys.Vault())
 	snap.Wikis = s.sys.Wikis()
 	snap.Modules = s.moduleViews()
+	snap.Feed = slices.Clone(s.entries)
+	if snap.Feed == nil {
+		snap.Feed = []api.Entry{}
+	}
+	snap.Cost = s.cost
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {
 		snap.Activity[n] = slices.Clone(list)

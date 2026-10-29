@@ -1,4 +1,4 @@
-import { BookOpen, Boxes, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
+import { Activity, BookOpen, Boxes, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -54,9 +54,12 @@ export function ConversationHeader({ state, show, onMention }: Props) {
   if (v.kind === 'all') {
     body = (
       <>
-        <h1 className="text-base font-semibold">All activity</h1>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <Activity className="size-4 text-muted-foreground" />
+          All activity
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Every message in the network, including private messages between agents.
+          The feed of the run, as the terminal prints it: each message, ended turn, agent that connects or fails, and change of a task, one line each. Click a line for its whole text, and a name to open what it summarizes.
         </p>
       </>
     )

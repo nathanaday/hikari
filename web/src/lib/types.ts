@@ -48,6 +48,26 @@ export type Activity = {
   unheard?: boolean
 }
 
+export type EntryKind = 'message' | 'turn' | 'status' | 'module' | 'step'
+
+// Entry is one entry of the feed (rule FD1 of the feed spec): what the
+// terminal prints as one line. message, turn, and task link what it
+// summarizes.
+export type Entry = {
+  id: number
+  time: string
+  kind: EntryKind
+  // who is the sender, the agent, "hikari" for a module, or absent for a
+  // step; to is a message's recipient, or absent for the room.
+  who?: string
+  to?: string
+  text: string
+  error?: boolean
+  message?: number
+  turn?: number
+  task?: string
+}
+
 export type Agent = {
   name: string
   description?: string
@@ -261,6 +281,10 @@ export type Snapshot = {
   activity?: Record<string, Activity[]>
   // modules holds the view of each module that the project turns on.
   modules?: Modules
+  // feed holds the recent entries of the feed, and cost the run's cost so
+  // far (rules FD2 and FD6).
+  feed?: Entry[]
+  cost?: number
 }
 
 // The task pipeline, the tasks module (rule TK27 of the task pipeline spec).
@@ -317,6 +341,7 @@ export type ServerEvent =
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
   | { type: 'module'; module: string; view: unknown }
+  | { type: 'feed'; entry: Entry }
 
 // SendRequest posts to the room, or sends a direct message when to is set.
 export type SendRequest = { to?: string; body: string }

@@ -29,6 +29,8 @@ type Store struct {
 	queueOf map[string]string
 	check   Check
 	now     func() time.Time
+	// lines are the log lines written since TakeLines, for the feed.
+	lines []Line
 }
 
 // Check is what the store checks a document against (rule TK4).

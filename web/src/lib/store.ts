@@ -1,4 +1,4 @@
-import type { Activity, Agent, DeliverableInfo, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -33,6 +33,10 @@ export type State = {
   activity: Record<string, Activity[]>
   // modules holds the view of each module that the project turns on.
   modules: Modules
+  // feed holds the recent entries of the feed, oldest first, and cost the
+  // run's cost so far.
+  feed: Entry[]
+  cost: number
   view: View
   // unread counts messages per conversation key that arrived while another
   // view was open.
@@ -65,10 +69,15 @@ export function initialState(view: View): State {
     wikis: [],
     activity: {},
     modules: {},
+    feed: [],
+    cost: 0,
     view,
     unread: {},
   }
 }
+
+// maxFeed is the most entries kept, as the server keeps them.
+const maxFeed = 500
 
 const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 
@@ -129,6 +138,8 @@ function applyEvent(s: State, e: ServerEvent): State {
         wikis: e.snapshot.wikis ?? [],
         activity: e.snapshot.activity ?? {},
         modules: e.snapshot.modules ?? {},
+        feed: e.snapshot.feed ?? [],
+        cost: e.snapshot.cost ?? 0,
         view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {} }),
         unread: {},
       }
@@ -146,7 +157,10 @@ function applyEvent(s: State, e: ServerEvent): State {
       return {
         ...s,
         agents: s.agents.map((ag) => (ag.name === e.agent ? { ...ag, status: e.status } : ag)),
+        cost: s.cost + (e.status.cost ?? 0),
       }
+    case 'feed':
+      return { ...s, feed: [...s.feed.slice(-(maxFeed - 1)), e.entry] }
     case 'activity': {
       const list = s.activity[e.agent] ?? []
       return { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }

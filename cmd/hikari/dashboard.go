@@ -42,9 +42,9 @@ func printBanner(con *console.Console) {
 	con.Println("")
 }
 
-// dashboard follows the server's events. It prints each message as one line
-// and keeps the footer: the web UI address, each agent's state, and the cost
-// so far.
+// dashboard follows the server's events. It prints each entry of the feed
+// as one line (rule FD7 of the feed spec) and keeps the footer: the web UI
+// address, each agent's state, and the cost so far.
 type dashboard struct {
 	con     *console.Console
 	url     string
@@ -77,8 +77,11 @@ func (d *dashboard) follow(events <-chan server.Event) {
 			d.mu.Unlock()
 		case "status":
 			d.setStatus(e.Agent, *e.Status)
-		case "message":
-			d.con.Println(d.messageLine(*e.Message))
+		case "feed":
+			// A step was printed as it ended (decision 2).
+			if e.Entry.Kind != api.EntryStep {
+				d.con.Println(d.entryLine(*e.Entry))
+			}
 		case "activity":
 			d.setDoing(e.Agent, *e.Activity)
 		}
@@ -102,13 +105,6 @@ func (d *dashboard) setStatus(agent string, s api.Status) {
 		}
 	}
 	d.mu.Unlock()
-
-	switch {
-	case s.State == api.StateError:
-		d.con.Error(fmt.Sprintf("%s: %s", agent, s.Detail))
-	case s.State == api.StateExited && s.Detail != "":
-		d.con.Error(fmt.Sprintf("%s stopped: %s", agent, s.Detail))
-	}
 }
 
 // setDoing keeps the step that the footer shows for an agent: its running
@@ -161,15 +157,23 @@ func (d *dashboard) waitConnected(ctx context.Context, timeout time.Duration) bo
 	return false
 }
 
-func (d *dashboard) messageLine(m api.Message) string {
-	to := "room"
-	if m.To != "" {
-		to = m.To
+// entryLine writes an entry as one line; the web UI shows the whole text.
+func (d *dashboard) entryLine(e api.Entry) string {
+	c := d.con
+	who := c.Bold(e.Who)
+	if e.Kind == api.EntryMessage {
+		to := "room"
+		if e.To != "" {
+			to = e.To
+		}
+		who += " → " + to
 	}
-	body := strings.Join(strings.Fields(m.Body), " ")
-	line := fmt.Sprintf("  %s  %s → %s  %s", d.con.Dim(m.Time.Local().Format("15:04")), d.con.Bold(m.From), to, body)
-	// One line per message; the web UI shows the whole text.
-	return console.Truncate(line, d.con.Width()-1)
+	text := strings.Join(strings.Fields(e.Text), " ")
+	if e.Error {
+		text = c.Red(text)
+	}
+	line := fmt.Sprintf("  %s  %s  %s", c.Dim(e.Time.Local().Format("15:04")), who, text)
+	return console.Truncate(line, c.Width()-1)
 }
 
 // footer returns the pinned lines.

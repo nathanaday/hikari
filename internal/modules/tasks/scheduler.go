@@ -54,8 +54,27 @@ const Hikari = "hikari"
 // User is the user's name as a writer.
 const User = "user"
 
-func (s *Store) logLine(who, subject, from, to, note string) string {
-	line := fmt.Sprintf("%s %s set %s to %s", s.now().UTC().Format(timeLayout), who, subject, to)
+// Line is a line of a task's log, for the feed (rule FD5 of the feed
+// spec).
+type Line struct {
+	Task, Text string
+}
+
+// TakeLines returns the lines logged since the last call.
+func (s *Store) TakeLines() []Line {
+	lines := s.lines
+	s.lines = nil
+	return lines
+}
+
+// log appends text to t's log with the time, and keeps it for the feed.
+func (s *Store) log(t *Task, text string) {
+	t.Body = appendLog(t.Body, s.now().UTC().Format(timeLayout)+" "+text)
+	s.lines = append(s.lines, Line{Task: t.ID, Text: fmt.Sprintf("[[%s]] %s", t.ID, text)})
+}
+
+func logText(who, subject, from, to, note string) string {
+	line := fmt.Sprintf("%s set %s to %s", who, subject, to)
 	if from != "" {
 		line += fmt.Sprintf(" (was %s)", from)
 	}
@@ -67,7 +86,7 @@ func (s *Store) logLine(who, subject, from, to, note string) string {
 
 // refused logs a refused done (rules TK14, TK16, and TK18).
 func (s *Store) refused(t *Task, who, subject string, why []string) {
-	t.Body = appendLog(t.Body, fmt.Sprintf("%s %s asked for done of %s: refused, since %s", s.now().UTC().Format(timeLayout), who, subject, strings.Join(why, ", ")))
+	s.log(t, fmt.Sprintf("%s asked for done of %s: refused, since %s", who, subject, strings.Join(why, ", ")))
 }
 
 // setScope sets t's status, with a line in its log (rule TK18).
@@ -75,7 +94,7 @@ func (s *Store) setScope(t *Task, who, status, note string) {
 	if t.Status == status {
 		return
 	}
-	t.Body = appendLog(t.Body, s.logLine(who, "the scope", t.Status, status, note))
+	s.log(t, logText(who, "the scope", t.Status, status, note))
 	t.Status = status
 }
 
@@ -84,7 +103,7 @@ func (s *Store) setPart(t *Task, who, partition, status, note string) {
 	if from == status {
 		return
 	}
-	t.Body = appendLog(t.Body, s.logLine(who, "the part of "+partition, from, status, note))
+	s.log(t, logText(who, "the part of "+partition, from, status, note))
 	t.SetPart(partition, status)
 }
 

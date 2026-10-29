@@ -87,6 +87,9 @@ type Host interface {
 	Commit(author, message string, paths ...string)
 	// Notify sends to a direct message from hikari.
 	Notify(to, body string)
+	// Feed adds a line of the module to the feed, as hikari's, linked to
+	// the task it concerns when task is set (rule FD5 of the feed spec).
+	Feed(text, task string)
 	// Changed tells the UI that the module's view changed.
 	Changed()
 }

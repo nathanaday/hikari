@@ -24,6 +24,7 @@ type fakeHost struct {
 	health  map[string]string
 	commits []commit
 	notes   []Note
+	lines   []Line
 }
 
 func (h *fakeHost) Topology() *topology.Topology { return h.topo }
@@ -41,6 +42,11 @@ func (h *fakeHost) Notify(to, body string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.notes = append(h.notes, Note{To: to, Body: body})
+}
+func (h *fakeHost) Feed(text, task string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lines = append(h.lines, Line{Task: task, Text: text})
 }
 func (h *fakeHost) Changed() {}
 
@@ -108,6 +114,9 @@ func TestInstance(t *testing.T) {
 	}
 	if len(h.notes) != 1 || h.notes[0].To != "lead" || !strings.Contains(h.notes[0].Body, "started [[cancel]]") {
 		t.Errorf("TK13 hikari tells lead: %+v", h.notes)
+	}
+	if len(h.lines) != 1 || h.lines[0].Task != "cancel" || h.lines[0].Text != "[[cancel]] hikari set the scope to started (was queued): the queue q started it" {
+		t.Errorf("FD5 each log line reaches the feed: %+v", h.lines)
 	}
 	if n := i.Notices("orders"); len(n) != 1 || !strings.Contains(n[0], "your part of [[cancel]] is queued, and the scope is started") {
 		t.Errorf("TK24 orders' notice: %v", n)

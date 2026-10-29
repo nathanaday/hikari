@@ -36,6 +36,12 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Room.** The one conversation of a project. You and every agent are in it, everyone receives every post, and anyone can send a direct message to anyone.
 
+**Feed.** The run's events as one entry each, in order: a message, an ended turn, an agent that connects, fails, or exits, a change of a task's status, and a start-up step. The server makes the entries; the terminal prints them, All activity lists them, and `.hikari/runs/<run>/feed.jsonl` keeps them.
+
+**Entry.** One entry of the feed: its time, its kind, who it concerns, one line of text, and a link to the message, the turn, or the task it summarizes.
+
+**Strip.** The agents' states, each with its current step, and the run's cost, pinned above the feed in All activity. It is the terminal's footer.
+
 **Feature map.** A partition's public description: its feature documents and `map.yaml`, which hikari writes from them. Every agent that may read the partition reads it; only its partition agent writes it, through tools.
 
 **Orchestration feature map.** The orchestration agent's own feature map, in `orchestration/read-only/features/`: features that cross partitions, each made of the partition features it links, with its health computed from theirs, and principles and rules that bind only the orchestration agent. Only the orchestration agent reads it, and it writes it through `change_wiki`, as a partition agent writes its own.

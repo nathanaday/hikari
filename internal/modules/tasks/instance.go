@@ -84,6 +84,9 @@ func (i *instance) apply(c *Change, what string) {
 	for _, n := range c.Notes {
 		i.host.Notify(n.To, n.Body)
 	}
+	for _, l := range i.store.TakeLines() {
+		i.host.Feed(l.Text, l.Task)
+	}
 	if len(c.Writes) > 0 {
 		go i.host.Changed()
 	}
