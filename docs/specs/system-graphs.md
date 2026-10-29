@@ -95,6 +95,7 @@ Library versions, pinned in `package.json`: `d3-force` 3.0.0, `d3-zoom` 3.0.0, `
 
 - **U30.** Nodes: one per system, drawn as a circle with a radius that grows with the square root of its feature count, from 6 to 18 pixels; one per repository, a rounded square of 10 pixels; one per deliverable that someone holds, a diamond of 10 pixels.
 - **U31.** Edges: system to its repository; deliverable to each holder; system to each system whose releases it may read, dashed; system to each system that provides an interface it consumes, dashed. Two systems joined both ways by dashed edges get one edge.
+- **U31a.** Two toggles above the canvas show or hide the repositories and the deliverables, with their edges. Both start shown, and the browser's local storage remembers the choice.
 - **U32.** A click on a system opens its feature map (U41). A click on a repository or a deliverable selects it and opens its panel (change 2).
 
 ## 5. The topology lenses

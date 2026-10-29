@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { doc, feature, partition, wikiOf } from './fixtures'
-import { docNodeID, featureRadius, neighborsOf, partitionRadius, topologyGraph, wikiGraph } from './graph'
+import { docNodeID, featureRadius, neighborsOf, partitionRadius, topologyGraph, wikiGraph, withoutKinds } from './graph'
 import { wikiIndex } from './wikis'
 
 const shop = () => ({
@@ -47,6 +47,19 @@ describe('topologyGraph', () => {
     input.partitions[0].providers = { x: ['gone', 'orders'] }
     input.repos[0].partitions.push('gone')
     expect(topologyGraph(input).edges.filter((e) => e.dashed || e.source.includes('gone') || e.target.includes('gone'))).toEqual([])
+  })
+})
+
+describe('withoutKinds', () => {
+  it('drops the hidden kinds and the edges that touch them', () => {
+    const g = withoutKinds(topologyGraph(shop()), ['repo', 'deliverable'])
+    expect(g.nodes.map((n) => n.id)).toEqual(['partition:inventory', 'partition:orders'])
+    expect(g.edges.map((e) => `${e.source} ${e.target}`)).toEqual(['partition:orders partition:inventory'])
+  })
+
+  it('keeps the graph as it is when nothing is hidden', () => {
+    const g = topologyGraph(shop())
+    expect(withoutKinds(g, [])).toBe(g)
   })
 })
 

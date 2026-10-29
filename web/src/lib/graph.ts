@@ -84,6 +84,15 @@ export function topologyGraph({ partitions, repos, deliverables, orchestration }
   return { nodes, edges }
 }
 
+// withoutKinds drops the nodes of the given kinds and every edge that
+// touches one of them.
+export function withoutKinds(g: Graph, kinds: NodeKind[]): Graph {
+  if (kinds.length === 0) return g
+  const nodes = g.nodes.filter((n) => !kinds.includes(n.kind))
+  const ids = new Set(nodes.map((n) => n.id))
+  return { nodes, edges: g.edges.filter((e) => ids.has(e.source) && ids.has(e.target)) }
+}
+
 // docShape gives each kind its shape (rule U3).
 export const docShape: Record<DocKind, Shape> = {
   feature: 'circle',

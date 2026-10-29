@@ -4,7 +4,7 @@ import { GraphCanvas } from '@/components/graph-canvas'
 import type { Handoff } from '@/components/graph-engine'
 import { Button } from '@/components/ui/button'
 import { DocumentPanel, NewDocument } from '@/components/wiki-panel'
-import { docNodeID, nodeID, topologyGraph, wikiGraph, type GraphNode } from '@/lib/graph'
+import { docNodeID, nodeID, topologyGraph, wikiGraph, withoutKinds, type GraphNode, type NodeKind } from '@/lib/graph'
 import {
   docDetail,
   docPaint,
@@ -30,6 +30,17 @@ import { linkTarget } from '@/lib/wiki'
 import { featureMapRef, orchestrationRef, publicRef, wikiIndex, wikiName } from '@/lib/wikis'
 
 const lensKey = { topology: 'hikari.map.lens', wiki: 'hikari.wiki.lens' }
+const hiddenKey = 'hikari.map.hidden'
+const hideable: NodeKind[] = ['repo', 'deliverable']
+
+function rememberedHidden(): NodeKind[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(hiddenKey) ?? '[]')
+    return Array.isArray(v) ? hideable.filter((k) => v.includes(k)) : []
+  } catch {
+    return []
+  }
+}
 
 // remembered reads a lens from local storage; a failed read gives the
 // default (rule U45).
@@ -42,9 +53,9 @@ function remembered<T extends Lens>(key: string, allowed: T[], fallback: T): T {
   }
 }
 
-function remember(key: string, lens: Lens) {
+function remember(key: string, value: string) {
   try {
-    localStorage.setItem(key, lens)
+    localStorage.setItem(key, value)
   } catch {
     // The lens is a convenience; losing it is fine.
   }
@@ -77,13 +88,14 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   const wiki = ref ? state.wikis.find((w) => w.ref === ref) : undefined
   const [topoLens, setTopoLens] = useState<TopologyLens>(() => remembered(lensKey.topology, topologyLenses, 'activity'))
   const [wikiLens, setWikiLens] = useState<WikiLens>(() => remembered(lensKey.wiki, wikiLenses, 'kind'))
+  const [hidden, setHidden] = useState<NodeKind[]>(rememberedHidden)
   const [creating, setCreating] = useState(false)
   const graphKey = ref ? `wiki:${ref}` : 'topology'
 
   const index = useMemo(() => wikiIndex(state.wikis), [state.wikis])
   const topology = useMemo(
-    () => topologyGraph({ partitions: state.partitions, repos: state.repos, deliverables: state.deliverables, orchestration }),
-    [state.partitions, state.repos, state.deliverables, orchestration],
+    () => withoutKinds(topologyGraph({ partitions: state.partitions, repos: state.repos, deliverables: state.deliverables, orchestration }), hidden),
+    [state.partitions, state.repos, state.deliverables, orchestration, hidden],
   )
   const docs = useMemo(() => (wiki ? wikiGraph(wiki, index) : null), [wiki, index])
   const graph = docs ?? topology
@@ -91,7 +103,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   // The selection is the view's document on a wiki map, and a local choice
   // on the topology map.
   const [topoSelected, setTopoSelected] = useState<string | null>(null)
-  const selected = wiki ? (view.doc ? docNodeID(wiki.ref, view.doc) : null) : topoSelected
+  const selected = wiki ? (view.doc ? docNodeID(wiki.ref, view.doc) : null) : topoSelected && graph.nodes.some((n) => n.id === topoSelected) ? topoSelected : null
 
   const topoCtx = useMemo(() => topologyContext(state.partitions, state.agents), [state.partitions, state.agents])
   const features = useMemo(() => (view.partition ? (state.partitions.find((s) => s.partition_agent === view.partition)?.features ?? []) : []), [view.partition, state.partitions])
@@ -127,6 +139,11 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   const pickTopologyLens = (l: TopologyLens) => {
     setTopoLens(l)
     remember(lensKey.topology, l)
+  }
+  const toggleKind = (k: NodeKind) => {
+    const next = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k]
+    setHidden(next)
+    remember(hiddenKey, JSON.stringify(next))
   }
   const pickWikiLens = (l: WikiLens) => {
     setWikiLens(l)
@@ -222,6 +239,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
           value={lens}
           onChange={(l) => (wiki ? pickWikiLens(l as WikiLens) : pickTopologyLens(l as TopologyLens))}
         />
+        {!wiki && <KindToggles hidden={hidden} onToggle={toggleKind} />}
         {wiki && (
           <Button size="sm" variant="outline" className="h-7 bg-white" onClick={() => setCreating(true)}>
             <Plus className="size-3.5" /> New
@@ -287,6 +305,35 @@ function LensControl({ lenses, value, onChange }: { lenses: Lens[]; value: Lens;
           {lensLabel[l]}
         </button>
       ))}
+    </div>
+  )
+}
+
+const kindToggles: { kind: NodeKind; label: string; icon: React.ReactNode }[] = [
+  { kind: 'repo', label: 'Repos', icon: <span className="inline-block size-2.5 rounded-[2px] border-[1.5px] border-current" /> },
+  { kind: 'deliverable', label: 'Deliverables', icon: <span className="inline-block size-2 rotate-45 border-[1.5px] border-current" /> },
+]
+
+// KindToggles shows or hides the repositories and the deliverables on the
+// topology map.
+function KindToggles({ hidden, onToggle }: { hidden: NodeKind[]; onToggle: (k: NodeKind) => void }) {
+  return (
+    <div role="group" aria-label="Show" className="flex rounded-md border bg-white p-0.5 text-xs shadow-sm" data-testid="kind-toggles">
+      {kindToggles.map((t) => {
+        const shown = !hidden.includes(t.kind)
+        return (
+          <button
+            key={t.kind}
+            type="button"
+            aria-pressed={shown}
+            onClick={() => onToggle(t.kind)}
+            className={cn('flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors', shown ? 'text-foreground' : 'text-muted-foreground/60 line-through hover:text-muted-foreground')}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
