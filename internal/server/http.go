@@ -115,6 +115,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))
+	s.assistantRoutes(mux, ui)
 
 	static(mux)
 	return mux

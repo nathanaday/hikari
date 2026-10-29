@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/assistant"
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/partitions"
@@ -48,6 +49,9 @@ type Event struct {
 	View   any    `json:"view,omitempty"`
 	// Entry is a new entry of the feed, in a feed event (rule FD2).
 	Entry *api.Entry `json:"entry,omitempty"`
+	// Assistant is a change of the hikari agent, in an assistant event
+	// (rule HA9 of the hikari agent spec).
+	Assistant *assistant.Event `json:"assistant,omitempty"`
 }
 
 type AgentView struct {
@@ -90,6 +94,9 @@ type Snapshot struct {
 	// so far (rules FD2 and FD6).
 	Feed []api.Entry `json:"feed"`
 	Cost float64     `json:"cost"`
+	// Assistant is the hikari agent's view, or why the run has none
+	// (rule HA9).
+	Assistant assistant.View `json:"assistant"`
 }
 
 type delivery struct {
@@ -128,6 +135,10 @@ type Server struct {
 	nextEntry   int64
 	feedJournal io.Writer
 	cost        float64
+	// assistant is the hikari agent of the run, or nil with assistantOff
+	// saying why.
+	assistant    *assistant.Assistant
+	assistantOff string
 }
 
 // maxActivity is the most entries kept per agent. Older turns are dropped
@@ -156,6 +167,21 @@ func New(topo *topology.Topology, journal io.Writer, sys *partitions.Manager) *S
 	sys.OnChange(s.partitionChanged)
 	s.openModules()
 	return s
+}
+
+// SetAssistant gives the run its hikari agent, or with nil the reason it
+// has none (rule HA9).
+func (s *Server) SetAssistant(a *assistant.Assistant, off string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.assistant, s.assistantOff = a, off
+}
+
+// PublishAssistant sends a change of the hikari agent to the UI.
+func (s *Server) PublishAssistant(e assistant.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publish(Event{Type: "assistant", Assistant: &e})
 }
 
 // Partitions returns the partitions manager.
@@ -555,6 +581,11 @@ func (s *Server) snapshot() Snapshot {
 		snap.Feed = []api.Entry{}
 	}
 	snap.Cost = s.cost
+	if s.assistant != nil {
+		snap.Assistant = s.assistant.View()
+	} else {
+		snap.Assistant = assistant.Off(s.assistantOff)
+	}
 	snap.Activity = map[string][]api.Activity{}
 	for n, list := range s.activity {
 		snap.Activity[n] = slices.Clone(list)

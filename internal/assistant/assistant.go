@@ -216,11 +216,11 @@ func (a *Assistant) load() error {
 			a.keepPrompt(*l.Prompt)
 		}
 	}
-	a.tap.Seek(turn, id)
+	a.tap.Resume(turn, id)
 	// A turn that was running when hikari stopped never ended.
 	if n := len(a.activity); n > 0 && a.activity[n-1].Kind != api.ActivityDone {
 		a.keep(api.Activity{ID: id + 1, Turn: turn, Time: time.Now().UTC(), Kind: api.ActivityDone, Done: true, Error: true, Text: "hikari stopped during the turn"})
-		a.tap.Seek(turn, id+1)
+		a.tap.Resume(turn, id+1)
 	}
 	return nil
 }
@@ -365,7 +365,7 @@ func (a *Assistant) NewChat() error {
 	}
 	a.s.Session, a.s.Cost, a.s.Commands = "", 0, nil
 	a.messages, a.activity, a.prompts = nil, nil, nil
-	a.tap.Seek(0, 0)
+	a.tap.Resume(0, 0)
 	if a.transcript != nil {
 		a.transcript.Close()
 		a.transcript = nil

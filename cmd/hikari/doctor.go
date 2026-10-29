@@ -39,6 +39,7 @@ func doctor(ctx context.Context, args []string) error {
 	}
 	c := &checkup{con: console.New(os.Stdout)}
 	c.binaries()
+	c.claude()
 	c.path()
 	docker := c.docker(ctx)
 	if docker {
@@ -91,6 +92,17 @@ func (c *checkup) binaries() {
 	} else {
 		c.ok("the Linux binaries for the containers beside it")
 	}
+}
+
+// claude checks for Claude Code on the PATH, which the hikari agent in the
+// web UI runs (rule HA11 of the hikari agent spec).
+func (c *checkup) claude() {
+	path, err := exec.LookPath("claude")
+	if err != nil {
+		c.warn("claude is not on the PATH; the hikari agent in the web UI needs Claude Code, and the containers bring their own")
+		return
+	}
+	c.ok("claude in " + filepath.Dir(path))
 }
 
 // pathEntry reports whether bindir is on the PATH of new shells, from the

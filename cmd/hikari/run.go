@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/nathanaday/hikari/internal/assistant"
 	"github.com/nathanaday/hikari/internal/console"
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/launcher"
@@ -33,6 +35,9 @@ type runner struct {
 	noLaunch bool
 	url      string
 	host     *server.Host
+	// agent is -agent: auto, on, or off (rule HA10 of the hikari agent
+	// spec).
+	agent string
 
 	mu  sync.Mutex
 	cur *run
@@ -45,6 +50,7 @@ type run struct {
 	logFile *os.File
 	journal *lazyFile
 	feed    *lazyFile
+	agent   *assistant.Assistant
 	sys     *partitions.Manager
 	topo    *topology.Topology
 	stop    func()
@@ -192,6 +198,7 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	srv.FeedTo(cur.feed)
 	srv.Step(console.Plain(read), nil)
 	srv.Step(console.Plain(prepared(topo)), nil)
+	r.startAgent(srv, cur, topo)
 	srv.WatchModules(runCtx)
 	r.host.Attach(srv)
 	cur.sys, cur.topo = sys, topo
@@ -258,7 +265,37 @@ func (r *runner) startRun() (*run, []topology.Finding) {
 	return cur, nil
 }
 
+// startAgent runs the hikari agent for the run when the flag and the
+// listener allow it (rule HA10), and says why otherwise.
+func (r *runner) startAgent(srv *server.Server, cur *run, topo *topology.Topology) {
+	host, _, _ := net.SplitHostPort(r.listen)
+	ok, reason := assistant.Enabled(r.agent, host)
+	if !ok {
+		log.Print(reason)
+		srv.SetAssistant(nil, reason)
+		return
+	}
+	root, err := filepath.Abs(filepath.Dir(r.file))
+	if err != nil {
+		srv.SetAssistant(nil, err.Error())
+		return
+	}
+	runDir, _ := filepath.Abs(cur.dir)
+	a, err := assistant.New(filepath.Join(".hikari", "assistant"), root, assistant.Context(topo.Name, root, runDir, r.url), srv.PublishAssistant)
+	if err != nil {
+		log.Printf("hikari agent: %v", err)
+		r.con.Warn("the hikari agent is off: " + err.Error())
+		srv.SetAssistant(nil, "the hikari agent is off: "+err.Error())
+		return
+	}
+	cur.agent = a
+	srv.SetAssistant(a, "")
+}
+
 func (cur *run) close() {
+	if cur.agent != nil {
+		cur.agent.Close()
+	}
 	if cur.journal != nil {
 		cur.journal.Close()
 	}

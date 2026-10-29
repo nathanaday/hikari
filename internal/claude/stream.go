@@ -125,9 +125,9 @@ func (t *Tap) End(closing string, cost float64, duration time.Duration, err erro
 // Turn is the number of the current turn.
 func (t *Tap) Turn() int64 { return t.turn }
 
-// Seek continues after a kept transcript: the next turn is turn+1, and
+// Resume continues after a kept transcript: the next turn is turn+1, and
 // the next entry id is id+1.
-func (t *Tap) Seek(turn, id int64) { t.turn, t.nextID = turn, id }
+func (t *Tap) Resume(turn, id int64) { t.turn, t.nextID = turn, id }
 
 func (t *Tap) id() int64 {
 	t.nextID++

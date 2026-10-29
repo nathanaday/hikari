@@ -123,6 +123,7 @@ func up(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("up", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1:7420", "server address")
 	noLaunch := fs.Bool("no-launch", false, "start only the server and print agent credentials, for running agents by hand")
+	agent := fs.String("agent", "auto", "run the hikari agent in the web UI: auto (on for a loopback listener), on, or off")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: hikari up [flags] [topology.yaml]")
 		fs.PrintDefaults()
@@ -167,7 +168,10 @@ func up(ctx context.Context, args []string) error {
 	con.Println("")
 	go ed.Watch(ctx, host.TopologyChanged)
 
-	r := &runner{ctx: ctx, con: con, file: ed.File, listen: *listen, port: port, noLaunch: *noLaunch, url: url, host: host}
+	if *agent != "auto" && *agent != "on" && *agent != "off" {
+		return fmt.Errorf("invalid -agent %q: use auto, on, or off", *agent)
+	}
+	r := &runner{ctx: ctx, con: con, file: ed.File, listen: *listen, port: port, noLaunch: *noLaunch, url: url, host: host, agent: *agent}
 	host.Start = r.start
 	host.Stop = func() { r.stop(false) }
 	host.Starting()
