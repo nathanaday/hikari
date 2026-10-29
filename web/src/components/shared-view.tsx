@@ -123,6 +123,15 @@ export function SharedView() {
             </p>
           )}
         </section>
+        <Group
+          title="Remotes"
+          hint="Add a remote as vault/public/remotes/<name>/remote.yaml, with the push and pull commands that hikari runs on this machine, and name it in a deliverable."
+          entries={(data.remotes ?? []).map((r) => ({
+            name: r.name,
+            path: r.path,
+            note: r.problems ? 'invalid' : [r.push ? 'push' : '', r.pull ? 'pull' : ''].filter(Boolean).join(' and ') || 'no commands',
+          }))}
+        />
         <Group title="Policies" hint="Add rules for every agent as Markdown files in vault/public/policies/." entries={data.policies} />
         <Group
           title="Skills"

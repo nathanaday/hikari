@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/vault"
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/testmap"
@@ -414,9 +415,22 @@ func TestGrantsPrompt(t *testing.T) {
 	consumer := partitionAgent
 	consumer.Releases = []string{"inventory"}
 	p := systemPrompt(consumer)
-	for _, want := range []string{"## Releases you can use", "- inventory: /hikari/grants/inventory/releases", "name its partition and version in the description of the suite in tests.yaml"} {
+	for _, want := range []string{"## Releases you can use", "- inventory: /hikari/grants/inventory/releases", "name its partition and version in the description of the suite in tests.yaml",
+		"<deliverable>/tags/<tag> links the version a tag names", "Pin what you integrate with mcp__hikari__pin_release"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("P10: prompt lacks %q", want)
+		}
+	}
+	pinned := consumer
+	pinned.Partition = &api.SelfPartition{Pins: []vault.Pin{{Partition: "inventory", Deliverable: "python-library", Tag: "staging"}}}
+	if p := systemPrompt(pinned); !strings.Contains(p, "- inventory python-library staging, at /hikari/grants/inventory/releases/python-library/tags/staging") {
+		t.Errorf("PN7: prompt lacks the pins:\n%s", p)
+	}
+	holder := partitionAgent
+	holder.Deliverables = []api.DeliverableInfo{{Name: "python-library", Description: "A library.", Remote: "local-dir", Tags: []string{"dev", "staging"}, MayTag: []string{"dev"}}}
+	for _, want := range []string{"Its products go to the remote local-dir", "Its tags match dev, staging; you may set the ones that match dev", "mcp__hikari__tag_release", "mcp__hikari__record_release"} {
+		if p := systemPrompt(holder); !strings.Contains(p, want) {
+			t.Errorf("PS1: prompt lacks %q", want)
 		}
 	}
 	lead := api.Self{Name: "lead", Orchestration: true, VisiblePartitions: []string{"orders"}, Releases: []string{"orders"}}

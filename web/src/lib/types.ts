@@ -144,12 +144,22 @@ export type Manifest = {
   product: { path: string; files: number; bytes: number; digest: string }
   map: string
   certificates: Certificate[]
+  // remote names the remote the product was pushed to or pulled from.
+  remote?: string
 }
+
+// Release is a release of the catalog: its manifest, the tags that point
+// at it, whether its product is on this machine, and who pins it.
+export type Release = Manifest & { tags: string[]; product_present: boolean; pinned_by?: string[] }
+
+// Pin is a partition's declaration of a release of another partition that
+// it uses: a version, or a tag it follows.
+export type Pin = { partition: string; deliverable: string; version?: string; tag?: string }
 
 // ReleaseDetail is a release for the viewer: its files, relative to the
 // store, and the digest of each product file, relative to the release.
 // dir is the release's directory, relative to the vault.
-export type ReleaseDetail = { manifest: Manifest; dir: string; files: string[]; digests: Record<string, string> }
+export type ReleaseDetail = { manifest: Manifest; dir: string; files: string[]; digests: Record<string, string>; tags?: string[]; product_present?: boolean }
 
 export type Layout = { require?: string[]; allow?: string[]; forbid?: string[] }
 
@@ -172,7 +182,12 @@ export type SharedListing = {
   policies: { name: string; path: string }[]
   skills: { name: string; path: string; holders: string[] }[]
   deliverables: Deliverable[]
+  remotes?: Remote[]
 }
+
+// Remote is how products are pushed to and pulled from a home outside the
+// vault: the project's commands.
+export type Remote = { name: string; path: string; description: string; push: boolean; pull: boolean; problems?: string }
 
 // Folder is one folder of a partition's workspace, by its place under
 // /workspace.
@@ -201,7 +216,8 @@ export type PartitionView = {
   error?: string
   private_errors?: string[]
   private: Private
-  releases: Manifest[] | null
+  releases: Release[] | null
+  pins?: Pin[]
   partition_agent: string
   folders: Folder[]
   repos: RepoState[]

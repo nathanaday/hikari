@@ -42,6 +42,8 @@ type remoteEntry struct {
 
 type releaseDetail struct {
 	Manifest vault.Manifest `json:"manifest"`
+	Tags     []string       `json:"tags"`
+	Product  bool           `json:"product_present"`
 	// Dir is the release's directory, relative to the vault.
 	Dir string `json:"dir"`
 	// Files lists the release's files, relative to the vault.
@@ -100,7 +102,18 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 			return
 		}
 		dir := st.ReleaseDir(partition, deliverable, version)
-		detail := releaseDetail{Manifest: releases[i], Dir: st.Rel(dir), Files: []string{}, Digests: map[string]string{}}
+		detail := releaseDetail{Manifest: releases[i], Tags: []string{}, Dir: st.Rel(dir), Files: []string{}, Digests: map[string]string{}}
+		if tags, err := st.LoadTags(partition, deliverable); err == nil {
+			for tag, v := range tags.Tags {
+				if v == version {
+					detail.Tags = append(detail.Tags, tag)
+				}
+			}
+			slices.Sort(detail.Tags)
+		}
+		if info, err := os.Stat(filepath.Join(dir, vault.ProductDir)); err == nil && info.IsDir() {
+			detail.Product = true
+		}
 		filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
 				rel, _ := filepath.Rel(st.Root, p)

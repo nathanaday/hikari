@@ -56,7 +56,7 @@ func orchestrationPrompt(self api.Self) string {
 		fmt.Fprintf(&b, `
 ## Releases of your partitions
 
-The map and the releases of each of your partitions are in /hikari/partitions/<partition>/: features/map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and features/, the feature map at release time. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml) and how the partition agent makes it (SKILL.md). When a partition announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the partition agent what is missing. You cannot change deliverables or who holds them; ask the user.
+The map and the releases of each of your partitions are in /hikari/partitions/<partition>/: features/map.yaml, and releases/<deliverable>/<version>/ with release.yaml, SHA256SUMS, product/, and features/, the feature map at release time; releases/<deliverable>/tags/<tag> links the version a tag names. mcp__hikari__list_releases is the catalog: every release with its tags, its remote, whether its product is on this machine, and the partitions that pin it. A release may lack its product on this machine until it is pulled; mcp__hikari__pull_release gets it when the deliverable has a remote. A release is a product of one deliverable: a named package in %s/deliverables/<name>/ that says what the product must contain (deliverable.yaml), which tags it may carry, where its products live (remote), and how the partition agent makes it (SKILL.md). When a partition announces a release, check it: read its release.yaml, the product's docs, and the deliverable's definition. The product must meet what the deliverable promises and what the project agreed, and its docs must explain how to install it and how to use each interface that it provides. Tell the partition agent what is missing. A consumer partition pins the releases it uses; get_partition shows its pins. You cannot change deliverables, tags' meanings, or who holds them; ask the user.
 `, api.PublicDir)
 	}
 	fmt.Fprintf(&b, "\n## Your feature map\n\nYour feature map, %s/features/, holds the features that cross partitions: each is a flow that links the features of the partitions that carry it out, and its health is computed from theirs. Change it only with mcp__hikari__change_wiki. Only you read it.\n", api.SelfDir)
@@ -330,9 +330,20 @@ func grantsPrompt(self api.Self) string {
 	for _, sys := range granted {
 		fmt.Fprintf(&b, "- %s: %s\n", sys, api.ReleasesPath(sys))
 	}
-	b.WriteString("\nEach release is <deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and features/ (the partition's feature map at release time, with its map.yaml). <deliverable>/latest is the newest release of that deliverable. Read the product's docs before you integrate a release. Choose a version, and do not edit the release; copy or install it where your work needs it.")
+	b.WriteString("\nEach release is <deliverable>/<version>/, with release.yaml (what it is, who published it, and when), SHA256SUMS, product/ (the files), and features/ (the partition's feature map at release time, with its map.yaml). <deliverable>/tags/<tag> links the version a tag names; latest is the newest release of that deliverable. mcp__hikari__list_releases lists them with their tags and whether each product is on this machine; a product that is absent is pulled with mcp__hikari__pull_release when its deliverable has a remote. Read the product's docs before you integrate a release. Choose a version or a tag, and do not edit the release; copy or install it where your work needs it.")
 	if self.Partition != nil {
-		b.WriteString(" When your tests use a release, name its partition and version in the description of the suite in tests.yaml that runs them.")
+		b.WriteString(" Pin what you integrate with mcp__hikari__pin_release, a version or a tag you follow: hikari records the pin, keeps its product on this machine, and a clone of the project gets it with hikari sync. When your tests use a release, name its partition and version in the description of the suite in tests.yaml that runs them.")
+		if len(self.Partition.Pins) > 0 {
+			b.WriteString("\n\nYour pins:\n\n")
+			for _, pin := range self.Partition.Pins {
+				ref := pin.Version
+				if pin.Tag != "" {
+					ref = "tags/" + pin.Tag
+				}
+				fmt.Fprintf(&b, "- %s %s %s, at %s/%s/%s\n", pin.Partition, pin.Deliverable, pin.Ref(), api.ReleasesPath(pin.Partition), pin.Deliverable, ref)
+			}
+			return b.String()
+		}
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -349,10 +360,26 @@ func deliverablesPrompt(self api.Self) string {
 	}
 	b.WriteString("A deliverable is a named package that says what a product must contain, where it must also be published, and how you make it. You hold these:\n\n")
 	for _, d := range self.Deliverables {
-		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/%s/.\n", d.Name, d.Description, api.PublicDir, d.Name, api.StagingDir, d.Name)
+		fmt.Fprintf(&b, "- %s: %s Its definition is in %s/deliverables/%s/, and you build its product in %s/%s/.", d.Name, d.Description, api.PublicDir, d.Name, api.StagingDir, d.Name)
+		if d.Remote != "" {
+			fmt.Fprintf(&b, " Its products go to the remote %s: hikari pushes each release there when you publish, and pulls one when a machine lacks it.", d.Remote)
+		} else {
+			b.WriteString(" It has no remote, so its products exist only on the machine that published them; a clone of the project cannot get them.")
+		}
+		switch {
+		case len(d.Tags) == 0:
+			b.WriteString(" It declares no tags; latest is the only one.")
+		case len(d.MayTag) > 0:
+			fmt.Fprintf(&b, " Its tags match %s; you may set the ones that match %s.", strings.Join(d.Tags, ", "), strings.Join(d.MayTag, ", "))
+		default:
+			fmt.Fprintf(&b, " Its tags match %s, and you may set any of them.", strings.Join(d.Tags, ", "))
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString(`
-To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, and notes that say what changed. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, moves the product into /hikari/self/releases/<deliverable>/<version>/, and announces the release in the room.
+To publish a release of a deliverable: load the skill with the deliverable's name and follow it to build the product in the staging directory of that deliverable, with nothing else in it. Call mcp__hikari__check_release to check the product against the deliverable's layout rules, and fix every problem it reports. Then call mcp__hikari__publish_release with the deliverable, a semver version greater than its last release, notes that say what changed, and the tags to set on it, if any. When the deliverable has targets, publish to each target first, as its skill says, and give one certificate for each in the same call. hikari writes the manifest, pushes the product to the deliverable's remote when it has one, moves the product into /hikari/self/releases/<deliverable>/<version>/, and announces the release in the room.
+
+A tag is a mutable name for a version, such as staging or production; hikari gives no tag a meaning. Move one with mcp__hikari__tag_release; latest is hikari's and always names the newest version. The links /hikari/self/releases/<deliverable>/tags/<tag> point at the versions. When a release of a deliverable is built and published elsewhere, such as by a CI workflow, record it with mcp__hikari__record_release: hikari pulls the version through the remote into the empty staging directory and publishes it as yours. mcp__hikari__list_releases lists every release you can read, with its tags and whether its product is on this machine.
 `)
 	return b.String()
 }

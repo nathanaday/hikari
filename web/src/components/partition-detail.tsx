@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { HealthBadge } from '@/components/health'
 import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
-import type { Feature, Interface, Manifest, Private, PartitionView, TaskView } from '@/lib/types'
+import type { Feature, Interface, Private, Release, PartitionView, TaskView } from '@/lib/types'
 import { StatusChip } from '@/components/work-view'
 
 function ago(iso?: string): string {
@@ -16,8 +16,8 @@ function ago(iso?: string): string {
 }
 
 // groupByDeliverable keeps the server's order: by deliverable, newest first.
-function groupByDeliverable(releases: Manifest[]): [string, Manifest[]][] {
-  const groups: [string, Manifest[]][] = []
+function groupByDeliverable(releases: Release[]): [string, Release[]][] {
+  const groups: [string, Release[]][] = []
   for (const r of releases) {
     const last = groups[groups.length - 1]
     if (last && last[0] === r.deliverable) last[1].push(r)
@@ -304,11 +304,19 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                             <a href={`#/partition/${v.partition_agent}/release/${r.deliverable}/${r.version}`} className="font-medium underline underline-offset-2">
                               {r.version}
                             </a>
+                            {r.tags?.map((tag) => (
+                              <code key={tag} className="rounded bg-neutral-100 px-1 text-xs" data-testid="tag">
+                                {tag}
+                              </code>
+                            ))}
                             <span className="min-w-0 flex-1">{r.notes}</span>
                             <span className="text-xs text-muted-foreground">
                               {r.product.files} file{r.product.files === 1 ? '' : 's'}
+                              {r.product_present === false ? ' · product absent' : ''}
+                              {r.remote ? ` · remote ${r.remote}` : ''}
                               {r.certificates?.length ? ` · ${r.certificates.map((c) => c.type).join(', ')}` : ''} · {releaseCommits(r)} ·{' '}
                               {ago(r.released)}
+                              {r.pinned_by?.length ? ` · pinned by ${r.pinned_by.join(', ')}` : ''}
                             </span>
                           </li>
                         ))}
@@ -318,6 +326,22 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No releases yet.</p>
+              )}
+            </Section>
+            <Section title="Pins">
+              {v.pins?.length ? (
+                <ul className="divide-y border-y" data-testid="pins">
+                  {v.pins.map((p) => (
+                    <li key={`${p.partition}/${p.deliverable}`} className="flex flex-wrap items-baseline gap-x-3 py-2 text-sm">
+                      <span className="font-medium">
+                        {p.partition} {p.deliverable}
+                      </span>
+                      <span className="text-muted-foreground">{p.tag ? `follows the tag ${p.tag}` : `version ${p.version}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No pins: the partition uses no release of another partition.</p>
               )}
             </Section>
             {scopesOf(state, v.partition_agent).length > 0 && (

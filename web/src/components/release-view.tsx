@@ -99,6 +99,13 @@ export function ReleaseBody({ data }: { data: ReleaseDetail }) {
               <code className="text-xs break-all">{m.product.digest}</code>
             </Field>
             <Field label="hikari">{m.hikari}</Field>
+            {data.tags?.length ? <Field label="tags">{data.tags.join(', ')}</Field> : null}
+            {m.remote && (
+              <Field label="remote">
+                {m.remote}
+                {data.product_present === false ? ' · product absent on this machine' : ''}
+              </Field>
+            )}
           </div>
           {m.certificates?.length ? (
             <div>

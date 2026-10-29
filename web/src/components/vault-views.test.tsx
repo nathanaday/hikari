@@ -38,6 +38,7 @@ const release: ReleaseDetail = {
   dir,
   files: [base + 'SHA256SUMS', base + 'features/map.yaml', base + 'product/README.md', base + 'product/inventory/stock.py', base + 'release.yaml'],
   digests: { 'product/README.md': '0ffc73ea41e7', 'product/inventory/stock.py': 'a40eab3a026b' },
+  tags: ['latest', 'staging'],
 }
 
 describe('DeliverableEntry', () => {
@@ -94,5 +95,20 @@ describe('PartitionDetail', () => {
     })
     const html = renderToStaticMarkup(<PartitionDetail state={initialState({ kind: 'room' })} partition={v} />)
     for (const text of ['/workspace/shop/services/orders', 'services/orders of shop', '/workspace/protos', 'orders of protos, read-only', 'with uncommitted changes', ', clean']) expect(html).toContain(text)
+  })
+})
+
+describe('PartitionDetail releases', () => {
+  it('shows the tags, the product, and the pins (LS3)', () => {
+    const v = partition('orders', [], {
+      releases: [
+        { ...release.manifest, tags: ['latest', 'staging'], product_present: false, remote: 'local-dir', pinned_by: ['orders'] },
+      ],
+      pins: [{ partition: 'inventory', deliverable: 'python-library', tag: 'staging' }],
+    })
+    const html = renderToStaticMarkup(<PartitionDetail state={initialState({ kind: 'room' })} partition={v} />)
+    for (const want of ['data-testid="tag"', 'staging', 'product absent', 'remote local-dir', 'pinned by orders', 'data-testid="pins"', 'follows the tag staging']) {
+      expect(html).toContain(want)
+    }
   })
 })
