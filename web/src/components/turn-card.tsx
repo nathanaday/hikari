@@ -83,7 +83,11 @@ export function TurnCard({ turn, names, children, reply }: { turn: Turn; names: 
             {turn.end && <Closing end={turn.end} names={names} label={reply ? 'Reply' : undefined} />}
           </div>
         )}
-        {!expanded && turn.end && (turn.end.unheard || reply) && <Closing end={turn.end} names={names} label={reply ? 'Reply' : undefined} />}
+        {!expanded && turn.end && (turn.end.unheard || reply) && (
+          <div className="px-3 pb-2">
+            <Closing end={turn.end} names={names} label={reply ? 'Reply' : undefined} />
+          </div>
+        )}
       </div>
     </div>
   )

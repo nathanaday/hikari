@@ -62,6 +62,13 @@ describe('AssistantPanel', () => {
     expect(html).toContain('<strong>three</strong>')
   })
 
+  it('indents the stopped line of a folded turn like its header', () => {
+    const stopped = { ...view, activity: [...view.activity, { id: 3, turn: 1, time: '2026-10-28T14:00:04Z', kind: 'done' as const, text: 'stopped', done: true, error: true }] }
+    const html = renderToStaticMarkup(<AssistantPanel state={stateWith(stopped)} close={noop} />)
+    expect(html).toMatch(/<div class="px-3 pb-2"><p class="[^"]*" data-testid="closing">/)
+    expect(html).toContain('stopped')
+  })
+
   it('shows an answered prompt as its answer', () => {
     const answered = { ...view, prompts: [{ ...view.prompts[0], answer: 'deny' as const, message: 'Not now' }] }
     const html = renderToStaticMarkup(<AssistantPanel state={stateWith(answered)} close={noop} />)
