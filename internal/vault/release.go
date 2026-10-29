@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -42,6 +43,17 @@ type Manifest struct {
 	Product       ProductInfo   `yaml:"product" json:"product"`
 	Map           string        `yaml:"map" json:"map"`
 	Certificates  []Certificate `yaml:"certificates" json:"certificates"`
+	// Remote names the remote the product was pushed to or pulled from
+	// (rule RL6).
+	Remote string `yaml:"remote,omitempty" json:"remote,omitempty"`
+}
+
+// Release is a release of the catalog (rule LS1): its manifest, the tags
+// that point at it, and whether its product is on this machine.
+type Release struct {
+	Manifest `yaml:",inline"`
+	Tags     []string `yaml:"tags" json:"tags"`
+	Product  bool     `yaml:"product_present" json:"product_present"`
 }
 
 // ProductInfo summarizes the product of a release.
@@ -92,6 +104,11 @@ type PublishInput struct {
 	Version      string
 	Notes        string
 	Certificates []Certificate
+	// Tags are set on the new version in the same change (rule TG5).
+	Tags []string
+	// Remote is the name of the remote the product was pushed to or pulled
+	// from, when there is one.
+	Remote string
 	// SourceCommits are the commits that the partition's map describes.
 	SourceCommits []string
 	// Map is the public map at release time, as YAML.
@@ -102,6 +119,8 @@ type PublishInput struct {
 	// Hikari is the version of the server.
 	Hikari string
 	Now    time.Time
+	// NoPush skips the remote's push: record_release pulled the product.
+	NoPush bool
 }
 
 // ProductCheck is what Check reports about a staged product that meets
@@ -216,7 +235,7 @@ func digestFile(p string) (string, int64, error) {
 // Publish checks the staged product of a deliverable and turns it into a
 // release (rules R16, R17, R19). On any problem it returns every problem
 // and changes nothing.
-func (s Vault) Publish(in PublishInput) (Manifest, error) {
+func (s Vault) Publish(ctx context.Context, in PublishInput) (Manifest, error) {
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 
@@ -237,6 +256,11 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 	if strings.TrimSpace(in.Notes) == "" {
 		fail("notes are required: say what changed in this version")
 	}
+	for _, tag := range in.Tags {
+		if !ValidTagName(tag) || tag == LatestTag {
+			fail("tag %q is not a tag you can set", tag)
+		}
+	}
 	d, files, err := s.checkProduct(in.Partition, in.Deliverable)
 	if err != nil {
 		errs = append(errs, err)
@@ -253,32 +277,23 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 	if err := os.Mkdir(dest, 0o755); err != nil {
 		return Manifest{}, err
 	}
-	product := filepath.Join(dest, ProductDir)
-	if err := os.Mkdir(product, 0o755); err != nil {
+	undo := func(err error) (Manifest, error) {
+		os.RemoveAll(dest)
 		return Manifest{}, err
 	}
-	// Move the entries, not the directory: the partition agent's container mounts
-	// staging/, and a renamed directory would stay writable to it.
-	staging := s.StagingOf(in.Partition, in.Deliverable)
-	entries, err := os.ReadDir(staging)
-	if err != nil {
-		return Manifest{}, err
-	}
-	for _, e := range entries {
-		if err := os.Rename(filepath.Join(staging, e.Name()), filepath.Join(product, e.Name())); err != nil {
-			return Manifest{}, err
-		}
-	}
-
 	sums := sumsText(files)
 	if err := os.WriteFile(filepath.Join(dest, SumsFile), []byte(sums), 0o644); err != nil {
-		return Manifest{}, err
+		return undo(err)
 	}
 	digest := sha256.Sum256([]byte(sums))
 	summary := summarize(files)
 	certs := in.Certificates
 	if certs == nil {
 		certs = []Certificate{}
+	}
+	remote := in.Remote
+	if d.Remote != "" {
+		remote = d.Remote
 	}
 	m := Manifest{
 		Deliverable: in.Deliverable, Version: in.Version, Partition: in.Partition,
@@ -287,28 +302,104 @@ func (s Vault) Publish(in PublishInput) (Manifest, error) {
 			Path: ProductDir + "/", Files: summary.Files, Bytes: summary.Bytes,
 			Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		},
-		Map: FeaturesDir + "/" + MapName, Certificates: certs,
+		Map: FeaturesDir + "/" + MapName, Certificates: certs, Remote: remote,
 	}
 	data, err := yaml.Marshal(s.onDisk(m))
 	if err != nil {
-		return Manifest{}, err
+		return undo(err)
 	}
 	if err := os.WriteFile(filepath.Join(dest, ManifestFile), data, 0o644); err != nil {
-		return Manifest{}, err
+		return undo(err)
 	}
 	features := filepath.Join(dest, FeaturesDir)
 	if err := os.Mkdir(features, 0o755); err != nil {
-		return Manifest{}, err
+		return undo(err)
 	}
 	if err := os.WriteFile(filepath.Join(features, MapName), in.Map, 0o644); err != nil {
-		return Manifest{}, err
+		return undo(err)
 	}
 	for name, data := range in.Features {
 		if err := os.WriteFile(filepath.Join(features, name), data, 0o644); err != nil {
+			return undo(err)
+		}
+	}
+	// The push sees the record and the product in the staging area; a
+	// failure leaves no release (rule RM5).
+	if d.Remote != "" && !in.NoPush {
+		if err := s.push(ctx, d, in, m, dest); err != nil {
+			return undo(err)
+		}
+	}
+	// Move the entries, not the directory: the partition agent's container mounts
+	// staging/, and a renamed directory would stay writable to it.
+	product := filepath.Join(dest, ProductDir)
+	if err := os.Mkdir(product, 0o755); err != nil {
+		return undo(err)
+	}
+	staging := s.StagingOf(in.Partition, in.Deliverable)
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return undo(err)
+	}
+	for _, e := range entries {
+		if err := os.Rename(filepath.Join(staging, e.Name()), filepath.Join(product, e.Name())); err != nil {
 			return Manifest{}, err
 		}
 	}
-	return m, s.pointLatest(in.Partition, in.Deliverable)
+	return m, s.tagNew(in.Partition, in.Deliverable, in.Tags)
+}
+
+// tagNew points latest at the newest version and sets the tags of a
+// publish (rules TG1 and TG5).
+func (s Vault) tagNew(partition, deliverable string, tags []string) error {
+	versions, err := s.Versions(partition, deliverable)
+	if err != nil || len(versions) == 0 {
+		return err
+	}
+	t, err := s.LoadTags(partition, deliverable)
+	if err != nil {
+		return err
+	}
+	t.Tags[LatestTag] = versions[0]
+	for _, tag := range tags {
+		t.Tags[tag] = versions[0]
+	}
+	return s.WriteTags(partition, deliverable, t)
+}
+
+// RecordPaths returns the vault paths that a publish commits (rule RL3):
+// the release's directory, whose product git ignores, and tags.yaml.
+func (s Vault) RecordPaths(partition, deliverable, version string) []string {
+	return []string{s.Rel(s.ReleaseDir(partition, deliverable, version)), s.Rel(s.TagsFile(partition, deliverable))}
+}
+
+// Catalog returns the releases of a partition with their tags and whether
+// each product is present (rules RL7 and LS1): by deliverable, newest
+// first within each.
+func (s Vault) Catalog(partition string) ([]Release, error) {
+	manifests, err := s.Releases(partition)
+	if err != nil {
+		return nil, err
+	}
+	out := []Release{}
+	tags := map[string]Tags{}
+	for _, m := range manifests {
+		t, ok := tags[m.Deliverable]
+		if !ok {
+			t, _ = s.LoadTags(partition, m.Deliverable)
+			tags[m.Deliverable] = t
+		}
+		r := Release{Manifest: m, Tags: []string{}}
+		for tag, v := range t.Tags {
+			if v == m.Version {
+				r.Tags = append(r.Tags, tag)
+			}
+		}
+		slices.Sort(r.Tags)
+		r.Product = isDir(filepath.Join(s.ReleaseDir(partition, m.Deliverable, m.Version), ProductDir))
+		out = append(out, r)
+	}
+	return out, nil
 }
 
 // sumsText renders the product's digests in sha256sum format (rule R12).
@@ -318,22 +409,6 @@ func sumsText(files []productFile) string {
 		fmt.Fprintf(&b, "%s  %s/%s\n", f.sum, ProductDir, f.path)
 	}
 	return b.String()
-}
-
-// pointLatest points releases/<deliverable>/latest at the newest version,
-// replacing the link atomically.
-func (s Vault) pointLatest(partition, deliverable string) error {
-	versions, err := s.Versions(partition, deliverable)
-	if err != nil || len(versions) == 0 {
-		return err
-	}
-	dir := s.DeliverableReleasesDir(partition, deliverable)
-	tmp := filepath.Join(dir, ".latest-new")
-	os.Remove(tmp)
-	if err := os.Symlink(versions[0], tmp); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(dir, "latest"))
 }
 
 // Versions returns the published versions of a deliverable of a partition,

@@ -1105,7 +1105,7 @@ func (m *Manager) PublishRelease(agent string, req api.PublishRequest) (vault.Ma
 	if err != nil {
 		return vault.Manifest{}, err
 	}
-	rel, err := m.vault.Publish(vault.PublishInput{
+	rel, err := m.vault.Publish(context.Background(), vault.PublishInput{
 		Partition: agent, Deliverable: req.Deliverable, Version: req.Version, Notes: req.Notes,
 		Certificates: req.Certificates, SourceCommits: v.Partition.DescribedState.Commits, Map: public,
 		Features: o.wiki.Files(releaseKinds...), Hikari: version.Version, Now: m.now(),

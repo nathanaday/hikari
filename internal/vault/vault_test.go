@@ -222,7 +222,7 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("R15 check = %+v, %v", check, err)
 	}
 
-	m, err := s.Publish(input("1.0.0"))
+	m, err := s.Publish(t.Context(), input("1.0.0"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,26 +281,26 @@ func TestPublish(t *testing.T) {
 	if _, err := ParseManifest(append(data, "extra: 1\n"...)); err == nil {
 		t.Error("an unknown key of a manifest is an error")
 	}
-	if link, _ := os.Readlink(filepath.Join(s.DeliverableReleasesDir("inventory", "python-library"), "latest")); link != "1.0.0" {
-		t.Errorf("R17 latest -> %q", link)
+	if link, _ := os.Readlink(filepath.Join(s.TagsDir("inventory", "python-library"), "latest")); link != "../1.0.0" {
+		t.Errorf("RL5 tags/latest -> %q", link)
 	}
 
 	stage(t, s, "python-library", goodProduct)
-	if _, err := s.Publish(input("1.0.0")); err == nil || !strings.Contains(err.Error(), "not greater") {
+	if _, err := s.Publish(t.Context(), input("1.0.0")); err == nil || !strings.Contains(err.Error(), "not greater") {
 		t.Errorf("R19: republishing 1.0.0: %v", err)
 	}
-	if _, err := s.Publish(input("1.1.0-rc.1")); err != nil {
+	if _, err := s.Publish(t.Context(), input("1.1.0-rc.1")); err != nil {
 		t.Fatal(err)
 	}
-	if link, _ := os.Readlink(filepath.Join(s.DeliverableReleasesDir("inventory", "python-library"), "latest")); link != "1.1.0-rc.1" {
-		t.Errorf("latest -> %q", link)
+	if link, _ := os.Readlink(filepath.Join(s.TagsDir("inventory", "python-library"), "latest")); link != "../1.1.0-rc.1" {
+		t.Errorf("tags/latest -> %q", link)
 	}
 
 	defineDeliverable(t, s, "docs", "version: 1\ndescription: The docs.\n")
 	stage(t, s, "docs", map[string]string{"index.md": "hi\n"})
 	in := input("0.1.0")
 	in.Deliverable = "docs"
-	if _, err := s.Publish(in); err != nil {
+	if _, err := s.Publish(t.Context(), in); err != nil {
 		t.Fatal(err)
 	}
 	list, _ := s.Releases("inventory")
@@ -358,7 +358,7 @@ func TestPublishChecks(t *testing.T) {
 			}
 			in := input(c.version)
 			in.Notes, in.Certificates = c.notes, c.certs
-			_, err := s.Publish(in)
+			_, err := s.Publish(t.Context(), in)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("error = %v, want %q", err, c.want)
 			}
@@ -373,7 +373,7 @@ func TestPublishChecks(t *testing.T) {
 		defineDeliverable(t, s, "python-library", pythonLibrary)
 		stage(t, s, "python-library", goodProduct)
 		os.Symlink("README.md", filepath.Join(s.StagingOf("inventory", "python-library"), "LINK.md"))
-		if _, err := s.Publish(input("1.0.0")); err == nil || !strings.Contains(err.Error(), "must not contain links: LINK.md") {
+		if _, err := s.Publish(t.Context(), input("1.0.0")); err == nil || !strings.Contains(err.Error(), "must not contain links: LINK.md") {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -384,7 +384,7 @@ func TestPublishChecks(t *testing.T) {
 		os.MkdirAll(s.StagingOf("inventory", "python-library"), 0o755)
 		in := input("1.0.0")
 		in.Certificates = []Certificate{{Type: TargetDockerHub, Repository: "acme/inventory", Tag: "1.0.0", Digest: "sha256:" + hex64s}}
-		m, err := s.Publish(in)
+		m, err := s.Publish(t.Context(), in)
 		if err != nil || m.Product.Files != 0 || len(m.Certificates) != 1 || m.Certificates[0].Digest != in.Certificates[0].Digest {
 			t.Errorf("C5: %+v, %v", m, err)
 		}

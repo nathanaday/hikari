@@ -17,6 +17,7 @@ const (
 	Vocabulary   = "vocabulary"
 	Policies     = "policies"
 	Deliverables = "deliverables"
+	Remotes      = "remotes"
 )
 
 // Wiki is the directory of the public wiki in the public area.
@@ -167,7 +168,7 @@ func (s Vault) ReleaseDir(partition, deliverable, version string) string {
 // and writes its README once. The orchestration agent's parts exist only
 // when the topology names one (rule V2).
 func (s Vault) Prepare(partitions []string, orchestration bool) error {
-	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.PublicWiki(), s.SkillsRoot()}
+	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.Public(Remotes), s.PublicWiki(), s.SkillsRoot()}
 	for _, p := range partitions {
 		dirs = append(dirs, s.FeatureMap(p), s.ReleasesOf(p), s.Granted(p), s.CanEdit(p), s.Staging(p))
 	}
@@ -230,7 +231,7 @@ func isDir(p string) bool {
 // PR12): products and drafts stay out of git.
 const IgnoreFile = ".gitignore"
 
-const ignoreText = "partitions/*/staging/\npartitions/*/read-only/releases/\n"
+const ignoreText = "partitions/*/staging/\npartitions/*/read-only/releases/*/*/product/\npartitions/*/read-only/releases/*/tags/\n"
 
 // WriteIgnore writes the vault's ignore file unless it already holds what
 // hikari writes. It reports whether it wrote the file.
@@ -253,8 +254,10 @@ this file once; you can change it.
                                 agent writes through hikari, and your plans and notes
       policies/<name>.md        rules for every agent; you write them
       deliverables/<name>/      what a release must contain and how to make it; you write them
-        deliverable.yaml        the description, the layout rules, and the cloud targets
+        deliverable.yaml        the description, the layout rules, the remote, the tags, and the cloud targets
         SKILL.md                the skill that tells the partition agent how to make the product
+      remotes/<name>/remote.yaml  how a product is pushed to and pulled from a home outside
+                                the vault: your commands, which hikari runs on the host
     skills/<name>/SKILL.md      your Claude Code skills; grants.skills gives them to agents,
                                 at /hikari/skills/<name>
     partitions/<id>/
@@ -266,9 +269,11 @@ this file once; you can change it.
         releases/<deliverable>/<x.y.z>/   published releases, which never change
           release.yaml          the manifest; hikari writes it
           SHA256SUMS            the digest of every file of the product
-          product/              the files the partition agent staged
+          product/              the files the partition agent staged; not in git
           features/             the feature map at release time
-        releases/<deliverable>/latest     the newest release of that deliverable
+        releases/<deliverable>/tags.yaml  the tags of its releases; latest is hikari's
+        releases/<deliverable>/tags/<tag> a link to the release the tag names
+        pins.yaml               the releases of other partitions that this one uses
         granted/                files you give the partition to read
       can-edit/                 files you give the partition, which its agent can change,
                                 at /hikari/can-edit
@@ -285,8 +290,10 @@ mounts a few of these directories, and nothing else of the vault. No
 container mounts another partition's can-edit/ or staging/. A grant in the
 topology mounts another partition's releases at /hikari/grants/<name>/releases.
 
-In a project repository, git ignores staging/ and releases/: products
-stay out of git, and hikari commits what agents change in the vault. Your
-own changes in the wikis, can-edit/, and granted/ are committed as yours
-when hikari starts and stops.
+In a project repository, git ignores staging/ and the product/ of each
+release: products stay out of git, and the records of releases, their
+tags, and the pins travel with the vault. hikari pulls a product through
+the deliverable's remote when a pin needs it. hikari commits what agents
+change in the vault. Your own changes in the wikis, can-edit/, and
+granted/ are committed as yours when hikari starts and stops.
 `

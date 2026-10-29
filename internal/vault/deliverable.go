@@ -32,7 +32,17 @@ type Deliverable struct {
 	Description string   `yaml:"description" json:"description"`
 	Layout      Layout   `yaml:"layout,omitempty" json:"layout"`
 	Targets     []Target `yaml:"targets,omitempty" json:"targets"`
+	// Remote names the remote of public/remotes/ that holds the products
+	// (rule RM2).
+	Remote string `yaml:"remote,omitempty" json:"remote,omitempty"`
+	// Tags are the patterns of the tags a release of it can carry (rule
+	// TG2).
+	Tags []string `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
+
+// AllowsTag reports whether tag matches one of the deliverable's tag
+// patterns (rule TG2).
+func (d Deliverable) AllowsTag(tag string) bool { return MatchesTag(d.Tags, tag) }
 
 // Layout holds the rules on the files of a product: glob patterns that must
 // match, that alone may match, and that must not match.
@@ -159,6 +169,11 @@ func (s Vault) LoadDeliverable(name string) (Deliverable, error) {
 	} else if info.Size() == 0 {
 		fail("deliverable %q: %s is empty", name, SkillFile)
 	}
+	if d.Remote != "" {
+		if _, err := s.LoadRemote(d.Remote); err != nil {
+			fail("deliverable %q: remote: %v", name, err)
+		}
+	}
 	return d, errors.Join(errs...)
 }
 
@@ -198,6 +213,14 @@ func (d Deliverable) check(name string) []error {
 		if t.Kind != "" && !slices.Contains(hfKinds, t.Kind) {
 			fail("targets[%d].kind must be one of %s", i, strings.Join(hfKinds, ", "))
 		}
+	}
+	if _, bad := CompileTagPatterns(d.Tags); len(bad) > 0 {
+		for _, err := range bad {
+			fail("tags: %v", err)
+		}
+	}
+	if d.Remote != "" && !ValidDeliverableName(d.Remote) {
+		fail("remote %q is not a valid name", d.Remote)
 	}
 	return errs
 }

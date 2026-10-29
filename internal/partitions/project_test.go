@@ -70,8 +70,8 @@ func TestProjectVaultCommits(t *testing.T) {
 			t.Errorf("PR18 log lacks %q:\n%s", want, log)
 		}
 	}
-	if got := git(t, dir, "show", "HEAD:vault/.gitignore"); got != "partitions/*/staging/\npartitions/*/read-only/releases/" {
-		t.Errorf("PR12 ignore file = %q", got)
+	if got := git(t, dir, "show", "HEAD:vault/.gitignore"); got != "partitions/*/staging/\npartitions/*/read-only/releases/*/*/product/\npartitions/*/read-only/releases/*/tags/" {
+		t.Errorf("RL2 ignore file = %q", got)
 	}
 
 	must(t, m.SetPartitionInfo("orders", featuremap.PartitionPatch{
