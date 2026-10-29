@@ -127,7 +127,7 @@ Save it as `topology.yaml` and run `hikari up`. Each folder appears in the agent
 
 Onboarding turns your repositories into a project through two skills of the plugin, which the `hikari` skill hands you to. `containerize-repo` wraps each repository as one partition, with no change to its code, and hikari's agents record a baseline of every test. `hikify` works with you to draw cleaner partitions, plans the moves, has fresh reviewers check the plan, and carries it out. Before you commit to either, `propose-topology` sketches a topology from reading the code. After onboarding, `room` posts your requests to the agents from your session, and `change-topology` splits, merges, or adds partitions as the project grows. The [onboarding guide](docs/guides/onboarding.md) walks through each one.
 
-Partitions share their work as releases, and a release travels: its record is committed with the vault, so a teammate's clone holds the whole catalog, and its product is pushed to and pulled from a remote that your project defines as two commands, for GitHub releases, S3, or anything else. Tags such as `staging` and `production` name versions, the topology says who may set and pin them, and `hikari sync` pulls what each partition pins.
+Partitions share their work as releases, and a release travels: its record is committed with the vault, so a teammate's clone holds the whole catalog, and its product is pushed to and pulled from a remote that your project defines as two commands, for GitHub releases, S3, or anything else. Tags such as `staging` and `production` name versions, the topology says who may set and pin them, and `hikari sync` pulls what each partition pins. The [releases guide](docs/guides/releases.md) sets it up.
 
 ## Learn More
 
@@ -136,5 +136,6 @@ Partitions share their work as releases, and a release travels: its record is co
 - [The vault](docs/guides/vault.md): where each file lives, and where each container sees it
 - [Onboarding guide](docs/guides/onboarding.md): bring existing repositories into a project
 - [Task pipeline](docs/guides/tasks.md): stubs, scopes, and queues of work
+- [Releases](docs/guides/releases.md): set up remotes, tags, and pins so that releases travel
 - [Migration guide](docs/guides/migrating.md): move a project from before the glossary's words to now
 - [Shop example](examples/shop/): two partitions and an orchestration agent
