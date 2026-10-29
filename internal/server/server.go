@@ -151,12 +151,17 @@ func (s *Server) Partitions() *partitions.Manager { return s.sys }
 func (s *Server) partitionChanged(c partitions.Change) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var names []string
 	if c.Partition != "" {
-		v := s.sys.PartitionView(c.Partition)
+		names = append(names, c.Partition)
+	}
+	for _, name := range append(names, c.Dependents...) {
+		v := s.sys.PartitionView(name)
 		s.publish(Event{Type: "partition", Partition: &v})
 	}
 	// A partition's health is the support of the public wiki's documents,
-	// and the health of the orchestration feature map's.
+	// and the health of the orchestration feature map's: one computation
+	// of the health serves both views.
 	refs := []string{}
 	if c.Wiki != "" {
 		refs = append(refs, c.Wiki)
@@ -168,10 +173,8 @@ func (s *Server) partitionChanged(c partitions.Change) {
 			}
 		}
 	}
-	for _, ref := range refs {
-		if v, ok := s.sys.WikiView(ref); ok {
-			s.publish(Event{Type: "wiki", Wiki: &v})
-		}
+	for _, v := range s.sys.WikiViews(refs) {
+		s.publish(Event{Type: "wiki", Wiki: &v})
 	}
 	if c.Vocabulary {
 		v := s.sys.Vocabulary()

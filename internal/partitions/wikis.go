@@ -323,12 +323,17 @@ func (m *Manager) wikiChange(w *wikiOf) Change {
 	return c
 }
 
-// featureHealth returns the health of every feature of every partition, by id.
+// featureHealth returns the health of every feature of every partition, by
+// id, from each partition's test report.
 func (m *Manager) featureHealth() map[string]string {
 	out := map[string]string{}
 	for _, name := range m.topo.PartitionAgents() {
-		for _, f := range m.view(m.partitionAgents[name]).Features {
-			out[f.ID] = f.Health
+		o := m.partitionAgents[name]
+		priv, _ := o.featureMap.Private()
+		ids := featureIDs(o.featureMap.Map())
+		rep, _ := m.testReport(o, priv, ids)
+		for _, id := range ids {
+			_, out[id] = featuremap.TestsOf(rep.Features[id])
 		}
 	}
 	return out
@@ -422,6 +427,22 @@ func (m *Manager) WikiView(ref string) (api.WikiView, bool) {
 		return api.WikiView{}, false
 	}
 	return m.wikiView(w, m.featureHealth()), true
+}
+
+// WikiViews returns the wikis refs, for the UI, from one computation of
+// the features' health. A ref that names no wiki is skipped.
+func (m *Manager) WikiViews(refs []string) []api.WikiView {
+	if len(refs) == 0 {
+		return nil
+	}
+	health := m.featureHealth()
+	var out []api.WikiView
+	for _, ref := range refs {
+		if w, ok := m.wikis[ref]; ok {
+			out = append(out, m.wikiView(w, health))
+		}
+	}
+	return out
 }
 
 // GetDocument returns a document of agent's readable wikis, with its

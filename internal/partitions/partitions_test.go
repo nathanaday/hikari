@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -469,24 +470,72 @@ func TestTurnContextReportsVocabularyChangesOnce(t *testing.T) {
 	}
 }
 
-func TestChangesNotifyDependentPartitions(t *testing.T) {
+func TestChangesReachDependentPartitions(t *testing.T) {
 	f := newFixture(t)
 	var got []Change
 	f.m.OnChange(func(c Change) { got = append(got, c) })
-
-	// A map change reaches the partition and every other partition, whose
-	// providers may depend on it.
-	must(t, f.m.SetPartitionInfo("orders", featuremap.PartitionPatch{Summary: ptr("Takes orders.")}))
-	if want := []Change{{Partition: "orders"}, {Partition: "inventory"}}; !slices.Equal(got, want) {
-		t.Errorf("map change: %+v, want %+v", got, want)
+	check := func(what string, want Change) {
+		t.Helper()
+		if len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+			t.Errorf("%s: %+v, want %+v", what, got, want)
+		}
+		got = nil
 	}
 
-	// A vocabulary change reaches the vocabulary and the flags of every
-	// partition.
-	got = nil
-	must(t, f.m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "x"}))
-	if want := []Change{{Vocabulary: true}, {Partition: "inventory"}, {Partition: "orders"}}; !slices.Equal(got, want) {
-		t.Errorf("vocabulary change: %+v, want %+v", got, want)
+	// A map change that moves no flag and no provider reaches its
+	// partition alone.
+	must(t, f.m.SetPartitionInfo("orders", featuremap.PartitionPatch{Summary: ptr("Takes orders.")}))
+	check("summary", Change{Partition: "orders"})
+
+	// An interface that nobody provides flags its own partition only.
+	must(t, f.m.SetPartitionInfo("orders", featuremap.PartitionPatch{Consumes: ptr([]featuremap.Interface{{Name: "inventory.reserve", Kind: "function"}})}))
+	check("consumes", Change{Partition: "orders"})
+
+	// A new provider reaches the partition that consumes it.
+	must(t, f.m.SetPartitionInfo("inventory", featuremap.PartitionPatch{Provides: ptr([]featuremap.Interface{{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}})}))
+	check("provides", Change{Partition: "inventory", Dependents: []string{"orders"}})
+
+	// A vocabulary change reaches the partitions whose flags it moves.
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}))
+	check("the interface enters the vocabulary", Change{Vocabulary: true, Dependents: []string{"inventory", "orders"}})
+	must(t, f.m.DefineTerm("lead", vocab.Term{Term: "order", Definition: "A request."}))
+	check("a term", Change{Vocabulary: true})
+}
+
+func TestTestReportIsKeptUntilItsInputsChange(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	f.runOrders(t, testmap.Passed)
+	o := f.m.partitionAgents["orders"]
+	priv, _ := o.featureMap.Private()
+	ids := []string{"create-order"}
+	if rep, problem := f.m.testReport(o, priv, ids); rep.Features["create-order"].Health != testmap.Passing || problem != "" {
+		t.Fatalf("after a run: %+v, %q", rep.Features, problem)
+	}
+
+	// With the same inputs, the report is the one kept.
+	o.report.report = testmap.Report{Features: map[string]testmap.FeatureHealth{"create-order": {Health: "kept"}}}
+	if rep, _ := f.m.testReport(o, priv, []string{"create-order"}); rep.Features["create-order"].Health != "kept" {
+		t.Errorf("the same inputs must reuse the report: %+v", rep.Features)
+	}
+
+	// A code edit, a results change, and a private edit each move it.
+	write(t, f.repo, "services/orders/create.py", "def create(): return 1\n")
+	if rep, _ := f.m.testReport(o, priv, ids); rep.Features["create-order"].Health != testmap.Pending {
+		t.Errorf("after a code edit: %+v", rep.Features)
+	}
+	f.runOrders(t, testmap.Failed)
+	if rep, _ := f.m.testReport(o, priv, ids); rep.Features["create-order"].Health != testmap.Failing {
+		t.Errorf("after a run: %+v", rep.Features)
+	}
+	write(t, f.repo, "services/orders/.hikari/private/tests.yaml", "version: 1\nsuites:\n  unit: {command: python3 -m pytest}\ntests: {}\n")
+	priv, _ = o.featureMap.Private()
+	if rep, _ := f.m.testReport(o, priv, ids); rep.Features["create-order"].Health != testmap.Untested {
+		t.Errorf("after a test map edit: %+v", rep.Features)
+	}
+	write(t, f.repo, "services/orders/.hikari/private/results.yaml", "version: 1\nruns: [")
+	if rep, problem := f.m.testReport(o, priv, ids); rep.Features["create-order"].Health != testmap.Untested || problem == "" {
+		t.Errorf("an invalid results file: %+v, %q", rep.Features, problem)
 	}
 }
 
