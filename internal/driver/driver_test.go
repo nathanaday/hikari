@@ -531,3 +531,10 @@ func TestModulePacks(t *testing.T) {
 		}
 	}
 }
+
+func TestTrigger(t *testing.T) {
+	msgs := []api.Message{{From: "user"}, {From: "lead", To: "dev"}, {From: "user"}}
+	if got := trigger(msgs); got != "woken by user in the room, lead directly" {
+		t.Errorf("trigger = %q", got)
+	}
+}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/claude"
 	"github.com/nathanaday/hikari/internal/mcpserver"
 )
 
@@ -37,7 +38,7 @@ func Run(ctx context.Context, c *api.Client) error {
 	if err != nil {
 		return err
 	}
-	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared, tap: newTap(ctx, c)}
+	d := &driver{c: c, self: self, mcpConfig: mcpConfig, shared: shared, tap: claude.NewTap(poster(ctx, c))}
 	log.Printf("connected as %s, %s", self.Name, roleOf(self))
 
 	if self.Partition != nil {
@@ -87,7 +88,7 @@ type driver struct {
 	self      api.Self
 	mcpConfig string
 	shared    *sharedArea
-	tap       *tap
+	tap       *claude.Tap
 	session   string
 }
 
@@ -96,13 +97,13 @@ type driver struct {
 // to commit what the turn left, even when the turn failed.
 func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 	report(ctx, d.c, api.Status{State: state})
-	d.tap.begin(why)
+	d.tap.Begin(why)
 	// The vault can change between turns, so the skills and the policies
 	// are connected again before each one.
 	partition := systemPrompt(d.self) + d.shared.sync()
 	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, partition: partition, tap: d.tap}
 	res, err := t.run(ctx)
-	d.tap.end(res, res.closing, err)
+	d.tap.End(res.closing, res.cost, res.duration, err)
 	if res.session != "" {
 		d.session = res.session
 	}
@@ -192,7 +193,7 @@ func systemPrompt(self api.Self) string {
 
 type turn struct {
 	prompt, session, model, mcpConfig, partition string
-	tap                                          *tap
+	tap                                          *claude.Tap
 }
 
 type turnResult struct {
@@ -232,11 +233,11 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 	}
 
 	var res turnResult
-	var final *streamEvent
+	var final *claude.Event
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
 	for sc.Scan() {
-		var e streamEvent
+		var e claude.Event
 		if json.Unmarshal(sc.Bytes(), &e) != nil {
 			continue
 		}
@@ -244,7 +245,7 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 			res.session = e.SessionID
 		}
 		if t.tap != nil {
-			t.tap.observe(e)
+			t.tap.Observe(e)
 		}
 		switch e.Type {
 		case "assistant":
@@ -274,6 +275,44 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 	default:
 		return res, fmt.Errorf("claude exited without a result")
 	}
+}
+
+// poster posts each entry of the tap to the server, with one log line per
+// turn when the server refuses them.
+func poster(ctx context.Context, c *api.Client) func(api.Activity) {
+	failed := false
+	return func(a api.Activity) {
+		if ctx.Err() != nil {
+			return
+		}
+		if a.Kind == api.ActivityTurn {
+			failed = false
+		}
+		if err := c.PostActivity(ctx, a); err != nil && !failed && ctx.Err() == nil {
+			failed = true
+			log.Printf("activity: %v", err)
+		}
+	}
+}
+
+// trigger says what woke the agent, for the turn's first entry.
+func trigger(msgs []api.Message) string {
+	var parts []string
+	seen := map[string]bool{}
+	for _, m := range msgs {
+		p := m.From + " in the room"
+		if m.To != "" {
+			p = m.From + " directly"
+		}
+		if !seen[p] {
+			seen[p] = true
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) > 3 {
+		parts = append(parts[:3], "others")
+	}
+	return "woken by " + strings.Join(parts, ", ")
 }
 
 func clip(s string, n int) string {

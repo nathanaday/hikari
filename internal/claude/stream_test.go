@@ -1,11 +1,8 @@
-package driver
+package claude
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,24 +11,14 @@ import (
 
 // collector receives the entries that a tap posts.
 type collector struct {
-	mu      sync.Mutex
 	entries []api.Activity
 }
 
-func (c *collector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var a api.Activity
-	json.NewDecoder(r.Body).Decode(&a)
-	c.mu.Lock()
-	c.entries = append(c.entries, a)
-	c.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
-}
+func (c *collector) post(a api.Activity) { c.entries = append(c.entries, a) }
 
 // byID returns the last posted version of each entry, in order of first
 // appearance.
 func (c *collector) byID() []api.Activity {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	var order []int64
 	last := map[int64]api.Activity{}
 	for _, a := range c.entries {
@@ -74,19 +61,17 @@ const stream = `
 
 func TestTap(t *testing.T) {
 	col := &collector{}
-	srv := httptest.NewServer(col)
-	defer srv.Close()
-	tp := newTap(t.Context(), &api.Client{URL: srv.URL, Token: "t", HTTP: srv.Client()})
+	tp := NewTap(col.post)
 
-	tp.begin("woken by user in the room")
+	tp.Begin("woken by user in the room")
 	for _, line := range strings.Split(strings.TrimSpace(stream), "\n") {
-		var e streamEvent
+		var e Event
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			t.Fatal(err)
 		}
-		tp.observe(e)
+		tp.Observe(e)
 	}
-	tp.end(turnResult{cost: 0.03, duration: 1200 * time.Millisecond}, "Should I add it?", nil)
+	tp.End("Should I add it?", 0.03, 1200*time.Millisecond, nil)
 
 	got := col.byID()
 	kinds := make([]string, len(got))
@@ -126,8 +111,8 @@ func TestTap(t *testing.T) {
 		t.Errorf("the tool must be posted as it starts: %+v", first)
 	}
 
-	tp.begin("woken by lead directly")
-	tp.end(turnResult{}, "", errString("claude: boom"))
+	tp.Begin("woken by lead directly")
+	tp.End("", 0, 0, errString("claude: boom"))
 	got = col.byID()
 	last := got[len(got)-1]
 	if last.Turn != 2 || !last.Error || last.Text != "claude: boom" {
@@ -137,30 +122,24 @@ func TestTap(t *testing.T) {
 
 func TestTapWithoutPartialMessages(t *testing.T) {
 	col := &collector{}
-	srv := httptest.NewServer(col)
-	defer srv.Close()
-	tp := newTap(t.Context(), &api.Client{URL: srv.URL, Token: "t", HTTP: srv.Client()})
-	tp.begin("x")
-	var e streamEvent
+	tp := NewTap(col.post)
+	tp.Begin("x")
+	var e Event
 	json.Unmarshal([]byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"Hi"},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}`), &e)
-	tp.observe(e)
+	tp.Observe(e)
 	got := col.byID()
 	if len(got) != 3 || got[1].Text != "Hi" || !got[1].Done || got[2].Tool != "Bash" || got[2].Done {
 		t.Errorf("entries = %+v", got)
 	}
 }
 
-func TestClipAndTrigger(t *testing.T) {
+func TestClip(t *testing.T) {
 	if got := clipText("héllo", 2); got != "h…" {
 		t.Errorf("clipText cut inside a character: %q", got)
 	}
 	long := strings.Repeat("x", 10)
 	if got := string(clipJSON(json.RawMessage(`{"a":"`+long+`"}`), 8)); got != `"{\"a\":\"xx…"` {
 		t.Errorf("clipJSON = %s", got)
-	}
-	msgs := []api.Message{{From: "user"}, {From: "lead", To: "dev"}, {From: "user"}}
-	if got := trigger(msgs); got != "woken by user in the room, lead directly" {
-		t.Errorf("trigger = %q", got)
 	}
 	if got := resultText(json.RawMessage(`[{"type":"text","text":"a"},{"type":"image"}]`)); got != "a\n[image]" {
 		t.Errorf("resultText = %q", got)
