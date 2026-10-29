@@ -593,8 +593,12 @@ func IsUserPath(vaultRel, p string) bool {
 		if parts[2] == vault.CanEditDir {
 			return true
 		}
+		// Tags and pins written by hikari release while hikari was stopped
+		// are yours too (rule TG6 and PN8 of the releases spec).
 		return len(parts) >= 5 && parts[2] == vault.ReadOnlyDir &&
-			(parts[3] == vault.GrantedDir || parts[3] == vault.FeaturesDir && len(parts) == 5 && strings.HasSuffix(parts[4], ".md"))
+			(parts[3] == vault.GrantedDir || parts[3] == vault.FeaturesDir && len(parts) == 5 && strings.HasSuffix(parts[4], ".md") ||
+				parts[3] == vault.ReleasesDir && len(parts) == 6 && parts[5] == vault.TagsFile) ||
+			len(parts) == 4 && parts[2] == vault.ReadOnlyDir && parts[3] == vault.PinsFile
 	case len(parts) >= 3 && parts[0] == vault.OrchestrationDir:
 		return parts[1] == vault.CanEditDir || len(parts) >= 4 && parts[1] == vault.ReadOnlyDir &&
 			(parts[2] == vault.GrantedDir || parts[2] == vault.FeaturesDir && len(parts) == 4 && strings.HasSuffix(parts[3], ".md"))

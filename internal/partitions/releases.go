@@ -210,7 +210,7 @@ func (m *Manager) PinRelease(ctx context.Context, agent string, req api.PinReque
 	if !g.MayPin(req.Partition, req.Ref) {
 		return vault.Pin{}, "", fmt.Errorf("%w: you may pin only the tags of %s that match %s", ErrForbidden, req.Partition, strings.Join(g.Pins[req.Partition], ", "))
 	}
-	return m.pin(ctx, agent, agent, req)
+	return m.pin(ctx, agent, agent, req, true)
 }
 
 // PinAsUser pins for a consumer as the user (rule PN8), with the grant
@@ -226,10 +226,12 @@ func (m *Manager) PinAsUser(ctx context.Context, consumer string, req api.PinReq
 	if !g.MayPin(req.Partition, req.Ref) {
 		return vault.Pin{}, "", fmt.Errorf("%s may pin only the tags of %s that match %s", consumer, req.Partition, strings.Join(g.Pins[req.Partition], ", "))
 	}
-	return m.pin(ctx, "", consumer, req)
+	return m.pin(ctx, "", consumer, req, false)
 }
 
-func (m *Manager) pin(ctx context.Context, author, consumer string, req api.PinRequest) (vault.Pin, string, error) {
+// pin records a pin and, for an agent, pulls its product; the user's
+// command pulls on the host itself, outside the server's request.
+func (m *Manager) pin(ctx context.Context, author, consumer string, req api.PinRequest, pull bool) (vault.Pin, string, error) {
 	pin, err := m.vault.SetPin(consumer, req.Partition, req.Deliverable, req.Ref)
 	if err != nil {
 		return vault.Pin{}, "", err
@@ -240,8 +242,12 @@ func (m *Manager) pin(ctx context.Context, author, consumer string, req api.PinR
 	}
 	m.commitVault(author, fmt.Sprintf("%s: pin %s %s %s", who, req.Partition, req.Deliverable, req.Ref), m.vault.Rel(m.vault.PinsFile(consumer)))
 	m.changed(Change{Partition: consumer})
+	version, _ := m.vault.Resolve(req.Partition, req.Deliverable, req.Ref)
+	if !pull {
+		return pin, "the tag points at " + version, nil
+	}
 	note := "its product is on this machine"
-	version, err := m.pull(ctx, api.ReleaseRef{Partition: req.Partition, Deliverable: req.Deliverable, Ref: req.Ref})
+	version, err = m.pull(ctx, api.ReleaseRef{Partition: req.Partition, Deliverable: req.Deliverable, Ref: req.Ref})
 	switch {
 	case err != nil:
 		note = "the pull of its product failed: " + err.Error()
@@ -314,27 +320,5 @@ func (m *Manager) refreshCatalog() error {
 
 // pinWarnings says which pins cannot be met on this machine (rule PN6).
 func (m *Manager) pinWarnings() []string {
-	var out []string
-	for _, consumer := range m.topo.PartitionAgents() {
-		pins, err := m.vault.LoadPins(consumer)
-		if err != nil {
-			out = append(out, err.Error())
-			continue
-		}
-		for _, p := range pins {
-			version, err := m.vault.Resolve(p.Partition, p.Deliverable, p.Ref())
-			if err != nil {
-				out = append(out, fmt.Sprintf("%s pins %s %s %s, which is not in the catalog: %v", consumer, p.Partition, p.Deliverable, p.Ref(), err))
-				continue
-			}
-			if !exists(m.vault.ReleaseDir(p.Partition, p.Deliverable, version) + "/" + vault.ProductDir) {
-				fix := "run hikari sync to pull it"
-				if !m.vault.CanPull(p.Deliverable) {
-					fix = "its deliverable has no remote to pull from, so " + p.Partition + " must publish it again on this machine"
-				}
-				out = append(out, fmt.Sprintf("%s pins %s %s %s, whose product is absent on this machine; %s", consumer, p.Partition, p.Deliverable, p.Ref(), fix))
-			}
-		}
-	}
-	return out
+	return m.vault.PinProblems(m.topo.PartitionAgents())
 }

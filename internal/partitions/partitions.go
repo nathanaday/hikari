@@ -736,7 +736,7 @@ func (m *Manager) CommitAll() []error {
 	for _, ref := range m.wikiRefs() {
 		all = append(all, m.wikis[ref])
 	}
-	m.commitUserEdits("user: wiki edits left when hikari stopped", all...)
+	m.commitUserEdits("user: vault edits left when hikari stopped", all...)
 	m.commitVault("", "user: vault edits left when hikari stopped", m.userDirs()...)
 	if orch := m.topo.Orchestration; orch != "" {
 		if note := m.commitVault(orch, orch+": vault changes left when hikari stopped", m.vocabularyPath()); note != "" {

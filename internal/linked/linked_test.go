@@ -379,3 +379,49 @@ func TestCheckSkills(t *testing.T) {
 		t.Errorf("V7: %s", all)
 	}
 }
+
+func TestPullPins(t *testing.T) {
+	isolate(t)
+	appURL := remote(t, map[string]string{"src/main.go": "package main\n"})
+	home := t.TempDir()
+	files := map[string]string{}
+	for k, v := range projectFiles {
+		files[k] = v
+	}
+	files["vault/public/deliverables/lib/deliverable.yaml"] = "version: 1\ndescription: The library.\nremote: local-dir\n"
+	files["vault/public/deliverables/lib/SKILL.md"] = "# lib\n"
+	files["vault/public/deliverables/docs/deliverable.yaml"] = "version: 1\ndescription: The docs.\n"
+	files["vault/public/deliverables/docs/SKILL.md"] = "# docs\n"
+	files["vault/public/remotes/local-dir/remote.yaml"] = "version: 1\ndescription: A directory.\npull: cp -R \"" + home + "/$HIKARI_VERSION\"/. \"$HIKARI_PRODUCT\"/\n"
+	// The records of two releases of dev, whose products are not in git.
+	files["vault/partitions/dev/read-only/releases/lib/1.0.0/release.yaml"] = "deliverable: lib\nversion: 1.0.0\npartition: dev\nreleased: 2026-10-22T10:00:00Z\nnotes: First.\nhikari: 0.0.1\nproduct: {path: product/, files: 1, bytes: 3, digest: 'sha256:x'}\nmap: features/map.yaml\ncertificates: []\nremote: local-dir\n"
+	files["vault/partitions/dev/read-only/releases/lib/1.0.0/SHA256SUMS"] = "1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2  product/a.txt\n"
+	files["vault/partitions/dev/read-only/releases/lib/tags.yaml"] = "version: 1\ntags: {latest: 1.0.0, staging: 1.0.0}\n"
+	files["vault/partitions/dev/read-only/releases/docs/0.1.0/release.yaml"] = "deliverable: docs\nversion: 0.1.0\npartition: dev\nreleased: 2026-10-22T10:00:00Z\nnotes: Docs.\nhikari: 0.0.1\nproduct: {path: product/, files: 1, bytes: 3, digest: 'sha256:x'}\nmap: features/map.yaml\ncertificates: []\n"
+	files["vault/partitions/dev/read-only/releases/docs/0.1.0/SHA256SUMS"] = "1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2  product/a.txt\n"
+	// The partition dev itself pins, for the test: its own releases are not
+	// grantable, so the pins are written as files.
+	files["vault/partitions/dev/read-only/pins.yaml"] = "version: 1\npins:\n  - {partition: dev, deliverable: lib, tag: staging}\n  - {partition: dev, deliverable: docs, version: 0.1.0}\n  - {partition: dev, deliverable: lib, version: 9.9.9}\n"
+	projectURL := remote(t, files)
+	dir := clone(t, projectURL)
+	tp := topo(t, dir, "hikari", appURL)
+	write(t, home, "1.0.0/a.txt", "3\n")
+
+	rs := PullPins(t.Context(), tp)
+	want(t, rs, false, "dev: pins dev lib staging: pulled 1.0.0", "dev: pins dev docs 0.1.0: cannot be pulled", "publish it again on this machine", "dev: pins dev lib 9.9.9: is not in the catalog")
+	if n := len(rs); n != 3 {
+		t.Errorf("PN5 one line for each pin: %d\n%s", n, texts(rs))
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "vault/partitions/dev/read-only/releases/lib/1.0.0/product/a.txt")); err != nil || string(data) != "3\n" {
+		t.Errorf("PN5 the product was pulled: %q, %v", data, err)
+	}
+	want(t, PullPins(t.Context(), tp), false, "dev: pins dev lib staging: present at 1.0.0")
+	if f := PinFindings(tp); len(f) != 2 || !f[0].Warning {
+		t.Errorf("PN6 findings = %+v", f)
+	}
+
+	// A pull that fails is a failure (rule SY8).
+	write(t, home, "1.0.0/a.txt", "tampered\n")
+	os.RemoveAll(filepath.Join(dir, "vault/partitions/dev/read-only/releases/lib/1.0.0/product"))
+	want(t, PullPins(t.Context(), tp), true, "dev: pins dev lib staging: pull: the pulled product of dev lib 1.0.0 does not match")
+}

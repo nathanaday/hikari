@@ -233,7 +233,9 @@ func TestReleasesTravel(t *testing.T) {
 	if link, _ := os.Readlink(filepath.Join(m2.Vault().TagsDir("inventory", "lib"), "staging")); link != "../1.0.0" {
 		t.Errorf("RL5 the clone's tag links are written at start: %q", link)
 	}
-	if w := m2.Warnings(); !slices.ContainsFunc(w, func(s string) bool { return strings.Contains(s, "orders pins inventory lib staging, whose product is absent on this machine; run hikari sync") }) {
+	if w := m2.Warnings(); !slices.ContainsFunc(w, func(s string) bool {
+		return strings.Contains(s, "orders pins inventory lib staging, whose product is absent on this machine; run hikari sync")
+	}) {
 		t.Errorf("PN6 warnings = %v", w)
 	}
 	if version, err := m2.PullAsUser(ctx, api.ReleaseRef{Partition: "inventory", Deliverable: "lib", Ref: "staging"}); err != nil || version != "1.0.0" {

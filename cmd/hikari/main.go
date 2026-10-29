@@ -45,6 +45,7 @@ Usage:
   hikari check [flags] [topology.yaml]   run the checks of hikari up, and start nothing
   hikari push [topology.yaml]            push your branches of the linked repos and the project
   hikari status [flags] [topology.yaml]  show each partition's feature map and recorded tests
+  hikari release <command>               list the releases, set tags, pull products, and pin
   hikari send [flags] <message>          post a message to the room of the running project
   hikari doctor [topology.yaml]          check this machine, and the project, for hikari up
   hikari image                           build the hikari-agent image
@@ -82,6 +83,8 @@ func main() {
 		err = push(ctx, os.Args[2:])
 	case "status":
 		err = status(ctx, os.Args[2:])
+	case "release":
+		err = release(ctx, os.Args[2:])
 	case "send":
 		err = send(ctx, os.Args[2:])
 	case "doctor":
@@ -196,8 +199,8 @@ func prepareProject(ctx context.Context, topo *topology.Topology) (*topology.Top
 	// spec).
 	if repo.Branch() == p.Branch {
 		if changed, err := repo.Changed(); err == nil && len(changed) > 0 && !slices.ContainsFunc(changed, func(path string) bool { return !userPath(topo, path) }) {
-			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: wiki edits made while hikari was stopped"); err != nil {
-				return nil, fmt.Errorf("the project repository: commit your wiki edits: %w", err)
+			if _, err := repo.CommitPaths(p.Branch, changed, "", "user: vault edits made while hikari was stopped"); err != nil {
+				return nil, fmt.Errorf("the project repository: commit your vault edits: %w", err)
 			}
 		}
 	}

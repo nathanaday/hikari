@@ -95,7 +95,7 @@ func check(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if showFindings(con, linked.Check(topo, true)) {
+	if showFindings(con, append(linked.Check(topo, true), linked.PinFindings(topo)...)) {
 		return errShown
 	}
 	con.Println("  " + con.Green("✓") + " " + topo.Name + " can start: " + describe(topo))
@@ -130,7 +130,11 @@ func syncProject(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return showResults(con, linked.Sync(topo, *from, removeOldSkills))
+	results := linked.Sync(topo, *from, removeOldSkills)
+	if !linked.Failed(results) {
+		results = append(results, linked.PullPins(ctx, topo)...)
+	}
+	return showResults(con, results)
 }
 
 // push pushes your branches (rules PS1 to PS5).

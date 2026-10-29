@@ -2,6 +2,7 @@ package vault
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -142,4 +143,76 @@ func (s Vault) PinnedBy(consumers []string, partition, deliverable, version stri
 		}
 	}
 	return out
+}
+
+// PinProblems says which pins of the consumers cannot be met on this
+// machine (rule PN6): a pin that the catalog does not resolve, and a pin
+// whose product is absent, with what gets it.
+func (s Vault) PinProblems(consumers []string) []string {
+	var out []string
+	for _, consumer := range consumers {
+		pins, err := s.LoadPins(consumer)
+		if err != nil {
+			out = append(out, err.Error())
+			continue
+		}
+		for _, p := range pins {
+			version, err := s.Resolve(p.Partition, p.Deliverable, p.Ref())
+			if err != nil {
+				out = append(out, fmt.Sprintf("%s pins %s %s %s, which is not in the catalog: %v", consumer, p.Partition, p.Deliverable, p.Ref(), err))
+				continue
+			}
+			if !isDir(filepath.Join(s.ReleaseDir(p.Partition, p.Deliverable, version), ProductDir)) {
+				fix := "run hikari sync to pull it"
+				if !s.CanPull(p.Deliverable) {
+					fix = "its deliverable has no remote to pull from, so " + p.Partition + " must publish it again on this machine"
+				}
+				out = append(out, fmt.Sprintf("%s pins %s %s %s, whose product is absent on this machine; %s", consumer, p.Partition, p.Deliverable, p.Ref(), fix))
+			}
+		}
+	}
+	return out
+}
+
+// PullPinned pulls the product of every pin of the consumers that is absent
+// (rule PN5). For each pin it returns the consumer, the pin, what was done,
+// and whether that failed or is only a warning.
+func (s Vault) PullPinned(ctx context.Context, consumers []string) []PullResult {
+	var out []PullResult
+	for _, consumer := range consumers {
+		pins, err := s.LoadPins(consumer)
+		if err != nil {
+			out = append(out, PullResult{Consumer: consumer, Text: err.Error(), Failed: true})
+			continue
+		}
+		for _, p := range pins {
+			r := PullResult{Consumer: consumer, Pin: p}
+			version, err := s.Resolve(p.Partition, p.Deliverable, p.Ref())
+			switch {
+			case err != nil:
+				r.Text, r.Warning = "is not in the catalog: "+err.Error(), true
+			case isDir(filepath.Join(s.ReleaseDir(p.Partition, p.Deliverable, version), ProductDir)):
+				r.Text = "present at " + version
+			case !s.CanPull(p.Deliverable):
+				r.Text, r.Warning = "cannot be pulled: its deliverable has no remote with a pull command, so "+p.Partition+" must publish it again on this machine", true
+			default:
+				if err := s.Pull(ctx, p.Partition, p.Deliverable, version); err != nil {
+					r.Text, r.Failed = "pull: "+err.Error(), true
+				} else {
+					r.Text = "pulled " + version
+				}
+			}
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// PullResult is what PullPinned did for one pin.
+type PullResult struct {
+	Consumer string
+	Pin      Pin
+	Text     string
+	Failed   bool
+	Warning  bool
 }

@@ -216,7 +216,7 @@ func TestProjectWikiAuthors(t *testing.T) {
 	if errs := m.CommitAll(); len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: wiki edits left when hikari stopped" || !slices.Equal(files, []string{"vault/orchestration/read-only/features/Soon.md", "vault/public/wiki/Later.md"}) {
+	if a, s, files := lastCommit(t, dir); a != "Test User" || s != "user: vault edits left when hikari stopped" || !slices.Equal(files, []string{"vault/orchestration/read-only/features/Soon.md", "vault/public/wiki/Later.md"}) {
 		t.Errorf("C3: %s | %s | %v", a, s, files)
 	}
 	if got := git(t, dir, "status", "--porcelain"); got != "" {
@@ -236,6 +236,9 @@ func TestIsUserPath(t *testing.T) {
 		"vault/orchestration/read-only/features/x/a.md":        false,
 		"vault/partitions/orders/read-only/features/map.yaml":  false,
 		"vault/partitions/orders/read-only/releases/x/1.0.0/a": false,
+		"vault/partitions/orders/read-only/releases/x/tags.yaml": true,
+		"vault/partitions/orders/read-only/pins.yaml":            true,
+		"vault/partitions/orders/read-only/releases/x/tags/dev":  false,
 		"vault/partitions/orders/staging/lib/a.py":             false,
 		"vault/public/policies/p.md":                           false,
 		"vault/public/vocabulary/terms.yaml":                   false,
