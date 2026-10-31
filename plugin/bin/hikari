@@ -9,10 +9,10 @@
 #   HIKARI_HOME          the machine folder, ~/.hikari by default.
 #   HIKARI_NO_DOWNLOAD   set to 1, it never downloads.
 version='0.3.1'
-checksums='45ddc546fb0921315f52afcfed36f4d4e97cf6ebe26811a4eca8f4ca7992031a  hikari-0.3.1-darwin-amd64
-1fd9f10af5f98f322d78f07ea735a7aad79b41987ee966149324baf2edda3b1e  hikari-0.3.1-darwin-arm64
-812d387d830987d6b31cc436d9f9a5a397c821ddd5e423067f801629e3eca337  hikari-0.3.1-linux-amd64
-423308d776ca6a043549069bfa6dbca10fbf0a020d86d8a0003f69021baa600d  hikari-0.3.1-linux-arm64'
+checksums='3dfb9648be64b906f8a6b9439ae200617d3aafede89108a15b6ee551f2e3b5b5  hikari-0.3.1-darwin-amd64
+e6d0088a8ff06a10b4005c34e52245c72ea6d62ba07903651ea126bdd0421a7d  hikari-0.3.1-darwin-arm64
+01e2444638ae52e88d56988bdecb1a618e97c073d688f5073fd4a5c83d4cade4  hikari-0.3.1-linux-amd64
+746282c96d9c727bbd59dc7d8352342e51e44068609d2e66920c649048541337  hikari-0.3.1-linux-arm64'
 
 missing() {
 	why=$1
