@@ -10,6 +10,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/modules"
+	"github.com/nathanaday/hikari/internal/version"
 )
 
 type postArgs struct {
@@ -27,7 +28,7 @@ type noArgs struct{}
 // gets the messaging tools and get_vocabulary. Partition agents also get the map
 // tools, and the orchestration agent the partition and vocabulary tools.
 func New(c *api.Client, self api.Self) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: "0.3.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "hikari", Version: version.Version}, nil)
 	addVocabularyReader(s, c)
 	addWikiReaders(s, c)
 	addReleaseReaders(s, c)
