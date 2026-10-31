@@ -40,6 +40,7 @@ export const efforts = [
   { value: 'max', label: 'Max' },
 ]
 export const permissionModes = [
+  { value: 'auto', label: 'Auto' },
   { value: 'default', label: 'Ask' },
   { value: 'acceptEdits', label: 'Accept edits' },
   { value: 'plan', label: 'Plan' },

@@ -24,15 +24,16 @@ import (
 	"github.com/nathanaday/hikari/internal/claude"
 )
 
-// The permission modes of the menu (decision 6).
+// The permission modes of the menu (decision 6); auto is the default.
 const (
+	ModeAuto        = "auto"
 	ModeAsk         = "default"
 	ModeAcceptEdits = "acceptEdits"
 	ModePlan        = "plan"
 	ModeBypass      = "bypassPermissions"
 )
 
-var modes = []string{ModeAsk, ModeAcceptEdits, ModePlan, ModeBypass}
+var modes = []string{ModeAuto, ModeAsk, ModeAcceptEdits, ModePlan, ModeBypass}
 var efforts = []string{"", "low", "medium", "high", "xhigh", "max"}
 
 // The states of the assistant.
@@ -131,20 +132,24 @@ type Assistant struct {
 	// Command runs Claude Code; tests point it at a fake.
 	Command string
 
-	mu         sync.Mutex
-	s          session
-	messages   []Message
-	activity   []api.Activity
-	prompts    []Prompt
-	nextMsg    int64
-	state      string
-	cancel     context.CancelFunc
-	stdin      io.Writer
-	stdinMu    sync.Mutex
-	pending    map[string]chan Prompt
-	tap        *claude.Tap
-	transcript *os.File
-	done       chan struct{}
+	mu       sync.Mutex
+	s        session
+	messages []Message
+	activity []api.Activity
+	prompts  []Prompt
+	nextMsg  int64
+	state    string
+	cancel   context.CancelFunc
+	stdin    io.Writer
+	stdinMu  sync.Mutex
+	pending  map[string]chan Prompt
+	// modeRequests are the set_permission_mode requests of the running turn
+	// that await their response, by request id, with the mode asked for.
+	modeRequests map[string]string
+	nextRequest  int64
+	tap          *claude.Tap
+	transcript   *os.File
+	done         chan struct{}
 	// early holds the lines of a turn before its session id is known.
 	early []line
 	// events carries each change to the listener, outside the lock, in
@@ -160,7 +165,7 @@ func New(dir, root, context string, listen func(Event)) (*Assistant, error) {
 		return nil, err
 	}
 	a := &Assistant{dir: dir, root: root, context: context, listen: listen, Command: "claude",
-		state: StateIdle, pending: map[string]chan Prompt{}, s: session{PermissionMode: ModeAsk}}
+		state: StateIdle, pending: map[string]chan Prompt{}, modeRequests: map[string]string{}, s: session{PermissionMode: ModeAuto}}
 	a.tap = claude.NewTap(a.postActivity)
 	a.events = make(chan Event, 1024)
 	events := a.events
@@ -176,7 +181,7 @@ func New(dir, root, context string, listen func(Event)) (*Assistant, error) {
 			return nil, fmt.Errorf("session.json: %w", err)
 		}
 		if a.s.PermissionMode == "" {
-			a.s.PermissionMode = ModeAsk
+			a.s.PermissionMode = ModeAuto
 		}
 	}
 	if a.s.Session != "" {
@@ -337,7 +342,9 @@ func (a *Assistant) emitStatus() {
 }
 
 // SetOptions keeps the model, the effort, and the permission mode for the
-// next turn (rule HA6).
+// next turn (rule HA6). A change of the permission mode during a turn is
+// also sent to the running process, which switches at once, or answers
+// with the reason it cannot, and then the mode waits for the next turn.
 func (a *Assistant) SetOptions(o Options) error {
 	if !slices.Contains(modes, o.PermissionMode) {
 		return fmt.Errorf("the permission mode must be one of %s", strings.Join(modes, ", "))
@@ -350,10 +357,39 @@ func (a *Assistant) SetOptions(o Options) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	changed := a.s.PermissionMode != o.PermissionMode
 	a.s.Model, a.s.Effort, a.s.PermissionMode = o.Model, o.Effort, o.PermissionMode
 	a.writeSession()
 	a.emitStatus()
+	if changed && a.state == StateWorking {
+		a.setMode(o.PermissionMode)
+	}
 	return nil
+}
+
+// setMode asks the running turn to switch its permission mode. The caller
+// holds mu.
+func (a *Assistant) setMode(mode string) {
+	a.nextRequest++
+	id := fmt.Sprintf("mode-%d", a.nextRequest)
+	a.modeRequests[id] = mode
+	data, _ := json.Marshal(map[string]any{"type": "control_request", "request_id": id,
+		"request": map[string]any{"subtype": "set_permission_mode", "mode": mode}})
+	a.write(append(data, '\n'))
+}
+
+// modeResponse takes the turn's answer to a set_permission_mode request: a
+// refusal becomes an entry of the turn, and the mode waits for the next
+// turn. The caller holds mu.
+func (a *Assistant) modeResponse(e claude.Event) {
+	mode, ok := a.modeRequests[e.Response.RequestID]
+	if !ok {
+		return
+	}
+	delete(a.modeRequests, e.Response.RequestID)
+	if e.Response.Subtype == "error" {
+		a.tap.Note(fmt.Sprintf("The permission mode %s waits for the next turn: %s", mode, clip(e.Response.Error, 200)), true)
+	}
 }
 
 // NewChat forgets the session, so that the next turn starts one (rule HA6).
@@ -479,6 +515,9 @@ func (a *Assistant) run(ctx context.Context, text string, done chan struct{}) {
 			a.emitStatus()
 		}
 		a.tap.Observe(e)
+		if e.Type == "control_response" {
+			a.modeResponse(e)
+		}
 		a.mu.Unlock()
 		switch {
 		case e.Type == "control_request" && e.Request.Subtype == "can_use_tool":
@@ -599,6 +638,7 @@ func (a *Assistant) end(ctx context.Context, closing string, cost float64, durat
 		a.answer(id, false, "The turn ended.")
 	}
 	a.stdin = nil
+	clear(a.modeRequests)
 	a.tap.End(closing, cost, duration, err)
 	a.s.Cost += cost
 	a.state = StateIdle

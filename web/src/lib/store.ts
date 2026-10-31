@@ -85,7 +85,7 @@ export function initialState(view: View): State {
   }
 }
 
-export const assistantOff: AssistantView = { enabled: false, session: '', model: '', effort: '', permission_mode: 'default', state: 'idle', cost: 0, commands: [], messages: [], activity: [], prompts: [] }
+export const assistantOff: AssistantView = { enabled: false, session: '', model: '', effort: '', permission_mode: 'auto', state: 'idle', cost: 0, commands: [], messages: [], activity: [], prompts: [] }
 
 // maxFeed is the most entries kept, as the server keeps them.
 const maxFeed = 500

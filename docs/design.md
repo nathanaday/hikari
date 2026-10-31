@@ -951,10 +951,13 @@ nobody sits at it to answer. The hikari agent is the opposite case: it runs
 on your machine, in the project root, with your own Claude Code, your plugins,
 your settings, and your login, so that the panel has what a terminal session
 has. A page in a browser then drives a session that can run any command as
-you, so the panel asks. Claude Code lets a headless session route its
-permission prompts to the host over its own stream, and hikari turns each one
-into a card with Allow and Deny, and answers when you click. Bypass is a
-choice in the menu, marked as such, never the default. The agent runs only
+you, so the panel keeps your permissions in force. Claude Code lets a
+headless session route its permission prompts to the host over its own
+stream, and hikari turns each one into a card with Allow and Deny, and
+answers when you click. The default mode is Claude Code's auto mode, the
+same default as a terminal session: its classifier allows the routine calls
+and escalates the rest to a card, where ask mode would raise a card for every
+call. Bypass is a choice in the menu, marked as such, never the default. The agent runs only
 when `hikari up` listens on this machine, unless `-agent on` says otherwise.
 
 The hikari agent is not in the room. It takes no agent token, and the
@@ -964,10 +967,14 @@ in the panel apart from the run's cost, which the project's credential pays.
 
 Each message runs one process of Claude Code, as the driver runs a container's
 turn, and the session id carries the conversation from turn to turn and from
-run to run. One process per turn means a change of the model, the effort, or
-the permission mode takes effect at the next turn with nothing to restart, and
-Stop is a kill that loses nothing, since Claude Code writes its session as it
-goes. The panel's own record, the transcript in `.hikari/assistant/`, holds
+run to run. One process per turn means a change of the model or the effort
+takes effect at the next turn with nothing to restart, and Stop is a kill that
+loses nothing, since Claude Code writes its session as it goes. A change of
+the permission mode cannot wait, since you change it when a turn asks too much
+or too little, so the panel also sends it to the running process over the same
+stream that carries the permission prompts, and the process switches mid-turn.
+When it refuses, as it does for bypass without the flag it was started
+without, the turn shows the refusal and the mode waits for the next turn. The panel's own record, the transcript in `.hikari/assistant/`, holds
 what the panel shows, so that a reload or a restart shows the past turns
 without reading Claude Code's files.
 

@@ -67,6 +67,13 @@ type Event struct {
 		Input       json.RawMessage `json:"input"`
 		Description string          `json:"description"`
 	} `json:"request"`
+	// Response is set for control_response, the session's answer to a
+	// control request of the host, such as set_permission_mode.
+	Response struct {
+		Subtype   string `json:"subtype"`
+		RequestID string `json:"request_id"`
+		Error     string `json:"error"`
+	} `json:"response"`
 	// Event is set for stream_event, the partial messages.
 	Event struct {
 		Type         string `json:"type"`
@@ -120,6 +127,12 @@ func (t *Tap) End(closing string, cost float64, duration time.Duration, err erro
 		a.Text = err.Error()
 	}
 	t.send(&block{entry: a})
+}
+
+// Note posts a line of the host's own to the turn, done at once, as an
+// error when isErr is set.
+func (t *Tap) Note(text string, isErr bool) {
+	t.send(&block{entry: api.Activity{ID: t.id(), Turn: t.turn, Kind: api.ActivityText, Done: true, Text: clipText(text, maxActivityText), Error: isErr}})
 }
 
 // Turn is the number of the current turn.

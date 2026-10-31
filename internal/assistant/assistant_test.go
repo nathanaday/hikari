@@ -28,6 +28,18 @@ echo '{"type":"assistant","message":{"content":[{"type":"text","text":"One file:
 echo '{"type":"result","subtype":"success","is_error":false,"result":"One file: a.go.","total_cost_usd":0.02,"session_id":"s1"}'
 `
 
+// modeClaude starts a turn, waits for one control request, writes it to
+// FAKE_IN, refuses it, and ends.
+const modeClaude = `#!/bin/sh
+read -r first
+echo '{"type":"system","subtype":"init","session_id":"s3"}'
+read -r request
+echo "$request" >> "$FAKE_IN"
+id=$(printf '%s' "$request" | sed 's/.*"request_id":"\([^"]*\)".*/\1/')
+echo '{"type":"control_response","response":{"subtype":"error","request_id":"'$id'","error":"bypass_not_launched"}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0.01,"session_id":"s3"}'
+`
+
 // slowClaude starts a turn and never ends it.
 const slowClaude = `#!/bin/sh
 read -r first
@@ -120,7 +132,7 @@ func TestTurn(t *testing.T) {
 	waitFor(t, "the turn to end", func() bool { return a.View().State == StateIdle })
 
 	v := a.View()
-	if v.Session != "s1" || v.Cost != 0.02 || strings.Join(v.Commands, " ") != "hikari:hikari threads:run" || v.PermissionMode != ModeAsk {
+	if v.Session != "s1" || v.Cost != 0.02 || strings.Join(v.Commands, " ") != "hikari:hikari threads:run" || v.PermissionMode != ModeAuto {
 		t.Errorf("status = %+v", v.Status)
 	}
 	if len(v.Messages) != 1 || v.Messages[0].Text != "list the files" || v.Messages[0].ID != 1 {
@@ -157,7 +169,7 @@ func TestTurn(t *testing.T) {
 		t.Errorf("control response = %s (%v)", in, err)
 	}
 	args, _ := os.ReadFile(filepath.Join(dir, "args"))
-	for _, want := range []string{"-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --permission-prompt-tool stdio --permission-mode default", "--append-system-prompt the context"} {
+	for _, want := range []string{"-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --permission-prompt-tool stdio --permission-mode auto", "--append-system-prompt the context"} {
 		if !strings.Contains(string(args), want) {
 			t.Errorf("args = %s, want %s", args, want)
 		}
@@ -243,6 +255,40 @@ func TestStop(t *testing.T) {
 		t.Errorf("a send after Stop runs: %v", err)
 	}
 	a.Stop()
+}
+
+// TestLiveMode checks rule HA6: a change of the permission mode during a
+// turn goes to the running process as a set_permission_mode request, and a
+// refusal becomes an entry of the turn.
+func TestLiveMode(t *testing.T) {
+	a, _, dir := fake(t, modeClaude)
+	if err := a.Send("switch"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the session", func() bool { return a.View().Session == "s3" })
+	if err := a.SetOptions(Options{PermissionMode: ModeBypass}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the turn to end", func() bool { return a.View().State == StateIdle })
+	in, _ := os.ReadFile(filepath.Join(dir, "in"))
+	for _, want := range []string{`"type":"control_request"`, `"subtype":"set_permission_mode"`, `"mode":"bypassPermissions"`} {
+		if !strings.Contains(string(in), want) {
+			t.Errorf("stdin = %s, want %s", in, want)
+		}
+	}
+	v := a.View()
+	var note *api.Activity
+	for i := range v.Activity {
+		if v.Activity[i].Kind == api.ActivityText && v.Activity[i].Error {
+			note = &v.Activity[i]
+		}
+	}
+	if note == nil || !strings.Contains(note.Text, "bypassPermissions waits for the next turn: bypass_not_launched") {
+		t.Errorf("activity = %+v, want a note of the refusal", v.Activity)
+	}
+	if v.PermissionMode != ModeBypass {
+		t.Errorf("mode = %s, want it kept for the next turn", v.PermissionMode)
+	}
 }
 
 func TestContextAndEnabled(t *testing.T) {
