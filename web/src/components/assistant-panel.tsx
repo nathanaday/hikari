@@ -165,7 +165,6 @@ function Timeline({ state }: { state: State }) {
       {items.length === 0 ? (
         <div className="px-6 py-16 text-center text-sm text-muted-foreground">
           <p className="font-medium text-foreground">Ask Hikari anything about the project</p>
-          <p className="mt-1">Your own Claude Code, in the project root, with the Hikari plugin. It is not in the room; it posts there as you when you ask.</p>
         </div>
       ) : (
         <div className="py-3">
