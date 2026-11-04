@@ -22,6 +22,12 @@ type directArgs struct {
 	Body string `json:"body" jsonschema:"the message text"`
 }
 
+type askArgs struct {
+	Question string   `json:"question" jsonschema:"the question, in one or two sentences, with what each choice means"`
+	Options  []string `json:"options" jsonschema:"two to six choices, each a short phrase; put the one you recommend first"`
+	Task     string   `json:"task,omitempty" jsonschema:"the task the question concerns, by id, when it concerns one"`
+}
+
 type noArgs struct{}
 
 // New returns the MCP server of the agent described by self. Every agent
@@ -65,6 +71,17 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 			return nil, nil, err
 		}
 		return text(fmt.Sprintf("Sent direct message %d to %s.", m.ID, m.To)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "ask_user",
+		Description: "Ask the user one question with numbered choices. The UI shows it as a card that the user answers with one click, and the answer reaches you as a direct message, \"<n>. <choice>\" with any words the user adds. Use it when a choice between two or three readings would waste work either way; state your own reading as the first choice. It does not wait: end your turn after asking.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a askArgs) (*mcp.CallToolResult, any, error) {
+		m, err := c.Send(ctx, api.SendRequest{To: "user", Decision: &api.Decision{Question: a.Question, Options: a.Options, Task: strings.Trim(a.Task, "[] ")}})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Asked the user (message %d). The answer arrives as a direct message; end your turn.", m.ID)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

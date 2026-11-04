@@ -116,6 +116,22 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))
+	mux.HandleFunc("POST /api/ui/decide", ui(func(w http.ResponseWriter, r *http.Request) {
+		var req DecideRequest
+		if err := decode(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		m, err := s.Decide(req)
+		switch {
+		case errors.Is(err, errForbidden):
+			writeError(w, http.StatusForbidden, err.Error())
+		case err != nil:
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeJSON(w, http.StatusOK, m)
+		}
+	}))
 	s.assistantRoutes(mux, ui)
 
 	static(mux)

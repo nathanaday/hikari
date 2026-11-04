@@ -1,4 +1,5 @@
-import { Activity, BookOpen, FileCode2, GitBranch, ListChecks, MessagesSquare, Network } from 'lucide-react'
+import { Activity, BookOpen, CircleAlert, FileCode2, GitBranch, LayoutGrid, ListChecks, MessagesSquare, Network } from 'lucide-react'
+import { useMemo } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
 import { StatusDot } from '@/components/status-dot'
+import { attentionFor, attentionItems, type AttentionItem } from '@/lib/attention'
 import { repoHealth, type RepoHealth } from '@/lib/repos'
 import type { Connection, State } from '@/lib/store'
 import { viewKey, type View } from '@/lib/view'
@@ -25,11 +27,13 @@ const connectionLabel: Record<Connection, string> = {
 
 export function AppSidebar({ state, show }: { state: State; show: (v: View) => void }) {
   const active = viewKey(state.view)
-  const item = (v: View, label: React.ReactNode, icon: React.ReactNode) => (
+  const items = useMemo(() => attentionItems(state), [state])
+  const item = (v: View, label: React.ReactNode, icon: React.ReactNode, needs = 0) => (
     <SidebarMenuItem key={viewKey(v)}>
       <SidebarMenuButton isActive={active === viewKey(v)} onClick={() => show(v)}>
         {icon}
         <span className="truncate">{label}</span>
+        {needs > 0 && <Needs count={needs} />}
       </SidebarMenuButton>
       {state.unread[viewKey(v)] ? <SidebarMenuBadge>{state.unread[viewKey(v)]}</SidebarMenuBadge> : null}
     </SidebarMenuItem>
@@ -66,10 +70,12 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
           </SidebarGroup>
         ) : (
           <>
+            {items.length > 0 && <NeedsYou items={items} show={show} />}
             <SidebarGroup>
               <SidebarMenu>
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
-                {state.modules.tasks && item({ kind: 'work' }, 'Work', <ListChecks />)}
+                {item({ kind: 'grid' }, 'Grid', <LayoutGrid />)}
+                {state.modules.tasks && item({ kind: 'work' }, 'Work', <ListChecks />, items.filter((i) => i.kind === 'blocked' || i.kind === 'tracker').length)}
                 {state.partitions.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
                 {state.repos.length > 0 && item({ kind: 'repos' }, 'Repositories', <GitBranch />)}
                 {item({ kind: 'shared' }, 'Vault', <BookOpen />)}
@@ -111,6 +117,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
                         <span className="flex size-4 items-center justify-center">
                           <RepoDot health={repoHealth(r)} />
                         </span>,
+                        attentionFor(items, r.name),
                       ),
                     )}
                 </SidebarMenu>
@@ -126,6 +133,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
                     <span className="flex size-4 items-center justify-center">
                       <StatusDot state={a.status.state} />
                     </span>,
+                    attentionFor(items, a.name),
                   ),
                 )}
               </SidebarMenu>
@@ -134,6 +142,53 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
         )}
       </SidebarContent>
     </Sidebar>
+  )
+}
+
+// Needs marks an entry that waits for you, with how many items do (rule
+// AT3).
+function Needs({ count }: { count: number }) {
+  return (
+    <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[11px] font-medium text-amber-800" data-testid="needs" aria-label={`${count} waiting for you`}>
+      <CircleAlert className="size-3" />
+      {count > 1 ? count : ''}
+    </span>
+  )
+}
+
+const kindLabel: Record<AttentionItem['kind'], string> = {
+  decision: 'decide',
+  message: 'answer',
+  blocked: 'blocked',
+  prompt: 'permission',
+  pull: 'pull request',
+  repo: 'repository',
+  tracker: 'tracker',
+}
+
+const maxShown = 6
+
+// NeedsYou lists everything blocked on you, at the top of the sidebar
+// (rules AT1 to AT3).
+function NeedsYou({ items, show }: { items: AttentionItem[]; show: (v: View) => void }) {
+  return (
+    <SidebarGroup data-testid="needs-you">
+      <SidebarGroupLabel className="text-amber-800">
+        <CircleAlert className="mr-1 size-3.5" />
+        Needs you ({items.length})
+      </SidebarGroupLabel>
+      <SidebarMenu>
+        {items.slice(0, maxShown).map((i) => (
+          <SidebarMenuItem key={i.key}>
+            <SidebarMenuButton onClick={() => show(i.view)} className="h-auto items-start py-1" title={i.text}>
+              <span className="mt-0.5 w-16 shrink-0 text-[11px] text-muted-foreground">{kindLabel[i.kind]}</span>
+              <span className="line-clamp-2 text-xs whitespace-normal">{i.text}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+        {items.length > maxShown && <p className="px-2 text-xs text-muted-foreground">and {items.length - maxShown} more</p>}
+      </SidebarMenu>
+    </SidebarGroup>
   )
 }
 

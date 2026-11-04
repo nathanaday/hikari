@@ -257,6 +257,9 @@ func TestIssues(t *testing.T) {
 	if _, err := call(t, agent, http.MethodPost, "/scope", "lead", ScopeInput{ID: "shop-12", Partitions: []string{"orders"}, Goal: "g", Parts: map[string]string{"orders": "x"}, DoneWhen: "d"}); err == nil {
 		t.Error("IS4 a scoped task in a queue is the user's")
 	}
+	if len(h.asks) != 1 || h.asks[0].Task != "shop-12" || h.asks[0].ReplyTo != "lead" || !strings.Contains(h.asks[0].Question, "with assumptions") || len(h.asks[0].Options) != 2 {
+		t.Errorf("DC4 a scope with assumptions asks the user: %+v", h.asks)
+	}
 	wait(t, "the scope hook", func() bool {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
@@ -274,6 +277,9 @@ func TestIssues(t *testing.T) {
 	// A block and done reach the issue too.
 	status(t, i.store, "orders", "shop-12", "", Blocked, "need a decision")
 	i.do("block", func(c *Change) (any, error) { return nil, nil })
+	if len(h.asks) != 2 || !strings.Contains(h.asks[1].Question, "is blocked") || !strings.Contains(h.asks[1].Question, "orders is blocked") || len(h.asks[1].Options) != 3 {
+		t.Errorf("DC4 a block asks the user: %+v", h.asks)
+	}
 	wait(t, "the block hook", func() bool {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()

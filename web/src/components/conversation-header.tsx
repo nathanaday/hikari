@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Boxes, GitBranch, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
+import { Activity, BookOpen, Boxes, GitBranch, LayoutGrid, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -51,7 +51,17 @@ export function ConversationHeader({ state, show, onMention }: Props) {
   const status = (name: string) => state.agents.find((a) => a.name === name)?.status.state ?? 'idle'
 
   let body: React.ReactNode
-  if (v.kind === 'all') {
+  if (v.kind === 'grid') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <LayoutGrid className="size-4 text-muted-foreground" />
+          Grid
+        </h1>
+        <p className="text-sm text-muted-foreground">Every agent at a glance: what it does right now, the tasks it holds, its last message, and whether it waits for you. Click a tile for its direct messages.</p>
+      </>
+    )
+  } else if (v.kind === 'all') {
     body = (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">

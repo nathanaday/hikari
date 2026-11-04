@@ -12,7 +12,7 @@ The pipeline's unit of work is an issue: a GitHub issue of one of the project's 
 hikari tells you when a queue starts an issue that is not scoped yet. The queue holds every other queue until you write the scope, so do it in this turn.
 
 1. Read the issue with `get_issue`: its body and its comments hold the user's request and answers. Read the feature maps that it concerns: yours, and each partition's with `get_partition` and `get_document`. Find the features it changes or creates, the partitions whose code holds them, and the interfaces between them.
-2. Decide what the issue leaves open. Take the most reasonable reading, and write each assumption with its reason in `answers`; do not wait for the user. Ask the user in your direct messages only when a choice would waste the partitions' work either way, and still write the scope with your best reading, so that the work starts.
+2. Decide what the issue leaves open. Take the most reasonable reading, and write each assumption with its reason in `answers`; do not wait for the user. hikari shows the user your assumptions and asks whether to proceed; the answer reaches you as a direct message. Ask the user yourself, with `ask_user` and two or three choices, only when a choice would waste the partitions' work either way, and still write the scope with your best reading as the first choice, so that the work starts.
 3. Call `scope_task` with the issue (`<repo>#<number>`) or the task id: the partitions, the features whose health decides that it is done, for each partition its part in terms of its features and interfaces, the goal, what shows that it is done, and the assumptions. hikari posts the scope to the issue for the user.
 4. Go on with Carry out a scope: the task is already started.
 
@@ -22,7 +22,7 @@ The user may also ask you to scope an issue that is in no queue, or to plan one 
 
 1. Read the scope with `get_task`. Order its parts: a part that provides an interface or a release goes before the parts that use it.
 2. Send each part to its partition agent by direct message when its needs within the scope are met: the task's id, what its part changes, and what it needs from the other parts. Tell it to follow the `hikari-task-work` skill.
-3. Follow the statuses. hikari tells you when a part is done, blocked, or no longer blocked, and the notice of each turn lists them. When a part is blocked, read why, and resolve what you can: ask another partition agent, or ask the user. When a part waits for another, send it once the other is done.
+3. Follow the statuses. hikari tells you when a part is done, blocked, or no longer blocked, and the notice of each turn lists them. When a part is blocked, read why, and resolve what you can: ask another partition agent, or ask the user with `ask_user`. hikari also asks the user what to do about a block, and the answer reaches you: "Resolved" means carry on, "Skip this part" means go on with the other parts and leave that one blocked, "Keep it blocked" means wait. When a part waits for another, send it once the other is done.
 4. When a part reports that its work cannot be done as the scope says, tell the user, with the reason. Never change a scope in a queue; it is the user's.
 
 ## Validate a scope

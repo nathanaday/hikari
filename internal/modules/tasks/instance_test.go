@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/topology"
 )
@@ -26,6 +27,7 @@ type fakeHost struct {
 	commits []commit
 	notes   []Note
 	lines   []Line
+	asks    []api.Decision
 	// trackers holds a fake tracker per repo, when a test gives one.
 	trackers map[string]forge.Tracker
 }
@@ -46,6 +48,12 @@ func (h *fakeHost) Notify(to, body string) {
 	defer h.mu.Unlock()
 	h.notes = append(h.notes, Note{To: to, Body: body})
 }
+func (h *fakeHost) Ask(d api.Decision) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.asks = append(h.asks, d)
+}
+
 func (h *fakeHost) Feed(text, task string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

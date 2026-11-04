@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { MessagesSquare, Zap } from 'lucide-react'
+import { DecisionCard } from '@/components/decision-card'
 import { Markdown } from '@/components/markdown'
+import { pendingDecisions } from '@/lib/attention'
 import { ParticipantAvatar } from '@/components/participant-avatar'
 import { TurnCard } from '@/components/turn-card'
 import { orchestrationOf } from '@/lib/rules'
@@ -30,6 +32,8 @@ export function MessageList({ state }: { state: State }) {
     return out
   }, [state.activity, state.agents, v, state.me])
   const items = useMemo(() => timeline(shown, turns), [shown, turns])
+  // The latest decision that waits in this view takes the number keys.
+  const hot = useMemo(() => pendingDecisions(shown, state.me).at(-1)?.id, [shown, state.me])
   // Anyone in the room can be mentioned.
   const names = useMemo(() => new Set(state.participants.map((p) => p.name)), [state.participants])
 
@@ -74,7 +78,7 @@ export function MessageList({ state }: { state: State }) {
               prev.from === m.from &&
               channel(prev) === channel(m) &&
               Date.parse(m.time) - Date.parse(prev.time) < groupWindowMs
-            return <MessageRow key={m.id} m={m} compact={compact} state={state} names={names} />
+            return <MessageRow key={m.id} m={m} compact={compact} state={state} names={names} hot={m.id === hot} />
           })}
         </div>
       )}
@@ -82,8 +86,9 @@ export function MessageList({ state }: { state: State }) {
   )
 }
 
-function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean; state: State; names: ReadonlySet<string> }) {
+function MessageRow({ m, compact, state, names, hot }: { m: Message; compact: boolean; state: State; names: ReadonlySet<string>; hot?: boolean }) {
   const me = state.me
+  const answer = m.decision ? state.messages.find((x) => x.answers === m.id) : undefined
   const isOrchestration = orchestrationOf(state.participants) === m.from
   const time = new Date(m.time)
 
@@ -100,7 +105,7 @@ function MessageRow({ m, compact, state, names }: { m: Message; compact: boolean
             </time>
           </div>
         )}
-        <Markdown text={m.body} names={names} />
+        {m.decision ? <DecisionCard m={m} answer={answer} hot={hot} /> : <Markdown text={m.body} names={names} />}
         {!m.to && (
           <div className="mt-0.5 mb-1 flex items-center gap-1 text-xs text-muted-foreground" data-testid="woke">
             <Zap className="size-3" />

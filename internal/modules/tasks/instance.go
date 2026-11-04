@@ -113,6 +113,9 @@ func (i *instance) apply(c *Change, what string) {
 	for _, l := range i.store.TakeLines() {
 		i.host.Feed(l.Text, l.Task)
 	}
+	for _, a := range i.store.TakeAsks() {
+		i.host.Ask(a)
+	}
 	if hooks := i.store.TakeHooks(); len(hooks) > 0 {
 		select {
 		case i.hooks <- hooks:

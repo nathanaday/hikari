@@ -141,6 +141,12 @@ func (h *moduleHost) Notify(to, body string) {
 	}
 }
 
+func (h *moduleHost) Ask(d api.Decision) {
+	if _, err := h.s.Send(topology.Hikari, api.SendRequest{To: topology.User, Decision: &d}); err != nil {
+		log.Printf("module %s: ask: %v", h.name, err)
+	}
+}
+
 func (h *moduleHost) Feed(text, task string) {
 	h.s.mu.Lock()
 	defer h.s.mu.Unlock()

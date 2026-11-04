@@ -6,6 +6,8 @@ export type TopologyTab = 'structure' | 'yaml'
 
 export type View =
   | { kind: 'all' }
+  // grid shows every agent as a tile (rule GR1 of the attention spec).
+  | { kind: 'grid' }
   | { kind: 'shared' }
   // topology is the topology file: its Structure tab, or its YAML tab, where
   // line moves the editor to a line.
@@ -32,7 +34,7 @@ export const allView: View = { kind: 'all' }
 // viewKey names a conversation for unread counts. The tabs of the room
 // share one key.
 export function viewKey(v: View): string {
-  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work' || v.kind === 'repos') return v.kind
+  if (v.kind === 'all' || v.kind === 'grid' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work' || v.kind === 'repos') return v.kind
   if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : v.orchestration ? 'map:@orchestration' : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
@@ -40,6 +42,7 @@ export function viewKey(v: View): string {
 
 export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
+  if (v.kind === 'grid') return '#/grid'
   if (v.kind === 'shared') return '#/shared'
   if (v.kind === 'topology') return v.tab === 'yaml' ? '#/topology/yaml' : v.select ? `#/topology?select=${encodeURIComponent(v.select)}` : '#/topology'
   if (v.kind === 'map') {
@@ -59,6 +62,7 @@ export function viewHash(v: View): string {
 
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
+  if (hash === '#/grid') return { kind: 'grid' }
   if (hash === '#/work') return { kind: 'work' }
   const work = hash.match(/^#\/work\/([^/]+)$/)
   if (work) return { kind: 'work', issue: decodeURIComponent(work[1]) }

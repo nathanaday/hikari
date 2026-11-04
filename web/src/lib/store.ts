@@ -98,7 +98,7 @@ const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules' | 'repos'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
-  if (v.kind === 'room') return v
+  if (v.kind === 'room' || v.kind === 'grid') return v
   if (v.kind === 'work') return s.modules.tasks ? v : allView
   if (v.kind === 'repos') return v
   if (v.kind === 'repo') return s.repos.some((r) => r.name === v.name) ? v : { kind: 'repos' }

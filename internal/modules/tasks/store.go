@@ -35,6 +35,7 @@ type Store struct {
 	// hooks the moments since TakeHooks, for the trackers.
 	lines []Line
 	hooks []Hook
+	asks  []Ask
 }
 
 // Check is what the store checks a document against (rule TK4).
@@ -432,6 +433,10 @@ func (s *Store) Scope(in ScopeInput) (*Task, []string, error) {
 	s.Tasks[t.ID] = &next
 	if s.queueOf[t.ID] != "" {
 		s.hook(HookScoped, &next)
+		if strings.TrimSpace(in.Answers) != "" {
+			s.ask(&next, fmt.Sprintf("The orchestration agent scoped [[%s]] with assumptions, which its comment on the issue lists. Proceed?", t.ID),
+				"Proceed as scoped", "Change the scope: I will say what to change")
+		}
 	}
 	return &next, []string{f}, nil
 }

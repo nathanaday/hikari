@@ -9,7 +9,16 @@ export type Message = {
   body: string
   time: string
   woke?: string[]
+  // decision is a question with numbered choices, shown as a card, and
+  // answers the id of the decision that this message answers (rules DC1
+  // and DC3 of the attention spec).
+  decision?: Decision
+  answers?: number
 }
+
+// Decision is a question for you with two to six choices; the answer goes
+// to reply_to as a direct message.
+export type Decision = { question: string; options: string[]; task?: string; reply_to?: string }
 
 // hikari is hikari itself, which writes the messages of its modules.
 export type Role = 'orchestration' | 'partition' | 'operator' | 'hikari'

@@ -4,7 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { DecisionCard } from '@/components/decision-card'
 import { Markdown } from '@/components/markdown'
+import { pendingDecisions } from '@/lib/attention'
 import { ago, issueRef } from '@/lib/repos'
 import type { State } from '@/lib/store'
 import type { IssueDetail, IssueView, QueueView, TaskStatus, TaskView, TasksView } from '@/lib/types'
@@ -527,6 +529,8 @@ function IssuePanel({
     run(Promise.resolve(err))
   }
   const setStatus = (part: string | undefined, status: string) => t && run(call('/status', { task: t.id, part, status }))
+  // The decisions that wait on this task (rule DC5).
+  const decisions = useMemo(() => (t ? pendingDecisions(state.messages, state.me, t.id) : []), [state.messages, state.me, t])
   const closeOrRemove = () => {
     if (i.local) {
       if (window.confirm(`Remove the local issue ${i.ref}? Its document in vault/tasks/ is deleted.`)) patch({ state: 'closed' }).then(close)
@@ -594,6 +598,13 @@ function IssuePanel({
           <X className="size-4" />
         </Button>
       </div>
+      {decisions.length > 0 && (
+        <div className="mt-3" data-testid="issue-decisions">
+          {decisions.map((m, k) => (
+            <DecisionCard key={m.id} m={m} hot={k === decisions.length - 1} />
+          ))}
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {i.state === 'open' && (
           <Button size="sm" onClick={onWork} disabled={!!t?.status && t.status !== 'done'}>

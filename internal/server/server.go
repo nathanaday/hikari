@@ -264,8 +264,29 @@ func (s *Server) agentForToken(token string) (string, bool) {
 
 var errForbidden = errors.New("not allowed")
 
-// Send posts to the room, or sends a direct message when req.To is set.
+// Send posts to the room, or sends a direct message when req.To is set. A
+// decision is a direct message to the user, whose body is the decision's
+// text when the request gives none (rule DC1 of the attention spec).
 func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
+	if d := req.Decision; d != nil {
+		if req.To != topology.User {
+			return api.Message{}, fmt.Errorf("a decision is a direct message to %s", topology.User)
+		}
+		if strings.TrimSpace(d.Question) == "" || len(d.Options) < 2 || len(d.Options) > api.MaxOptions {
+			return api.Message{}, fmt.Errorf("a decision needs a question and 2 to %d options", api.MaxOptions)
+		}
+		for _, o := range d.Options {
+			if strings.TrimSpace(o) == "" {
+				return api.Message{}, errors.New("an option of a decision is not empty")
+			}
+		}
+		if d.ReplyTo == "" {
+			d.ReplyTo = from
+		}
+		if strings.TrimSpace(req.Body) == "" {
+			req.Body = d.Text()
+		}
+	}
 	if strings.TrimSpace(req.Body) == "" {
 		return api.Message{}, errors.New("message body is empty")
 	}
@@ -273,9 +294,40 @@ func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 		return api.Message{}, fmt.Errorf("message body exceeds %d bytes", maxBodyBytes)
 	}
 	if req.To != "" {
-		return s.direct(from, req.To, req.Body)
+		return s.directMessage(api.Message{From: from, To: req.To, Body: req.Body, Decision: req.Decision, Answers: req.Answers})
 	}
 	return s.post(from, req.Body), nil
+}
+
+// DecideRequest answers a decision: the message's id, the option's number
+// from 1, and any words of the user.
+type DecideRequest struct {
+	Message int64  `json:"message"`
+	Choice  int    `json:"choice"`
+	Note    string `json:"note,omitempty"`
+}
+
+// Decide answers a decision as the user: a direct message to the
+// decision's ReplyTo, "<n>. <option>", with the note (rule DC3).
+func (s *Server) Decide(req DecideRequest) (api.Message, error) {
+	s.mu.Lock()
+	i := slices.IndexFunc(s.log, func(x api.Message) bool { return x.ID == req.Message })
+	var d *api.Decision
+	if i >= 0 {
+		d = s.log[i].Decision
+	}
+	s.mu.Unlock()
+	if d == nil {
+		return api.Message{}, fmt.Errorf("message %d is not a decision", req.Message)
+	}
+	if req.Choice < 1 || req.Choice > len(d.Options) {
+		return api.Message{}, fmt.Errorf("the choice is a number from 1 to %d", len(d.Options))
+	}
+	body := fmt.Sprintf("%d. %s", req.Choice, d.Options[req.Choice-1])
+	if note := strings.TrimSpace(req.Note); note != "" {
+		body += "\n" + note
+	}
+	return s.Send(topology.User, api.SendRequest{To: d.ReplyTo, Body: body, Answers: req.Message})
 }
 
 // post sends body to the room. It wakes the orchestration agent, every agent it
@@ -304,7 +356,18 @@ func (s *Server) post(from, body string) api.Message {
 }
 
 func (s *Server) direct(from, to, body string) (api.Message, error) {
+	return s.directMessage(api.Message{From: from, To: to, Body: body})
+}
+
+// directMessage delivers m, with its decision or its answer, so that the
+// event the UI receives carries them (rule DC1).
+func (s *Server) directMessage(m api.Message) (api.Message, error) {
+	from, to := m.From, m.To
 	others := slices.DeleteFunc(s.topo.Participants(), func(p string) bool { return p == from })
+	if from == topology.Hikari && to == topology.User {
+		// hikari asks the user its decisions (rule DC2).
+		others = append(others, topology.User)
+	}
 	if !slices.Contains(others, to) {
 		return api.Message{}, fmt.Errorf("%w: %q cannot send a direct message to %q; the room is %s",
 			errForbidden, from, to, list(others))
@@ -313,7 +376,7 @@ func (s *Server) direct(from, to, body string) (api.Message, error) {
 	if to != topology.User {
 		recipients = append(recipients, recipient{name: to, wake: true})
 	}
-	return s.deliver(api.Message{From: from, To: to, Body: body}, recipients), nil
+	return s.deliver(m, recipients), nil
 }
 
 // deliver records m and queues it for each recipient. The user has no inbox:

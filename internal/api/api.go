@@ -24,6 +24,37 @@ type Message struct {
 	Time time.Time `json:"time"`
 	// Woke lists the recipients that the message started a turn for.
 	Woke []string `json:"woke,omitempty"`
+	// Decision is a question with numbered options, which the UI shows as
+	// a card (the decisions of the attention spec). Answers is the id of
+	// the decision message that this message answers.
+	Decision *Decision `json:"decision,omitempty"`
+	Answers  int64     `json:"answers,omitempty"`
+}
+
+// Decision is a question for the user with two to six options. The answer
+// comes back as a direct message to ReplyTo, "<n>. <option>", with any words
+// the user adds.
+type Decision struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	// Task is the task the decision concerns, or "".
+	Task string `json:"task,omitempty"`
+	// ReplyTo receives the answer: the sender, or for a decision of hikari,
+	// the orchestration agent.
+	ReplyTo string `json:"reply_to,omitempty"`
+}
+
+// MaxOptions is the most options a decision has.
+const MaxOptions = 6
+
+// Text writes a decision as plain text: the question, then the numbered
+// options.
+func (d *Decision) Text() string {
+	out := d.Question
+	for i, o := range d.Options {
+		out += fmt.Sprintf("\n%d. %s", i+1, o)
+	}
+	return out
 }
 
 const (
@@ -108,9 +139,13 @@ var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapF
 const AgentPrefix = "hikari-"
 
 // SendRequest posts to the room, or sends a direct message when To is set.
+// A Decision goes to the user as a direct message; Answers names the
+// decision that the message answers.
 type SendRequest struct {
-	To   string `json:"to,omitempty"`
-	Body string `json:"body"`
+	To       string    `json:"to,omitempty"`
+	Body     string    `json:"body"`
+	Decision *Decision `json:"decision,omitempty"`
+	Answers  int64     `json:"answers,omitempty"`
 }
 
 const (

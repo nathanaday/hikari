@@ -5,6 +5,7 @@ import { Cat } from '@/components/cat'
 import { Composer } from '@/components/composer'
 import { ConversationHeader } from '@/components/conversation-header'
 import { FeedView } from '@/components/feed-view'
+import { GridView } from '@/components/grid-view'
 import { MapView } from '@/components/map-view'
 import { MessageList } from '@/components/message-list'
 import { PublicWiki } from '@/components/public-wiki'
@@ -50,6 +51,8 @@ export default function App() {
   let main: React.ReactNode
   if (v.kind === 'all') {
     main = <FeedView state={state} show={show} />
+  } else if (v.kind === 'grid') {
+    main = <GridView state={state} show={show} />
   } else if (v.kind === 'map') {
     main = <MapView state={state} show={show} />
   } else if (v.kind === 'partition') {

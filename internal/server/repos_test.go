@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/topology"
 )
 
 // TestRepoRoutes checks RP6 and RP7 of the repositories, forges, and
@@ -91,5 +93,60 @@ func TestRepoRoutes(t *testing.T) {
 	h := &moduleHost{s: s, name: "tasks"}
 	if _, ok := h.Tracker("app"); ok || len(h.TrackerRepos()) != 0 {
 		t.Error("a repository without a forge has no tracker")
+	}
+}
+
+// TestDecisions checks DC1 to DC3 of the attention spec: an agent asks the
+// user a decision, hikari may ask one too, and the user's answer is a
+// direct message to the decision's recipient that names what it answers.
+func TestDecisions(t *testing.T) {
+	s, _ := newTestServer(t)
+	d := api.Decision{Question: "Wrap style?", Options: []string{"One style", "Let the customer pick"}}
+	if _, err := s.Send("writer", api.SendRequest{To: "critic", Decision: &d}); err == nil {
+		t.Error("DC1 a decision goes to the user")
+	}
+	if _, err := s.Send("writer", api.SendRequest{To: "user", Decision: &api.Decision{Question: "x", Options: []string{"only one"}}}); err == nil {
+		t.Error("DC1 a decision has at least two options")
+	}
+	events, cancel := s.Subscribe()
+	defer cancel()
+	<-events
+	m, err := s.Send("writer", api.SendRequest{To: "user", Decision: &d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := <-events; e.Type != "message" || e.Message.Decision == nil {
+		t.Errorf("DC1 the event carries the decision: %+v", e.Message)
+	}
+	if m.Decision == nil || m.Decision.ReplyTo != "writer" || m.Body != "Wrap style?\n1. One style\n2. Let the customer pick" {
+		t.Errorf("the decision message: %+v", m)
+	}
+	ask := api.Decision{Question: "Proceed?", Options: []string{"Yes", "No"}, ReplyTo: "lead", Task: "cancel"}
+	h := &moduleHost{s: s, name: "tasks"}
+	h.Ask(ask)
+	snap := s.snapshot()
+	last := snap.Messages[len(snap.Messages)-1]
+	if last.From != topology.Hikari || last.To != "user" || last.Decision == nil || last.Decision.ReplyTo != "lead" {
+		t.Errorf("DC2 hikari asks the user: %+v", last)
+	}
+	if _, err := s.Decide(DecideRequest{Message: m.ID, Choice: 3}); err == nil {
+		t.Error("DC3 the choice is within the options")
+	}
+	if _, err := s.Decide(DecideRequest{Message: 999, Choice: 1}); err == nil {
+		t.Error("DC3 only a decision is answered")
+	}
+	a, err := s.Decide(DecideRequest{Message: m.ID, Choice: 2, Note: "and remember the choice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.From != "user" || a.To != "writer" || a.Answers != m.ID || a.Body != "2. Let the customer pick\nand remember the choice" {
+		t.Errorf("DC3 the answer: %+v", a)
+	}
+	if msgs := s.Take(context.Background(), "writer", 0); len(msgs) != 1 || msgs[0].ID != a.ID {
+		t.Errorf("the answer wakes the asker: %+v", msgs)
+	}
+	b, err := s.Decide(DecideRequest{Message: last.ID, Choice: 1})
+	if err != nil || b.To != "lead" {
+		t.Errorf("hikari's decision is answered to the orchestration agent: %+v %v", b, err)
 	}
 }

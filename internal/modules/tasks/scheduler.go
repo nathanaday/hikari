@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/nathanaday/hikari/internal/api"
 )
 
 // Change is what one change of the pipeline did beyond its own files: the
@@ -78,6 +80,26 @@ func (s *Store) hook(kind string, t *Task) {
 	s.hooks = append(s.hooks, Hook{Kind: kind, Task: *t})
 }
 
+// Ask is a decision for the user that the pipeline raises: when the
+// orchestration agent scopes a queued task with assumptions, and when a
+// scope is blocked (rule DC4 of the attention spec). Its answer goes to
+// the orchestration agent.
+type Ask = api.Decision
+
+// TakeAsks returns the decisions kept since the last call.
+func (s *Store) TakeAsks() []Ask {
+	asks := s.asks
+	s.asks = nil
+	return asks
+}
+
+func (s *Store) ask(t *Task, question string, options ...string) {
+	if s.check.Orchestration == "" {
+		return
+	}
+	s.asks = append(s.asks, Ask{Question: question, Options: options, Task: t.ID, ReplyTo: s.check.Orchestration})
+}
+
 // TakeHooks returns the hooks kept since the last call.
 func (s *Store) TakeHooks() []Hook {
 	hooks := s.hooks
@@ -135,6 +157,17 @@ func (s *Store) setScope(t *Task, who, status, note string) {
 	switch {
 	case status == Blocked:
 		s.hook(HookBlocked, t)
+		if who != User {
+			reason := t.Block
+			if reason == "" {
+				reason = strings.TrimSpace(note)
+			}
+			if reason == "" {
+				reason = blockReason(t)
+			}
+			s.ask(t, fmt.Sprintf("[[%s]] is blocked: %s What now?", t.ID, strings.TrimRight(reason, ".")+"."),
+				"Resolved: carry on", "Skip this part for now, and go on with the rest", "Keep it blocked; I will follow up myself")
+		}
 	case status == Done:
 		s.hook(HookDone, t)
 	case from == Blocked && active(status):
