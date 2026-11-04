@@ -111,6 +111,23 @@ func (r *Repo) AheadBehind(ref, base string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
+// ChangedBetween lists the paths under any of the paths that ref changed
+// since it diverged from base: the diff from the merge base of base and
+// ref to ref. A path of "" is the whole repo.
+func (r *Repo) ChangedBetween(base, ref string, paths ...string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	args := []string{"diff", "--name-only", "--no-renames", base + "..." + ref, "--"}
+	for _, p := range paths {
+		args = append(args, pathspec(p))
+	}
+	out, err := r.git(args...)
+	if err != nil {
+		return nil, err
+	}
+	return lines(out), nil
+}
+
 // IsAncestor reports whether a is reachable from b: a is merged into b.
 func (r *Repo) IsAncestor(a, b string) bool {
 	r.mu.Lock()

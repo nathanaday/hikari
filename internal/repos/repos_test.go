@@ -277,3 +277,61 @@ func TestRepoWithoutForge(t *testing.T) {
 		t.Error(Summary(m.Views()))
 	}
 }
+
+// TestUncoveredAndDrift checks the uncovered code of a repository and the
+// default-branch drift of its partitions: the paths no partition owns, and
+// the paths of a partition's folders that main changed since the hikari
+// branch diverged.
+func TestUncoveredAndDrift(t *testing.T) {
+	repo, bare := cloneOf(t)
+	write(t, repo.Path, "services/api/main.py", "api\n")
+	write(t, repo.Path, "services/web/index.html", "web\n")
+	write(t, repo.Path, "libs/money/money.py", "money\n")
+	run(t, repo.Path, "add", "--all")
+	run(t, repo.Path, "commit", "--quiet", "-m", "layout")
+	run(t, repo.Path, "push", "--quiet", "origin", "main")
+	if _, err := repo.Prepare("hikari"); err != nil {
+		t.Fatal(err)
+	}
+	topo := &topology.Topology{
+		Repos: map[string]topology.Repo{"shop": {ID: "shop", Name: "shop", Path: repo.Path, Branch: "hikari"}},
+		Agents: map[string]topology.Agent{
+			"api": {Partition: &topology.Partition{Folders: []topology.Folder{{Repo: "shop", Path: "services/api"}, {Repo: "shop", Path: "libs/money", ReadOnly: true}}}},
+		},
+	}
+	f := &fake{checks: map[string]forge.Checks{}}
+	m := New(topo, map[string]*gitrepo.Repo{"shop": repo}, Options{NewForge: func(r forge.Remote) (forge.Forge, error) { return f, nil }})
+	v, _ := m.View("shop")
+	// libs/money is read-only, so no partition owns it either.
+	if want := []string{"README.md", "libs/", "services/web/"}; !slices.Equal(v.Uncovered, want) {
+		t.Errorf("uncovered = %v, want %v", v.Uncovered, want)
+	}
+	if len(v.Drift) != 0 {
+		t.Errorf("drift before main moves = %v", v.Drift)
+	}
+
+	// A teammate changes the api and the web on main.
+	other := filepath.Join(t.TempDir(), "other")
+	run(t, repo.Path, "clone", "--quiet", bare, other)
+	write(t, other, "services/api/routes.py", "routes\n")
+	write(t, other, "services/web/app.js", "app\n")
+	run(t, other, "add", "--all")
+	run(t, other, "commit", "--quiet", "-m", "teammate")
+	run(t, other, "push", "--quiet", "origin", "main")
+	m.fetch(context.Background(), "shop")
+	m.refreshGit("shop")
+	v, _ = m.View("shop")
+	if len(v.Drift) != 1 || v.Drift[0].Partition != "api" || !slices.Equal(v.Drift[0].Paths, []string{"services/api/routes.py"}) {
+		t.Errorf("drift = %+v", v.Drift)
+	}
+	// Uncovered follows your branch, which did not move.
+	if want := []string{"README.md", "libs/", "services/web/"}; !slices.Equal(v.Uncovered, want) {
+		t.Errorf("uncovered after the fetch = %v", v.Uncovered)
+	}
+	s := Summary(m.Views())
+	for _, want := range []string{"3 paths that no partition owns", "api: 1 path that main changed since your branch diverged"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Summary lacks %q:\n%s", want, s)
+		}
+	}
+}

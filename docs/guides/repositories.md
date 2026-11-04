@@ -12,6 +12,8 @@ While `hikari up` runs, the server keeps one view of each repository of the topo
 - **Every branch**, local and on `origin`, with its last commit, its distance from the default branch, and its open pull request when it has one.
 - **The pull requests** of the forge: open ones, and the ones closed in the last two weeks, each with its checks (the check runs and the commit statuses of its head, summed up as passing, failing, pending, or none), its review decision, whether it can merge, its size, and the issues it closes.
 - **The forge** itself: the host, the owner and name, when it was last read, and the last error.
+- **The code no partition owns**: the tracked paths of your branch outside every writable folder, each at the highest directory that holds no partition folder. No agent can change them. The repository's page lists them, the map's panel counts them, and `hikari check` warns about them.
+- **The drift of the default branch**: for each partition with a folder in the repository, the paths of its folders that the default branch changed since your branch diverged. The partition agent works on your branch, so it does not see these changes until you bring them in. The repository's page and the partition's page show them; the orchestration agent reads them through `list_repositories`.
 
 The git side refreshes every few seconds, the forge every minute, and `origin` is fetched every few minutes with git's prompts off, so that a passphrase never hangs the run. Refresh does all three at once.
 

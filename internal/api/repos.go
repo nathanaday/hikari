@@ -37,6 +37,23 @@ type RepoView struct {
 	// Error is the forge's last error, and GitError the last fetch's.
 	Error    string `json:"error,omitempty"`
 	GitError string `json:"git_error,omitempty"`
+	// Uncovered lists the tracked paths of your branch that no writable
+	// folder of a partition covers, each at the highest directory that
+	// holds no partition folder, with a trailing slash for a directory.
+	// It is nil for a repository without a partition, and for the project
+	// repository.
+	Uncovered []string `json:"uncovered,omitempty"`
+	// Drift says, for each partition with a folder in the repository,
+	// which of its paths the default branch changed since your branch
+	// diverged from it: work that is not in the partition's workspace.
+	Drift []PartitionDrift `json:"drift,omitempty"`
+}
+
+// PartitionDrift is the default branch's changes inside one partition's
+// folders of a repository, since your branch diverged.
+type PartitionDrift struct {
+	Partition string   `json:"partition"`
+	Paths     []string `json:"paths"`
 }
 
 // BranchView is one branch of a repository (rule RP2): a local branch, a

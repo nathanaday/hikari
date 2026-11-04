@@ -434,6 +434,17 @@ function RepoPanel({ name, state, open, show }: { name: string; state: State; op
         </p>
       ))}
       {repo.error && <p className="text-xs text-red-700">{repo.error}</p>}
+      {repo.uncovered?.length ? (
+        <p className="text-xs text-muted-foreground">
+          {repo.uncovered.length} path{repo.uncovered.length === 1 ? '' : 's'} in no partition: {repo.uncovered.slice(0, 4).join(', ')}
+          {repo.uncovered.length > 4 ? ', …' : ''}
+        </p>
+      ) : null}
+      {repo.drift?.filter((d) => d.paths.length > 0).map((d) => (
+        <p key={d.partition} className="text-xs text-amber-800">
+          {repo.default_branch} changed {d.paths.length} path{d.paths.length === 1 ? '' : 's'} of {d.partition} since your branch diverged
+        </p>
+      ))}
       <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'repo', name: repo.name })}>
         Open the repository page
       </button>

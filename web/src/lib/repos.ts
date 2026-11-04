@@ -72,3 +72,14 @@ export function ago(iso?: string): string {
 export function issueRef(t: { id: string; issue?: string }): string {
   return t.issue ?? t.id
 }
+
+// driftOf lists the paths of a partition's folders that the default branch
+// of each repository changed since your branch diverged, by repository.
+export function driftOf(repos: RepoView[], partition: string): { repo: string; default_branch: string; paths: string[] }[] {
+  const out: { repo: string; default_branch: string; paths: string[] }[] = []
+  for (const r of repos) {
+    const d = r.drift?.find((x) => x.partition === partition)
+    if (d && d.paths.length) out.push({ repo: r.name, default_branch: r.default_branch ?? 'the default branch', paths: d.paths })
+  }
+  return out
+}

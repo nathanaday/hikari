@@ -503,7 +503,16 @@ export type RepoView = {
   fetched?: string
   error?: string
   git_error?: string
+  // uncovered lists the tracked paths that no partition owns, each at the
+  // highest directory that holds no partition folder; a directory ends in
+  // a slash. drift lists, for each partition with a folder here, the paths
+  // of its folders that the default branch changed since your branch
+  // diverged.
+  uncovered?: string[]
+  drift?: PartitionDrift[]
 }
+
+export type PartitionDrift = { partition: string; paths: string[] }
 
 // DeliverableInfo is a deliverable of the vault with the agents that hold it.
 export type DeliverableInfo = { name: string; description?: string; holders: string[]; error?: string }

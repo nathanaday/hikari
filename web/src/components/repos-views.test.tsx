@@ -5,7 +5,7 @@ import { RepositoriesView, RepoView } from '@/components/repos-view'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { branchView, pullRequest, repoView } from '@/lib/fixtures'
-import { branchLine, repoGit, repoHealth } from '@/lib/repos'
+import { branchLine, driftOf, repoGit, repoHealth } from '@/lib/repos'
 import { initialState, reducer, type State } from '@/lib/store'
 import type { Checks } from '@/lib/types'
 import { parseHash, viewHash, viewKey } from '@/lib/view'
@@ -107,6 +107,43 @@ describe('RepoView', () => {
     expect(shopYours).toContain('#5 Cancel orders')
     const none = renderToStaticMarkup(<RepoView state={stateWith()} name="nope" show={noop} />)
     expect(none).toContain('No repository nope')
+  })
+})
+
+describe('uncovered code and drift', () => {
+  const drifted = repoView('shop', {
+    partitions: ['api'],
+    uncovered: ['README.md', 'libs/', 'services/web/'],
+    drift: [
+      { partition: 'api', paths: ['services/api/routes.py'] },
+      { partition: 'web', paths: [] },
+    ],
+  })
+  const state = { ...stateWith(), repos: [drifted] }
+
+  it('lists the paths no partition owns on the repository page and its card', () => {
+    const page = renderToStaticMarkup(<RepoView state={state} name="shop" show={noop} />)
+    const section = page.slice(page.indexOf('data-testid="uncovered"'))
+    expect(section).toContain('Not in any partition (3)')
+    expect(section).toContain('services/web/')
+    expect(section).toContain('libs/')
+    const list = renderToStaticMarkup(<RepositoriesView state={state} show={noop} />)
+    expect(list).toContain('3 paths in no partition')
+    // A repository without a partition says nothing about coverage.
+    const bare = renderToStaticMarkup(<RepoView state={{ ...state, repos: [repoView('empty', { partitions: [] })] }} name="empty" show={noop} />)
+    expect(bare).not.toContain('data-testid="uncovered"')
+  })
+
+  it('warns when the default branch moved under a partition, and finds the drift of one partition', () => {
+    const page = renderToStaticMarkup(<RepoView state={state} name="shop" show={noop} />)
+    expect(page).toContain('data-testid="drift"')
+    expect(page).toContain('data-drift="api"')
+    expect(page).not.toContain('data-drift="web"')
+    expect(page).toContain('services/api/routes.py')
+    expect(driftOf(state.repos, 'api')).toEqual([{ repo: 'shop', default_branch: 'main', paths: ['services/api/routes.py'] }])
+    expect(driftOf(state.repos, 'web')).toEqual([])
+    const quiet = renderToStaticMarkup(<RepoView state={stateWith()} name="shop" show={noop} />)
+    expect(quiet).not.toContain('data-testid="drift"')
   })
 })
 

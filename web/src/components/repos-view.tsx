@@ -123,6 +123,12 @@ export function RepositoriesView({ state, show }: { state: State; show: (v: View
               </p>
               {r.error && <p className="text-xs text-red-700">{r.error}</p>}
               {r.partitions.length > 0 && <p className="text-xs text-muted-foreground">partitions: {r.partitions.join(', ')}</p>}
+              {r.uncovered?.length ? (
+                <p className="text-xs text-muted-foreground">
+                  {r.uncovered.length} path{r.uncovered.length === 1 ? '' : 's'} in no partition
+                </p>
+              ) : null}
+              {r.drift?.some((d) => d.paths.length > 0) && <Chip className={checkClass.pending}>{r.default_branch} moved under {r.drift.filter((d) => d.paths.length > 0).map((d) => d.partition).join(', ')}</Chip>}
             </div>
           )
         })}
@@ -205,6 +211,9 @@ export function RepoView({ state, name, show }: { state: State; name: string; sh
           </table>
         </section>
 
+        <Uncovered repo={repo} />
+        <Drift repo={repo} show={show} />
+
         <section className="space-y-2">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Partitions</h2>
           {repo.partitions.length === 0 ? (
@@ -223,6 +232,63 @@ export function RepoView({ state, name, show }: { state: State; name: string; sh
         </section>
       </div>
     </div>
+  )
+}
+
+// Uncovered lists the code that no partition owns: the paths of your branch
+// outside every writable folder. An agent can change none of it.
+function Uncovered({ repo }: { repo: Repo }) {
+  if (repo.project || repo.partitions.length === 0) return null
+  const paths = repo.uncovered ?? []
+  return (
+    <section className="space-y-2" data-testid="uncovered">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Not in any partition ({paths.length})</h2>
+      {paths.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Every tracked path of this repository is in a partition.</p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">No agent can change these paths. Give them to a partition in the topology, or leave them yours.</p>
+          <ul className="flex flex-wrap gap-1.5">
+            {paths.map((p) => (
+              <li key={p}>
+                <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs">{p}</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
+// Drift lists, for each partition with a folder in the repository, the paths
+// the default branch changed since your branch diverged: work the partition
+// agent does not see in its workspace.
+function Drift({ repo, show }: { repo: Repo; show: (v: View) => void }) {
+  const drift = (repo.drift ?? []).filter((d) => d.paths.length > 0)
+  if (drift.length === 0) return null
+  return (
+    <section className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3" data-testid="drift">
+      <h2 className="text-xs font-medium tracking-wide text-amber-900 uppercase">
+        <code>{repo.default_branch}</code> moved under {drift.length === 1 ? 'a partition' : `${drift.length} partitions`}
+      </h2>
+      <p className="text-sm text-amber-900">
+        Since your branch diverged, {repo.default_branch} changed files in these partitions. Their agents work on your branch and do not see these changes until you bring them in.
+      </p>
+      <ul className="space-y-1.5 text-sm">
+        {drift.map((d) => (
+          <li key={d.partition} data-drift={d.partition}>
+            <button type="button" className="font-medium underline underline-offset-2" onClick={() => show({ kind: 'partition', name: d.partition })}>
+              {d.partition}
+            </button>{' '}
+            <span className="text-muted-foreground">
+              {d.paths.length} path{d.paths.length === 1 ? '' : 's'}:
+            </span>{' '}
+            <span className="text-xs">{d.paths.slice(0, 8).join(', ')}{d.paths.length > 8 ? `, and ${d.paths.length - 8} more` : ''}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

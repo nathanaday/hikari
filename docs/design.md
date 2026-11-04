@@ -444,6 +444,28 @@ to pending and committing the drop. The partition agent's first turn runs its
 suites again. The records of releases do travel, and `hikari sync` pulls the
 products that the pins need; see "Releases travel as records".
 
+## The code no partition owns, and the drift of the default branch
+
+A topology says what each agent sees, and nothing says what no agent
+sees. A folder that no partition owns is code that no agent can change,
+and a request that touches it blocks for a reason that no map shows. So
+each repository's view lists the tracked paths of your branch outside
+every writable folder, at the highest directory that holds no partition
+folder, and `hikari check` warns about them. A read-only folder counts as
+unowned: someone reads it, and nobody changes it. The project repository
+is left out, because its topology and vault are yours by design.
+
+Agents work on your branch, and the default branch moves without them. A
+teammate's change in a partition's folders is work the partition agent
+does not see, and a map that describes a file the default branch has
+since changed describes the past. So each repository's view also lists,
+for each partition with a folder in it, the paths of its folders that the
+default branch changed since your branch diverged, from the merge base to
+the default branch's head. Hikari never merges or rebases for you; it
+shows the drift on the repository's page and the partition's page, and
+the orchestration agent reads it, so that the decision to bring the
+changes in is yours and informed.
+
 ## Onboarding runs in your own session
 
 Turning repositories into a hikari project starts before any topology

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nathanaday/hikari/internal/coverage"
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/partitions"
@@ -61,6 +62,12 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 		}
 		if changed := Uncommitted(topo, name); len(changed) > 0 {
 			fail("%s has uncommitted changes; commit or stash them before hikari starts: %s", label(topo, name), listed(changed))
+		}
+		if name == topology.ProjectRepo {
+			continue
+		}
+		if uncovered, _ := coverage.Uncovered(gitrepo.Open(topo.Repos[name].Path), "HEAD", coverage.WritableFolders(topo, name)); len(uncovered) > 0 {
+			out = append(out, Finding{Text: fmt.Sprintf("%s has %d path(s) that no partition owns, so no agent can change them: %s", label(topo, name), len(uncovered), listed(uncovered)), Warning: true})
 		}
 	}
 	if credentials {

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/coverage"
 	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -53,6 +54,11 @@ type entry struct {
 	shown []byte
 	// prs maps a head branch to its open pull request.
 	prs map[string]int
+	// coveredAt is the head whose uncovered paths the view holds, and
+	// driftAt the heads of your branch and the default branch whose drift
+	// it holds, so that git lists them again only when a branch moved.
+	coveredAt string
+	driftAt   string
 }
 
 // Manager holds the views.
@@ -126,6 +132,8 @@ func copyView(v api.RepoView) api.RepoView {
 	v.Branches = slices.Clone(v.Branches)
 	v.PullRequests = slices.Clone(v.PullRequests)
 	v.Partitions = slices.Clone(v.Partitions)
+	v.Uncovered = slices.Clone(v.Uncovered)
+	v.Drift = slices.Clone(v.Drift)
 	return v
 }
 
@@ -433,10 +441,77 @@ func (m *Manager) refreshGit(name string) {
 	head, _ := repo.Head()
 	changed, err := repo.Changed()
 	dirty := err == nil && len(changed) > 0
+	uncovered, coveredAt := m.uncovered(e, name, head)
+	drift, driftAt := m.drift(e, name, yours, defRef, byName)
 	m.mu.Lock()
 	e.view.Default, e.view.Branches, e.view.Head, e.view.Dirty = def, branches, head, dirty
+	e.view.Uncovered, e.coveredAt = uncovered, coveredAt
+	e.view.Drift, e.driftAt = drift, driftAt
 	m.mu.Unlock()
 	m.publish(name)
+}
+
+// uncovered lists the paths of your branch that no partition owns (the
+// uncovered code of the topology), reading git only when the head moved.
+// The project repository holds the topology and the vault, which no
+// partition owns by design, so it is left out.
+func (m *Manager) uncovered(e *entry, name, head string) ([]string, string) {
+	if name == topology.ProjectRepo || head == "" {
+		return nil, ""
+	}
+	m.mu.Lock()
+	at, kept := e.coveredAt, e.view.Uncovered
+	m.mu.Unlock()
+	if at == head {
+		return kept, at
+	}
+	out, err := coverage.Uncovered(e.repo, head, coverage.WritableFolders(m.topo, name))
+	if err != nil {
+		return nil, head
+	}
+	return out, head
+}
+
+// drift lists, for each partition with a folder in the repository, the
+// paths in its folders that the default branch changed since your branch
+// diverged from it (the default-branch drift of a partition). It reads
+// git only when your branch or the default branch moved.
+func (m *Manager) drift(e *entry, name, yours, defRef string, byName map[string]*api.BranchView) ([]api.PartitionDrift, string) {
+	y, ok := byName[yours]
+	if !ok || !y.Local || defRef == "" || y.Default {
+		return nil, ""
+	}
+	// The default branch's head is the ref's, which can be origin's and
+	// not the local branch's.
+	d, err := e.repo.LastCommit(defRef)
+	if err != nil {
+		return nil, ""
+	}
+	at := y.SHA + ".." + d.SHA
+	m.mu.Lock()
+	kept, keptAt := e.view.Drift, e.driftAt
+	m.mu.Unlock()
+	if keptAt == at {
+		return kept, at
+	}
+	var out []api.PartitionDrift
+	for _, p := range m.topo.PartitionAgents() {
+		var specs []string
+		for _, f := range m.topo.Agents[p].Partition.Folders {
+			if f.Repo == name {
+				specs = append(specs, f.Path)
+			}
+		}
+		if len(specs) == 0 {
+			continue
+		}
+		paths, err := e.repo.ChangedBetween("refs/heads/"+yours, defRef, specs...)
+		if err != nil || len(paths) == 0 {
+			continue
+		}
+		out = append(out, api.PartitionDrift{Partition: p, Paths: paths})
+	}
+	return out, at
 }
 
 func boolCmp(a, b bool) int {
@@ -559,7 +634,13 @@ func Summary(views []api.RepoView) string {
 		if v.Dirty {
 			b.WriteString("; uncommitted changes in the working tree")
 		}
+		if n := len(v.Uncovered); n > 0 {
+			fmt.Fprintf(&b, "; %d %s that no partition owns (%s)", n, plural(n, "path"), listed(v.Uncovered, 5))
+		}
 		b.WriteString(".")
+		for _, d := range v.Drift {
+			fmt.Fprintf(&b, "\n  - %s: %d %s that %s changed since your branch diverged (%s)", d.Partition, len(d.Paths), plural(len(d.Paths), "path"), v.Default, listed(d.Paths, 5))
+		}
 		open := 0
 		for _, pr := range v.PullRequests {
 			if pr.State != forge.Open {
@@ -589,4 +670,19 @@ func Summary(views []api.RepoView) string {
 		return "The project has no repositories.\n"
 	}
 	return b.String()
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
+}
+
+// listed joins at most n paths, and counts the rest.
+func listed(paths []string, n int) string {
+	if len(paths) <= n {
+		return strings.Join(paths, ", ")
+	}
+	return fmt.Sprintf("%s, and %d more", strings.Join(paths[:n], ", "), len(paths)-n)
 }

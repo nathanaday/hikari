@@ -5,7 +5,7 @@ import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import type { Feature, Interface, Private, Release, PartitionView, TaskView } from '@/lib/types'
 import { StatusChip } from '@/components/work-view'
-import { issueRef } from '@/lib/repos'
+import { driftOf, issueRef } from '@/lib/repos'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -196,6 +196,30 @@ function Workspace({ v }: { v: PartitionView }) {
   )
 }
 
+// DriftNote says which paths of the partition's folders the default branch
+// changed since your branch diverged, by repository: work the agent does
+// not see.
+function DriftNote({ state, partition }: { state: State; partition: string }) {
+  const drift = driftOf(state.repos, partition)
+  if (drift.length === 0) return null
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="partition-drift">
+      {drift.map((d) => (
+        <p key={d.repo}>
+          <span className="font-medium">
+            {d.default_branch} of{' '}
+            <a href={`#/repos/${encodeURIComponent(d.repo)}`} className="underline underline-offset-2">
+              {d.repo}
+            </a>{' '}
+            changed {d.paths.length} path{d.paths.length === 1 ? '' : 's'} of this partition
+          </span>{' '}
+          since your branch diverged: <span className="text-xs">{d.paths.slice(0, 8).join(', ')}{d.paths.length > 8 ? `, and ${d.paths.length - 8} more` : ''}</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function openFeature(e: React.MouseEvent, id: string) {
   e.preventDefault()
   const el = document.getElementById(`feature-${id}`) as HTMLDetailsElement | null
@@ -247,6 +271,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
           </p>
         )}
         <Workspace v={v} />
+        <DriftNote state={state} partition={v.partition_agent} />
         {v.state === 'unbuilt' && !s.summary && v.features.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {partitionAgent?.status.state === 'indexing'
