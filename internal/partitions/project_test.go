@@ -144,8 +144,8 @@ func TestProjectVaultCommits(t *testing.T) {
 		t.Errorf("PR22 summary:\n%s", summary)
 	}
 	// PR27: the project repository holds a partition, so the UI lists it.
-	if repos := m.Repos(); len(repos) != 1 || repos[0].Name != topology.ProjectRepo || !slices.Equal(repos[0].Partitions, []string{"orders"}) {
-		t.Errorf("PR27 repos = %+v", repos)
+	if got := m.PartitionsIn(topology.ProjectRepo); !slices.Equal(got, []string{"orders"}) {
+		t.Errorf("PR27 the project repository's partitions = %v", got)
 	}
 }
 
@@ -162,8 +162,8 @@ func TestProjectWithoutPartitionsIsNotListed(t *testing.T) {
 	must(t, err)
 	m, err := New(topo)
 	must(t, err)
-	if repos := m.Repos(); len(repos) != 0 {
-		t.Errorf("PR27 repos = %+v", repos)
+	if got := m.PartitionsIn(topology.ProjectRepo); len(got) != 0 {
+		t.Errorf("PR27 the project repository has partitions %v", got)
 	}
 	if errs := m.CommitAll(); len(errs) > 0 {
 		t.Fatal(errs)

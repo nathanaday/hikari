@@ -1,6 +1,8 @@
 # Spec: The Task Pipeline, and Modules
 
-Status: built. Checked on 2026-10-28 on the shop, started with `-no-launch`, through the agents' API and the UI's API, with headless Chrome at each step:
+Status: built; the issue-centered rework of `repositories-and-issues.md` changed it since: issues replace stubs as the start of work, any task may enter a queue (TK11), the orchestration agent scopes a task after the queue starts it (TK13), `plant_stub` is `create_issue` (TK8), and the Work tab shows issues (TK27). The rules below are as built on 2026-10-28.
+
+Status then: built. Checked on 2026-10-28 on the shop, started with `-no-launch`, through the agents' API and the UI's API, with headless Chrome at each step:
 
 - **Stubs and scopes:** `orders` and `inventory` each planted a stub, `inventory` could not read `orders`' stub, and the orchestrator scoped both: `cancel-orders` for `orders` and `inventory`, and `restock-alerts` for `inventory`. A scope by `orders` was refused.
 - **Queues:** the orchestrator made two queues, `api` and `stock`, and you started both from the UI's route. `cancel-orders` started, and `restock-alerts` waited, with "inventory is busy with [[cancel-orders]]" in the Work tab.

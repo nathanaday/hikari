@@ -88,6 +88,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	s.vaultRoutes(mux, ui)
+	s.repoRoutes(mux, ui)
 	s.moduleRoutes(mux, ui)
 	// The user's changes to the wikis (rules U6, U8, and C4 of the wikis
 	// spec). {ref} is public or partition:<name>.

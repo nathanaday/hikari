@@ -51,6 +51,40 @@ func (c *Change) note(to, body string) {
 // Hikari is hikari's own name as a writer and a sender.
 const Hikari = "hikari"
 
+// The kinds of a hook: the moments at which hikari writes to a task's
+// tracker issue (decision 10 of the repositories, forges, and issues spec).
+const (
+	HookQueued    = "queued"
+	HookOut       = "out"
+	HookStarted   = "started"
+	HookScoped    = "scoped"
+	HookBlocked   = "blocked"
+	HookUnblocked = "unblocked"
+	HookDone      = "done"
+)
+
+// Hook is one moment of a task that stands for a tracker issue, with a copy
+// of the task as it was then.
+type Hook struct {
+	Kind string
+	Task Task
+}
+
+// hook keeps a hook for the instance, for a task that has an issue.
+func (s *Store) hook(kind string, t *Task) {
+	if t.Issue == "" {
+		return
+	}
+	s.hooks = append(s.hooks, Hook{Kind: kind, Task: *t})
+}
+
+// TakeHooks returns the hooks kept since the last call.
+func (s *Store) TakeHooks() []Hook {
+	hooks := s.hooks
+	s.hooks = nil
+	return hooks
+}
+
 // User is the user's name as a writer.
 const User = "user"
 
@@ -89,13 +123,23 @@ func (s *Store) refused(t *Task, who, subject string, why []string) {
 	s.log(t, fmt.Sprintf("%s asked for done of %s: refused, since %s", who, subject, strings.Join(why, ", ")))
 }
 
-// setScope sets t's status, with a line in its log (rule TK18).
+// setScope sets t's status, with a line in its log (rule TK18), and keeps
+// a hook for a block, its end, and done.
 func (s *Store) setScope(t *Task, who, status, note string) {
 	if t.Status == status {
 		return
 	}
 	s.log(t, logText(who, "the scope", t.Status, status, note))
+	from := t.Status
 	t.Status = status
+	switch {
+	case status == Blocked:
+		s.hook(HookBlocked, t)
+	case status == Done:
+		s.hook(HookDone, t)
+	case from == Blocked && active(status):
+		s.hook(HookUnblocked, t)
+	}
 }
 
 func (s *Store) setPart(t *Task, who, partition, status, note string) {
@@ -182,9 +226,22 @@ func (s *Store) Schedule(c *Change) error {
 			}
 			continue
 		}
+		if t.Stage == StageStub && s.check.Orchestration == "" {
+			// No one can scope it (rule IS5).
+			if t.Block == "" {
+				t.Block = "the project has no orchestration agent to scope it; scope it by hand, or add one"
+				s.setScope(t, Hikari, Blocked, t.Block)
+				f, err := s.saveTask(t)
+				if err != nil {
+					return err
+				}
+				c.wrote(Hikari, f)
+			}
+			continue
+		}
 		s.setScope(t, Hikari, Started, "the queue "+q.ID+" started it")
 		t.Wait = ""
-
+		s.hook(HookStarted, t)
 		for _, p := range t.Partitions {
 			t.SetPart(p, Queued)
 		}
@@ -193,9 +250,17 @@ func (s *Store) Schedule(c *Change) error {
 			return err
 		}
 		c.wrote(Hikari, f)
-		if s.check.Orchestration != "" {
+		switch {
+		case t.Stage == StageStub:
+			// The orchestration agent scopes it first (rule IS3).
+			what := "[[" + t.ID + "]]"
+			if t.Issue != "" {
+				what = fmt.Sprintf("[[%s]], the issue %s %q", t.ID, t.Issue, t.Name)
+			}
+			c.note(s.check.Orchestration, fmt.Sprintf("The queue %s started %s, which is not scoped yet. Scope it now: follow the Scope an issue procedure of the hikari-scope-work skill, write the scope with scope_task, then follow the Carry out a scope procedure.", q.ID, what))
+		case s.check.Orchestration != "":
 			c.note(s.check.Orchestration, fmt.Sprintf("The queue %s started [[%s]]. Follow the Carry out a scope procedure of the hikari-scope-work skill.", q.ID, t.ID))
-		} else {
+		default:
 			for _, p := range t.Partitions {
 				c.note(p, fmt.Sprintf("The queue %s started [[%s]], with a part for you. Follow the hikari-task-work skill.", q.ID, t.ID))
 			}
@@ -204,12 +269,19 @@ func (s *Store) Schedule(c *Change) error {
 	return nil
 }
 
-// blockers says why t cannot start yet, or "" when it can (D4 and D5).
+// blockers says why t cannot start yet, or "" when it can (D4 and D5, and
+// rule IS3: while a started task is being scoped, nothing else starts).
 func (s *Store) blockers(t *Task) string {
 	var why []string
 	for _, n := range t.Needs {
 		if o := s.Tasks[n]; o == nil || o.Status != Done {
 			why = append(why, fmt.Sprintf("it needs [[%s]] done", n))
+		}
+	}
+	for _, id := range sortedKeys(s.Tasks) {
+		if o := s.Tasks[id]; id != t.ID && scoping(o) {
+			why = append(why, fmt.Sprintf("[[%s]] is being scoped", id))
+			break
 		}
 	}
 	for _, p := range t.Partitions {

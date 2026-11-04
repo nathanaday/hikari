@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/nathanaday/hikari/internal/forge"
 )
 
 // QueuesDir is the folder of the queues, inside the module's directory.
@@ -29,8 +31,10 @@ type Store struct {
 	queueOf map[string]string
 	check   Check
 	now     func() time.Time
-	// lines are the log lines written since TakeLines, for the feed.
+	// lines are the log lines written since TakeLines, for the feed, and
+	// hooks the moments since TakeHooks, for the trackers.
 	lines []Line
+	hooks []Hook
 }
 
 // Check is what the store checks a document against (rule TK4).
@@ -195,12 +199,10 @@ func (s *Store) validate() {
 			bad(f, "its state must be %s or %s, not %q", Running, Paused, q.State)
 		}
 		for _, id := range q.Scopes {
-			t, ok := s.Tasks[id]
+			_, ok := s.Tasks[id]
 			switch {
 			case !ok:
 				bad(f, "[[%s]] is not a task without problems", id)
-			case t.Stage != StageScope:
-				bad(f, "[[%s]] is a stub; scope it before it enters a queue", id)
 			case s.queueOf[id] != "":
 				bad(f, "[[%s]] is in the queue %s already", id, s.queueOf[id])
 			}
@@ -371,7 +373,9 @@ func (s *Store) Scope(in ScopeInput) (*Task, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if q := s.queueOf[t.ID]; q != "" {
+	// A scope in a queue is the user's; a task that a queue started before
+	// it was scoped is what the orchestration agent scopes now (rule IS4).
+	if q := s.queueOf[t.ID]; q != "" && t.Stage == StageScope {
 		return nil, nil, fmt.Errorf("[[%s]] is in the queue %s, so only the user changes it; propose the change to the user", t.ID, q)
 	}
 	if len(in.Partitions) == 0 {
@@ -413,11 +417,22 @@ func (s *Store) Scope(in ScopeInput) (*Task, []string, error) {
 	}
 	log, _ := Section(t.Body, SectionLog)
 	next.Body = scopeBody(request, in.Goal, in.Parts, in.Partitions, in.DoneWhen, in.Answers, log)
+	if active(next.Status) {
+		// The queue started it before it was scoped: its parts begin.
+		next.Parts = nil
+		for _, p := range in.Partitions {
+			next.SetPart(p, Queued)
+		}
+		s.log(&next, s.check.Orchestration+" scoped it for "+strings.Join(in.Partitions, ", "))
+	}
 	f, err := s.saveTask(&next)
 	if err != nil {
 		return nil, nil, err
 	}
 	s.Tasks[t.ID] = &next
+	if s.queueOf[t.ID] != "" {
+		s.hook(HookScoped, &next)
+	}
 	return &next, []string{f}, nil
 }
 
@@ -463,6 +478,9 @@ type QueueOp struct {
 	Queue string `json:"queue,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Scope string `json:"scope,omitempty"`
+	// Issue names the task by its issue, <repo>#<number>, in place of
+	// Scope; the task is made when the issue has none yet.
+	Issue string `json:"issue,omitempty"`
 	// Position is the scope's place in the queue, from 1; 0 is the end.
 	Position int `json:"position,omitempty"`
 }
@@ -527,6 +545,7 @@ func (s *Store) ChangeQueue(op QueueOp) ([]string, error) {
 		q.Scopes = slices.DeleteFunc(q.Scopes, func(id string) bool { return id == t.ID })
 		delete(s.queueOf, t.ID)
 		t.Queue, t.Status, t.Parts, t.Wait = "", "", nil, ""
+		s.hook(HookOut, t)
 		fq, err := s.saveQueue(q)
 		if err != nil {
 			return nil, err
@@ -543,9 +562,6 @@ func (s *Store) place(op QueueOp) ([]string, error) {
 	t, err := s.task(op.Scope)
 	if err != nil {
 		return nil, err
-	}
-	if t.Stage != StageScope {
-		return nil, fmt.Errorf("[[%s]] is a stub; the orchestration agent scopes it before it enters a queue", t.ID)
 	}
 	to, err := s.queue(op.Queue)
 	if err != nil {
@@ -587,6 +603,7 @@ func (s *Store) place(op QueueOp) ([]string, error) {
 	t.Queue = to.ID
 	if t.Status == "" {
 		t.Status = Queued
+		s.hook(HookQueued, t)
 	}
 	ft, err := s.saveTask(t)
 	return append(paths, ft), err
@@ -636,25 +653,20 @@ func (s *Store) SyncQueues() ([]string, error) {
 // TaskView is t, for the UI and the tools.
 func (s *Store) TaskView(t *Task) TaskView {
 	text := s.texts[taskPath(t.ID)]
-	return TaskView{ID: t.ID, Name: t.Name, Stage: t.Stage, Author: t.Author, Status: t.Status, Block: t.Block, Wait: t.Wait, Queue: s.QueueOf(t.ID),
+	return TaskView{ID: t.ID, Name: t.Name, Stage: t.Stage, Author: t.Author, Status: t.Status, Block: t.Block, Wait: t.Wait, Queue: s.QueueOf(t.ID), Issue: t.Issue,
 		Partitions: nonNil(t.Partitions), Features: nonNil(t.Features), Needs: nonNil(t.Needs), Parts: nonNil(t.Parts), Created: t.Created, Updated: t.Updated,
 		File: path.Join(Dir, taskPath(t.ID)), Hash: fmt.Sprintf("%x-%d", len(text), t.Updated.Unix())}
 }
 
 // View is the whole pipeline, for the UI and hikari task list (rule TK27):
-// the stubs and the drafts by when they were made, and the queues by id.
+// every task by when it was made, and the queues by id. The instance adds
+// the issues of the trackers.
 func (s *Store) View(orchestration string, partitions []string) View {
-	v := View{Stubs: []TaskView{}, Drafts: []TaskView{}, Queues: []QueueView{}, Problems: []Problem{}, Orchestration: orchestration, Partitions: nonNil(partitions)}
+	v := View{Tasks: []TaskView{}, Issues: []IssueView{}, Trackers: []TrackerView{}, Queues: []QueueView{}, Problems: []Problem{}, Orchestration: orchestration, Partitions: nonNil(partitions)}
 	ids := sortedKeys(s.Tasks)
 	slices.SortStableFunc(ids, func(a, b string) int { return s.Tasks[a].Created.Compare(s.Tasks[b].Created) })
 	for _, id := range ids {
-		t := s.Tasks[id]
-		switch {
-		case t.Stage == StageStub:
-			v.Stubs = append(v.Stubs, s.TaskView(t))
-		case s.QueueOf(id) == "":
-			v.Drafts = append(v.Drafts, s.TaskView(t))
-		}
+		v.Tasks = append(v.Tasks, s.TaskView(s.Tasks[id]))
 	}
 	for _, qid := range sortedKeys(s.Queues) {
 		q := s.Queues[qid]
@@ -673,4 +685,92 @@ func (s *Store) View(orchestration string, partitions []string) View {
 		v.Problems = append(v.Problems, Problem{File: path.Join(Dir, f), Reason: s.Problems[f]})
 	}
 	return v
+}
+
+// TaskForIssue returns the task that stands for a tracker issue, or nil.
+func (s *Store) TaskForIssue(ref string) *Task {
+	for _, id := range sortedKeys(s.Tasks) {
+		if s.Tasks[id].Issue == ref {
+			return s.Tasks[id]
+		}
+	}
+	return nil
+}
+
+// EnsureIssueTask returns the task of a tracker issue, which it makes when
+// missing (rule IS1): the id <repo>-<number>, the issue's title as its
+// name, and its body as the request.
+func (s *Store) EnsureIssueTask(repo string, is forge.Issue) (*Task, []string, error) {
+	ref := IssueRef(repo, is.Number)
+	if t := s.TaskForIssue(ref); t != nil {
+		return t, nil, nil
+	}
+	if p, ok := s.Problems[taskPath(fmt.Sprintf("%s-%d", repo, is.Number))]; ok {
+		return nil, nil, fmt.Errorf("the task of %s has a problem: %s", ref, p)
+	}
+	name := strings.TrimSpace(is.Title)
+	if name == "" {
+		name = ref
+	}
+	author := is.Author
+	if author == "" {
+		author = User
+	}
+	now := s.now().UTC().Truncate(time.Second)
+	t := &Task{Version: Version, ID: unique(fmt.Sprintf("%s-%d", repo, is.Number), s.taken), Kind: KindTask, Stage: StageStub, Name: name, Author: author, Created: now, Issue: ref, Body: strings.TrimSpace(is.Body)}
+	if t.Body != "" {
+		t.Body += "\n"
+	}
+	f, err := s.saveTask(t)
+	if err != nil {
+		return nil, nil, err
+	}
+	s.Tasks[t.ID] = t
+	return t, []string{f}, nil
+}
+
+// UpdateLocal changes the title and the body of a local issue: a task that
+// stands for no tracker issue and is not scoped yet.
+func (s *Store) UpdateLocal(id string, name, body *string) (*Task, []string, error) {
+	t, err := s.task(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if t.Issue != "" {
+		return nil, nil, fmt.Errorf("[[%s]] stands for the issue %s; change it on its tracker", t.ID, t.Issue)
+	}
+	if t.Stage != StageStub {
+		return nil, nil, fmt.Errorf("[[%s]] is scoped; its request is what the orchestration agent scoped", t.ID)
+	}
+	if name != nil {
+		if strings.TrimSpace(*name) == "" {
+			return nil, nil, errors.New("an issue needs a title")
+		}
+		t.Name = strings.TrimSpace(*name)
+	}
+	if body != nil {
+		t.Body = strings.TrimSpace(*body)
+		if t.Body != "" {
+			t.Body += "\n"
+		}
+	}
+	f, err := s.saveTask(t)
+	return t, []string{f}, err
+}
+
+// RemoveLocal removes a local issue that is in no queue.
+func (s *Store) RemoveLocal(id string) ([]string, error) {
+	t, err := s.task(id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Issue != "" {
+		return nil, fmt.Errorf("[[%s]] stands for the issue %s; close it on its tracker", t.ID, t.Issue)
+	}
+	if q := s.queueOf[t.ID]; q != "" {
+		return nil, fmt.Errorf("[[%s]] is in the queue %s; take it out first", t.ID, q)
+	}
+	f, err := s.remove(taskPath(t.ID))
+	delete(s.Tasks, t.ID)
+	return []string{f}, err
 }

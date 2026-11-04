@@ -49,7 +49,8 @@ Usage:
   hikari send [flags] <message>          post a message to the room of the running project
   hikari doctor [topology.yaml]          check this machine, and the project, for hikari up
   hikari image                           build the hikari-agent image
-  hikari task <command>                  plant stubs, list the pipeline, set statuses (the tasks module)
+  hikari issue <command>                 list, open, and hand off issues (the tasks module)
+  hikari task <command>                  list the pipeline, set statuses (the tasks module)
   hikari queue <command>                 make, arrange, start, and pause queues (the tasks module)
   hikari version                         print the version
 

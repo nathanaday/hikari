@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featuremap"
+	"github.com/nathanaday/hikari/internal/repos"
 	"github.com/nathanaday/hikari/internal/vault"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"github.com/nathanaday/hikari/internal/wiki"
@@ -436,6 +438,17 @@ type removeEntryArgs struct {
 }
 
 func addOrchestrationTools(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_repositories",
+		Description: "Read where the work stands in git, for each repository of the project: your branch (the one hikari commits the agents' work to), how far it is ahead of the default branch, whether it is pushed, and each open pull request with its checks and review. Use it to report facts about branches, pull requests, and merges instead of recalling them.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		var views []api.RepoView
+		if err := c.Call(ctx, http.MethodGet, "/api/agent/repos", nil, &views); err != nil {
+			return nil, nil, err
+		}
+		return text(repos.Summary(views)), nil, nil
+	})
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_partitions",
 		Description: "List every partition, with its summary, map state, and features counted by health.",

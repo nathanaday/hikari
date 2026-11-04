@@ -994,8 +994,7 @@ func TestDirtyScopes(t *testing.T) {
 	if g := f.m.PartitionView("orders").Grants; !slices.Equal(g.Deliverables, []string{"python-library"}) || len(g.Releases) != 0 || g.Releases == nil {
 		t.Errorf("N1: grants %+v", g)
 	}
-	repos := f.m.Repos()
-	if len(repos) != 1 || repos[0].Name != "shop" || !slices.Equal(repos[0].Partitions, []string{"inventory", "orders"}) {
-		t.Errorf("N2: %+v", repos)
+	if got := f.m.PartitionsIn("shop"); !slices.Equal(got, []string{"inventory", "orders"}) || len(f.m.GitRepos()) != 1 {
+		t.Errorf("N2: %v", got)
 	}
 }

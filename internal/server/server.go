@@ -23,6 +23,7 @@ import (
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/partitions"
+	"github.com/nathanaday/hikari/internal/repos"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
@@ -49,6 +50,9 @@ type Event struct {
 	View   any    `json:"view,omitempty"`
 	// Entry is a new entry of the feed, in a feed event (rule FD2).
 	Entry *api.Entry `json:"entry,omitempty"`
+	// Repo is a changed repository view, in a repo event (rule RP6 of the
+	// repositories, forges, and issues spec).
+	Repo *api.RepoView `json:"repo,omitempty"`
 	// Assistant is a change of the hikari agent, in an assistant event
 	// (rule HA9 of the hikari agent spec).
 	Assistant *assistant.Event `json:"assistant,omitempty"`
@@ -81,8 +85,10 @@ type Snapshot struct {
 	Messages     []api.Message       `json:"messages"`
 	Partitions   []api.PartitionView `json:"partitions"`
 	Vocabulary   vocab.Vocabulary    `json:"vocabulary"`
-	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
-	Repos        []api.RepoInfo     `json:"repos"`
+	// Repos holds the view of each repository (rule RP1), and Deliverables
+	// the deliverables; together they let the UI draw the topology (rules
+	// N2, N3).
+	Repos        []api.RepoView     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
 	// Wikis holds the public wiki and every feature map.
 	Wikis []api.WikiView `json:"wikis"`
@@ -113,6 +119,7 @@ type Server struct {
 	topo    *topology.Topology
 	journal io.Writer
 	sys     *partitions.Manager
+	repos   *repos.Manager
 
 	mu     sync.Mutex
 	tokens map[string]string
@@ -165,8 +172,18 @@ func New(topo *topology.Topology, journal io.Writer, sys *partitions.Manager) *S
 		s.status[n] = api.Status{State: api.StateStarting}
 	}
 	sys.OnChange(s.partitionChanged)
+	s.repos = repos.New(topo, sys.GitRepos(), repos.Options{PartitionsOf: sys.PartitionsIn, OnChange: s.repoChanged})
 	s.openModules()
 	return s
+}
+
+// Repos returns the repository views.
+func (s *Server) Repos() *repos.Manager { return s.repos }
+
+func (s *Server) repoChanged(v api.RepoView) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publish(Event{Type: "repo", Repo: &v})
 }
 
 // SetAssistant gives the run its hikari agent, or with nil the reason it
@@ -572,7 +589,7 @@ func (s *Server) snapshot() Snapshot {
 	snap.Participants = s.participants()
 	snap.Partitions = s.sys.Partitions()
 	snap.Vocabulary = s.sys.Vocabulary()
-	snap.Repos = s.sys.Repos()
+	snap.Repos = s.repos.Views()
 	snap.Deliverables = s.deliverables(s.sys.Vault())
 	snap.Wikis = s.sys.Wikis()
 	snap.Modules = s.moduleViews()

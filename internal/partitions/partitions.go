@@ -698,23 +698,20 @@ func (m *Manager) apply(o *partitionAgent, message string) ([]string, error) {
 	return out, errors.Join(errs...)
 }
 
-// Repos returns the repositories of the topology with their partitions, for
-// the UI (rule N2).
-func (m *Manager) Repos() []api.RepoInfo {
-	out := []api.RepoInfo{}
-	for _, name := range slices.Sorted(maps.Keys(m.topo.Repos)) {
-		info := api.RepoInfo{Name: name, Branch: m.topo.Repos[name].Branch, Partitions: []string{}}
-		for _, partitionAgent := range m.topo.PartitionAgents() {
-			if slices.Contains(m.partitionAgents[partitionAgent].repos, name) {
-				info.Partitions = append(info.Partitions, partitionAgent)
-			}
+// GitRepos returns the prepared git repos, by name, so that one handle
+// serializes the git commands of each repo.
+func (m *Manager) GitRepos() map[string]*gitrepo.Repo { return maps.Clone(m.repos) }
+
+// PartitionsIn names the partitions with a writable folder in repo, sorted
+// (rule N2).
+func (m *Manager) PartitionsIn(repo string) []string {
+	out := []string{}
+	for _, partitionAgent := range m.topo.PartitionAgents() {
+		if slices.Contains(m.partitionAgents[partitionAgent].repos, repo) {
+			out = append(out, partitionAgent)
 		}
-		slices.Sort(info.Partitions)
-		if name == topology.ProjectRepo && len(info.Partitions) == 0 {
-			continue
-		}
-		out = append(out, info)
 	}
+	slices.Sort(out)
 	return out
 }
 

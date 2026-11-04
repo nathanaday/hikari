@@ -70,15 +70,21 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Module.** A piece of hikari that a project turns on in `x-hikari.modules`. It owns a directory of the vault, its tools, a skill for each kind of agent, its routes, its commands, and a tab of the UI, behind one interface in the binary. `tasks` is the first.
 
-**Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads. Its stage says what it is: a stub or a scope.
+**Forge.** The service that hosts a repository's remote, with its pull requests, its checks, and its issues: GitHub, and later others. hikari reads it from the repository's `origin` URL, and reaches it with the credential of your machine.
 
-**Stub.** A task in its first stage: an idea in a few words, planted by you or an agent, and not yet scoped.
+**Tracker.** Where a project's issues live: the forge of a repository that has issues, or the vault for a project with no such repository.
 
-**Scope.** A task that the orchestration agent wrote from a stub with you: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. A scope outside any queue is a draft; one in a queue is approved.
+**Issue.** One piece of work, as the tracker holds it: a GitHub issue of one of the project's repositories, or a local issue, a task document in `vault/tasks/` that stands for no tracker issue. An issue is where work starts; you open one in the Work tab, on GitHub, in a terminal, or from your Claude Code session, and an agent opens one for work it finds outside its part.
+
+**Pull request.** The forge's proposal to merge a branch. hikari shows each repository's pull requests with their checks, and opens one from your branch when you ask.
+
+**Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads: the record of an issue in the pipeline. A task that stands for a tracker issue names it in its `issue` property. Its stage says whether the orchestration agent has scoped it.
+
+**Scope.** A task once the orchestration agent has written what the work changes: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. The agent scopes an issue when the queue starts it, from the issue's words and the feature maps, and hikari posts the scope to the issue.
 
 **Part.** The share of a scope that one partition does. Its partition agent reports its status.
 
-**Queue.** An ordered list of scopes, `vault/tasks/queues/<id>.md`. A running queue starts its scopes in order, and a partition works on one scope at a time across all queues.
+**Queue.** An ordered list of issues, `vault/tasks/queues/<id>.md`, by their tasks. Putting an issue in a queue approves it. A running queue starts its issues in order, and a partition works on one scope at a time across all queues. Work on this puts an issue at the front of the `work` queue and starts it.
 
 **Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes.
 
@@ -100,4 +106,5 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 | story | orchestration feature | A flow across partitions is a feature of the orchestration feature map. |
 | layout, code layout | code map | The private document of where each feature lives. |
 | `commit_changes` | `apply` | The name of the event in the glossary. |
-| work order | task | The pipeline's documents are tasks: stubs, then scopes. |
+| work order | task | The pipeline's documents are tasks. |
+| stub | issue | Work starts as an issue of the tracker, or a local issue; a task that is not scoped yet keeps `stage: stub` in its file. |

@@ -44,7 +44,7 @@ Show the user the list in a few lines, each with its origin, and ask which ones 
 | An open change in `changes/` | `change-topology`, to continue it |
 | An onboarded project (`hikify: done`, or partitions and no `onboarding/`), with a request to add a repository, split, merge, or move partitions, or extract a library | `change-topology` |
 | An onboarded project, with a request for work, or to start hikari | `room` |
-| A project with the tasks module, with an idea to keep for later, or a request about stubs, scopes, or queues | `tasks` |
+| A project with the tasks module, with an idea to keep for later, or a request about issues, scopes, or queues | `tasks` |
 
 When the request spans several stages, such as "take these repos, build a hikari topology, and start working", start at the first, and tell the user the path ahead (section 5) before the first step that costs agent time. A user who wants to work on a containerized project as it is can go to `room` from `containerize: done`; say that hikify is where the partitions become cleaner than one for each repository.
 

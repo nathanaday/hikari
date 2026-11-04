@@ -24,12 +24,12 @@ func Clone(url, dir string) (*Repo, error) {
 	return Open(dir), nil
 }
 
-// RemoteURL returns the URL of remote, or "" when the repo has no such
-// remote.
+// RemoteURL returns the URL of remote as the config writes it, before any
+// insteadOf rewrite, or "" when the repo has no such remote.
 func (r *Repo) RemoteURL(remote string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out, err := r.git("remote", "get-url", remote)
+	out, err := r.git("config", "--get", "remote."+remote+".url")
 	if err != nil {
 		return ""
 	}

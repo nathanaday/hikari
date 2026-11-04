@@ -15,6 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -92,6 +93,12 @@ type Host interface {
 	Feed(text, task string)
 	// Changed tells the UI that the module's view changed.
 	Changed()
+	// Tracker is the issue tracker of a repository's forge, when it has
+	// one, and TrackerRepos lists the repositories that have one, the
+	// project repository first (section 3 of the repositories, forges,
+	// and issues spec).
+	Tracker(repo string) (forge.Tracker, bool)
+	TrackerRepos() []string
 }
 
 // ErrForbidden and ErrNotFound make a route answer 403 and 404.

@@ -7,4 +7,4 @@ timeout_seconds: 240
 allowed_tools: [Skill, Read, Glob, Grep]
 ---
 
-In our hikari project, stub this for later: let customers cancel an order before it ships.
+In our hikari project, keep this for later as an issue: let customers cancel an order before it ships.

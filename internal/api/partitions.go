@@ -282,14 +282,6 @@ type Grants struct {
 	Skills       []string `json:"skills"`
 }
 
-// RepoInfo is one repository of the topology, for the UI: its hikari
-// branch and the partitions with a writable folder in it. It holds no host path.
-type RepoInfo struct {
-	Name       string   `json:"name"`
-	Branch     string   `json:"branch"`
-	Partitions []string `json:"partitions"`
-}
-
 type PublishRequest struct {
 	Deliverable  string              `json:"deliverable"`
 	Version      string              `json:"version"`

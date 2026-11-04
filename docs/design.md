@@ -558,20 +558,63 @@ module widens it.
 as "the queue api started [[cancel]]". Writing them as you would say that you
 wrote messages you did not write.
 
+## Work starts as an issue of the repository
+
+The unit of work is an issue, and when a repository's origin is on GitHub,
+its issues are the project's. Work that lived only in one machine's vault
+could not be triaged with a team, and the agents had to recap where it
+stood in conversation. An issue on the forge is public: you plan it there
+or in the Work tab, which read and write the same thing, and hikari posts the
+scope, each block, and the finish back to it as comments and labels, so the
+history of the work is on the issue and not in a chat. A project whose
+repositories are not on a forge keeps its issues in the vault, as markdown,
+and the Work tab draws one list of both.
+
+The forge is read from the `origin` URL and reached with the credential of
+your machine, `GITHUB_TOKEN` or the GitHub CLI's, which the agents' containers
+never see: every tool that touches the forge goes through the server. The
+code is behind two interfaces, a forge for the pull requests and the checks,
+and a tracker for the issues, so that a later GitLab, Linear, or Jira is one
+more implementation and not a change of the pipeline.
+
+The orchestration agent scopes an issue when the queue starts it, not in a
+separate step that you drive. The earlier pipeline asked you to hand an idea
+to the agent, answer its questions, and then queue the result, and the steps
+were hard to find. Now the issue is the request, the queue is the approval,
+and the scope is the agent's plan, written from the issue and the feature
+maps with its assumptions stated, which you read on the issue. While a started
+task is being scoped, no other queue starts, so that the partitions it names
+are known before the next task takes one.
+
 ## The task pipeline keeps work as documents
 
 Every task is a markdown document with a property header, so it opens in
 Obsidian, diffs in git, and takes your own properties without a migration:
-hikari owns the properties it names and leaves the rest. A stub needs only a
-name, so planting an idea costs nothing, and a stub becomes a scope in its own
-file, with its stage as a property, so that every link to it holds. The scope
-keeps your words as its Request, which the orchestration agent never changes.
+hikari owns the properties it names and leaves the rest. A task that stands
+for a tracker issue names it in one property, and its stage says whether it
+is scoped, so that every link to it holds through the change. The scope keeps
+the issue's words as its Request, which the orchestration agent never changes.
 
-A queue is its own document with its scopes in order, not a `next` link on
-each scope. Moving one scope then rewrites one file, and two edits cannot
-break a chain. Putting a scope in a queue approves it, so there is no separate
-approval to remember; until then it is a draft that the orchestration agent
-may revise.
+A queue is its own document with its tasks in order, not a `next` link on
+each task. Moving one task then rewrites one file, and two edits cannot break
+a chain. Putting an issue in a queue approves it, so there is no separate
+approval to remember.
+
+## The repositories page shows where the work stands
+
+Agents never run git, and hikari commits their work to your branch of each
+repository. What happens next, the push, the pull request, its checks, and
+the merge, is yours, and it used to be invisible in the UI: the agents said in
+conversation which branch held the work, and the recap was lost. The server
+now keeps one view of each repository, your branch against the default branch,
+every branch with how far it is ahead or behind, and the pull requests with
+their checks and reviews, read from git on the host and from the forge on a
+slow poll, and the UI shows it on a page for each repository and on the map.
+Push, open a pull request, and merge are buttons there, never something hikari
+does by itself; a fetch is the one network call hikari makes on its own, with
+git's prompts off and a timeout, so that a passphrase never hangs a run. The
+orchestration agent reads the same view through a tool, so that it reports
+facts and not memory.
 
 A partition works on one scope at a time, across all queues. A partition agent
 is one container, so two scopes at once would mix its context and its commits;

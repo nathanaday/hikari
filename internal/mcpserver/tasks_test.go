@@ -91,13 +91,13 @@ services:
 
 	// MO4: each kind of agent gets its tools.
 	ot, lt := sessionTools(t, orders), sessionTools(t, lead)
-	for _, name := range []string{"plant_stub", "get_task", "list_tasks", "set_task_status"} {
+	for _, name := range []string{"create_issue", "get_task", "list_tasks", "set_task_status"} {
 		if !slices.Contains(ot, name) || !slices.Contains(lt, name) {
 			t.Errorf("both agents have %s", name)
 		}
 	}
-	if slices.Contains(ot, "scope_task") || slices.Contains(ot, "change_queue") || !slices.Contains(lt, "scope_task") || !slices.Contains(lt, "change_queue") {
-		t.Errorf("scope_task and change_queue are the orchestration agent's: orders %v", ot)
+	if slices.Contains(ot, "scope_task") || slices.Contains(ot, "change_queue") || slices.Contains(ot, "get_issue") || !slices.Contains(lt, "scope_task") || !slices.Contains(lt, "change_queue") || !slices.Contains(lt, "get_issue") || !slices.Contains(lt, "comment_issue") {
+		t.Errorf("scope_task, change_queue, get_issue, and comment_issue are the orchestration agent's: orders %v", ot)
 	}
 
 	// orders maps create-order, whose health decides done.
@@ -105,10 +105,13 @@ services:
 		{"op": "create", "id": "create-order", "name": "Create an order", "description": "Stores an order.", "body": "## Purpose\n\nA customer places an order.\n"},
 	}}, "Applied 1 write(s)")
 
-	// TK8: an agent plants a stub; G2: a partition agent cannot read it.
-	must(orders, "plant_stub", map[string]any{"name": "Cancel orders", "body": "A customer cancels an order before it ships."}, "Planted the stub [[cancel-orders]]")
+	// TK8, IS7: an agent opens an issue, in the vault since the project
+	// has no tracker; G2: a partition agent cannot read it.
+	must(orders, "create_issue", map[string]any{"title": "Cancel orders", "body": "A customer cancels an order before it ships."}, "Opened the local issue cancel-orders")
 	refused(orders, "get_task", map[string]any{"id": "cancel-orders"}, "no scope [[cancel-orders]] names you")
 	must(lead, "get_task", map[string]any{"id": "cancel-orders"}, "author: orders")
+	must(lead, "get_issue", map[string]any{"issue": "cancel-orders"}, "A customer cancels an order before it ships.")
+	must(lead, "list_repositories", nil, "shop: your branch is hikari/work")
 
 	// TK10, TK11: the orchestration agent scopes it and queues it.
 	must(lead, "scope_task", map[string]any{"id": "cancel-orders", "partitions": []string{"orders"}, "features": []string{"create-order"},

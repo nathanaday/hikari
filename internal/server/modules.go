@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/module"
 	"github.com/nathanaday/hikari/internal/modules"
 	"github.com/nathanaday/hikari/internal/topology"
@@ -32,11 +33,13 @@ type openModule struct {
 	inst module.Instance
 }
 
-// WatchModules follows each module's files until ctx ends.
+// WatchModules follows each module's files, and the repositories, until
+// ctx ends.
 func (s *Server) WatchModules(ctx context.Context) {
 	for _, m := range s.modules {
 		go m.inst.Watch(ctx)
 	}
+	go s.repos.Watch(ctx)
 }
 
 // moduleRoutes serves each module's agent routes and UI routes.
@@ -99,6 +102,9 @@ type moduleHost struct {
 
 func (h *moduleHost) Topology() *topology.Topology { return h.s.topo }
 func (h *moduleHost) VaultDir() string             { return h.s.topo.Vault }
+
+func (h *moduleHost) Tracker(repo string) (forge.Tracker, bool) { return h.s.repos.Tracker(repo) }
+func (h *moduleHost) TrackerRepos() []string                    { return h.s.repos.TrackerRepos() }
 
 func (h *moduleHost) Health(partition, id string) (string, bool) {
 	ref := api.OrchestrationWikiRef

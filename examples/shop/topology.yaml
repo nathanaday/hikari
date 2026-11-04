@@ -20,7 +20,7 @@ x-hikari:
   repos:
     shop: {path: ../../.hikari/demo/shop, branch: hikari/demo}
   orchestration: orchestrator
-  # The task pipeline: stubs, scopes, and queues in vault/tasks/.
+  # The task pipeline: issues, scopes, and queues; the local ones in vault/tasks/.
   modules: [tasks]
 
 x-agent: &agent
