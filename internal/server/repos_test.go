@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -150,3 +151,63 @@ func TestDecisions(t *testing.T) {
 		t.Errorf("hikari's decision is answered to the orchestration agent: %+v %v", b, err)
 	}
 }
+
+// TestProposedRule checks a proposed rule: an agent proposes one as a
+// decision, Accept writes it into the public wiki as the user's rule and
+// says so in the answer, Decline writes nothing, and a bad proposal is
+// refused.
+func TestProposedRule(t *testing.T) {
+	s, _ := newTestServer(t)
+	good := api.Proposal{ID: "no-silent-retries", Name: "No silent retries", Rule: "A retry of a failed call is logged with its reason.", Reason: "orders retried a stock call three times without a line, and the block took an hour to find."}
+	for name, bad := range map[string]api.Proposal{
+		"id":     {ID: "No Silent", Name: good.Name, Rule: good.Rule, Reason: good.Reason},
+		"name":   {ID: good.ID, Name: "Retries", Rule: good.Rule, Reason: good.Reason},
+		"rule":   {ID: good.ID, Name: good.Name, Rule: "", Reason: good.Reason},
+		"long":   {ID: good.ID, Name: good.Name, Rule: strings.Repeat("x", 201), Reason: good.Reason},
+		"reason": {ID: good.ID, Name: good.Name, Rule: good.Rule},
+	} {
+		d := api.ProposeRule("writer", bad)
+		if _, err := s.Send("writer", api.SendRequest{To: "user", Decision: &d}); err == nil {
+			t.Errorf("a proposal with a bad %s is accepted", name)
+		}
+	}
+	d := api.ProposeRule("writer", good)
+	m, err := s.Send("writer", api.SendRequest{To: "user", Decision: &d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Decision == nil || m.Decision.Proposal == nil || m.Decision.ReplyTo != "writer" || !strings.Contains(m.Body, "writer proposes a rule for every agent: A retry of a failed call is logged with its reason. Accept it") {
+		t.Errorf("the proposal message: %+v %q", m.Decision, m.Body)
+	}
+	// Decline writes nothing.
+	a, err := s.Decide(DecideRequest{Message: m.ID, Choice: 2, Note: "we log already"})
+	if err != nil || a.To != "writer" || strings.Contains(a.Body, "wrote the rule") {
+		t.Errorf("decline: %+v %v", a, err)
+	}
+	if w, _ := s.sys.WikiView(api.PublicWikiRef); slices.ContainsFunc(w.Documents, func(x api.WikiDoc) bool { return x.ID == good.ID }) {
+		t.Error("a declined rule is not written")
+	}
+	// Accept writes the rule as the user's.
+	m2, _ := s.Send("critic", api.SendRequest{To: "user", Decision: ptr(api.ProposeRule("critic", good))})
+	a, err = s.Decide(DecideRequest{Message: m2.ID, Choice: 1})
+	if err != nil || a.To != "critic" || !strings.Contains(a.Body, "hikari wrote the rule [[no-silent-retries]] into the public wiki") {
+		t.Fatalf("accept: %+v %v", a, err)
+	}
+	w, _ := s.sys.WikiView(api.PublicWikiRef)
+	i := slices.IndexFunc(w.Documents, func(x api.WikiDoc) bool { return x.ID == good.ID })
+	if i < 0 || w.Documents[i].Kind != "rule" || w.Documents[i].Name != "No silent retries" || w.Documents[i].Description != good.Rule {
+		t.Errorf("the rule in the public wiki: %+v", w.Documents)
+	}
+	hit, err := s.sys.GetDocument("writer", good.ID)
+	if err != nil || !strings.Contains(hit.Document, "## Purpose") || !strings.Contains(hit.Document, "took an hour to find") {
+		t.Errorf("every agent reads the rule: %+v %v", hit, err)
+	}
+	// A second accept of the same id is refused by the wiki, and the
+	// decision stays open.
+	m3, _ := s.Send("writer", api.SendRequest{To: "user", Decision: ptr(api.ProposeRule("writer", api.Proposal{ID: good.ID, Name: "Another name here", Rule: "Something else.", Reason: "r"}))})
+	if _, err := s.Decide(DecideRequest{Message: m3.ID, Choice: 1}); err == nil {
+		t.Error("writing over an existing rule is refused")
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

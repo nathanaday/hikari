@@ -68,6 +68,10 @@ What is in it:
 - **Skills**: `tdd`, `refactor-safely`, `debug-a-failure`, `record-a-decision`. Each is written for a hikari partition agent: it names the test map, `record_test_run`, `apply`, and `change_wiki` where they come in.
 - **Profiles**: `careful`, `quick`, `library-maintainer`.
 
+## Rules the agents propose
+
+Policies and styles come from you. Rules can also come from the work: when a partition agent is blocked by something a rule would have prevented, when done is refused for a reason that will recur, when the reviewer finds the same thing twice, or when you answer a question that settles a matter for good, the agent calls `propose_rule` with one sentence and its reason. You see a card in your direct messages and in the Needs-you inbox. Accept has hikari write the rule into `vault/public/wiki/` as yours, where every agent reads it from its next turn and where you can edit it; Decline leaves nothing. The orchestration agent proposes too, from a scope's log once the scope is done. Over time the public wiki holds what the project learned, in rules the agents can cite.
+
 ## Writing your own
 
 A policy or a style is one Markdown file with no header: a few sentences that an agent can follow and that a reviewer can check. Say what to do, not what to value. "A commit subject is imperative and under 72 characters" is a style; "write good commits" is not.

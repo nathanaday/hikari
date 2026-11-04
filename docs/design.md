@@ -418,6 +418,21 @@ verdict is one line in the log and not a document, because the review's
 findings are the agent's to act on; what the user needs is who reviewed,
 what was found, and what was left.
 
+## Rules the agents propose
+
+A lesson that stays in a message is lost at the next turn, and a lesson
+that an agent writes into a rule by itself is a rule nobody chose. So an
+agent proposes: `propose_rule` sends the user a decision whose first option
+accepts. The proposal is one sentence that is true or false at any moment,
+with its reason, because that is what a rule of the public wiki is, and
+hikari checks it as the wiki would before the card is shown. On Accept,
+hikari writes the rule into the public wiki as the user's document, not the
+agent's, because the user chose it; the author in git says so, and the
+user can edit it in the UI as any document of theirs. On Decline, nothing
+is written, and the agent hears the answer and goes on. A proposal is a
+decision and not a new kind of thing, so it travels, journals, and shows in
+the inbox like every other question for the user.
+
 ## The scorecard of a scope
 
 A change of a policy or a style is a guess until something says whether

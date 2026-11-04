@@ -18,7 +18,11 @@ export type Message = {
 
 // Decision is a question for you with two to six choices; the answer goes
 // to reply_to as a direct message.
-export type Decision = { question: string; options: string[]; task?: string; reply_to?: string }
+export type Decision = { question: string; options: string[]; task?: string; reply_to?: string; proposal?: Proposal }
+
+// Proposal is a rule an agent proposes for every agent: Accept writes it
+// into the public wiki.
+export type Proposal = { id: string; name: string; rule: string; reason: string }
 
 // hikari is hikari itself, which writes the messages of its modules.
 export type Role = 'orchestration' | 'partition' | 'operator' | 'hikari'

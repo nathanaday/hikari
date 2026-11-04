@@ -32,6 +32,7 @@ hikari tells you when every part is done, and the scope is `validating`.
 1. Read the health of the scope's features, and of your own features that link them: the flows across the partitions.
 2. When every one passes, and `## Done when` holds, call `set_task_status` with `done` and a note on what you checked. hikari grants it only when the scope's features in your feature map pass, and then tells the issue that the work is done and which branch holds it.
 3. When a flow fails, call `set_task_status` with `blocked` and what failed, send the part back to the partition agent whose feature fails, and clear the block with `started` once it is fixed.
+4. Read the scope's log once it is done. When a block or a refused done came from something every agent should know, propose a rule with `propose_rule`: one sentence, with the reason. The user accepts it into the public wiki or declines.
 
 ## Report where the work stands
 

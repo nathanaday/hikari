@@ -27,6 +27,7 @@ import (
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 const maxBodyBytes = 64 << 10
@@ -290,6 +291,11 @@ func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 		if d.ReplyTo == "" {
 			d.ReplyTo = from
 		}
+		if p := d.Proposal; p != nil {
+			if err := checkProposal(p); err != nil {
+				return api.Message{}, err
+			}
+		}
 		if strings.TrimSpace(req.Body) == "" {
 			req.Body = d.Text()
 		}
@@ -334,7 +340,42 @@ func (s *Server) Decide(req DecideRequest) (api.Message, error) {
 	if note := strings.TrimSpace(req.Note); note != "" {
 		body += "\n" + note
 	}
+	if p := d.Proposal; p != nil && req.Choice == 1 {
+		// An accepted proposal is written into the public wiki as the
+		// user's rule, before the answer goes out, so that a refusal of the
+		// wiki reaches the user and the decision stays open. A proposal
+		// never writes over a document that exists.
+		if w, ok := s.sys.WikiView(api.PublicWikiRef); ok && slices.ContainsFunc(w.Documents, func(x api.WikiDoc) bool { return x.ID == p.ID }) {
+			return api.Message{}, fmt.Errorf("the public wiki already has %s; edit it there, or decline and ask for another id", p.ID)
+		}
+		doc := wiki.Document{ID: p.ID, Kind: wiki.Rule, Name: p.Name, Description: p.Rule, Body: "## Purpose\n\n" + strings.TrimSpace(p.Reason) + "\n"}
+		if err := s.sys.WriteDocument(api.PublicWikiRef, p.ID, doc.Render()); err != nil {
+			return api.Message{}, fmt.Errorf("the rule was not written: %w", err)
+		}
+		body += fmt.Sprintf("\nhikari wrote the rule [[%s]] into the public wiki; every agent reads it from its next turn.", p.ID)
+		s.userDid(fmt.Sprintf("accepted the rule %s proposed by %s", p.ID, d.ReplyTo))
+	}
 	return s.Send(topology.User, api.SendRequest{To: d.ReplyTo, Body: body, Answers: req.Message})
+}
+
+var ruleID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`)
+
+// checkProposal checks a proposed rule as the public wiki would: an id of
+// lowercase letters, digits, and dashes, a name of two to five words, a
+// rule of one sentence under 200 characters, and a reason.
+func checkProposal(p *api.Proposal) error {
+	p.ID, p.Name, p.Rule, p.Reason = strings.TrimSpace(p.ID), strings.TrimSpace(p.Name), strings.TrimSpace(p.Rule), strings.TrimSpace(p.Reason)
+	switch words := len(strings.Fields(p.Name)); {
+	case !ruleID.MatchString(p.ID):
+		return errors.New("a proposed rule needs an id of lowercase letters, digits, and dashes, up to 48 characters")
+	case words < 2 || words > 5:
+		return errors.New("a proposed rule's name is two to five words")
+	case p.Rule == "" || len(p.Rule) > 200 || strings.Contains(p.Rule, "\n"):
+		return errors.New("a proposed rule is one sentence of at most 200 characters")
+	case p.Reason == "":
+		return errors.New("a proposed rule needs its reason")
+	}
+	return nil
 }
 
 // post sends body to the room. It wakes the orchestration agent, every agent it

@@ -38,6 +38,17 @@ describe('DecisionCard', () => {
     expect(answered).toContain('for now')
   })
 
+  it('shows a proposed rule with its name, its sentence, its reason, and the accept choice', () => {
+    const proposal = msg(5, 'orders', 'user', 'orders proposes a rule', { decision: { question: 'orders proposes a rule for every agent: A retry is logged. Accept it into the public wiki?', options: ['Accept: hikari writes it into the public wiki as the rule no-silent-retries', 'Decline'], reply_to: 'orders', proposal: { id: 'no-silent-retries', name: 'No silent retries', rule: 'A retry is logged.', reason: 'A block took an hour to find.' } } })
+    const html = renderToStaticMarkup(<DecisionCard m={proposal} hot />)
+    expect(html).toContain('data-proposal="true"')
+    expect(html).toContain('Proposed rule · No silent retries')
+    expect(html).toContain('A retry is logged.')
+    expect(html).toContain('A block took an hour to find.')
+    expect(html).toContain('no-silent-retries')
+    expect((html.match(/data-testid="decision-option"/g) ?? []).length).toBe(2)
+  })
+
   it('renders in the direct messages as a card, not as text', () => {
     const s = stateWith({ view: { kind: 'dm', name: 'lead' }, messages: [decision] })
     const html = renderToStaticMarkup(<MessageList state={s} />)

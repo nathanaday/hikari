@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CircleHelp } from 'lucide-react'
+import { CircleHelp, Gavel } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { decide } from '@/lib/decisions'
@@ -36,12 +36,26 @@ export function DecisionCard({ m, answer, hot, onAnswered }: { m: Message; answe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hot, answer, note, d.options.length])
   const chosen = answer ? Number(answer.body.match(/^(\d+)\./)?.[1]) : undefined
+  const p = d.proposal
   return (
-    <div data-testid="decision" data-answered={!!answer} className={`my-1.5 rounded-md border px-3 py-2 text-sm ${answer ? 'bg-neutral-50' : 'border-violet-300 bg-violet-50/40'}`}>
+    <div data-testid="decision" data-answered={!!answer} data-proposal={!!p} className={`my-1.5 rounded-md border px-3 py-2 text-sm ${answer ? 'bg-neutral-50' : 'border-violet-300 bg-violet-50/40'}`}>
       <div className="flex items-start gap-2">
-        <CircleHelp className="mt-0.5 size-4 shrink-0 text-violet-700" />
+        {p ? <Gavel className="mt-0.5 size-4 shrink-0 text-violet-700" /> : <CircleHelp className="mt-0.5 size-4 shrink-0 text-violet-700" />}
         <div className="min-w-0 flex-1">
-          <p className="font-medium">{d.question}</p>
+          {p ? (
+            <div className="space-y-1">
+              <p className="text-xs font-medium tracking-wide text-violet-700 uppercase">Proposed rule · {p.name}</p>
+              <p className="font-medium">{p.rule}</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Why:</span> {p.reason}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Accept writes it into the public wiki as <code>{p.id}</code>, which every agent reads from its next turn; you can edit it there.
+              </p>
+            </div>
+          ) : (
+            <p className="font-medium">{d.question}</p>
+          )}
           <ol className="mt-1.5 space-y-1">
             {d.options.map((o, i) => {
               const n = i + 1

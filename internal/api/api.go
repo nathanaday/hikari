@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -42,6 +43,31 @@ type Decision struct {
 	// ReplyTo receives the answer: the sender, or for a decision of hikari,
 	// the orchestration agent.
 	ReplyTo string `json:"reply_to,omitempty"`
+	// Proposal is set when the decision proposes a rule for the public
+	// wiki (a proposed rule): the first option accepts it, and hikari
+	// writes the rule as the user.
+	Proposal *Proposal `json:"proposal,omitempty"`
+}
+
+// Proposal is a rule that an agent proposes for every agent, from a lesson
+// of its work: the document's id and name, the rule as one sentence, and
+// the reason, which becomes the rule's Purpose.
+type Proposal struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Rule   string `json:"rule"`
+	Reason string `json:"reason"`
+}
+
+// ProposeRule makes the decision of a proposed rule for the agent from:
+// the question, the two options, and the proposal.
+func ProposeRule(from string, p Proposal) Decision {
+	return Decision{
+		Question: fmt.Sprintf("%s proposes a rule for every agent: %s Accept it into the public wiki?", from, strings.TrimRight(strings.TrimSpace(p.Rule), ".")+"."),
+		Options:  []string{"Accept: hikari writes it into the public wiki as the rule " + p.ID, "Decline"},
+		ReplyTo:  from,
+		Proposal: &p,
+	}
 }
 
 // MaxOptions is the most options a decision has.
