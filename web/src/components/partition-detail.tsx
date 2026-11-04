@@ -5,6 +5,7 @@ import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import type { Feature, Interface, Private, Release, PartitionView, TaskView } from '@/lib/types'
 import { StatusChip } from '@/components/work-view'
+import { issueRef } from '@/lib/repos'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -183,7 +184,10 @@ function Workspace({ v }: { v: PartitionView }) {
       <ul className="mt-2 space-y-0.5 text-sm text-muted-foreground" data-testid="workspace-repos">
         {v.repos.map((r) => (
           <li key={r.name}>
-            {r.name} on <code className="text-xs">{r.branch}</code>
+            <a href={`#/repos/${encodeURIComponent(r.name)}`} className="underline underline-offset-2">
+              {r.name}
+            </a>{' '}
+            on <code className="text-xs">{r.branch}</code>
             {r.dirty ? ', with uncommitted changes' : ', clean'}
           </li>
         ))}
@@ -205,7 +209,7 @@ function openFeature(e: React.MouseEvent, id: string) {
 function scopesOf(state: State, partition: string): TaskView[] {
   const work = state.modules.tasks
   if (!work) return []
-  return [...work.queues.flatMap((q) => q.scopes), ...work.drafts].filter((t) => t.partitions.includes(partition))
+  return work.tasks.filter((t) => t.stage === 'scope' && t.partitions.includes(partition))
 }
 
 export function PartitionDetail({ state, partition: v }: { state: State; partition: PartitionView }) {
@@ -349,9 +353,10 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 <ul className="space-y-1" data-testid="partition-scopes">
                   {scopesOf(state, v.partition_agent).map((t) => (
                     <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
-                      <a href={`#/work/${encodeURIComponent(t.id)}`} className="hover:underline">
+                      <a href={`#/work/${encodeURIComponent(issueRef(t))}`} className="hover:underline">
                         {t.name}
                       </a>
+                      {t.issue && <code className="text-xs text-muted-foreground">{t.issue}</code>}
                       <StatusChip status={t.status} />
                       {t.parts.find((p) => p.partition === v.partition_agent) && <StatusChip status={t.parts.find((p) => p.partition === v.partition_agent)!.status} label="part" />}
                       {t.queue && <span className="text-xs text-muted-foreground">in {t.queue}</span>}

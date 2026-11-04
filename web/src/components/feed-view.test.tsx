@@ -84,7 +84,7 @@ describe('entryView', () => {
   })
 
   it('opens a task, an agent, and nothing for a step', () => {
-    expect(entryView(feed[6], s)).toEqual({ kind: 'work', task: 'cancel' })
+    expect(entryView(feed[6], s)).toEqual({ kind: 'work', issue: 'cancel' })
     expect(entryView(feed[3], s)).toEqual({ kind: 'dm', name: 'orders' })
     expect(entryView(feed[0], s)).toBeUndefined()
   })

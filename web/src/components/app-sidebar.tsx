@@ -1,4 +1,4 @@
-import { Activity, BookOpen, FileCode2, ListChecks, MessagesSquare, Network } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, GitBranch, ListChecks, MessagesSquare, Network } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
 import { StatusDot } from '@/components/status-dot'
+import { repoHealth, type RepoHealth } from '@/lib/repos'
 import type { Connection, State } from '@/lib/store'
 import { viewKey, type View } from '@/lib/view'
 
@@ -70,6 +71,7 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
                 {item({ kind: 'all' }, 'All activity', <Activity />)}
                 {state.modules.tasks && item({ kind: 'work' }, 'Work', <ListChecks />)}
                 {state.partitions.length > 0 && item({ kind: 'map' }, 'Map', <Network />)}
+                {state.repos.length > 0 && item({ kind: 'repos' }, 'Repositories', <GitBranch />)}
                 {item({ kind: 'shared' }, 'Vault', <BookOpen />)}
                 {item({ kind: 'topology' }, 'Topology', <FileCode2 />)}
               </SidebarMenu>
@@ -95,6 +97,25 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
                 </SidebarMenu>
               </SidebarGroup>
             )}
+            {state.repos.length > 0 && (
+              // One entry per repository, with the dot of its state (rule UI1).
+              <SidebarGroup>
+                <SidebarGroupLabel>Repositories</SidebarGroupLabel>
+                <SidebarMenu>
+                  {[...state.repos]
+                    .sort((a, b) => Number(!!a.project) - Number(!!b.project) || a.name.localeCompare(b.name))
+                    .map((r) =>
+                      item(
+                        { kind: 'repo', name: r.name },
+                        r.name,
+                        <span className="flex size-4 items-center justify-center">
+                          <RepoDot health={repoHealth(r)} />
+                        </span>,
+                      ),
+                    )}
+                </SidebarMenu>
+              </SidebarGroup>
+            )}
             <SidebarGroup>
               <SidebarGroupLabel>Direct messages</SidebarGroupLabel>
               <SidebarMenu>
@@ -114,4 +135,12 @@ export function AppSidebar({ state, show }: { state: State; show: (v: View) => v
       </SidebarContent>
     </Sidebar>
   )
+}
+
+const repoDot: Record<RepoHealth, string> = { good: 'bg-emerald-500', warn: 'bg-amber-500', bad: 'bg-red-500' }
+
+// RepoDot is the state of a repository: green, amber for work to push or
+// checks to wait for, red for failing checks, a conflict, or an error.
+export function RepoDot({ health }: { health: RepoHealth }) {
+  return <span aria-label={`repository ${health}`} className={`inline-block size-2 shrink-0 rounded-full ${repoDot[health]}`} data-health={health} />
 }

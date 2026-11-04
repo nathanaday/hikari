@@ -19,15 +19,20 @@ export type View =
   // the map of the public wiki, or with orchestration the orchestration
   // agent's feature map; doc selects one of its documents.
   | { kind: 'map'; partition?: string; public?: boolean; orchestration?: boolean; doc?: string }
-  // work is the task pipeline's Work tab, with task open.
-  | { kind: 'work'; task?: string }
+  // work is the task pipeline's Work tab, with an issue open: its ref,
+  // <repo>#<number> or a local issue's id (rule UI4).
+  | { kind: 'work'; issue?: string }
+  // repos is the Repositories page, and repo one repository's page (rules
+  // UI1 and UI2).
+  | { kind: 'repos' }
+  | { kind: 'repo'; name: string }
 
 export const allView: View = { kind: 'all' }
 
 // viewKey names a conversation for unread counts. The tabs of the room
 // share one key.
 export function viewKey(v: View): string {
-  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work') return v.kind
+  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work' || v.kind === 'repos') return v.kind
   if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : v.orchestration ? 'map:@orchestration' : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
@@ -44,7 +49,9 @@ export function viewHash(v: View): string {
     if (v.orchestration) return `#/orchestration/map${doc}`
     return '#/map'
   }
-  if (v.kind === 'work') return v.task ? `#/work/${encodeURIComponent(v.task)}` : '#/work'
+  if (v.kind === 'work') return v.issue ? `#/work/${encodeURIComponent(v.issue)}` : '#/work'
+  if (v.kind === 'repos') return '#/repos'
+  if (v.kind === 'repo') return `#/repos/${encodeURIComponent(v.name)}`
   if (v.kind === 'room') return v.tab && v.tab !== 'messages' ? `#/room/${v.tab}` : '#/room'
   if (v.kind === 'release') return `#/partition/${v.name}/release/${v.deliverable}/${v.version}`
   return `#/${v.kind}/${v.name}`
@@ -54,7 +61,10 @@ export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
   if (hash === '#/work') return { kind: 'work' }
   const work = hash.match(/^#\/work\/([^/]+)$/)
-  if (work) return { kind: 'work', task: decodeURIComponent(work[1]) }
+  if (work) return { kind: 'work', issue: decodeURIComponent(work[1]) }
+  if (hash === '#/repos') return { kind: 'repos' }
+  const repo = hash.match(/^#\/repos\/([^/]+)$/)
+  if (repo) return { kind: 'repo', name: decodeURIComponent(repo[1]) }
   if (hash === '#/topology') return { kind: 'topology' }
   const select = hash.match(/^#\/topology\?select=([^&]+)$/)
   if (select) return { kind: 'topology', select: decodeURIComponent(select[1]) }

@@ -24,7 +24,7 @@ describe('moodOf (HA12)', () => {
     expect(moodOf(s({ agents: [agent('orders', 'error'), agent('inventory', 'working')], assistant: idle }))).toBe('alarmed')
     expect(moodOf(s({ agents: [{ ...agent('orders', 'exited'), status: { state: 'exited', detail: 'killed' } }], assistant: idle }))).toBe('alarmed')
     expect(moodOf(s({ agents: [agent('orders', 'exited')], assistant: idle }))).toBe('asleep')
-    const tasks: TasksView = { stubs: [], drafts: [], problems: [], orchestration: 'lead', partitions: [], queues: [{ id: 'q', name: 'Q', state: 'running', file: 'x', scopes: [{ id: 't', name: 't', stage: 'scope', status: 'blocked', partitions: [], features: [], needs: [], parts: [], file: 'x', hash: '1' }] }] }
+    const tasks: TasksView = { issues: [], trackers: [], tasks: [], work_queue: 'work', problems: [], orchestration: 'lead', partitions: [], queues: [{ id: 'q', name: 'Q', state: 'running', file: 'x', scopes: [{ id: 't', name: 't', stage: 'scope', status: 'blocked', partitions: [], features: [], needs: [], parts: [], file: 'x', hash: '1' }] }] }
     expect(moodOf(s({ agents: [], modules: { tasks }, assistant: idle }))).toBe('alarmed')
     expect(moodOf(s({ agents: [], modules: { tasks: { ...tasks, queues: [{ ...tasks.queues[0], state: 'paused' }] } }, assistant: idle }))).toBe('asleep')
     expect(moodOf(s({ agents: [], assistant: { ...idle, activity: [{ id: 1, turn: 1, time: 't', kind: 'done', done: true, error: true }] } }))).toBe('alarmed')

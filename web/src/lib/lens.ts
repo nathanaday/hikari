@@ -1,5 +1,6 @@
 import type { GraphNode } from './graph'
-import type { Agent, AgentState, DocKind, Feature, FeatureState, Health, PartitionView, WikiDoc } from './types'
+import { repoGit, type RepoGit } from './repos'
+import type { Agent, AgentState, DocKind, Feature, FeatureState, Health, PartitionView, RepoView, WikiDoc } from './types'
 import { docHealth } from './wikis'
 
 export type TopologyLens = 'activity' | 'tests' | 'git'
@@ -53,10 +54,28 @@ export function healthPaint(h: Health): Paint {
 }
 
 // TopologyContext is what the topology lenses read.
-export type TopologyContext = { partitions: Map<string, PartitionView>; agents: Map<string, Agent> }
+export type TopologyContext = { partitions: Map<string, PartitionView>; agents: Map<string, Agent>; repos: Map<string, RepoView> }
 
-export function topologyContext(partitions: PartitionView[], agents: Agent[]): TopologyContext {
-  return { partitions: new Map(partitions.map((s) => [s.partition_agent, s])), agents: new Map(agents.map((a) => [a.name, a])) }
+export function topologyContext(partitions: PartitionView[], agents: Agent[], repos: RepoView[] = []): TopologyContext {
+  return {
+    partitions: new Map(partitions.map((s) => [s.partition_agent, s])),
+    agents: new Map(agents.map((a) => [a.name, a])),
+    repos: new Map(repos.map((r) => [r.name, r])),
+  }
+}
+
+// gitColor is the color of a repository's git state (rule UI3): failing
+// checks or a conflict, uncommitted changes, unpushed work or pending
+// checks, passing checks, or nothing to say.
+const gitColor: Record<RepoGit, Color> = { failing: 'fail', dirty: 'dirty', pending: 'pending', passing: 'pass', clean: 'white' }
+
+// repoGitOf reads a repository's git state from the view, or from the
+// partitions' dirty flags when the view is missing.
+function repoGitOf(name: string, ctx: TopologyContext): RepoGit {
+  const v = ctx.repos.get(name)
+  if (v) return repoGit(v)
+  const dirty = [...ctx.partitions.values()].some((s) => s.repos.some((r) => r.name === name && r.dirty))
+  return dirty ? 'dirty' : 'clean'
 }
 
 // topologyPaint gives a topology node its paint under a lens. Nodes that a
@@ -75,10 +94,18 @@ export function topologyPaint(lens: TopologyLens, node: GraphNode, ctx: Topology
   }
   if (node.kind === 'orchestration' && lens === 'activity') return activityPaint(ctx.agents.get(node.ref)?.status.state)
   if (node.kind === 'repo' && lens === 'git') {
-    const dirty = [...ctx.partitions.values()].some((s) => s.repos.some((r) => r.name === node.ref && r.dirty))
-    return dirty ? filled('dirty') : neutral
+    const g = repoGitOf(node.ref, ctx)
+    return g === 'clean' ? neutral : filled(gitColor[g])
   }
   return neutral
+}
+
+const gitLabel: Record<RepoGit, string> = {
+  failing: 'checks failing or conflicts',
+  dirty: 'uncommitted changes',
+  pending: 'unpushed or checks pending',
+  passing: 'checks passing',
+  clean: 'clean',
 }
 
 // topologyDetail is the lens line of a topology node's hover card (rule
@@ -86,7 +113,7 @@ export function topologyPaint(lens: TopologyLens, node: GraphNode, ctx: Topology
 export function topologyDetail(lens: TopologyLens, node: GraphNode, ctx: TopologyContext): string {
   if (node.kind === 'repo') {
     if (lens !== 'git') return ''
-    return topologyPaint('git', node, ctx).fill === 'dirty' ? 'uncommitted changes' : 'clean'
+    return gitLabel[repoGitOf(node.ref, ctx)]
   }
   if (node.kind !== 'partition' && (node.kind !== 'orchestration' || lens !== 'activity')) return ''
   const sys = ctx.partitions.get(node.ref)
@@ -228,8 +255,11 @@ export function legend(lens: Lens): LegendEntry[] {
       ]
     case 'git':
       return [
-        { paint: filled('dirty'), label: 'uncommitted changes' },
-        { paint: neutral, label: 'clean' },
+        { paint: filled('fail'), label: gitLabel.failing },
+        { paint: filled('dirty'), label: gitLabel.dirty },
+        { paint: filled('pending'), label: gitLabel.pending },
+        { paint: filled('pass'), label: gitLabel.passing },
+        { paint: neutral, label: gitLabel.clean },
       ]
     case 'age':
       return [

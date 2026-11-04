@@ -1,4 +1,4 @@
-import type { DeliverableInfo, DocKind, RepoInfo, PartitionView, WikiDoc, WikiView } from './types'
+import type { DeliverableInfo, DocKind, RepoView, PartitionView, WikiDoc, WikiView } from './types'
 import { wikiName, type WikiIndex } from './wikis'
 
 export type NodeKind = 'partition' | 'repo' | 'deliverable' | 'orchestration' | 'doc'
@@ -39,7 +39,7 @@ export function featureRadius(neighbors: number): number {
   return Math.min(14, 5 + 1.5 * neighbors)
 }
 
-type TopologyInput = { partitions: PartitionView[]; repos: RepoInfo[]; deliverables: DeliverableInfo[]; orchestration?: string }
+type TopologyInput = { partitions: PartitionView[]; repos: Pick<RepoView, 'name' | 'branch' | 'partitions' | 'project'>[]; deliverables: DeliverableInfo[]; orchestration?: string }
 
 // topologyGraph builds the topology map: partitions, repositories, held
 // deliverables, and the orchestration agent in the middle with an edge to each
@@ -54,6 +54,9 @@ export function topologyGraph({ partitions, repos, deliverables, orchestration }
   }
   for (const r of [...repos].sort(byName)) {
     const members = r.partitions.filter((s) => names.has(s))
+    // The project repository is on the map only when a partition is in it
+    // (rule PR27 of the project repository spec).
+    if (r.project && members.length === 0) continue
     nodes.push({ id: nodeID('repo', r.name), kind: 'repo', ref: r.name, label: r.name, shape: 'square', radius: 10 })
     for (const s of members) edges.push({ source: nodeID('partition', s), target: nodeID('repo', r.name), dashed: false })
   }

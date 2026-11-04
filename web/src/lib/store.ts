@@ -1,4 +1,4 @@
-import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoView, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -24,8 +24,9 @@ export type State = {
   messages: Message[]
   partitions: PartitionView[]
   vocabulary: Vocabulary
-  // repos and deliverables let the map draw the topology.
-  repos: RepoInfo[]
+  // repos holds the view of each repository; with deliverables it lets the
+  // map draw the topology.
+  repos: RepoView[]
   deliverables: DeliverableInfo[]
   // wikis holds the public wiki and the wiki of every partition.
   wikis: WikiView[]
@@ -94,11 +95,13 @@ const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 
 // resolve returns v if it names an agent or a partition of s, and All activity
 // if not. Without agents, only the Topology view exists (rule YV5).
-function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules'>): View {
+function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules' | 'repos'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
   if (v.kind === 'room') return v
   if (v.kind === 'work') return s.modules.tasks ? v : allView
+  if (v.kind === 'repos') return v
+  if (v.kind === 'repo') return s.repos.some((r) => r.name === v.name) ? v : { kind: 'repos' }
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'partition' || v.kind === 'release') && s.partitions.some((x) => x.partition_agent === v.name)) return v
   if (v.kind === 'shared') return v
@@ -154,7 +157,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         feed: e.snapshot.feed ?? [],
         cost: e.snapshot.cost ?? 0,
         assistant: e.snapshot.assistant ?? assistantOff,
-        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {} }),
+        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {}, repos: e.snapshot.repos ?? [] }),
         unread: {},
       }
     }
@@ -191,6 +194,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, revision: e.revision }
     case 'module':
       return { ...s, modules: { ...s.modules, [e.module]: e.view } }
+    case 'repo':
+      return { ...s, repos: replaceBy(s.repos, e.repo, (x) => x.name) }
   }
 }
 

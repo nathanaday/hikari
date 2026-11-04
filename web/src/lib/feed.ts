@@ -6,7 +6,7 @@ import type { View } from './view'
 // entryView is what an entry opens (rule FD10): the conversation of a
 // message or a turn, an agent's direct messages, or a task in Work, or
 // nothing for a step and for a private message between agents.
-export function entryView(e: Entry, state: Pick<State, 'me' | 'activity'>): View | undefined {
+export function entryView(e: Entry, state: Pick<State, 'me' | 'activity' | 'modules'>): View | undefined {
   switch (e.kind) {
     case 'message':
       if (!e.to) return { kind: 'room' }
@@ -20,8 +20,13 @@ export function entryView(e: Entry, state: Pick<State, 'me' | 'activity'>): View
     }
     case 'status':
       return { kind: 'dm', name: e.who! }
-    case 'module':
-      return e.task ? { kind: 'work', task: e.task } : undefined
+    case 'module': {
+      if (!e.task) return undefined
+      // A task's entry opens its issue: the tracker's ref, or the task id
+      // of a local issue.
+      const task = state.modules.tasks?.tasks.find((t) => t.id === e.task)
+      return { kind: 'work', issue: task?.issue ?? e.task }
+    }
   }
   return undefined
 }

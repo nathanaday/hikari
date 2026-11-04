@@ -10,6 +10,7 @@ import { MessageList } from '@/components/message-list'
 import { PublicWiki } from '@/components/public-wiki'
 import { SignIn } from '@/components/sign-in'
 import { ReleaseView } from '@/components/release-view'
+import { RepositoriesView, RepoView } from '@/components/repos-view'
 import { SharedView } from '@/components/shared-view'
 import { PartitionDetail } from '@/components/partition-detail'
 import { TopologyView } from '@/components/topology-view'
@@ -58,7 +59,11 @@ export default function App() {
   } else if (v.kind === 'shared') {
     main = <SharedView />
   } else if (v.kind === 'work') {
-    main = <WorkView state={state} show={show} task={v.task} send={send} />
+    main = <WorkView state={state} show={show} issue={v.issue} send={send} />
+  } else if (v.kind === 'repos') {
+    main = <RepositoriesView state={state} show={show} />
+  } else if (v.kind === 'repo') {
+    main = <RepoView key={v.name} state={state} name={v.name} show={show} />
   } else if (v.kind === 'room' && v.tab === 'wiki') {
     main = <PublicWiki orchestration={orchestrationOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
   } else if (v.kind === 'room' && v.tab === 'vocabulary') {
@@ -85,7 +90,7 @@ export default function App() {
               <>
                 <ConversationHeader state={state} show={show} onMention={mention} />
                 {main}
-                {v.kind !== 'map' && v.kind !== 'work' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+                {v.kind !== 'map' && v.kind !== 'work' && v.kind !== 'repos' && v.kind !== 'repo' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
               </>
             )}
             {state.mode === 'running' && (

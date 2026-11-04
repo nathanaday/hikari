@@ -1,4 +1,4 @@
-import type { Agent, AgentState, DocKind, Feature, Health, Role, PartitionView, WikiDoc, WikiView } from './types'
+import type { Agent, AgentState, BranchView, DocKind, Feature, Health, IssueView, PullRequestView, Role, PartitionView, RepoView, TaskView, WikiDoc, WikiView } from './types'
 
 // Test fixtures shaped like the shop demo.
 
@@ -40,4 +40,49 @@ export function doc(id: string, kind: DocKind = 'feature', extra: Partial<WikiDo
 export function wikiOf(ref: string, documents: WikiDoc[]): WikiView {
   if (ref === 'public' || ref === 'orchestration') return { ref, scope: ref, name: ref, documents }
   return { ref, scope: 'partition', name: ref.slice(ref.indexOf(':') + 1), documents }
+}
+
+// repoView is a repository on GitHub whose hikari branch is one commit
+// ahead of main and pushed.
+export function repoView(name: string, extra: Partial<RepoView> = {}): RepoView {
+  return {
+    name,
+    branch: 'hikari',
+    partitions: ['orders'],
+    url: `https://github.com/acme/${name}.git`,
+    forge: { kind: 'github', host: 'github.com', owner: 'acme', name, web: `https://github.com/acme/${name}`, api: 'https://api.github.com' },
+    default_branch: 'main',
+    head: 'abc1234',
+    branches: [branchView('hikari', { yours: true, ahead: 1 }), branchView('main', { default: true })],
+    pull_requests: [],
+    synced: '2026-11-04T12:00:00Z',
+    ...extra,
+  }
+}
+
+export function branchView(name: string, extra: Partial<BranchView> = {}): BranchView {
+  return { name, sha: 'abc1234', subject: `work on ${name}`, author: 'orders (hikari)', time: '2026-11-04T11:00:00Z', local: true, remote: true, ahead: 0, behind: 0, unpushed: 0, ...extra }
+}
+
+export function pullRequest(number: number, extra: Partial<PullRequestView> = {}): PullRequestView {
+  return {
+    number,
+    title: `PR ${number}`,
+    url: `https://github.com/acme/shop/pull/${number}`,
+    state: 'open',
+    head: 'hikari',
+    base: 'main',
+    sha: 'abc1234',
+    checks: { state: 'none', passed: 0, failed: 0, pending: 0, runs: [] },
+    ...extra,
+  }
+}
+
+export function task(id: string, extra: Partial<TaskView> = {}): TaskView {
+  return { id, name: id, stage: 'scope', partitions: [], features: [], needs: [], parts: [], file: `tasks/${id}.md`, hash: '1', ...extra }
+}
+
+export function issue(ref: string, extra: Partial<IssueView> = {}): IssueView {
+  const m = ref.match(/^(.+)#(\d+)$/)
+  return { ref, repo: m?.[1], number: m ? Number(m[2]) : undefined, title: ref, state: 'open', labels: [], comments: 0, local: !m, ...extra }
 }

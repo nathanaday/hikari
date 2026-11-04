@@ -291,7 +291,7 @@ export type Snapshot = {
   messages: Message[]
   partitions: PartitionView[]
   vocabulary: Vocabulary
-  repos?: RepoInfo[]
+  repos?: RepoView[]
   deliverables?: DeliverableInfo[]
   wikis?: WikiView[]
   activity?: Record<string, Activity[]>
@@ -305,21 +305,27 @@ export type Snapshot = {
   assistant?: AssistantView
 }
 
-// The task pipeline, the tasks module (rule TK27 of the task pipeline spec).
+// The task pipeline, the tasks module (rule TK27 of the task pipeline spec,
+// and section 3 of the repositories, forges, and issues spec).
 export type TaskStatus = 'queued' | 'waiting' | 'started' | 'blocked' | 'testing' | 'validating' | 'done'
 
 export type TaskPart = { partition: string; status: TaskStatus }
 
+// TaskView is a task: the record of an issue's work. stage is stub while
+// the orchestration agent has not scoped it yet, which can be while it is
+// in a queue and started.
 export type TaskView = {
   id: string
   name: string
   stage: 'stub' | 'scope'
   author?: string
-  // status is empty for a stub and for a draft scope.
+  // status is empty for a task in no queue.
   status?: TaskStatus
   block?: string
   wait?: string
   queue?: string
+  // issue is the tracker issue the task stands for, as <repo>#<number>.
+  issue?: string
   partitions: string[]
   features: string[]
   needs: string[]
@@ -332,13 +338,45 @@ export type TaskView = {
 
 export type QueueView = { id: string; name: string; state: 'running' | 'paused'; scopes: TaskView[]; file: string }
 
+// IssueView is one issue (rule IS2): a tracker's, or a local one, with its
+// task when it has one. ref is <repo>#<number>, or the task id of a local
+// issue.
+export type IssueView = {
+  ref: string
+  repo?: string
+  number?: number
+  title: string
+  body?: string
+  url?: string
+  state: 'open' | 'closed'
+  labels: string[]
+  author?: string
+  comments: number
+  created?: string
+  updated?: string
+  local?: boolean
+  task?: TaskView
+  assignees?: string[]
+}
+
+// IssueComment is one comment of a tracker issue.
+export type IssueComment = { id: number; author?: string; body: string; created?: string; url?: string }
+
+// IssueDetail is an issue with its comments and its task's document.
+export type IssueDetail = { issue: IssueView; comments: IssueComment[]; task?: { task: TaskView; text: string } }
+
+// TrackerView is one issue tracker of the project, with its last sync.
+export type TrackerView = { repo: string; kind: string; url?: string; synced?: string; error?: string }
+
 export type TasksView = {
-  stubs: TaskView[]
-  drafts: TaskView[]
+  issues: IssueView[]
+  trackers: TrackerView[]
+  tasks: TaskView[]
   queues: QueueView[]
   problems: { file: string; reason: string }[]
   orchestration: string
   partitions: string[]
+  work_queue: string
 }
 
 export type Modules = { tasks?: TasksView }
@@ -383,8 +421,80 @@ export type AssistantEvent =
   | { type: 'prompt'; prompt: AssistantPrompt }
   | { type: 'status'; status: AssistantStatus }
 
-// RepoInfo is one repository of the topology with the partitions in it.
-export type RepoInfo = { name: string; branch: string; partitions: string[] }
+// The repositories (section 2 of the repositories, forges, and issues spec).
+
+// ForgeRemote is what a repository's origin URL says about its forge.
+export type ForgeRemote = { kind: string; host: string; owner: string; name: string; web: string; api: string }
+
+export type CheckState = 'passing' | 'failing' | 'pending' | 'skipped' | 'none'
+
+export type CheckRun = { name: string; state: CheckState; url?: string }
+
+// Checks is every check of a commit, with a summary (rule RP3).
+export type Checks = { state: CheckState; passed: number; failed: number; pending: number; runs: CheckRun[] }
+
+export type PullRequestView = {
+  number: number
+  title: string
+  body?: string
+  url: string
+  state: 'open' | 'closed' | 'merged'
+  draft?: boolean
+  author?: string
+  head: string
+  base: string
+  sha: string
+  merged?: string
+  mergeable?: 'mergeable' | 'conflicting' | 'unknown'
+  review?: 'approved' | 'changes_requested'
+  additions?: number
+  deletions?: number
+  files?: number
+  created?: string
+  updated?: string
+  closes?: number[]
+  checks: Checks
+}
+
+// BranchView is one branch of a repository (rule RP2): local, on origin, or
+// both.
+export type BranchView = {
+  name: string
+  sha: string
+  subject?: string
+  author?: string
+  time?: string
+  local: boolean
+  remote: boolean
+  ahead: number
+  behind: number
+  unpushed: number
+  yours?: boolean
+  default?: boolean
+  merged?: boolean
+  pull_request?: number
+}
+
+// RepoView is one repository of the topology (rule RP1): your branch, the
+// partitions with a writable folder in it, its forge, its branches, and its
+// pull requests.
+export type RepoView = {
+  name: string
+  branch: string
+  partitions: string[]
+  project?: boolean
+  url?: string
+  forge?: ForgeRemote
+  default_branch?: string
+  head?: string
+  dirty?: boolean
+  branches: BranchView[]
+  pull_requests: PullRequestView[]
+  synced?: string
+  fetched?: string
+  error?: string
+  git_error?: string
+}
 
 // DeliverableInfo is a deliverable of the vault with the agents that hold it.
 export type DeliverableInfo = { name: string; description?: string; holders: string[]; error?: string }
@@ -399,6 +509,7 @@ export type ServerEvent =
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
   | { type: 'module'; module: string; view: unknown }
+  | { type: 'repo'; repo: RepoView }
   | { type: 'feed'; entry: Entry }
   | { type: 'assistant'; assistant: AssistantEvent }
 

@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Boxes, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
+import { Activity, BookOpen, Boxes, GitBranch, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -251,14 +251,58 @@ export function ConversationHeader({ state, show, onMention }: Props) {
       </>
     )
   } else if (v.kind === 'work') {
+    const issues = state.modules.tasks?.issues.filter((i) => i.state === 'open').length ?? 0
     body = (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <ListChecks className="size-4 text-muted-foreground" />
           Work
+          {issues > 0 && (
+            <Badge variant="secondary" className="font-normal">
+              {issues} open
+            </Badge>
+          )}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The task pipeline: your stubs, the scopes that the orchestration agent writes from them, and the queues that run them. Each task is a document in vault/tasks/, which Obsidian opens too.
+          The issues of the project's repositories and of the vault, and the queues that hand them to the agents. Drag an issue into a queue, or press Work on this.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'repos') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <GitBranch className="size-4 text-muted-foreground" />
+          Repositories
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Each repository of the project: your branch against the default branch, the pull requests with their checks, and what is merged. Push, open a pull request, and merge from here.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'repo') {
+    const repo = state.repos.find((r) => r.name === v.name)
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <GitBranch className="size-4 text-muted-foreground" />
+          <button type="button" className="font-normal text-muted-foreground hover:text-foreground" onClick={() => show({ kind: 'repos' })}>
+            Repositories
+          </button>
+          <span className="font-normal text-muted-foreground">/</span>
+          {v.name}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {repo?.forge ? (
+            <>
+              <a href={repo.forge.web} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                {repo.forge.owner}/{repo.forge.name}
+              </a>{' '}
+              on {repo.forge.kind} ·{' '}
+            </>
+          ) : null}
+          the agents commit to <code className="text-xs">{repo?.branch}</code>
+          {repo?.partitions.length ? <> · partitions {repo.partitions.join(', ')}</> : null}
         </p>
       </>
     )
