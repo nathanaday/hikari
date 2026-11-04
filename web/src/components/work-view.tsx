@@ -8,6 +8,7 @@ import { DecisionCard } from '@/components/decision-card'
 import { Markdown } from '@/components/markdown'
 import { pendingDecisions } from '@/lib/attention'
 import { ago, issueRef } from '@/lib/repos'
+import { duration, money, partCosts, timeline, totalCost, totalTurns } from '@/lib/scorecard'
 import type { State } from '@/lib/store'
 import type { IssueDetail, IssueView, QueueView, TaskStatus, TaskView, TasksView } from '@/lib/types'
 import type { View } from '@/lib/view'
@@ -185,7 +186,7 @@ export function WorkView({
             {shown.length === 0 && <p className="text-sm text-muted-foreground">No issues here. Open one above, or on the tracker.</p>}
             <div className="space-y-2">
               {shown.map((i) => (
-                <IssueCard key={i.ref} issue={i} active={i.ref === openRef} queues={work.queues} onOpen={() => show({ kind: 'work', issue: i.ref })} onWork={() => workOn(i.ref)} onPlan={() => plan(i.ref)} onQueue={(q) => queueOp({ op: 'add', queue: q, issue: i.ref })} />
+                <IssueCard key={i.ref} issue={i} active={i.ref === openRef} queues={work.queues} turns={state.turns} onOpen={() => show({ kind: 'work', issue: i.ref })} onWork={() => workOn(i.ref)} onPlan={() => plan(i.ref)} onQueue={(q) => queueOp({ op: 'add', queue: q, issue: i.ref })} />
               ))}
             </div>
           </section>
@@ -291,10 +292,19 @@ function Labels({ labels }: { labels: string[] }) {
   )
 }
 
+// CardCost is the cost of a scope so far, on its card.
+function CardCost({ task: t, turns }: { task: TaskView; turns: State['turns'] }) {
+  if (!t.scorecard?.started) return null
+  const cost = totalCost(partCosts(t.scorecard, turns))
+  if (cost === 0) return null
+  return <span data-testid="card-cost">· {money(cost)}</span>
+}
+
 function IssueCard({
   issue: i,
   active,
   queues,
+  turns,
   onOpen,
   onWork,
   onPlan,
@@ -303,6 +313,7 @@ function IssueCard({
   issue: IssueView
   active: boolean
   queues: QueueView[]
+  turns: State['turns']
   onOpen: () => void
   onWork: () => void
   onPlan: () => void
@@ -335,6 +346,7 @@ function IssueCard({
         <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           <TaskChips task={t} />
           {t.queue && <span>in {t.queue}</span>}
+          <CardCost task={t} turns={turns} />
         </div>
       )}
       {i.state === 'open' && (
@@ -717,14 +729,80 @@ function IssuePanel({
           })}
           {t.features.length > 0 && <p className="text-xs text-muted-foreground">Features: {t.features.map((f) => `[[${f}]]`).join(', ')}</p>}
           {t.needs.length > 0 && <p className="text-xs text-muted-foreground">Needs: {t.needs.map((f) => `[[${f}]]`).join(', ')}</p>}
+          <ScopeScorecard task={t} state={state} />
           {t.stage === 'scope' && (
             <div data-testid="task-body">
               <Markdown text={taskBody || '_Loading…_'} names={names} />
             </div>
           )}
+          <ScopeTimeline task={t} state={state} />
         </section>
       )}
     </aside>
+  )
+}
+
+// ScopeScorecard sums how the work went (the scorecard of the task
+// pipeline): its duration, blocks, refused dones, reviews, and the turns and
+// the cost of each partition agent inside its part.
+export function ScopeScorecard({ task: t, state }: { task: TaskView; state: State }) {
+  const sc = t.scorecard
+  if (!sc?.started) return null
+  const parts = partCosts(sc, state.turns)
+  const cost = totalCost(parts)
+  const turns = totalTurns(parts)
+  return (
+    <div className="rounded-md border p-2 text-xs" data-testid="scorecard">
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <span>
+          <span className="text-muted-foreground">{sc.finished ? 'took' : 'running for'}</span> {duration(sc)}
+        </span>
+        <span>
+          <span className="text-muted-foreground">turns</span> {turns}
+        </span>
+        <span>
+          <span className="text-muted-foreground">cost</span> {money(cost)}
+        </span>
+        <span className={sc.blocks ? 'text-red-700' : ''}>
+          <span className="text-muted-foreground">blocked</span> {sc.blocks}×
+        </span>
+        <span className={sc.refusals ? 'text-amber-700' : ''}>
+          <span className="text-muted-foreground">done refused</span> {sc.refusals}×
+        </span>
+        <span>
+          <span className="text-muted-foreground">reviews</span> {sc.reviews}
+        </span>
+      </div>
+      {parts.some((p) => p.turns > 0) && (
+        <ul className="mt-1.5 flex flex-wrap gap-x-3 text-muted-foreground">
+          {parts.map((p) => (
+            <li key={p.partition} data-part-cost={p.partition}>
+              {p.partition}: {p.turns} turn{p.turns === 1 ? '' : 's'} · {money(p.cost)}
+              {p.open ? ' · open' : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ScopeTimeline lists what happened to a scope in order: its log, the
+// decisions hikari and the agents asked about it, and your answers.
+export function ScopeTimeline({ task: t, state }: { task: TaskView; state: State }) {
+  const entries = useMemo(() => timeline(t.scorecard, state.messages, t.id), [t.scorecard, state.messages, t.id])
+  if (entries.length === 0) return null
+  return (
+    <details className="text-xs" data-testid="timeline">
+      <summary className="cursor-pointer text-muted-foreground">Timeline ({entries.length})</summary>
+      <ol className="mt-1 space-y-0.5 border-l pl-3">
+        {entries.map((e, k) => (
+          <li key={k} className={e.kind === 'decision' ? 'text-amber-800' : e.kind === 'answer' ? 'text-emerald-800' : ''} data-kind={e.kind}>
+            <span className="text-muted-foreground">{new Date(e.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> {e.text}
+          </li>
+        ))}
+      </ol>
+    </details>
   )
 }
 

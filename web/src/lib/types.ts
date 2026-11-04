@@ -324,6 +324,8 @@ export type Snapshot = {
   // far (rules FD2 and FD6).
   feed?: Entry[]
   cost?: number
+  // turns holds every ended turn of the run, oldest first.
+  turns?: Turn[]
   // assistant is the hikari agent's view, or why the run has none.
   assistant?: AssistantView
 }
@@ -357,7 +359,25 @@ export type TaskView = {
   updated?: string
   file: string
   hash: string
+  // scorecard is what the task's log says of how the work went.
+  scorecard?: Scorecard
 }
+
+// Scorecard is when a scope started and finished, how often it was blocked,
+// how often done was refused, how many reviews it carried, the window of
+// each part, and the log's lines with their times.
+export type Scorecard = {
+  started?: string
+  finished?: string
+  blocks: number
+  refusals: number
+  reviews: number
+  parts: { partition: string; started?: string; finished?: string }[]
+  log: { time?: string; text: string }[]
+}
+
+// Turn is one ended turn of an agent, kept for the run.
+export type Turn = { agent: string; turn: number; time: string; cost: number; duration: number; error?: boolean }
 
 export type QueueView = { id: string; name: string; state: 'running' | 'paused'; scopes: TaskView[]; file: string }
 

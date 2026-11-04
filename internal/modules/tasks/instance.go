@@ -736,6 +736,8 @@ type TaskView struct {
 	// File is the task's path in the vault, and Hash says when it changed.
 	File string `json:"file"`
 	Hash string `json:"hash"`
+	// Scorecard is what the log says of how the work went, for a scope.
+	Scorecard *Scorecard `json:"scorecard,omitempty"`
 }
 
 // MarshalJSON of a part, for the UI.

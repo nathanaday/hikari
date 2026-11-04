@@ -225,6 +225,18 @@ type Activity struct {
 	Unheard bool `json:"unheard,omitempty"`
 }
 
+// Turn is one ended turn of an agent, kept for the run: its time, its
+// cost, and its duration, so that the cost of a scope can be summed from
+// the turns of its partition agents inside their parts' windows.
+type Turn struct {
+	Agent    string    `json:"agent"`
+	Turn     int64     `json:"turn"`
+	Time     time.Time `json:"time"`
+	Cost     float64   `json:"cost"`
+	Duration int64     `json:"duration"`
+	Error    bool      `json:"error,omitempty"`
+}
+
 type Status struct {
 	State  string `json:"state"`
 	Detail string `json:"detail,omitempty"`

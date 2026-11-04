@@ -1,4 +1,4 @@
-import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoView, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoView, ServerEvent, PartitionView, Turn, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -37,6 +37,8 @@ export type State = {
   // feed holds the recent entries of the feed, oldest first, and cost the
   // run's cost so far.
   feed: Entry[]
+  // turns holds every ended turn of the run, oldest first.
+  turns: Turn[]
   cost: number
   // assistant is the hikari agent; panel says whether its panel is open,
   // and assistantUnread that a turn ended while it was closed (rule HA18).
@@ -77,6 +79,7 @@ export function initialState(view: View): State {
     activity: {},
     modules: {},
     feed: [],
+    turns: [],
     cost: 0,
     assistant: assistantOff,
     panel: false,
@@ -155,6 +158,7 @@ function applyEvent(s: State, e: ServerEvent): State {
         activity: e.snapshot.activity ?? {},
         modules: e.snapshot.modules ?? {},
         feed: e.snapshot.feed ?? [],
+        turns: e.snapshot.turns ?? [],
         cost: e.snapshot.cost ?? 0,
         assistant: e.snapshot.assistant ?? assistantOff,
         view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {}, repos: e.snapshot.repos ?? [] }),
@@ -182,7 +186,12 @@ function applyEvent(s: State, e: ServerEvent): State {
       return applyAssistant(s, e.assistant)
     case 'activity': {
       const list = s.activity[e.agent] ?? []
-      return { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+      const next = { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+      // An ended turn joins the run's turns, once.
+      if (e.activity.kind === 'done' && !s.turns.some((t) => t.agent === e.agent && t.turn === e.activity.turn)) {
+        next.turns = [...s.turns, { agent: e.agent, turn: e.activity.turn, time: e.activity.time, cost: e.activity.cost ?? 0, duration: e.activity.duration ?? 0, error: e.activity.error }]
+      }
+      return next
     }
     case 'partition':
       return { ...s, partitions: replaceBy(s.partitions, e.partition, (x) => x.partition_agent) }

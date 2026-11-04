@@ -418,6 +418,22 @@ verdict is one line in the log and not a document, because the review's
 findings are the agent's to act on; what the user needs is who reviewed,
 what was found, and what was left.
 
+## The scorecard of a scope
+
+A change of a policy or a style is a guess until something says whether
+the agents work better with it. The task's log already records every
+status with its time and its author, so the scorecard is computed from the
+log and nothing new is stored: when the scope started and finished, how
+often a part was blocked, how often done was refused, and how many reviews
+it carried. The cost comes from the run's ended turns, which the server
+keeps for the run: the turns of a partition agent from when its part
+started to when it was done are the part's, which is a measure and not a
+bill, because an agent that waits on a block and answers a question in the
+room spends turns inside the window too. The UI sums it, so that the
+server stores one list of turns and no per-task account that could go
+stale. A user who installs a policy and watches the refusals fall over the
+next ten scopes has what no prompt could give: evidence.
+
 ## Policies, styles, skills, and profiles
 
 Four things say how an agent works, and each has one home because each

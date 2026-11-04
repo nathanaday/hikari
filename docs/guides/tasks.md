@@ -65,7 +65,7 @@ When the agent's topology or profile says `review: required`, done also needs a 
 
 The scope's status follows its parts: `blocked` when one is blocked, `testing` when every part is testing or done, and `validating` when every part is done. Then the orchestration agent checks the flows across the partitions, and asks for `done`, which hikari grants only when the scope's features in the orchestration feature map pass. A block reaches the issue as a comment and the label `hikari:blocked`; done reaches it as a comment that names the features and the branch that holds the work, and the label `hikari:done`.
 
-Every change is a line under `## Log`, with the time, who changed it, and why. You are the authority on the project: Set status in the issue's panel, or `hikari task status <task> <status>`, sets any status, with no health check, such as to clear a block that the agents cannot.
+Every change is a line under `## Log`, with the time, who changed it, and why. The issue's panel sums the log into a scorecard: how long the scope took, how many turns its partition agents spent inside their parts and what they cost, how often it was blocked, how often done was refused, and how many reviews it carried; and it lists the timeline, the log with the decisions hikari asked and your answers in order. The cost is the sum of each partition agent's turns from when its part started to when it was done, so a part that was blocked for an hour while its agent did other work shows that hour's cost too; it is a measure, not a bill. You are the authority on the project: Set status in the issue's panel, or `hikari task status <task> <status>`, sets any status, with no health check, such as to clear a block that the agents cannot.
 
 ## 5. Merge
 

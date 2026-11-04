@@ -296,10 +296,13 @@ func TestIssues(t *testing.T) {
 	if i.store.Tasks["shop-12"].Status != Done {
 		t.Fatalf("done: %+v", i.store.Tasks["shop-12"])
 	}
+	// The hook sets the labels and then comments, so the wait is for the
+	// comment, which comes last.
 	wait(t, "the done hook", func() bool {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
-		return slices.Contains(tr.labels[12], LabelDone) && !slices.Contains(tr.labels[12], LabelBlocked) && !slices.Contains(tr.labels[12], LabelWorking)
+		return slices.Contains(tr.labels[12], LabelDone) && !slices.Contains(tr.labels[12], LabelBlocked) && !slices.Contains(tr.labels[12], LabelWorking) &&
+			len(tr.comments[12]) > 0 && strings.Contains(tr.comments[12][len(tr.comments[12])-1].Body, "finished this issue")
 	})
 	tr.mu.Lock()
 	last := tr.comments[12][len(tr.comments[12])-1].Body

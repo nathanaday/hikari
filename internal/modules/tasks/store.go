@@ -661,9 +661,15 @@ func (s *Store) SyncQueues() ([]string, error) {
 // TaskView is t, for the UI and the tools.
 func (s *Store) TaskView(t *Task) TaskView {
 	text := s.texts[taskPath(t.ID)]
-	return TaskView{ID: t.ID, Name: t.Name, Stage: t.Stage, Author: t.Author, Status: t.Status, Block: t.Block, Wait: t.Wait, Queue: s.QueueOf(t.ID), Issue: t.Issue,
+	v := TaskView{ID: t.ID, Name: t.Name, Stage: t.Stage, Author: t.Author, Status: t.Status, Block: t.Block, Wait: t.Wait, Queue: s.QueueOf(t.ID), Issue: t.Issue,
 		Partitions: nonNil(t.Partitions), Features: nonNil(t.Features), Needs: nonNil(t.Needs), Parts: nonNil(t.Parts), Created: t.Created, Updated: t.Updated,
 		File: path.Join(Dir, taskPath(t.ID)), Hash: fmt.Sprintf("%x-%d", len(text), t.Updated.Unix())}
+	if t.Stage == StageScope {
+		copy := *t
+		copy.Partitions = slices.Clone(t.Partitions)
+		v.Scorecard = scorecard(&copy)
+	}
+	return v
 }
 
 // View is the whole pipeline, for the UI and hikari task list (rule TK27):

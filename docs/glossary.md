@@ -92,6 +92,8 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads: the record of an issue in the pipeline. A task that stands for a tracker issue names it in its `issue` property. Its stage says whether the orchestration agent has scoped it.
 
+**Scorecard.** What a scope's log says of how the work went: when it started and finished, how often it was blocked, how often done was refused, how many reviews it carried, and, from the run's turns, how many turns each partition agent spent inside its part and what they cost. The issue's panel shows it with the scope's timeline.
+
 **Scope.** A task once the orchestration agent has written what the work changes: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. The agent scopes an issue when the queue starts it, from the issue's words and the feature maps, and hikari posts the scope to the issue.
 
 **Part.** The share of a scope that one partition does. Its partition agent reports its status.

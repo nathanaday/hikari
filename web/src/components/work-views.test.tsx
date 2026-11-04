@@ -128,3 +128,35 @@ describe('PartitionDetail', () => {
     expect(html).toContain('#/repos/shop')
   })
 })
+
+describe('the scorecard of a scope', () => {
+  it('sums the duration, the turns, the cost, the blocks, the refusals, and the reviews, and lists the timeline', async () => {
+    const { ScopeScorecard, ScopeTimeline } = await import('@/components/work-view')
+    const t = task('cancel', {
+      partitions: ['orders'],
+      status: 'done',
+      scorecard: {
+        started: '2026-11-04T09:00:00Z',
+        finished: '2026-11-04T09:45:00Z',
+        blocks: 1,
+        refusals: 2,
+        reviews: 1,
+        parts: [{ partition: 'orders', started: '2026-11-04T09:00:00Z', finished: '2026-11-04T09:45:00Z' }],
+        log: [{ time: '2026-11-04T09:00:00Z', text: 'orders set the part of orders to started' }],
+      },
+    })
+    const s = { ...initialState({ kind: 'work' }), turns: [{ agent: 'orders', turn: 1, time: '2026-11-04T09:10:00Z', cost: 0.4, duration: 1 }, { agent: 'orders', turn: 2, time: '2026-11-04T09:30:00Z', cost: 0.35, duration: 1 }] }
+    const html = renderToStaticMarkup(<ScopeScorecard task={t} state={s} />)
+    expect(html).toContain('data-testid="scorecard"')
+    expect(html).toContain('took</span> 45 min')
+    expect(html).toContain('turns</span> 2')
+    expect(html).toContain('cost</span> $0.75')
+    expect(html).toContain('blocked</span> 1×')
+    expect(html).toContain('done refused</span> 2×')
+    expect(html).toContain('data-part-cost="orders"')
+    const tl = renderToStaticMarkup(<ScopeTimeline task={t} state={s} />)
+    expect(tl).toContain('Timeline (1)')
+    expect(tl).toContain('orders set the part of orders to started')
+    expect(renderToStaticMarkup(<ScopeScorecard task={task('stub')} state={s} />)).toBe('')
+  })
+})

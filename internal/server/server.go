@@ -100,6 +100,8 @@ type Snapshot struct {
 	// so far (rules FD2 and FD6).
 	Feed []api.Entry `json:"feed"`
 	Cost float64     `json:"cost"`
+	// Turns holds every ended turn of the run, oldest first.
+	Turns []api.Turn `json:"turns"`
 	// Assistant is the hikari agent's view, or why the run has none
 	// (rule HA9).
 	Assistant assistant.View `json:"assistant"`
@@ -142,6 +144,8 @@ type Server struct {
 	nextEntry   int64
 	feedJournal io.Writer
 	cost        float64
+	// turns are the ended turns of the run, oldest first.
+	turns []api.Turn
 	// assistant is the hikari agent of the run, or nil with assistantOff
 	// saying why.
 	assistant    *assistant.Assistant
@@ -151,6 +155,9 @@ type Server struct {
 // maxActivity is the most entries kept per agent. Older turns are dropped
 // whole.
 const maxActivity = 400
+
+// maxTurns is the most ended turns the run keeps for the scorecards.
+const maxTurns = 20000
 
 // New returns a server for topo and its partitions. Each message is also
 // written to journal as one line of JSON when journal is not nil.
@@ -522,6 +529,10 @@ func (s *Server) AddActivity(agent string, a api.Activity) {
 				steps = append(steps, x)
 			}
 		}
+		s.turns = append(s.turns, api.Turn{Agent: agent, Turn: a.Turn, Time: a.Time, Cost: a.Cost, Duration: a.Duration, Error: a.Error})
+		if len(s.turns) > maxTurns {
+			s.turns = slices.Clone(s.turns[len(s.turns)-maxTurns:])
+		}
 		text := "turn done"
 		if a.Error {
 			text = "turn failed"
@@ -663,6 +674,10 @@ func (s *Server) snapshot() Snapshot {
 		snap.Feed = []api.Entry{}
 	}
 	snap.Cost = s.cost
+	snap.Turns = slices.Clone(s.turns)
+	if snap.Turns == nil {
+		snap.Turns = []api.Turn{}
+	}
 	if s.assistant != nil {
 		snap.Assistant = s.assistant.View()
 	} else {
