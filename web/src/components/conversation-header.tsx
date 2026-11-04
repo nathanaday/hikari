@@ -27,20 +27,27 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   )
 }
 
-// OrchestrationTabs are the tabs of the orchestration agent's page: its
-// messages, and its feature map (rule K12 of the skill packs spec).
-function OrchestrationTabs({ state, name, show }: { state: State; name: string; show: (v: View) => void }) {
+// AgentTabs are the tabs of an agent's page: its messages, its context
+// (what its container puts before Claude Code), and, for the orchestration
+// agent, its feature map (rule K12 of the skill packs spec).
+function AgentTabs({ state, name, orchestration, show }: { state: State; name: string; orchestration: boolean; show: (v: View) => void }) {
   const v = state.view
   const onMap = v.kind === 'map' && !!v.orchestration
+  const onContext = v.kind === 'dm' && v.tab === 'context'
   const docs = state.wikis.find((w) => w.ref === orchestrationRef)?.documents.length ?? 0
   return (
-    <div className="mt-3 -mb-3 flex gap-4">
-      <TabButton active={!onMap} onClick={() => show({ kind: 'dm', name })}>
+    <div className="mt-3 -mb-3 flex gap-4" data-testid="agent-tabs">
+      <TabButton active={!onMap && !onContext} onClick={() => show({ kind: 'dm', name })}>
         Messages
       </TabButton>
-      <TabButton active={onMap} onClick={() => show({ kind: 'map', orchestration: true })}>
-        {docs ? `Feature map (${docs})` : 'Feature map'}
+      <TabButton active={onContext} onClick={() => show({ kind: 'dm', name, tab: 'context' })}>
+        Context
       </TabButton>
+      {orchestration && (
+        <TabButton active={onMap} onClick={() => show({ kind: 'map', orchestration: true })}>
+          {docs ? `Feature map (${docs})` : 'Feature map'}
+        </TabButton>
+      )}
     </div>
   )
 }
@@ -106,7 +113,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         <p className="text-sm text-muted-foreground">
           The orchestration feature map: features that cross partitions, each with the health of the partition features it links, its principles and rules, and your plans and notes.
         </p>
-        {orchestrationOf(state.participants) && <OrchestrationTabs state={state} name={orchestrationOf(state.participants)!} show={show} />}
+        {orchestrationOf(state.participants) && <AgentTabs state={state} name={orchestrationOf(state.participants)!} orchestration show={show} />}
       </>
     ) : v.public ? (
       <>
@@ -342,7 +349,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             )}
           </p>
           {agent.status.detail && <p className="mt-1 text-sm break-words text-red-600">{agent.status.detail}</p>}
-          {agent.role === 'orchestration' && <OrchestrationTabs state={state} name={agent.name} show={show} />}
+          <AgentTabs state={state} name={agent.name} orchestration={agent.role === 'orchestration'} show={show} />
         </div>
       </div>
     )

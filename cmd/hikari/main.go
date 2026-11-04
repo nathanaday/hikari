@@ -161,6 +161,10 @@ func up(ctx context.Context, args []string) error {
 		return errShown
 	}
 	uiToken := server.NewToken()
+	// The UI's agent context view builds each agent's prompt as the driver
+	// does; the server takes the builder from here, so that it imports no
+	// driver.
+	server.BuildContext = func(self api.Self, root string) any { return driver.BuildContext(self, root) }
 	host := server.NewHost(uiToken, ed)
 	httpSrv := &http.Server{Handler: host.Handler()}
 	go httpSrv.Serve(ln)

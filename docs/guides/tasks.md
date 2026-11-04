@@ -69,7 +69,7 @@ Every change is a line under `## Log`, with the time, who changed it, and why. T
 
 ## 5. Merge
 
-The work is on your branch of each repository the scope touched. Open the repository's page in the Repositories section, push the branch, open a pull request with `Closes #12` in its body, watch its checks, and merge; the [repositories guide](repositories.md) has the details. GitHub closes the issue when the pull request merges.
+The work is on your branch of each repository the scope touched. Once the scope is done, the issue's panel lists each of those repositories with the next step: Push when your branch is not on origin yet, then Open pull request, with the title and the body prefilled from the issue and the scope and `Closes #12` on the first line, so that GitHub closes the issue when the pull request merges. A scope that wrote to another repository of the same forge gets `Closes owner/name#12` instead. The pull request then shows on the panel with its checks, and the repository's page in the Repositories section has the rest: every branch, every pull request, and Merge; the [repositories guide](repositories.md) has the details.
 
 ## Queues
 

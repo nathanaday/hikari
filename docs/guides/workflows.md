@@ -80,6 +80,10 @@ A skill is a directory with `SKILL.md`, whose frontmatter has a `name` that matc
 
 A profile is YAML under `x-hikari.profiles`. Name it for the kind of work, not the agent: `careful`, `frontend`, `library-maintainer`.
 
+## Seeing what an agent sees
+
+An agent's page in the web UI has a Context tab: the system prompt its container puts before Claude Code on each turn, built on the host from the same files, with the policies and the granted styles in it; its profile, model, effort, and review; its pack from Hikari; and its granted skills and styles, with a granted style the vault lacks named. Read it after you change a policy or a style, to see the words the agent will get, and before you blame the agent for a rule it was never given.
+
 ## How they reach the container
 
 The driver rebuilds the agent's context before every turn, so a change of a policy, a style, or a skill applies from the next turn, without a restart. Every container mounts `vault/public/` read-only at `/hikari/public/`, so the policies are there. A granted style is mounted at `/hikari/styles/<name>.md` and a granted skill at `/hikari/skills/<name>/`, both read-only, and the driver links each skill into `~/.claude/skills/`. A profile is resolved when hikari reads the topology, so a change of a profile needs `hikari up` again. The agent's inspector in the web UI shows the mounts and the resolved skills and styles.

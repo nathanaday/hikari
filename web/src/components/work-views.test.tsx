@@ -160,3 +160,30 @@ describe('the scorecard of a scope', () => {
     expect(renderToStaticMarkup(<ScopeScorecard task={task('stub')} state={s} />)).toBe('')
   })
 })
+
+describe('a pull request from a scope', () => {
+  it('offers Push, Open pull request, or the pull request, for each repository the scope wrote to', async () => {
+    const { ScopePullRequests } = await import('@/components/work-view')
+    const { branchView, issue: issueOf, partition, pullRequest, repoView } = await import('@/lib/fixtures')
+    const done = task('shop-12', { name: 'Cancel orders', issue: 'shop#12', status: 'done', partitions: ['orders', 'inventory'] })
+    const inv = partition('inventory')
+    inv.folders = [{ place: 'stock', repo: 'stock', path: '', read_only: false }]
+    const s = {
+      ...initialState({ kind: 'work' }),
+      partitions: [partition('orders'), inv],
+      repos: [
+        repoView('shop', { branches: [branchView('hikari', { yours: true, ahead: 1 }), branchView('main', { default: true })] }),
+        repoView('stock', { branches: [branchView('hikari', { yours: true, pull_request: 4 }), branchView('main', { default: true })], pull_requests: [pullRequest(4, { head: 'hikari' })] }),
+      ],
+    }
+    const html = renderToStaticMarkup(<ScopePullRequests task={done} issue={issueOf('shop#12', { title: 'Cancel an order' })} state={s} run={() => {}} />)
+    expect(html).toContain('data-testid="scope-pulls"')
+    expect(html).toContain('data-scope-pull="shop"')
+    expect(html).toContain('data-pull-state="open"')
+    expect(html).toContain('Open pull request')
+    expect(html).toContain('data-pull-state="opened"')
+    expect(html).toContain('#4 opened')
+    const none = renderToStaticMarkup(<ScopePullRequests task={task('x', { status: 'done', partitions: ['web'] })} issue={issueOf('x')} state={s} run={() => {}} />)
+    expect(none).toBe('')
+  })
+})

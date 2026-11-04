@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/driver"
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/partitions"
 	"github.com/nathanaday/hikari/internal/testmap"
@@ -628,6 +629,16 @@ func TestVaultRoutes(t *testing.T) {
 	resp, _ := http.Get(srv.URL + "/api/ui/vault/public")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("the vault needs the UI token: %s", resp.Status)
+	}
+
+	// The context of an agent, as the UI shows it.
+	BuildContext = func(self api.Self, root string) any { return driver.BuildContext(self, root) }
+	defer func() { BuildContext = nil }()
+	if code, body := get("/api/ui/agents/writer/context"); code != 200 || !strings.Contains(body, `"prompt":"# hikari network`) || !strings.Contains(body, `Never log secrets.`) || !strings.Contains(body, `"pack":["hikari-plan-work"`) {
+		t.Errorf("agent context = %d %s", code, body)
+	}
+	if code, _ := get("/api/ui/agents/ghost/context"); code != 404 {
+		t.Errorf("an unknown agent's context = %d", code)
 	}
 
 	// The toolbox: listed with what the vault has, installed once, and a

@@ -3,6 +3,7 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { AssistantPanel } from '@/components/assistant-panel'
 import { Cat } from '@/components/cat'
 import { Composer } from '@/components/composer'
+import { AgentContextView } from '@/components/agent-context'
 import { ConversationHeader } from '@/components/conversation-header'
 import { FeedView } from '@/components/feed-view'
 import { GridView } from '@/components/grid-view'
@@ -69,6 +70,8 @@ export default function App() {
     main = <RepoView key={v.name} state={state} name={v.name} show={show} />
   } else if (v.kind === 'room' && v.tab === 'wiki') {
     main = <PublicWiki orchestration={orchestrationOf(state.participants)} wiki={state.wikis.find((w) => w.ref === 'public')} show={show} />
+  } else if (v.kind === 'dm' && v.tab === 'context') {
+    main = <AgentContextView key={v.name} name={v.name} state={state} />
   } else if (v.kind === 'room' && v.tab === 'vocabulary') {
     main = <VocabularyPanel orchestration={orchestrationOf(state.participants)} vocabulary={state.vocabulary} />
   } else {
@@ -93,7 +96,7 @@ export default function App() {
               <>
                 <ConversationHeader state={state} show={show} onMention={mention} />
                 {main}
-                {v.kind !== 'map' && v.kind !== 'work' && v.kind !== 'repos' && v.kind !== 'repo' && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
+                {v.kind !== 'map' && v.kind !== 'work' && v.kind !== 'repos' && v.kind !== 'repo' && !(v.kind === 'dm' && v.tab === 'context') && <Composer key={key} state={state} draft={draft} setDraft={setDraft} send={send} inputRef={inputRef} />}
               </>
             )}
             {state.mode === 'running' && (

@@ -14,7 +14,9 @@ export type View =
   // select is the entity that the Structure tab shows, as kind:id.
   | { kind: 'topology'; tab?: TopologyTab; line?: number; select?: string }
   | { kind: 'room'; tab?: RoomTab }
-  | { kind: 'dm'; name: string }
+  // dm is an agent's direct messages, or with the context tab what its
+  // container puts before Claude Code on each turn.
+  | { kind: 'dm'; name: string; tab?: 'context' }
   | { kind: 'partition'; name: string }
   | { kind: 'release'; name: string; deliverable: string; version: string }
   // map is the topology map, or the wiki map of one partition, or with public
@@ -57,6 +59,7 @@ export function viewHash(v: View): string {
   if (v.kind === 'repo') return `#/repos/${encodeURIComponent(v.name)}`
   if (v.kind === 'room') return v.tab && v.tab !== 'messages' ? `#/room/${v.tab}` : '#/room'
   if (v.kind === 'release') return `#/partition/${v.name}/release/${v.deliverable}/${v.version}`
+  if (v.kind === 'dm' && v.tab === 'context') return `#/dm/${v.name}/context`
   return `#/${v.kind}/${v.name}`
 }
 
@@ -85,6 +88,8 @@ export function parseHash(hash: string): View {
   if (hash === '#/room') return { kind: 'room' }
   const room = hash.match(/^#\/room\/(vocabulary|wiki)$/)
   if (room) return { kind: 'room', tab: room[1] as RoomTab }
+  const context = hash.match(/^#\/dm\/([\w-]+)\/context$/)
+  if (context) return { kind: 'dm', name: context[1], tab: 'context' }
   const m = hash.match(/^#\/(dm|partition)\/([\w-]+)$/)
   return m ? { kind: m[1] as 'dm' | 'partition', name: m[2] } : allView
 }

@@ -1086,7 +1086,7 @@ func (i *instance) doneComment(t *Task) string {
 		for _, repo := range sortedKeys(branches) {
 			where = append(where, fmt.Sprintf("`%s` of %s", branches[repo], repo))
 		}
-		b.WriteString("\n\nThe work is on the branch " + strings.Join(where, " and ") + ". Open a pull request from the Repositories page of hikari to merge it.")
+		b.WriteString("\n\nThe work is on the branch " + strings.Join(where, " and ") + ". Open a pull request from this issue's panel in hikari, or from the Repositories page, to merge it.")
 	}
 	return b.String()
 }

@@ -590,3 +590,30 @@ func TestReviewedPrompt(t *testing.T) {
 		t.Error("an agent without the requirement is not told")
 	}
 }
+
+// TestBuildContext checks the context of an agent as the UI shows it: the
+// prompt with the vault's policies and the granted styles, the pack, and
+// the names of what shapes it, with a granted style the vault lacks named.
+func TestBuildContext(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "public", "policies", "no-secrets.md"), "Never print a credential.")
+	writeFile(t, filepath.Join(root, "styles", "terse.md"), "Say it in one line.")
+	self := partitionAgent
+	self.Skills, self.Styles, self.Profile, self.Model, self.Effort, self.Review = []string{"tdd"}, []string{"terse", "ghost"}, "careful", "opus", "high", "required"
+	c := BuildContext(self, root)
+	for _, want := range []string{"# hikari network", "# Policies", "Never print a credential.", "# Styles", "## terse", "Say it in one line.", "Your work is reviewed"} {
+		if !strings.Contains(c.Prompt, want) {
+			t.Errorf("the prompt lacks %q", want)
+		}
+	}
+	if !slices.Equal(c.Pack, api.Packs[api.RolePartition]) || !slices.Equal(c.Skills, []string{"tdd"}) || !slices.Equal(c.Styles, []string{"terse", "ghost"}) || !slices.Equal(c.Policies, []string{"no-secrets"}) {
+		t.Errorf("context = %+v", c)
+	}
+	if !slices.Equal(c.Missing, []string{"ghost"}) || c.Profile != "careful" || c.Model != "opus" || c.Effort != "high" || c.Review != "required" {
+		t.Errorf("context = %+v", c)
+	}
+	lead := BuildContext(api.Self{Name: "lead", Orchestration: true, Participants: room}, root)
+	if !slices.Equal(lead.Pack, api.Packs[api.RoleOrchestration]) || len(lead.Styles) != 0 || !strings.Contains(lead.Prompt, "# Policies") {
+		t.Errorf("the orchestration agent's context = %+v", lead)
+	}
+}

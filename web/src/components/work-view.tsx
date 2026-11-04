@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ExternalLink, Pause, Pencil, Play, Plus, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ExternalLink, GitPullRequest, Pause, Pencil, Play, Plus, RefreshCw, TriangleAlert, Upload, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { DecisionCard } from '@/components/decision-card'
 import { Markdown } from '@/components/markdown'
 import { pendingDecisions } from '@/lib/attention'
 import { ago, issueRef } from '@/lib/repos'
+import { scopePulls, type ScopePull } from '@/lib/pulls'
 import { duration, money, partCosts, timeline, totalCost, totalTurns } from '@/lib/scorecard'
 import type { State } from '@/lib/store'
 import type { IssueDetail, IssueView, QueueView, TaskStatus, TaskView, TasksView } from '@/lib/types'
@@ -730,6 +731,7 @@ function IssuePanel({
           {t.features.length > 0 && <p className="text-xs text-muted-foreground">Features: {t.features.map((f) => `[[${f}]]`).join(', ')}</p>}
           {t.needs.length > 0 && <p className="text-xs text-muted-foreground">Needs: {t.needs.map((f) => `[[${f}]]`).join(', ')}</p>}
           <ScopeScorecard task={t} state={state} />
+          {t.status === 'done' && <ScopePullRequests task={t} issue={i} state={state} run={run} onChange={() => setTick((n) => n + 1)} />}
           {t.stage === 'scope' && (
             <div data-testid="task-body">
               <Markdown text={taskBody || '_Loading…_'} names={names} />
@@ -739,6 +741,102 @@ function IssuePanel({
         </section>
       )}
     </aside>
+  )
+}
+
+// repoCall sends one action of a repository, as the Repositories page does.
+async function repoCall(path: string, body?: unknown): Promise<string | null> {
+  const res = await fetch(`/api/ui/repos${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).catch(() => undefined)
+  if (!res) return 'The hikari server is not reachable.'
+  if (res.ok) return null
+  const e = (await res.json().catch(() => ({}))) as { error?: string }
+  return e.error ?? res.statusText
+}
+
+// ScopePullRequests is the next step after done: for each repository the
+// scope wrote to, push your branch or open a pull request prefilled from
+// the scope, with the line that closes the issue (a pull request from a
+// scope).
+export function ScopePullRequests({ task: t, issue: i, state, run, onChange }: { task: TaskView; issue: IssueView; state: State; run: (p: Promise<string | null>) => void; onChange?: () => void }) {
+  const pulls = useMemo(() => scopePulls(t, i, state.repos, state.partitions), [t, i, state.repos, state.partitions])
+  const [editing, setEditing] = useState<ScopePull | null>(null)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  if (pulls.length === 0) return null
+  const start = (p: ScopePull) => {
+    setEditing(p)
+    setTitle(p.title)
+    setBody(p.body)
+  }
+  return (
+    <div className="space-y-1.5 rounded-md border p-2 text-xs" data-testid="scope-pulls">
+      <p className="font-medium">Merge the work</p>
+      <ul className="space-y-1">
+        {pulls.map((p) => (
+          <li key={p.repo} className="flex flex-wrap items-center gap-2" data-scope-pull={p.repo} data-pull-state={p.state}>
+            <span>
+              <code>{p.branch}</code> of {p.repo}
+              {p.base ? (
+                <>
+                  {' '}
+                  → <code>{p.base}</code>
+                </>
+              ) : null}
+            </span>
+            {p.state === 'push' && (
+              <Button size="sm" variant="secondary" onClick={() => run(repoCall(`/${encodeURIComponent(p.repo)}/push`).then((e) => (e ? e : (onChange?.(), null))))}>
+                <Upload className="size-3" />
+                Push, then open a pull request
+              </Button>
+            )}
+            {p.state === 'open' && (
+              <Button size="sm" onClick={() => start(p)}>
+                <GitPullRequest className="size-3" />
+                Open pull request
+              </Button>
+            )}
+            {(p.state === 'opened' || p.state === 'merged') && p.url && (
+              <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2">
+                #{p.pull} {p.state}
+                <ExternalLink className="size-3" />
+              </a>
+            )}
+            {p.state === 'no-forge' && <span className="text-muted-foreground">no forge: merge the branch yourself</span>}
+            {p.state === 'no-branch' && <span className="text-muted-foreground">your branch does not exist yet</span>}
+          </li>
+        ))}
+      </ul>
+      {editing && (
+        <form
+          className="space-y-1.5"
+          data-testid="scope-pull-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!title.trim()) return
+            run(
+              repoCall(`/${encodeURIComponent(editing.repo)}/pulls`, { title: title.trim(), body }).then((err) => {
+                if (!err) {
+                  setEditing(null)
+                  onChange?.()
+                }
+                return err
+              }),
+            )
+          }}
+        >
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Pull request title" className="h-7 text-xs" />
+          <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} aria-label="Pull request body" className="text-xs" />
+          <div className="flex gap-2">
+            <Button size="sm" type="submit" disabled={!title.trim()}>
+              Open {editing.branch} → {editing.base}
+            </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }
 

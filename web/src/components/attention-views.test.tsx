@@ -125,3 +125,24 @@ describe('GridView', () => {
     expect(viewKey({ kind: 'grid' })).toBe('grid')
   })
 })
+
+describe('the agent context view', () => {
+  it('shows how the agent works, what shapes its prompt, and the prompt', async () => {
+    const { AgentContextBody } = await import('@/components/agent-context')
+    const ctx = { prompt: '# hikari network\n\nYou are the agent "orders".\n\n# Policies\n\n## no-secrets\n\nNever print a credential.', pack: ['hikari-plan-work', 'hikari-do-work'], skills: ['tdd'], styles: ['terse', 'ghost'], policies: ['no-secrets'], profile: 'careful', model: 'opus', effort: 'high', review: 'required', missing: ['ghost'] }
+    const html = renderToStaticMarkup(<AgentContextBody name="orders" ctx={ctx} state={stateWith({})} />)
+    expect(html).toContain('data-testid="agent-context"')
+    expect(html).toContain('>careful<')
+    expect(html).toContain('>opus<')
+    expect(html).toContain('>high<')
+    expect(html).toContain('required before done')
+    expect(html).toContain('hikari-plan-work')
+    expect(html).toContain('>tdd<')
+    expect(html).toContain('missing in the vault: ghost')
+    expect(html).toContain('>no-secrets<')
+    expect(html).toContain('Never print a credential.')
+    const lead = renderToStaticMarkup(<AgentContextBody name="lead" ctx={{ ...ctx, review: '' }} state={stateWith({})} />)
+    expect(lead).toContain('orchestration agent')
+    expect(lead).not.toContain('>Review<')
+  })
+})

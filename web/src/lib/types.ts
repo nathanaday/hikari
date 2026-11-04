@@ -203,6 +203,10 @@ export type SharedListing = {
   styles?: { name: string; path: string; holders: string[] }[]
 }
 
+// AgentContext is what an agent's container puts before Claude Code on
+// each turn, built on the host: the prompt and the names of what shapes it.
+export type AgentContext = { prompt: string; pack: string[]; skills: string[]; styles: string[]; policies: string[]; profile?: string; model?: string; effort?: string; review?: string; missing?: string[] }
+
 // ToolboxItem is one built-in item of hikari's toolbox, with whether the
 // vault has it.
 export type ToolboxItem = { kind: 'policy' | 'style' | 'skill' | 'profile'; name: string; description: string; installed: boolean; path?: string }

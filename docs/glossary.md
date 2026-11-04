@@ -52,6 +52,8 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It runs in your terminal, or in the panel of the web UI, where `hikari up` runs it for you in the project root, as you, with your permissions asked. It is not in the room, and it does not work on the code.
 
+**Context.** What an agent's container puts before Claude Code on each turn: its system prompt, with the policies and the granted styles, built from the topology and the vault. The Context tab of the agent's page shows it, built on the host from the same files.
+
 **Panel.** Your chat with the hikari agent, anchored to the right of the web UI's page: your messages, its turns, a card for each permission it asks for, and the model, the effort, and the permission mode of its next turn. Hikari, the cat, toggles it.
 
 **Hikari (the cat).** The white pixel-art cat at the top right of the page, which toggles the panel and shows the mood of the run.
