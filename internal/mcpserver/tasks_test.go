@@ -145,7 +145,7 @@ services:
 	// TK14: orders works its part; done waits for create-order to pass.
 	must(orders, "set_task_status", map[string]any{"task": "cancel-orders", "status": "started"}, "The status is started.")
 	must(orders, "set_task_status", map[string]any{"task": "cancel-orders", "status": "testing"}, "The status is testing.")
-	must(orders, "set_task_status", map[string]any{"task": "cancel-orders", "status": "done"}, "Done is not granted yet; the status stays testing, because [[create-order]] is")
+	must(orders, "set_task_status", map[string]any{"task": "cancel-orders", "status": "done"}, "Done is not granted yet; the status stays testing, because: [[create-order]] is")
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "code-map.yaml"), []byte("version: 1\nparts: [{path: shop/orders/create.py, description: Order creation.}]\nfeatures:\n  create-order: {code: [shop/orders/create.py]}\n"), 0o644)
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "tests.yaml"), []byte("version: 1\nsuites:\n  unit: {command: python3 -m pytest}\ntests:\n  shop/orders/tests/test_create.py: [\"[[create-order]]\"]\n"), 0o644)
 	os.WriteFile(filepath.Join(repo, "orders", ".hikari", "private", "reports", "unit.xml"), []byte(`<testsuite><testcase classname="tests.test_create.T" name="test_a" file="shop/orders/tests/test_create.py"/></testsuite>`), 0o644)

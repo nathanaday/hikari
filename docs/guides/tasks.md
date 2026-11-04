@@ -61,6 +61,8 @@ You can also ask for a plan before any work: press **Plan** on an issue, and the
 
 Each partition agent reports its part: `started` when it begins, `testing` when its suites run, `blocked` with a reason the moment it cannot go on, and `done` when its suites pass. hikari grants `done` only when the health of every feature of the scope in that partition is passing; until then, the part stays `testing`, and the agent learns which features fail.
 
+When the agent's topology or profile says `review: required`, done also needs a review: the agent reads its whole change with `get_changes`, sends the fresh `hikari-reviewer` subagent with the diff, the part, and the policies and styles it was given, fixes the blockers, and passes the verdict as `review`. hikari refuses done without it, and the verdict is a line of the task's log, so you read who reviewed and what was found. The [workflows guide](workflows.md) says how to require a review.
+
 The scope's status follows its parts: `blocked` when one is blocked, `testing` when every part is testing or done, and `validating` when every part is done. Then the orchestration agent checks the flows across the partitions, and asks for `done`, which hikari grants only when the scope's features in the orchestration feature map pass. A block reaches the issue as a comment and the label `hikari:blocked`; done reaches it as a comment that names the features and the branch that holds the work, and the label `hikari:done`.
 
 Every change is a line under `## Log`, with the time, who changed it, and why. You are the authority on the project: Set status in the issue's panel, or `hikari task status <task> <status>`, sets any status, with no health check, such as to clear a block that the agents cannot.

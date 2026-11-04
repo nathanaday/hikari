@@ -58,6 +58,9 @@ func open(h module.Host) (*instance, error) {
 			return ok
 		},
 		Health: h.Health,
+		Reviewed: func(p string) bool {
+			return topo.Agents[p].Review == topology.ReviewRequired
+		},
 	}
 	st, err := Open(filepath.Join(h.VaultDir(), Dir), check, time.Now)
 	if err != nil {
@@ -279,6 +282,9 @@ type StatusRequest struct {
 	Part   string `json:"part,omitempty"`
 	Status string `json:"status"`
 	Note   string `json:"note,omitempty"`
+	// Review is the verdict of the review that a partition agent carries
+	// into its request for done.
+	Review string `json:"review,omitempty"`
 }
 
 // StateRequest starts or pauses a queue.
@@ -566,7 +572,7 @@ func (i *instance) setStatus(r *http.Request, caller string) (any, error) {
 		return nil, err
 	}
 	return i.do("set the status of [["+req.Task+"]]", func(c *Change) (any, error) {
-		g, err := i.store.SetStatus(caller, req.Task, req.Part, req.Status, req.Note, c)
+		g, err := i.store.SetStatusReviewed(caller, req.Task, req.Part, req.Status, req.Note, req.Review, c)
 		return g, err
 	})
 }

@@ -321,3 +321,42 @@ func (r *Repo) git(args ...string) (string, error) {
 	}
 	return strings.TrimRight(stdout.String(), " \t\r\n"), nil
 }
+
+// MergeBase returns the merge base of a and b, or "" when they share no
+// history.
+func (r *Repo) MergeBase(a, b string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, _ := r.git("merge-base", a, b)
+	return out
+}
+
+// DiffAgainst returns the unified diff from base to the working tree,
+// inside the paths: committed changes since base and uncommitted changes
+// of tracked files. A path of "" is the whole repo.
+func (r *Repo) DiffAgainst(base string, paths ...string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	args := []string{"diff", "--no-color", "--no-ext-diff", "--no-renames", base, "--"}
+	for _, p := range paths {
+		args = append(args, pathspec(p))
+	}
+	args = append(args, runtimeFiles...)
+	return r.git(args...)
+}
+
+// Untracked lists the files inside the paths that git does not track or
+// ignore.
+func (r *Repo) Untracked(paths ...string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	args := []string{"ls-files", "--others", "--exclude-standard", "--"}
+	for _, p := range paths {
+		args = append(args, pathspec(p))
+	}
+	out, err := r.git(args...)
+	if err != nil {
+		return nil, err
+	}
+	return lines(out), nil
+}

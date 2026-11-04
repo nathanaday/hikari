@@ -42,6 +42,12 @@ Here `billing` runs on `opus` at high effort, needs a review before it asks for 
 
 `effort` is one of `low`, `medium`, `high`, `xhigh`, and `max`, and `review` is `required` or `none`. hikari passes the effort to Claude Code with each turn.
 
+## Reviews
+
+`review: required` on an agent or its profile makes a review part of done. Before a partition agent asks for done on its part of a scope, it loads the built-in `hikari-review-work` skill: it reads its whole change with `get_changes`, the diff of its folders from the merge base with the default branch, and sends the `hikari-reviewer` subagent with the diff, the part of the scope, the policies in `/hikari/public/policies/`, the styles in `/hikari/styles/`, and the feature documents the change touches. The reviewer is a fresh context that did not write the change. It returns findings as `blocker`, `should`, or `nit`, each with a place and the rule it cites, which is how your policies and styles become checks and not only text. The agent fixes the blockers, runs its suites again, and passes a one-line verdict as `review` to `set_task_status`. hikari refuses done without it, and the verdict is a line of the task's log.
+
+A review is a reading, not a test run and not approval: tests are `hikari-validate-work`, health is hikari's, and approval is yours when you merge. An agent whose review is not required can still load the skill when a change is large; the policies you install from the toolbox say when.
+
 ## The toolbox
 
 hikari ships ready-made policies, styles, skills, and profile recipes. List them, read one, and install one:

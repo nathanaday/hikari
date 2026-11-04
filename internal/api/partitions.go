@@ -515,3 +515,32 @@ type ContractEntry struct {
 func (c *Client) WriteContract(ctx context.Context, req ContractRequest) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/contracts", req, nil)
 }
+
+// Changes is the work of a partition on your branch, for a review: the
+// diff of its writable folders in each repo from the base, with the files
+// that git does not track yet.
+type Changes struct {
+	Repos []RepoChanges `json:"repos"`
+}
+
+// RepoChanges is the diff of one repo's folders. Base is the commit the
+// diff starts from: the merge base with the default branch, or the commit
+// at the start of the run when the repo has no default branch. Truncated
+// says that the diff was cut at MaxDiffBytes.
+type RepoChanges struct {
+	Repo      string   `json:"repo"`
+	Branch    string   `json:"branch"`
+	Base      string   `json:"base"`
+	Diff      string   `json:"diff"`
+	Untracked []string `json:"untracked,omitempty"`
+	Truncated bool     `json:"truncated,omitempty"`
+}
+
+// MaxDiffBytes is the most of a repo's diff that Changes carries.
+const MaxDiffBytes = 400 << 10
+
+func (c *Client) Changes(ctx context.Context) (Changes, error) {
+	var out Changes
+	err := c.do(ctx, http.MethodGet, "/api/agent/changes", nil, &out)
+	return out, err
+}

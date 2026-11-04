@@ -1040,3 +1040,40 @@ func TestContracts(t *testing.T) {
 		t.Errorf("listing after the write = %+v", list)
 	}
 }
+
+// TestChanges checks the diff that a partition agent reads for a review:
+// its folders' committed and uncommitted changes since the base, and the
+// files git does not track yet, and nothing of another partition.
+func TestChanges(t *testing.T) {
+	f := newFixture(t)
+	write(t, f.repo, "services/orders/cancel.py", "def cancel(): pass\n")
+	write(t, f.repo, "services/orders/create.py", "def create():\n    return 1\n")
+	write(t, f.repo, "services/inventory/stock.py", "def reserve():\n    return 2\n")
+	if _, err := f.m.Commit("orders", "orders: add cancel"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, f.repo, "services/orders/create.py", "def create():\n    return 3\n")
+	write(t, f.repo, "services/orders/notes.txt", "draft\n")
+	ch, err := f.m.Changes("orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Repos) != 1 || ch.Repos[0].Repo != "shop" || ch.Repos[0].Base == "" {
+		t.Fatalf("changes = %+v", ch)
+	}
+	d := ch.Repos[0].Diff
+	for _, want := range []string{"services/orders/cancel.py", "+def cancel(): pass", "+    return 3"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the diff lacks %q:\n%s", want, d)
+		}
+	}
+	if strings.Contains(d, "inventory") {
+		t.Errorf("the diff holds another partition's change:\n%s", d)
+	}
+	if !slices.Equal(ch.Repos[0].Untracked, []string{"services/orders/notes.txt"}) {
+		t.Errorf("untracked = %v", ch.Repos[0].Untracked)
+	}
+	if _, err := f.m.Changes("lead"); err == nil {
+		t.Error("the orchestration agent has no changes to read")
+	}
+}

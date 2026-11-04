@@ -191,6 +191,9 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		commits, err := sys.MarkCurrent(agent)
 		return api.CommitResponse{Commits: commits}, err
 	})
+	handle("GET /api/agent/changes", func(r *http.Request, agent string) (any, error) {
+		return sys.Changes(agent)
+	})
 	handle("POST /api/agent/commit", func(r *http.Request, agent string) (any, error) {
 		var req api.CommitRequest
 		if err := decode(r, &req); err != nil {

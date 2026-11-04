@@ -698,6 +698,43 @@ func (m *Manager) apply(o *partitionAgent, message string) ([]string, error) {
 	return out, errors.Join(errs...)
 }
 
+// Changes returns the work of a partition agent on its branch, for a
+// review: in each repo of its writable folders, the diff from the merge
+// base with the default branch (or from the commit at the start of the run
+// when the repo has no default branch) to the working tree, and the files
+// git does not track yet.
+func (m *Manager) Changes(agent string) (api.Changes, error) {
+	o, err := m.partitionAgent(agent)
+	if err != nil {
+		return api.Changes{}, err
+	}
+	out := api.Changes{Repos: []api.RepoChanges{}}
+	for _, name := range o.repos {
+		repo := m.repos[name]
+		base := m.start[name]
+		if def := repo.DefaultBranch(gitrepo.Origin); def != "" {
+			for _, ref := range []string{"refs/remotes/origin/" + def, "refs/heads/" + def} {
+				if mb := repo.MergeBase(ref, "HEAD"); mb != "" {
+					base = mb
+					break
+				}
+			}
+		}
+		folders := o.folders(name)
+		diff, err := repo.DiffAgainst(base, folders...)
+		if err != nil {
+			return api.Changes{}, fmt.Errorf("repo %q: %w", name, err)
+		}
+		untracked, _ := repo.Untracked(folders...)
+		rc := api.RepoChanges{Repo: name, Branch: m.topo.Repos[name].Branch, Base: base, Diff: diff, Untracked: untracked}
+		if len(rc.Diff) > api.MaxDiffBytes {
+			rc.Diff, rc.Truncated = rc.Diff[:api.MaxDiffBytes], true
+		}
+		out.Repos = append(out.Repos, rc)
+	}
+	return out, nil
+}
+
 // GitRepos returns the prepared git repos, by name, so that one handle
 // serializes the git commands of each repo.
 func (m *Manager) GitRepos() map[string]*gitrepo.Repo { return maps.Clone(m.repos) }

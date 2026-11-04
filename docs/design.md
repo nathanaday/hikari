@@ -394,6 +394,30 @@ the contracts, and the public wiki, and hikari writes no `granted/`. An
 agent's changes in its `can-edit/` are committed with its apply, so they are
 reviewed like its code.
 
+## A review before done
+
+Health says that the tests pass, and the partition agent writes the tests.
+An agent that wants done can weaken a test, drop a key of the test map,
+or stub a behavior, and health reads passing. The user's policies and
+styles are text in a prompt that nothing checks. So a partition whose
+agent's review is required gets done only with a review: a fresh subagent,
+`hikari-reviewer`, with no memory of the turn that made the change, reads
+the diff of the partition's folders against the part of the scope, the
+policies, the styles, and the feature documents, and returns findings with
+a place and the rule each cites. The agent fixes the blockers and carries
+the verdict into its request for done, which hikari refuses without one and
+logs with one.
+
+The reviewer runs in the partition agent's container, as a subagent, and
+not as an agent of the topology, because it needs the code and the
+partition's tools and nothing else: it reads, and it never writes a file
+or calls a hikari tool. The diff it reads comes from `get_changes`, which
+hikari computes on the host from the merge base with the default branch,
+so that the reviewer sees the whole change and not the last turn's. The
+verdict is one line in the log and not a document, because the review's
+findings are the agent's to act on; what the user needs is who reviewed,
+what was found, and what was left.
+
 ## Policies, styles, skills, and profiles
 
 Four things say how an agent works, and each has one home because each

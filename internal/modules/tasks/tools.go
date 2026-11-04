@@ -78,6 +78,7 @@ type statusArgs struct {
 	Task   string `json:"task" jsonschema:"the scope, by id"`
 	Status string `json:"status" jsonschema:"for your part as a partition agent: started, testing, blocked, or done; for a scope as the orchestration agent: blocked, started (to clear the scope's block), or done"`
 	Note   string `json:"note,omitempty" jsonschema:"why; required for blocked"`
+	Review string `json:"review,omitempty" jsonschema:"with done, as a partition agent: the verdict of the hikari-review-work review in one line, who reviewed, the counts by severity, what you fixed, and what you left; required when your prompt says your work is reviewed"`
 }
 
 type taskArgs struct {
@@ -133,14 +134,14 @@ func (Module) Tools(s *mcp.Server, c *api.Client, self api.Self) {
 	})
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "set_task_status",
-		Description: "Report a status in the task pipeline. As a partition agent, set your part of a scope: started when you begin, testing when your suites run, blocked with a note the moment you cannot go on, and done when your suites pass; hikari grants done only when the health of the scope's features in your partition passes. As the orchestration agent, set a scope blocked with a note, started to clear its block, or done after you validate it; hikari grants done only when every part is done and the scope's orchestration features pass.",
+		Description: "Report a status in the task pipeline. As a partition agent, set your part of a scope: started when you begin, testing when your suites run, blocked with a note the moment you cannot go on, and done when your suites pass; hikari grants done only when the health of the scope's features in your partition passes, and, when your work is reviewed, only with the review's verdict. As the orchestration agent, set a scope blocked with a note, started to clear its block, or done after you validate it; hikari grants done only when every part is done and the scope's orchestration features pass.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a statusArgs) (*mcp.CallToolResult, any, error) {
 		var g Grant
-		if err := c.Call(ctx, http.MethodPost, prefix+"/status", StatusRequest{Task: strings.Trim(a.Task, "[] "), Status: a.Status, Note: a.Note}, &g); err != nil {
+		if err := c.Call(ctx, http.MethodPost, prefix+"/status", StatusRequest{Task: strings.Trim(a.Task, "[] "), Status: a.Status, Note: a.Note, Review: a.Review}, &g); err != nil {
 			return nil, nil, err
 		}
 		if len(g.Refused) > 0 {
-			return text(fmt.Sprintf("Done is not granted yet; the status stays %s, because %s. Fix them, run your suites again, and ask for done once they pass.", g.Status, strings.Join(g.Refused, ", "))), nil, nil
+			return text(fmt.Sprintf("Done is not granted yet; the status stays %s, because: %s. Settle each, and ask for done again.", g.Status, strings.Join(g.Refused, "; "))), nil, nil
 		}
 		return text("The status is " + g.Status + "."), nil, nil
 	})

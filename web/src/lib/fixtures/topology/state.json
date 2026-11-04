@@ -80,6 +80,7 @@
       "hikari-plan-work",
       "hikari-do-work",
       "hikari-validate-work",
+      "hikari-review-work",
       "hikari-map-features"
     ]
   }

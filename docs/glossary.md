@@ -78,7 +78,7 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Test map.** Private to the partition: how its suites run and which features each test touches, in `tests.yaml`.
 
-**Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
+**Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, `hikari-review-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
 
 **Module.** A piece of hikari that a project turns on in `x-hikari.modules`. It owns a directory of the vault, its tools, a skill for each kind of agent, its routes, its commands, and a tab of the UI, behind one interface in the binary. `tasks` is the first.
 
@@ -98,7 +98,9 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Queue.** An ordered list of issues, `vault/tasks/queues/<id>.md`, by their tasks. Putting an issue in a queue approves it. A running queue starts its issues in order, and a partition works on one scope at a time across all queues. Work on this puts an issue at the front of the `work` queue and starts it.
 
-**Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes.
+**Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes, and, for a partition whose agent's review is required, only with a review.
+
+**Review.** A second reading of a partition agent's change by `hikari-reviewer`, a fresh subagent that reads the diff from `get_changes` against the scope's part, the policies, the styles, and the feature documents, and returns findings by severity. The `hikari-review-work` skill runs it; the agent fixes the blockers and carries the verdict into `set_task_status`, where the task's log keeps it. An agent or a profile with `review: required` gets done only with one.
 
 **Apply.** Commit a partition's changes to its source repositories: one commit in each repository whose writable folders changed. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
 

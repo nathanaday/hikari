@@ -126,6 +126,7 @@ const (
 	PlanWorkSkill     = "hikari-plan-work"
 	DoWorkSkill       = "hikari-do-work"
 	ValidateWorkSkill = "hikari-validate-work"
+	ReviewWorkSkill   = "hikari-review-work"
 	MapFeaturesSkill  = "hikari-map-features"
 	HealthCheckSkill  = "hikari-health-check"
 )
@@ -134,12 +135,12 @@ const (
 // of the same name in two packs is two skills (decision 1 of the skill
 // packs spec).
 var Packs = map[string][]string{
-	RolePartition:     {PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill},
+	RolePartition:     {PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, ReviewWorkSkill, MapFeaturesSkill},
 	RoleOrchestration: {PlanWorkSkill, HealthCheckSkill, MapFeaturesSkill},
 }
 
 // BuiltinSkills are the names of every built-in skill.
-var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill, HealthCheckSkill}
+var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, ReviewWorkSkill, MapFeaturesSkill, HealthCheckSkill}
 
 // AgentPrefix starts the name of each of hikari's own skills and agents.
 // No skill of the vault may use it.

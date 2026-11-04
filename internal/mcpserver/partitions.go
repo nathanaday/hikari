@@ -275,6 +275,17 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_changes",
+		Description: "Read your work on your branch as a reviewer would: in each repository of your writable folders, the unified diff from the merge base with the default branch to your working tree (committed and uncommitted), and the files git does not track yet. Use it with the hikari-review-work skill before you ask for done, and whenever you want to see the whole change you made.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		ch, err := c.Changes(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(formatChanges(ch)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "apply",
 		Description: "Commit the changes in your writable folders: one commit in each repository whose folders changed, on its work branch, with this message. Call it after each unit of work.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a commitArgs) (*mcp.CallToolResult, any, error) {
@@ -290,6 +301,34 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		}
 		return text(fmt.Sprintf("Committed %s.", shortCommits(commits))), nil, nil
 	})
+}
+
+// formatChanges writes the changes of a partition for the agent: one
+// section per repo, with its base, its untracked files, and its diff.
+func formatChanges(ch api.Changes) string {
+	var b strings.Builder
+	empty := true
+	for _, r := range ch.Repos {
+		fmt.Fprintf(&b, "## %s, your branch %s, from %s\n\n", r.Repo, r.Branch, short(r.Base))
+		if len(r.Untracked) > 0 {
+			empty = false
+			fmt.Fprintf(&b, "Files not tracked by git yet (not in the diff): %s\n\n", strings.Join(r.Untracked, ", "))
+		}
+		if strings.TrimSpace(r.Diff) == "" {
+			b.WriteString("No tracked change in your folders.\n\n")
+			continue
+		}
+		empty = false
+		b.WriteString("```diff\n" + r.Diff + "\n```\n")
+		if r.Truncated {
+			b.WriteString("\nThe diff was cut here; review the rest file by file.\n")
+		}
+		b.WriteString("\n")
+	}
+	if empty {
+		return "Your folders hold no change since the base: nothing to review."
+	}
+	return b.String()
 }
 
 // published says what a publish or a record made.

@@ -50,6 +50,9 @@ type Check struct {
 	Feature func(partition, id string) bool
 	// Health is the health of a feature, as Feature names it.
 	Health func(partition, id string) (string, bool)
+	// Reviewed reports whether a partition's parts need a review before
+	// done: its agent's review is required. A nil Reviewed requires none.
+	Reviewed func(partition string) bool
 }
 
 // Open reads the store of dir, which it makes when missing.

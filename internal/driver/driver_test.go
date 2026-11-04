@@ -96,7 +96,7 @@ func TestPartitionAgentSystemPrompt(t *testing.T) {
 		"/hikari/public holds what every agent",
 		"load the hikari-map-features skill",
 		"load the hikari-plan-work skill first",
-		"Hikari gives you these skills, for the tasks of your role: hikari-plan-work, hikari-do-work, hikari-validate-work, hikari-map-features.",
+		"Hikari gives you these skills, for the tasks of your role: hikari-plan-work, hikari-do-work, hikari-validate-work, hikari-review-work, hikari-map-features.",
 		"mcp__hikari__get_vocabulary",
 		"no trailers such as Co-Authored-By",
 		"run the suites that touch the affected features",
@@ -286,7 +286,7 @@ func TestSharedAreaSync(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(s.skillsDir(), "empty-dir")); err == nil {
 		t.Error("V7: a directory without SKILL.md must not be linked")
 	}
-	if entries, _ := os.ReadDir(s.agentsDir()); len(entries) != 3 {
+	if entries, _ := os.ReadDir(s.agentsDir()); len(entries) != 4 {
 		t.Errorf("V8: only hikari's own agents are installed: %v", entries)
 	}
 	if !strings.Contains(policies, "# Policies") || strings.Index(policies, "## a-style") > strings.Index(policies, "## b-security") || !strings.Contains(policies, "Never log secrets.") {
@@ -295,7 +295,7 @@ func TestSharedAreaSync(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.skillsDir(), "hikari-map-features", "references", "wiki.md")); err != nil {
 		t.Errorf("H11: the skill package is installed with its references: %v", err)
 	}
-	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md", "hikari-test-survey.md"} {
+	for _, a := range []string{"hikari-feature-survey.md", "hikari-feature-review.md", "hikari-test-survey.md", "hikari-reviewer.md"} {
 		if _, err := os.Stat(filepath.Join(s.agentsDir(), a)); err != nil {
 			t.Errorf("H11: the agent %s is installed: %v", a, err)
 		}
@@ -331,7 +331,7 @@ func TestSharedAreaSync(t *testing.T) {
 // of the other pack (rules K1 and K16 of the skill packs spec).
 func TestPacks(t *testing.T) {
 	for self, want := range map[*api.Self][]string{
-		&partitionAgent:                     {"hikari-do-work", "hikari-map-features", "hikari-plan-work", "hikari-validate-work"},
+		&partitionAgent:                     {"hikari-do-work", "hikari-map-features", "hikari-plan-work", "hikari-review-work", "hikari-validate-work"},
 		{Name: "lead", Orchestration: true}: {"hikari-health-check", "hikari-map-features", "hikari-plan-work"},
 	} {
 		role := packRole(*self)
@@ -577,5 +577,16 @@ func TestTrigger(t *testing.T) {
 	msgs := []api.Message{{From: "user"}, {From: "lead", To: "dev"}, {From: "user"}}
 	if got := trigger(msgs); got != "woken by user in the room, lead directly" {
 		t.Errorf("trigger = %q", got)
+	}
+}
+
+func TestReviewedPrompt(t *testing.T) {
+	reviewed := partitionAgent
+	reviewed.Review = "required"
+	if p := systemPrompt(reviewed); !strings.Contains(p, "Your work is reviewed: before you ask for done") {
+		t.Errorf("a reviewed agent is told:\n%s", p)
+	}
+	if p := systemPrompt(partitionAgent); strings.Contains(p, "Your work is reviewed") {
+		t.Error("an agent without the requirement is not told")
 	}
 }

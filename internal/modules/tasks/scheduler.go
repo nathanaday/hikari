@@ -386,6 +386,18 @@ var errForbidden = errors.New("not allowed")
 // scope, for the orchestration agent or the user (rules TK14 to TK19).
 // part names the part for the user; an agent's part is its own.
 func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Grant, error) {
+	return s.SetStatusReviewed(caller, id, part, status, note, "", c)
+}
+
+// ReviewRequired is the refusal of a done that lacks the review a
+// partition's profile requires.
+const ReviewRequired = "a review is required before done: load the hikari-review-work skill, fix what the reviewer finds, and pass its verdict as review"
+
+// SetStatusReviewed is SetStatus with the review that a partition agent
+// carries into its request for done: one line on who reviewed the change
+// and what was found. A partition whose agent's review is required gets
+// done only with one, and the log keeps it.
+func (s *Store) SetStatusReviewed(caller, id, part, status, note, review string, c *Change) (Grant, error) {
 	t, err := s.task(id)
 	if err != nil {
 		return Grant{}, err
@@ -411,7 +423,7 @@ func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Gra
 	}
 	var g Grant
 	if part != "" {
-		g, err = s.setPartStatus(t, caller, part, status, note, c)
+		g, err = s.setPartStatus(t, caller, part, status, note, review, c)
 	} else {
 		g, err = s.setScopeStatus(t, caller, status, note, c)
 	}
@@ -429,7 +441,7 @@ func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Gra
 	return g, err
 }
 
-func (s *Store) setPartStatus(t *Task, caller, part, status, note string, c *Change) (Grant, error) {
+func (s *Store) setPartStatus(t *Task, caller, part, status, note, review string, c *Change) (Grant, error) {
 	if !slices.Contains(t.Partitions, part) {
 		return Grant{}, fmt.Errorf("[[%s]] has no part for %s", t.ID, part)
 	}
@@ -449,10 +461,16 @@ func (s *Store) setPartStatus(t *Task, caller, part, status, note string, c *Cha
 	}
 	g := Grant{Status: status}
 	if status == Done && caller != User {
-		if refused := s.notPassing(t, part); len(refused) > 0 {
+		refused := s.notPassing(t, part)
+		if s.check.Reviewed != nil && s.check.Reviewed(part) && strings.TrimSpace(review) == "" {
+			refused = append(refused, ReviewRequired)
+		}
+		if len(refused) > 0 {
 			g = Grant{Status: Testing, Refused: refused}
 			s.refused(t, caller, "the part of "+part, refused)
 			status, note = Testing, ""
+		} else if review = strings.TrimSpace(review); review != "" {
+			note = strings.TrimSpace(note + "\nreviewed: " + review)
 		}
 	}
 	from := t.PartStatus(part)

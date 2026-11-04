@@ -36,6 +36,9 @@ func partitionAgentPrompt(self api.Self) string {
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. hikari makes one commit with that message in each repo whose folders changed, on its branch: %s. hikari also commits what you leave at the end of each turn.\n", branches(s))
 	b.WriteString("- Make a change with the hikari-do-work skill. Before you say that it is done, load the hikari-validate-work skill: run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
 	b.WriteString("- If a task needs a change outside your partition, tell the orchestration agent, or the partition agent of that partition, what you need and why. Do not work around it.\n")
+	if self.Review == "required" {
+		b.WriteString("- Your work is reviewed: before you ask for done on a part of a scope, load the hikari-review-work skill, have the hikari-reviewer agent read your change, fix what it finds, and pass its verdict as the review of set_task_status. hikari refuses done without it.\n")
+	}
 	return b.String()
 }
 

@@ -224,3 +224,44 @@ func TestStatuses(t *testing.T) {
 		}
 	}
 }
+
+// TestReviewRequired checks that a partition whose agent's review is
+// required gets done only with a review, that the review goes into the
+// log, and that a partition without the requirement needs none.
+func TestReviewRequired(t *testing.T) {
+	s, health := pipeline(t)
+	s.check.Reviewed = func(p string) bool { return p == "orders" }
+	health["orders/create-order"] = "passing"
+	cancel := scoped(t, s, "cancel", "orders", "inventory")
+	if _, err := s.ChangeQueue(QueueOp{Op: "create", Name: "Work"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeQueue(QueueOp{Op: "add", Queue: "work", Scope: cancel.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetQueueState("work", Running, &Change{}); err != nil {
+		t.Fatal(err)
+	}
+	status(t, s, "orders", cancel.ID, "", Started, "")
+	g, _ := status(t, s, "orders", cancel.ID, "", Done, "all green")
+	if g.Status != Testing || !slices.Contains(g.Refused, ReviewRequired) {
+		t.Errorf("done without a review = %+v", g)
+	}
+	if s.Tasks[cancel.ID].PartStatus("orders") != Testing {
+		t.Errorf("the part stays testing: %s", s.Tasks[cancel.ID].PartStatus("orders"))
+	}
+	var c Change
+	g, err := s.SetStatusReviewed("orders", cancel.ID, "", Done, "all green", "hikari-reviewer: 1 should fixed, 1 nit left", &c)
+	if err != nil || g.Status != Done || len(g.Refused) != 0 {
+		t.Errorf("done with a review = %+v, %v", g, err)
+	}
+	body := s.Tasks[cancel.ID].Body
+	if !strings.Contains(body, "reviewed: hikari-reviewer: 1 should fixed, 1 nit left") {
+		t.Errorf("the log keeps the review:\n%s", body)
+	}
+	// inventory needs no review.
+	status(t, s, "inventory", cancel.ID, "", Started, "")
+	if g, _ := status(t, s, "inventory", cancel.ID, "", Done, ""); g.Status != Done {
+		t.Errorf("inventory's done = %+v", g)
+	}
+}
