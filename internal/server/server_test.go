@@ -629,6 +629,42 @@ func TestVaultRoutes(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("the vault needs the UI token: %s", resp.Status)
 	}
+
+	// The toolbox: listed with what the vault has, installed once, and a
+	// profile is a snippet.
+	if code, body := get("/api/ui/toolbox"); code != 200 || !strings.Contains(body, `"kind":"style","name":"terse"`) || !strings.Contains(body, `"installed":false`) {
+		t.Errorf("toolbox listing = %d %s", code, body)
+	}
+	post := func(body string) (int, string) {
+		resp, err := browser.Post(srv.URL+"/api/ui/toolbox/add", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, body := post(`{"kind":"style","name":"terse"}`); code != 200 || !strings.Contains(body, `"written":["styles/terse.md"]`) || !strings.Contains(body, "grants.styles") {
+		t.Errorf("toolbox add = %d %s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(root, "styles", "terse.md")); err != nil {
+		t.Error("the style is installed:", err)
+	}
+	if code, _ := post(`{"kind":"style","name":"terse"}`); code != http.StatusConflict {
+		t.Errorf("a second add = %d, want 409", code)
+	}
+	if code, _ := post(`{"kind":"style","name":"terse","force":true}`); code != 200 {
+		t.Errorf("a forced add = %d", code)
+	}
+	if code, body := post(`{"kind":"profile","name":"careful"}`); code != 200 || !strings.Contains(body, `"snippet":"`) || !strings.Contains(body, "careful:") {
+		t.Errorf("a profile = %d %s", code, body)
+	}
+	if code, _ := post(`{"kind":"gadget","name":"x"}`); code != 404 {
+		t.Errorf("an unknown item = %d", code)
+	}
+	if code, body := get("/api/ui/vault/public"); code != 200 || !strings.Contains(body, `"styles":[{"name":"terse","path":"styles/terse.md","holders":[]}]`) {
+		t.Errorf("the listing shows the style: %d %s", code, body)
+	}
 }
 
 func TestActivity(t *testing.T) {

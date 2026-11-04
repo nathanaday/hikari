@@ -54,6 +54,10 @@ x-hikari:
   orchestration: orchestrator   # every other agent has a partition
   # The task pipeline: the issues of your repositories, queued for the agents; local ones in vault/tasks/.
   modules: [tasks]
+  # How agents work: hikari toolbox list shows ready-made policies, styles, skills, and
+  # profiles; a profile bundles a model, an effort, a review, skills, and styles.
+  # profiles:
+  #   careful: {model: opus, effort: high, review: required, styles: [terse]}
 
 x-agent: &agent
   environment: [CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY]

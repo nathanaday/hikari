@@ -69,6 +69,7 @@ Before the first step that costs agent time, tell the user in a few lines:
 3. **Carry out.** This session restructures the repositories, and hikari's agents carry out the plan, each in its own partition.
 4. **Verify.** Every test of the baseline is kept, moved, or dropped with the user's approval, and a fresh clone of the project starts.
 5. **Work.** The user, or this session with `room`, posts requests to the orchestration agent.
+6. **Shape the agents.** `hikari toolbox list` shows ready-made policies, styles, skills, and profiles; `hikari toolbox add <kind>/<name>` installs one into the vault, and `x-hikari.profiles` with `profile:` on an agent bundles a model, an effort, a review, skills, and styles. The user can do this at any stage; suggest it when the user asks how to make the agents work differently.
 
 Each stage records its progress in the project's `onboarding/state.md`, so the user can stop after any stage and continue in a new session.
 

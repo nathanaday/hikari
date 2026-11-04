@@ -2,7 +2,7 @@ package server
 
 import (
 	"errors"
-	"github.com/nathanaday/hikari/internal/api"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/toolbox"
 	"github.com/nathanaday/hikari/internal/vault"
 )
 
@@ -216,6 +218,44 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 			listing.Styles = append(listing.Styles, entry)
 		}
 		writeJSON(w, http.StatusOK, listing)
+	}))
+
+	// The toolbox: the built-in items and which the vault has, and an
+	// install of one as the user.
+	mux.HandleFunc("GET /api/ui/toolbox", ui(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, toolbox.List(st))
+	}))
+	mux.HandleFunc("POST /api/ui/toolbox/add", ui(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Kind  string `json:"kind"`
+			Name  string `json:"name"`
+			Force bool   `json:"force"`
+		}
+		if err := decode(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		it, err := toolbox.Find(req.Kind + "/" + req.Name)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if it.Kind == toolbox.Profile {
+			text, _ := toolbox.Text(it)
+			writeJSON(w, http.StatusOK, map[string]any{"snippet": text, "grant": toolbox.Grant(it)})
+			return
+		}
+		written, err := toolbox.Install(st, it, req.Force)
+		if err != nil {
+			code := http.StatusBadRequest
+			if errors.Is(err, toolbox.ErrExists) {
+				code = http.StatusConflict
+			}
+			writeError(w, code, err.Error())
+			return
+		}
+		s.userDid(fmt.Sprintf("installed %s from the toolbox", it.Ref()))
+		writeJSON(w, http.StatusOK, map[string]any{"written": written, "grant": toolbox.Grant(it)})
 	}))
 
 	mux.HandleFunc("GET /api/ui/vault/file", ui(func(w http.ResponseWriter, r *http.Request) {

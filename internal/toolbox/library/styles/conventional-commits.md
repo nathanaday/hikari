@@ -1,0 +1,1 @@
+A commit subject is `type(scope): what the change does`, in the imperative, under 72 characters: `feat(orders): refuse a cancel after the pick`. Types are feat, fix, refactor, test, docs, build, and chore. The scope is the feature or the module. The body says why the change was made and what it does not do, in plain sentences. One change, one commit.

@@ -199,6 +199,10 @@ export type SharedListing = {
   styles?: { name: string; path: string; holders: string[] }[]
 }
 
+// ToolboxItem is one built-in item of hikari's toolbox, with whether the
+// vault has it.
+export type ToolboxItem = { kind: 'policy' | 'style' | 'skill' | 'profile'; name: string; description: string; installed: boolean; path?: string }
+
 // ContractEntry is one contract file of the vault, with the interfaces of
 // the vocabulary that name it; missing marks one an interface names and the
 // vault lacks.

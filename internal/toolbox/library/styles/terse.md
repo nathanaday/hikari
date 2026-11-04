@@ -1,0 +1,1 @@
+Write short. One idea per sentence, about twenty words, plain words, no filler. Lead with the result or the decision, then the reason, then the detail. Bullets for parallel items, prose for an argument. No headers in a message under a page. No "I will now", no "great question", no restating the request. A reader who sees only your message gets the whole picture.

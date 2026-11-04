@@ -1,0 +1,1 @@
+A credential, a token, a key, or a password never goes into a file, a commit, a message, a log line, or a document. Read secrets from the environment where the topology gives them, and refer to them by name. When a test or a tool needs a secret you do not have, say which one, and never make one up.

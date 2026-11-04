@@ -1,0 +1,10 @@
+# A strong model at high effort, reviewed work, terse and conventional. For
+# a partition whose mistakes are expensive: a library, a payment path, a
+# migration.
+careful:
+  description: Strong model, high effort, reviewed; terse and conventional.
+  model: opus
+  effort: high
+  review: required
+  skills: [tdd, refactor-safely, debug-a-failure]
+  styles: [terse, conventional-commits]

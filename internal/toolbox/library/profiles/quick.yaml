@@ -1,0 +1,6 @@
+# A fast model for small partitions, chores, and documentation. No review.
+quick:
+  description: Fast model for small work; no review.
+  model: haiku
+  effort: medium
+  styles: [terse]

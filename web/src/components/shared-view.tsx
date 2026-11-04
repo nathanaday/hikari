@@ -1,8 +1,106 @@
-import { useCallback, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Check, ChevronRight, Plus } from 'lucide-react'
 import { Markdown } from '@/components/markdown'
+import { Button } from '@/components/ui/button'
 import { asJSON, asText, vaultFileURL, useFetch } from '@/hooks/use-vault-file'
-import type { Deliverable, SharedListing } from '@/lib/types'
+import type { Deliverable, SharedListing, ToolboxItem } from '@/lib/types'
+
+const kindTitles: Record<ToolboxItem['kind'], { title: string; hint: string }> = {
+  policy: { title: 'Policies', hint: 'Rules for every agent. Installed into vault/public/policies/; every agent reads them on its next turn.' },
+  style: { title: 'Styles', hint: 'How an agent\'s work should look. Installed into vault/styles/; grant one with grants.styles or a profile.' },
+  skill: { title: 'Skills', hint: 'How a kind of task is done. Installed into vault/skills/; grant one with grants.skills or a profile.' },
+  profile: { title: 'Profiles', hint: 'Bundles of model, effort, review, skills, and styles. Paste one under x-hikari.profiles, and give an agent profile: <name>.' },
+}
+
+// addFromToolbox installs one item as you, and returns what the server said:
+// the files it wrote or the snippet to paste, or an error.
+async function addFromToolbox(item: ToolboxItem, force: boolean): Promise<{ written?: string[]; snippet?: string; grant?: string; error?: string }> {
+  const res = await fetch('/api/ui/toolbox/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: item.kind, name: item.name, force }) }).catch(() => undefined)
+  if (!res) return { error: 'The hikari server is not reachable.' }
+  const body = (await res.json().catch(() => ({}))) as { written?: string[]; snippet?: string; grant?: string; error?: string }
+  if (!res.ok) return { error: body.error ?? res.statusText }
+  return body
+}
+
+// ToolboxList shows the built-in items by kind, each with Add, or a check
+// when the vault has it; add installs one and reports the result.
+export function ToolboxList({ items, add }: { items: ToolboxItem[]; add: (item: ToolboxItem, force: boolean) => Promise<{ written?: string[]; snippet?: string; grant?: string; error?: string }> }) {
+  const [notes, setNotes] = useState<Record<string, { text: string; snippet?: string; error?: boolean }>>({})
+  const [done, setDone] = useState<Set<string>>(new Set())
+  const key = (it: ToolboxItem) => `${it.kind}/${it.name}`
+  const install = async (it: ToolboxItem) => {
+    const res = await add(it, false)
+    if (res.error) setNotes((n) => ({ ...n, [key(it)]: { text: res.error!, error: true } }))
+    else if (res.snippet) setNotes((n) => ({ ...n, [key(it)]: { text: res.grant ?? '', snippet: res.snippet } }))
+    else {
+      setDone((d) => new Set(d).add(key(it)))
+      setNotes((n) => ({ ...n, [key(it)]: { text: `Wrote ${(res.written ?? []).join(', ')}; ${res.grant ?? ''}` } }))
+    }
+  }
+  return (
+    <div className="space-y-4" data-testid="toolbox">
+      {(['policy', 'style', 'skill', 'profile'] as const).map((kind) => {
+        const group = items.filter((it) => it.kind === kind)
+        if (group.length === 0) return null
+        return (
+          <div key={kind} className="space-y-1">
+            <h3 className="text-sm font-medium">{kindTitles[kind].title}</h3>
+            <p className="text-xs text-muted-foreground">{kindTitles[kind].hint}</p>
+            <ul className="divide-y border-y">
+              {group.map((it) => {
+                const installed = it.installed || done.has(key(it))
+                const note = notes[key(it)]
+                return (
+                  <li key={key(it)} className="space-y-1 py-1.5" data-toolbox={key(it)}>
+                    <div className="flex items-center gap-2 text-sm">
+                      <code className="text-xs">{it.name}</code>
+                      <span className="min-w-0 flex-1 text-muted-foreground">{it.description}</span>
+                      {installed ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700" data-installed="true">
+                          <Check className="size-3" /> in the vault
+                        </span>
+                      ) : (
+                        <Button size="sm" variant="outline" onClick={() => install(it)}>
+                          <Plus className="size-3.5" />
+                          {kind === 'profile' ? 'Show' : 'Add'}
+                        </Button>
+                      )}
+                    </div>
+                    {note && <p className={`text-xs ${note.error ? 'text-red-700' : 'text-muted-foreground'}`}>{note.text}</p>}
+                    {note?.snippet && <pre className="overflow-auto rounded bg-neutral-50 p-2 text-xs">{note.snippet}</pre>}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Toolbox loads the built-in items and lets you install them.
+function Toolbox({ onChange }: { onChange: () => void }) {
+  const [items, setItems] = useState<ToolboxItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/ui/toolbox')
+      .then(async (r) => (r.ok ? ((await r.json()) as ToolboxItem[]) : Promise.reject(new Error(r.statusText))))
+      .then(setItems)
+      .catch((e: Error) => setError(e.message))
+  }, [])
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Toolbox</h2>
+      <p className="text-sm text-muted-foreground">Ready-made policies, styles, skills, and profiles that come with hikari. An installed file is yours to change. In a terminal: hikari toolbox list.</p>
+      {error ? <p className="text-sm text-muted-foreground">{error}</p> : items ? <ToolboxList items={items} add={async (it, force) => {
+        const res = await addFromToolbox(it, force)
+        if (res.written) onChange()
+        return res
+      }} /> : <p className="text-sm text-muted-foreground">Loading…</p>}
+    </section>
+  )
+}
 
 const noNames = new Set<string>()
 
@@ -103,7 +201,8 @@ export function DeliverableEntry({ d }: { d: Deliverable }) {
 
 export function SharedView() {
   const parse = useCallback((r: Response) => asJSON<SharedListing>(r), [])
-  const { data, error } = useFetch('/api/ui/vault/public', parse)
+  const [generation, setGeneration] = useState(0)
+  const { data, error } = useFetch(`/api/ui/vault/public?g=${generation}`, parse)
   if (error) return <p className="px-6 py-10 text-sm text-muted-foreground">{error}</p>
   if (!data) return <p className="px-6 py-10 text-sm text-muted-foreground">Loading…</p>
   return (
@@ -152,6 +251,7 @@ export function SharedView() {
           hint="Add Claude Code skills in vault/skills/<name>/SKILL.md, and grant each to agents with grants.skills in the topology."
           entries={data.skills.map((s) => ({ name: s.name, path: s.path, note: s.holders.length ? `granted to ${s.holders.join(', ')}` : 'granted to no agent' }))}
         />
+        <Toolbox onChange={() => setGeneration((g) => g + 1)} />
       </div>
     </div>
   )

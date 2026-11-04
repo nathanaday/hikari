@@ -150,6 +150,7 @@ Partitions share their work as releases, and a release travels: its record is co
 - [Design notes](docs/design.md): the reason behind each decision
 - [Glossary](docs/glossary.md): every Hikari term in one place
 - [The vault](docs/guides/vault.md): where each file lives, and where each container sees it
+- [Agent workflows](docs/guides/workflows.md): policies, styles, skills, and profiles, and the toolbox
 - [Onboarding guide](docs/guides/onboarding.md): bring existing repositories into a project
 - [Task pipeline](docs/guides/tasks.md): issues, scopes, and queues of work
 - [Repositories](docs/guides/repositories.md): branches, pull requests, and checks in the UI
