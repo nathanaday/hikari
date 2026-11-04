@@ -431,6 +431,12 @@ type vocabInterfaceArgs struct {
 	Name        string `json:"name" jsonschema:"the canonical interface name"`
 	Kind        string `json:"kind" jsonschema:"one lowercase word, for example http, grpc, event, function, file, or cli"`
 	Description string `json:"description" jsonschema:"what the interface does"`
+	Contract    string `json:"contract,omitempty" jsonschema:"the contract file that says the interface's shape, as its path in /hikari/public/contracts/, such as orders/openapi.yaml; write it with write_contract"`
+}
+
+type contractArgs struct {
+	Name string `json:"name" jsonschema:"the contract's path in /hikari/public/contracts/, with slashes, such as orders/openapi.yaml or events/order-created.schema.json"`
+	Text string `json:"text" jsonschema:"the whole content of the contract: an OpenAPI document, a proto file, a JSON schema, a type definition, or any text that says the interface's shape precisely"`
 }
 
 type removeEntryArgs struct {
@@ -498,13 +504,26 @@ func addOrchestrationTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "define_interface",
-		Description: "Add an interface name to the vocabulary, or replace the interface with this name.",
+		Description: "Add an interface name to the vocabulary, or replace the interface with this name. An interface may name a contract, a file in /hikari/public/contracts/ that says its shape; write the file with write_contract.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a vocabInterfaceArgs) (*mcp.CallToolResult, any, error) {
-		in := vocab.Interface{Name: a.Name, Kind: a.Kind, Description: a.Description}
+		in := vocab.Interface{Name: a.Name, Kind: a.Kind, Description: a.Description, Contract: a.Contract}
 		if err := c.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_interface", Interface: &in}); err != nil {
 			return nil, nil, err
 		}
+		if a.Contract != "" {
+			return text(fmt.Sprintf("Defined the interface %q, with the contract %s. Write the contract with write_contract when it does not exist yet; get_partition flags an interface whose contract the vault lacks.", a.Name, a.Contract)), nil, nil
+		}
 		return text(fmt.Sprintf("Defined the interface %q.", a.Name)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "write_contract",
+		Description: "Write a contract of the vocabulary: a file in /hikari/public/contracts/ that says the shape of an interface between partitions precisely, such as an OpenAPI document, a proto file, a JSON schema, or type definitions. Every agent reads it there. Name it in the interface with define_interface's contract, so that the provider and each consumer test against the same shape. Writing an existing contract replaces it; hikari commits each write as yours.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a contractArgs) (*mcp.CallToolResult, any, error) {
+		if err := c.WriteContract(ctx, api.ContractRequest{Name: a.Name, Text: a.Text}); err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Wrote the contract %s; every agent reads it at %s/%s.", a.Name, api.PublicDir, "contracts/"+a.Name)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

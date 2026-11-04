@@ -32,13 +32,14 @@ Host paths start at `examples/shop/`, except the code and the private files, whi
 | `vault/README.md` | none | none | none |
 | `vault/public/vocabulary/terms.yaml` | `/hikari/public/vocabulary/terms.yaml` | `/hikari/public/vocabulary/terms.yaml` | `/hikari/public/vocabulary/terms.yaml` |
 | `vault/public/wiki/<id>.md` | `/hikari/public/wiki/<id>.md` | `/hikari/public/wiki/<id>.md` | `/hikari/public/wiki/<id>.md` |
+| `vault/public/contracts/orders/openapi.yaml` | `/hikari/public/contracts/orders/openapi.yaml` | `/hikari/public/contracts/orders/openapi.yaml` | `/hikari/public/contracts/orders/openapi.yaml` |
 | `vault/public/policies/writing.md` | `/hikari/public/policies/writing.md` | `/hikari/public/policies/writing.md` | `/hikari/public/policies/writing.md` |
 | `vault/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` | `/hikari/public/deliverables/python-library/deliverable.yaml` |
 | `vault/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` | `/hikari/public/deliverables/python-library/SKILL.md` |
 | `vault/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` | `/hikari/public/remotes/local-dir/remote.yaml` |
 | `vault/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | `/hikari/skills/python-style/SKILL.md` | none |
 
-The orchestration agent writes the vocabulary and the rules and principles of the public wiki, through its tools. The policies, the deliverables, the remotes, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
+The orchestration agent writes the vocabulary, the contracts, and the rules and principles of the public wiki, through its tools; a contract is the file that an interface of the vocabulary names as its shape, and you may write one too. The policies, the deliverables, the remotes, and the skills are yours: hikari never writes them. The driver puts each policy into every system prompt, and links the skill of each held deliverable and each granted skill into `~/.claude/skills/`, where Claude Code loads them.
 
 ### The Partition `orders`
 

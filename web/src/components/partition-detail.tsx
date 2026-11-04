@@ -5,6 +5,7 @@ import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import type { Feature, Interface, Private, Release, PartitionView, TaskView } from '@/lib/types'
 import { StatusChip } from '@/components/work-view'
+import { Contract } from '@/components/vocabulary-panel'
 import { driftOf, issueRef } from '@/lib/repos'
 
 function ago(iso?: string): string {
@@ -78,7 +79,7 @@ function List({ label, items }: { label: string; items?: string[] }) {
   )
 }
 
-function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: string; warning?: string[] }) {
+function InterfaceRow({ iface, note, warning, contract }: { iface: Interface; note?: string; warning?: string[]; contract?: string }) {
   return (
     <li className="space-y-0.5 py-1.5" data-testid="interface">
       <div className="flex flex-wrap items-center gap-2">
@@ -89,6 +90,7 @@ function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: strin
         {note && <span className="text-xs text-muted-foreground">{note}</span>}
       </div>
       {iface.description && <p className="text-sm text-muted-foreground">{iface.description}</p>}
+      {contract && <Contract iface={{ ...iface, contract }} />}
       {warning?.map((w) => (
         <p key={w} className="flex items-center gap-1 text-xs text-amber-700" data-testid="flag">
           <TriangleAlert className="size-3" />
@@ -241,6 +243,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
   const flags = v.flags ?? []
   const providers = v.providers ?? {}
   const flagsFor = (name: string) => flags.filter((f) => f.interface === name).map((f) => f.problem)
+  const contractOf = (name: string) => state.vocabulary.interfaces.find((i) => i.name === name)?.contract
   const s = v.partition
   const priv = v.private
   const parts = priv.code_map.parts ?? []
@@ -297,7 +300,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 {s.interfaces.provides.length ? (
                   <ul className="divide-y">
                     {s.interfaces.provides.map((i) => (
-                      <InterfaceRow key={i.name} iface={i} warning={flagsFor(i.name)} />
+                      <InterfaceRow key={i.name} iface={i} warning={flagsFor(i.name)} contract={contractOf(i.name)} />
                     ))}
                   </ul>
                 ) : (
@@ -313,6 +316,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                         iface={i}
                         note={providers[i.name]?.length ? `from ${providers[i.name].join(', ')}` : undefined}
                         warning={flagsFor(i.name)}
+                        contract={contractOf(i.name)}
                       />
                     ))}
                   </ul>

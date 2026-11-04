@@ -78,10 +78,11 @@ type deliverableEntry struct {
 
 // sharedListing is the public area and your skills (rule V13).
 type sharedListing struct {
-	Policies     []sharedEntry      `json:"policies"`
-	Skills       []skillEntry       `json:"skills"`
-	Deliverables []deliverableEntry `json:"deliverables"`
-	Remotes      []remoteEntry      `json:"remotes"`
+	Policies     []sharedEntry       `json:"policies"`
+	Skills       []skillEntry        `json:"skills"`
+	Deliverables []deliverableEntry  `json:"deliverables"`
+	Remotes      []remoteEntry       `json:"remotes"`
+	Contracts    []api.ContractEntry `json:"contracts"`
 }
 
 // vaultRoutes serves the vault to the UI: a release, the public area and
@@ -200,6 +201,7 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		}
 		listing.Deliverables = s.deliverables(st)
 		listing.Remotes = s.remotes(st)
+		listing.Contracts = s.sys.Contracts()
 		writeJSON(w, http.StatusOK, listing)
 	}))
 

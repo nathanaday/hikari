@@ -7,7 +7,7 @@ description: How the orchestration agent checks the health of the project - ever
 
 1. Call `list_partitions`: each partition's state and its features counted by health.
 2. For each partition that is stale, or has a feature that is failing, pending, or untested, call `get_partition`: the health and state of each feature, and the flags of its interfaces.
-3. Read the vocabulary's flags in `get_partition`: interface names that the vocabulary lacks, and consumed interfaces that no partition provides.
+3. Read the vocabulary's flags in `get_partition`: interface names that the vocabulary lacks, consumed interfaces that no partition provides, and interfaces whose contract file the vault lacks. An interface that two partitions share and that names no contract is a seam that nothing checks: ask the provider for its shape, and write it with `write_contract`.
 4. Read the health of your features: `search_wiki` and `get_document` show the health of each document of your feature map, computed from the partition features it links.
 5. Post what needs work in the room, in one message: each failing or pending feature, with its partition; each stale partition; each flag. Ask the partition agent that owns each with @name, in terms of features and interfaces. A name that the vocabulary lacks is yours to define, or to ask a partition agent to rename.
 

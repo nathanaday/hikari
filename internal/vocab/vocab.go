@@ -36,6 +36,10 @@ type Interface struct {
 	Name        string `yaml:"name" json:"name"`
 	Kind        string `yaml:"kind" json:"kind"`
 	Description string `yaml:"description" json:"description"`
+	// Contract is the file in the vault's public contracts/ that says
+	// the interface's shape, such as an OpenAPI document, a proto file,
+	// or a JSON schema, relative to that directory; "" when none.
+	Contract string `yaml:"contract,omitempty" json:"contract,omitempty"`
 }
 
 // Names returns the interface names of v.
@@ -126,6 +130,10 @@ func (s *File) DefineInterface(in Interface) error {
 	if !validKind.MatchString(in.Kind) {
 		return fmt.Errorf("interface %q: kind %q must be one lowercase word", in.Name, in.Kind)
 	}
+	in.Contract = strings.TrimSpace(in.Contract)
+	if in.Contract != "" && !ValidContract(in.Contract) {
+		return fmt.Errorf("interface %q: the contract %q must be a relative path inside contracts/, with slashes", in.Name, in.Contract)
+	}
 	return s.change(func(v *Vocabulary) error {
 		if i := slices.IndexFunc(v.Interfaces, func(x Interface) bool { return x.Name == in.Name }); i >= 0 {
 			v.Interfaces[i] = in
@@ -209,12 +217,21 @@ type Flag struct {
 const (
 	NotInVocabulary = "not in the vocabulary"
 	NoProvider      = "consumed, but no visible partition provides it"
+	ContractMissing = "names a contract that the vault lacks"
 )
 
+// ValidContract reports whether p names a file inside the contracts
+// directory: a relative slash path that stays inside it.
+func ValidContract(p string) bool {
+	return p != "" && !strings.HasPrefix(p, "/") && !strings.Contains(p, "\\") && filepath.IsLocal(p) && !strings.HasSuffix(p, "/")
+}
+
 // Check returns the flags V6 and V7 for a partition that provides and consumes
-// the given interfaces. known holds the names in the orchestration agent's
-// vocabularies, and provided the names that visible partitions provide.
-func Check(provides, consumes []string, known, provided map[string]bool) []Flag {
+// the given interfaces, and a flag for each interface whose contract file
+// the vault lacks. known holds the names in the orchestration agent's
+// vocabularies, provided the names that visible partitions provide, and
+// missing the names whose contract file does not exist.
+func Check(provides, consumes []string, known, provided, missing map[string]bool) []Flag {
 	var flags []Flag
 	seen := map[string]bool{}
 	for _, name := range append(slices.Clone(provides), consumes...) {
@@ -228,5 +245,24 @@ func Check(provides, consumes []string, known, provided map[string]bool) []Flag 
 			flags = append(flags, Flag{Interface: name, Problem: NoProvider})
 		}
 	}
+	seen = map[string]bool{}
+	for _, name := range append(slices.Clone(provides), consumes...) {
+		if missing[name] && !seen[name] {
+			flags = append(flags, Flag{Interface: name, Problem: ContractMissing})
+			seen[name] = true
+		}
+	}
 	return flags
+}
+
+// MissingContracts returns the names of the interfaces of v whose
+// contract exists reports false.
+func MissingContracts(v Vocabulary, exists func(contract string) bool) map[string]bool {
+	out := map[string]bool{}
+	for _, in := range v.Interfaces {
+		if in.Contract != "" && !exists(in.Contract) {
+			out[in.Name] = true
+		}
+	}
+	return out
 }

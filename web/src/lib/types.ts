@@ -84,7 +84,9 @@ export type Agent = {
   status: Status
 }
 
-export type Interface = { name: string; kind: string; description?: string }
+// contract is the file in the vault's public contracts/ that says the
+// interface's shape, when the vocabulary names one.
+export type Interface = { name: string; kind: string; description?: string; contract?: string }
 
 export type Health = 'passing' | 'failing' | 'pending' | 'untested'
 
@@ -192,7 +194,13 @@ export type SharedListing = {
   skills: { name: string; path: string; holders: string[] }[]
   deliverables: Deliverable[]
   remotes?: Remote[]
+  contracts?: ContractEntry[]
 }
+
+// ContractEntry is one contract file of the vault, with the interfaces of
+// the vocabulary that name it; missing marks one an interface names and the
+// vault lacks.
+export type ContractEntry = { name: string; path: string; interfaces: string[]; missing?: boolean }
 
 // Remote is how products are pushed to and pulled from a home outside the
 // vault: the project's commands.

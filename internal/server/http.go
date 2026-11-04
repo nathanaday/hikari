@@ -287,6 +287,13 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		return sys.GetPartition(agent, r.PathValue("name"))
 	})
 
+	handle("POST /api/agent/contracts", func(r *http.Request, agent string) (any, error) {
+		var req api.ContractRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return nil, sys.WriteContract(agent, req.Name, req.Text)
+	})
 	handle("GET /api/agent/vocabulary", func(r *http.Request, agent string) (any, error) {
 		return sys.Vocabulary(), nil
 	})

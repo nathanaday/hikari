@@ -998,3 +998,45 @@ func TestDirtyScopes(t *testing.T) {
 		t.Errorf("N2: %v", got)
 	}
 }
+
+// TestContracts checks the contracts of the vocabulary: an interface that
+// names a contract the vault lacks is flagged, write_contract clears the
+// flag, only the orchestration agent writes, and the listing names the
+// interfaces of each file.
+func TestContracts(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "POST /orders", Kind: "http", Description: "Creates an order.", Contract: "orders/openapi.yaml"}))
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}))
+	v, err := f.m.GetPartition("lead", "orders")
+	must(t, err)
+	if !slices.Contains(v.Flags, vocab.Flag{Interface: "POST /orders", Problem: vocab.ContractMissing}) {
+		t.Errorf("a missing contract is flagged: %+v", v.Flags)
+	}
+	if list := f.m.Contracts(); len(list) != 1 || !list[0].Missing || list[0].Name != "orders/openapi.yaml" || !slices.Equal(list[0].Interfaces, []string{"POST /orders"}) {
+		t.Errorf("listing = %+v", list)
+	}
+
+	if err := f.m.WriteContract("orders", "orders/openapi.yaml", "openapi: 3.1.0\n"); !errors.Is(err, ErrForbidden) {
+		t.Errorf("a partition agent writes a contract: %v", err)
+	}
+	for _, bad := range []string{"../x", "/x", ""} {
+		if err := f.m.WriteContract("lead", bad, "x"); err == nil {
+			t.Errorf("the contract name %q is accepted", bad)
+		}
+	}
+	if err := f.m.WriteContract("lead", "orders/openapi.yaml", "  \n"); err == nil {
+		t.Error("an empty contract is accepted")
+	}
+	must(t, f.m.WriteContract("lead", "orders/openapi.yaml", "openapi: 3.1.0\npaths:\n  /orders: {post: {}}\n"))
+	if data, err := os.ReadFile(filepath.Join(f.dir, "vault", "public", "contracts", "orders", "openapi.yaml")); err != nil || !strings.HasPrefix(string(data), "openapi: 3.1.0") {
+		t.Errorf("the contract file: %q, %v", data, err)
+	}
+	v, _ = f.m.GetPartition("lead", "orders")
+	if slices.ContainsFunc(v.Flags, func(fl vocab.Flag) bool { return fl.Problem == vocab.ContractMissing }) {
+		t.Errorf("the flag clears once the file exists: %+v", v.Flags)
+	}
+	if list := f.m.Contracts(); len(list) != 1 || list[0].Missing || list[0].Path != "public/contracts/orders/openapi.yaml" {
+		t.Errorf("listing after the write = %+v", list)
+	}
+}

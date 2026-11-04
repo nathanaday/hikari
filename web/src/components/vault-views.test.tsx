@@ -112,3 +112,19 @@ describe('PartitionDetail releases', () => {
     }
   })
 })
+
+describe('contracts', () => {
+  it('shows the contract an interface names, in the vocabulary and on the partition page', async () => {
+    const { VocabularyPanel } = await import('@/components/vocabulary-panel')
+    const vocabulary = { version: 1, terms: [], interfaces: [{ name: 'POST /orders', kind: 'http', description: 'Creates an order.', contract: 'orders/openapi.yaml' }, { name: 'Stock.reserve', kind: 'function', description: 'Reserves stock.' }] }
+    const html = renderToStaticMarkup(<VocabularyPanel orchestration="lead" vocabulary={vocabulary} />)
+    expect(html.split('data-testid="contract"').length - 1).toBe(1)
+    expect(html).toContain('orders/openapi.yaml')
+    const v = partition('orders')
+    v.partition.interfaces.provides = [{ name: 'POST /orders', kind: 'http' }]
+    v.flags = [{ interface: 'POST /orders', problem: 'names a contract that the vault lacks' }]
+    const page = renderToStaticMarkup(<PartitionDetail state={{ ...initialState({ kind: 'room' }), vocabulary }} partition={v} />)
+    expect(page).toContain('data-testid="contract"')
+    expect(page).toContain('names a contract that the vault lacks')
+  })
+})

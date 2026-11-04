@@ -353,6 +353,21 @@ must describe what the code does. It flags names that the vocabulary lacks,
 and consumed interfaces that no partition provides, and the orchestration
 agent decides whether to add the name or to ask the partition agent to rename.
 
+A name is not a shape. Two partitions can agree that the interface is
+`POST /orders` and disagree on every field of the body, and no unit test
+of either partition finds it, because each tests its own side against its
+own reading. So an interface of the vocabulary may name a contract: a file
+in `public/contracts/` that says the shape precisely, in whatever form the
+interface's kind has, such as an OpenAPI document, a proto file, a JSON
+schema, or type definitions. The orchestration agent writes it with
+`write_contract` from what the provider tells it, every container reads it
+in the public area, and the provider and each consumer build and test
+against one shape. hikari gives a contract no format and runs no check
+against it: the file is evidence that the agents can read, where before
+there was prose in a message. An interface that names a contract the vault
+lacks is flagged like a name the vocabulary lacks, so that a promised
+contract is written.
+
 ## One vault for everything that is not code
 
 Feature maps, the vocabulary, shared rules, and releases live in one

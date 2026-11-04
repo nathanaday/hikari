@@ -70,6 +70,8 @@ A create in your feature map is a `feature` when it names no kind.
 
 The vocabulary, `/hikari/public/vocabulary/terms.yaml`, holds the names that everyone in the project uses: each domain term with its definition and the names to avoid, and each interface between partitions with its kind. You are its only author: `define_term`, `define_interface`, and `remove_entry` change it, and every agent reads it with `get_vocabulary`. `get_partition` flags each interface of a partition that the vocabulary lacks. When a partition agent uses another name for something that the vocabulary defines, ask the partition agent to rename it.
 
+An interface may name a contract: a file in `/hikari/public/contracts/` that says its shape precisely, such as an OpenAPI document, a proto file, a JSON schema, or type definitions. Give `define_interface` the file's path as `contract`, and write the file with `write_contract` from what the provider tells you. Every agent reads the contracts, so the provider and each consumer build and test against one shape, and a change of the shape is a change of the file, which you make once the provider and the consumers agree. `get_partition` flags an interface whose contract the vault lacks.
+
 ## Keep the documents true
 
 - When a partition feature that one of your features links changes or is removed, check your feature. hikari rewrites the links of a rename for you.

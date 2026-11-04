@@ -132,6 +132,15 @@ export function SharedView() {
             note: r.problems ? 'invalid' : [r.push ? 'push' : '', r.pull ? 'pull' : ''].filter(Boolean).join(' and ') || 'no commands',
           }))}
         />
+        <Group
+          title="Contracts"
+          hint="A contract says the shape of an interface of the vocabulary: an OpenAPI document, a proto file, a JSON schema. The orchestration agent writes them with write_contract into vault/public/contracts/, and you can add files there too."
+          entries={(data.contracts ?? []).map((c) => ({
+            name: c.name,
+            path: c.path,
+            note: c.missing ? `named by ${c.interfaces.join(', ')}, but the file is missing` : c.interfaces.length ? `names the shape of ${c.interfaces.join(', ')}` : 'named by no interface',
+          }))}
+        />
         <Group title="Policies" hint="Add rules for every agent as Markdown files in vault/public/policies/." entries={data.policies} />
         <Group
           title="Skills"

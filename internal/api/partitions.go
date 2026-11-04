@@ -487,3 +487,24 @@ func (c *Client) GetVocabulary(ctx context.Context) (vocab.Vocabulary, error) {
 func (c *Client) ChangeVocabulary(ctx context.Context, ch VocabularyChange) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/vocabulary", ch, nil)
 }
+
+// ContractRequest writes one contract of the vocabulary: Name is its path
+// in the vault's public contracts/, and Text its whole content.
+type ContractRequest struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// ContractEntry is one contract file of the vault, with the interfaces of
+// the vocabulary that name it. Missing marks a contract that an interface
+// names and the vault lacks.
+type ContractEntry struct {
+	Name       string   `json:"name"`
+	Path       string   `json:"path"`
+	Interfaces []string `json:"interfaces"`
+	Missing    bool     `json:"missing,omitempty"`
+}
+
+func (c *Client) WriteContract(ctx context.Context, req ContractRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/contracts", req, nil)
+}

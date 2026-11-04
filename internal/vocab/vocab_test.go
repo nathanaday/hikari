@@ -79,11 +79,13 @@ func TestDefineRejectsIncompleteEntries(t *testing.T) {
 func TestCheck(t *testing.T) {
 	known := map[string]bool{"POST /orders": true, "inventory.reserve": true}
 	provided := map[string]bool{"POST /orders": true}
-	flags := Check([]string{"POST /orders", "order.created"}, []string{"inventory.reserve", "order.created"}, known, provided)
+	missing := map[string]bool{"inventory.reserve": true}
+	flags := Check([]string{"POST /orders", "order.created"}, []string{"inventory.reserve", "order.created"}, known, provided, missing)
 	want := []Flag{
 		{"order.created", NotInVocabulary},
 		{"inventory.reserve", NoProvider},
 		{"order.created", NoProvider},
+		{"inventory.reserve", ContractMissing},
 	}
 	if len(flags) != len(want) {
 		t.Fatalf("flags = %+v", flags)
@@ -92,5 +94,34 @@ func TestCheck(t *testing.T) {
 		if flags[i] != want[i] {
 			t.Errorf("flag %d = %+v, want %+v", i, flags[i], want[i])
 		}
+	}
+}
+
+func TestContracts(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "terms.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"/etc/passwd", "../x.yaml", "a/../../b", "dir/"} {
+		if err := s.DefineInterface(Interface{Name: "x", Kind: "http", Description: "d", Contract: bad}); err == nil {
+			t.Errorf("contract %q is accepted", bad)
+		}
+	}
+	if err := s.DefineInterface(Interface{Name: "POST /orders", Kind: "http", Description: "d", Contract: " orders/openapi.yaml "}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DefineInterface(Interface{Name: "order.created", Kind: "event", Description: "d", Contract: "events/order-created.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DefineInterface(Interface{Name: "Stock.reserve", Kind: "function", Description: "d"}); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := s.Get()
+	if v.Interfaces[0].Contract != "orders/openapi.yaml" {
+		t.Errorf("contract = %q", v.Interfaces[0].Contract)
+	}
+	missing := MissingContracts(v, func(c string) bool { return c == "orders/openapi.yaml" })
+	if len(missing) != 1 || !missing["order.created"] {
+		t.Errorf("missing = %v", missing)
 	}
 }

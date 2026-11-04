@@ -18,6 +18,11 @@ const (
 	Policies     = "policies"
 	Deliverables = "deliverables"
 	Remotes      = "remotes"
+	// Contracts holds the shape of each interface of the vocabulary that
+	// names one: OpenAPI documents, proto files, JSON schemas, and the
+	// like. The orchestration agent writes them through a tool, and you
+	// may write them too.
+	Contracts = "contracts"
 )
 
 // Wiki is the directory of the public wiki in the public area.
@@ -168,7 +173,7 @@ func (s Vault) ReleaseDir(partition, deliverable, version string) string {
 // and writes its README once. The orchestration agent's parts exist only
 // when the topology names one (rule V2).
 func (s Vault) Prepare(partitions []string, orchestration bool) error {
-	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.Public(Remotes), s.PublicWiki(), s.SkillsRoot()}
+	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.Public(Remotes), s.Public(Contracts), s.PublicWiki(), s.SkillsRoot()}
 	for _, p := range partitions {
 		dirs = append(dirs, s.FeatureMap(p), s.ReleasesOf(p), s.Granted(p), s.CanEdit(p), s.Staging(p))
 	}
@@ -252,6 +257,9 @@ this file once; you can change it.
       vocabulary/terms.yaml     the names the project agreed on; the orchestration agent writes it
       wiki/<id>.md              the public wiki: rules and principles that the orchestration
                                 agent writes through hikari, and your plans and notes
+      contracts/<path>          the shape of an interface of the vocabulary, such as an OpenAPI
+                                document or a proto file; the orchestration agent writes them
+                                through hikari, and you may write them too
       policies/<name>.md        rules for every agent; you write them
       deliverables/<name>/      what a release must contain and how to make it; you write them
         deliverable.yaml        the description, the layout rules, the remote, the tags, and the cloud targets
@@ -297,3 +305,9 @@ the deliverable's remote when a pin needs it. hikari commits what agents
 change in the vault. Your own changes in the wikis, can-edit/, and
 granted/ are committed as yours when hikari starts and stops.
 `
+
+// ContractFile is the file of a contract of the vocabulary, by its path
+// relative to the public contracts directory.
+func (s Vault) ContractFile(contract string) string {
+	return filepath.Join(s.Public(Contracts), filepath.FromSlash(contract))
+}

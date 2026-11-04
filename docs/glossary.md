@@ -16,6 +16,8 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Vocabulary.** The project's shared dictionary, so that every agent maps features with the same names. Every agent reads it, and only the orchestration agent changes it, through tools. It is a directory, `vocabulary/`, whose file `terms.yaml` holds the terms and the interfaces; hikari reads only that file, so that later vocabulary-like files can join it.
 
+**Contract.** The file that an interface of the vocabulary names as its shape: an OpenAPI document, a proto file, a JSON schema, or type definitions, in `public/contracts/`, which every container reads. The orchestration agent writes one with `write_contract` from what the provider says, and you may write one by hand. An interface whose contract the vault lacks is flagged, like a name the vocabulary lacks.
+
 **Partition.** The folders that one container mounts as its workspace. It may or may not be a whole repository. The agent inside sees what is mounted as one monorepo, without any concern for the topology or the mounts. It is a flat list of folders, each a path in any repository of the project, writable or read-only, and the container sees each folder at `/workspace/<repo>/<path>`, or at the folder's `at:`.
 
 **Secrets.** A partition's secrets are Compose's `env_file` and `environment` on its service. A secret system of hikari's own is left for later.
