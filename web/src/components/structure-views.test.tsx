@@ -107,6 +107,21 @@ describe('the inspectors', () => {
     const broken = renderToStaticMarkup(<AgentInspector {...props} mounts={null} id="dev" />)
     expect(broken).toContain('The topology has errors, so hikari cannot say what this container mounts')
   })
+  it('edits how an agent works: its profile, effort, review, and styles', () => {
+    const withProfiles = { ...model, project: { ...model.project, profiles: [{ name: 'careful', description: 'Reviewed work.', model: 'opus', effort: 'high', review: 'required', skills: ['tdd'], styles: ['terse'], line: 5 }] } }
+    const agents = withProfiles.agents.map((a) => (a.id === 'dev' ? { ...a, profile: 'careful', styles: ['conventional-commits'] } : a))
+    const dev = renderToStaticMarkup(<AgentInspector {...props} model={{ ...withProfiles, agents }} options={{ ...props.options, styles: ['terse', 'conventional-commits'] }} id="dev" />)
+    expect(dev).toContain('How it works')
+    expect(dev).toContain('careful · Reviewed work.')
+    expect(dev).toContain('From the profile careful: high.')
+    expect(dev).toContain('From the profile careful: required.')
+    expect(dev).toContain('Styles it follows')
+    expect(dev).toContain('conventional-commits')
+    expect(dev).toContain('Its profile adds terse.')
+    const lead = renderToStaticMarkup(<AgentInspector {...props} id="lead" />)
+    expect(lead).not.toContain('>Review<')
+    expect(lead).toContain('No profile yet')
+  })
   it('lists the skills of each agent: its pack from Hikari, and its granted skills (K14)', () => {
     const skills = (html: string) => [...html.matchAll(/(hikari-[a-z-]+)<span class="text-muted-foreground">· from Hikari/g)].map((m) => m[1])
     const dev = renderToStaticMarkup(<AgentInspector {...props} id="dev" />)

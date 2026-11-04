@@ -372,6 +372,33 @@ func TestPacks(t *testing.T) {
 	}
 }
 
+// TestStyles checks the granted styles: each goes into the system prompt
+// under # Styles, in the order of the grant, and a missing one is skipped.
+func TestStyles(t *testing.T) {
+	s, _, _ := newTestShared(t, api.RolePartition)
+	styles := filepath.Join(filepath.Dir(s.public), "styles")
+	s.styles = styles
+	writeFile(t, filepath.Join(styles, "terse.md"), "Say it in one line.")
+	writeFile(t, filepath.Join(styles, "commits.md"), "A commit subject is imperative.")
+	writeFile(t, filepath.Join(styles, "blank.md"), "  \n")
+	s.grantedStyles = []string{"commits", "ghost", "blank", "terse"}
+	got := s.sync()
+	if !strings.Contains(got, "# Styles") || strings.Index(got, "## commits") > strings.Index(got, "## terse") || !strings.Contains(got, "Say it in one line.") {
+		t.Errorf("styles:\n%s", got)
+	}
+	if strings.Contains(got, "## ghost") || strings.Contains(got, "## blank") {
+		t.Errorf("a missing or empty style is skipped:\n%s", got)
+	}
+	s.grantedStyles = nil
+	if got := s.sync(); strings.Contains(got, "# Styles") {
+		t.Errorf("no styles, no section: %q", got)
+	}
+	p := systemPrompt(api.Self{Name: "orders", Participants: room, Styles: []string{"terse", "commits"}})
+	if !strings.Contains(p, "the styles terse, commits, in /hikari/styles") {
+		t.Errorf("the prompt names the styles:\n%s", p)
+	}
+}
+
 func TestSharedAreaForNonPartitionAgents(t *testing.T) {
 	s, _, _ := newTestShared(t, "")
 	if got := s.sync(); got != "" {

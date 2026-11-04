@@ -40,6 +40,16 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Catalog.** Every release record in the vault, listed by `list_releases` and `hikari release list`.
 
+**Policy.** A rule for every agent: a Markdown file in `public/policies/`, which goes into every agent's system prompt. You write them; hikari never does.
+
+**Style.** How one agent's work should look: a Markdown file in `styles/`, which `grants.styles` or a profile gives to an agent, and which goes into that agent's system prompt under `# Styles`. A style is granted; a policy applies to everyone.
+
+**Profile.** A named bundle of how an agent works, under `x-hikari.profiles`: a model, an effort, whether its parts are reviewed, and the skills and styles it is granted. An agent takes one with `profile:`, and what the agent sets itself wins.
+
+**Effort.** The reasoning effort of an agent's turns: `low`, `medium`, `high`, `xhigh`, or `max`, set on the agent or its profile, and passed to Claude Code.
+
+**Toolbox.** The built-in library of policies, styles, and skills that `hikari toolbox` lists and installs into the vault.
+
 **Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It runs in your terminal, or in the panel of the web UI, where `hikari up` runs it for you in the project root, as you, with your permissions asked. It is not in the room, and it does not work on the code.
 
 **Panel.** Your chat with the hikari agent, anchored to the right of the web UI's page: your messages, its turns, a card for each permission it asks for, and the model, the effort, and the permission mode of its next turn. Hikari, the cat, toggles it.

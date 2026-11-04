@@ -303,7 +303,11 @@ func branches(s *api.SelfPartition) string {
 
 func sharedPrompt(self api.Self) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and the deliverables in deliverables/. It is read-only.\n", api.PublicDir)
+	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, the contracts in contracts/, and the deliverables in deliverables/. It is read-only.", api.PublicDir)
+	if len(self.Styles) > 0 {
+		fmt.Fprintf(&b, " The user granted you the styles %s, in %s: they say how your work should look, and apply to you below.", strings.Join(self.Styles, ", "), api.StylesDir)
+	}
+	b.WriteString("\n")
 	if pack := modules.Pack(packRole(self), self.Modules); len(pack) > 0 {
 		fmt.Fprintf(&b, "\nHikari gives you these skills, for the tasks of your role: %s. Load the one that the task names.\n", strings.Join(pack, ", "))
 	}

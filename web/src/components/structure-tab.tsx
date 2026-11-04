@@ -25,7 +25,7 @@ type Props = {
 export function StructureTab({ data, mode, reload, show, select: selectKey, onPending }: Props) {
   const [ops, setOps] = useState<Op[]>([])
   const [plan, setPlan] = useState<Plan | null>(null)
-  const [options, setOptions] = useState<Options>({ deliverables: [], skills: [], models: ['sonnet', 'opus', 'haiku'], templates: [] })
+  const [options, setOptions] = useState<Options>({ deliverables: [], skills: [], styles: [], models: ['sonnet', 'opus', 'haiku'], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], reviews: ['required', 'none'], templates: [] })
   const [review, setReview] = useState(false)
   const [conflict, setConflict] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)

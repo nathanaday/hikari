@@ -127,6 +127,18 @@ services:
 
 Save it as `topology.yaml` and run `hikari up`. Each folder appears in the agent's container at `/workspace/<repo>/<path>`, and the test command runs in `/workspace`. Agents never touch git: Hikari commits each agent's changes to the branch that the file names for each repository, with the agent as author, and you review and merge it.
 
+How an agent works is yours to set too. A **policy**, `vault/public/policies/<name>.md`, is a rule for every agent. A **style**, `vault/styles/<name>.md`, says how one agent's work should look, and `grants.styles` puts it into that agent's system prompt. A **skill** in `vault/skills/<name>/` teaches a way of working, and `grants.skills` gives it to an agent. A **profile** under `x-hikari.profiles` bundles a model, an effort, a review requirement, skills, and styles under one name, which an agent takes with `profile:`; what the agent sets itself wins. `hikari toolbox` installs ready-made policies, styles, and skills into the vault, and the [workflows guide](docs/guides/workflows.md) explains the four.
+
+```yaml
+x-hikari:
+  profiles:
+    careful: {model: opus, effort: high, review: required, styles: [terse, conventional-commits]}
+
+services:
+  api:
+    x-hikari: {description: The order API., profile: careful, grants: {skills: [tdd]}}
+```
+
 ## Bring Your Own Repositories
 
 Onboarding turns your repositories into a project through two skills of the plugin, which the `hikari` skill hands you to. `containerize-repo` wraps each repository as one partition, with no change to its code, and hikari's agents record a baseline of every test. `hikify` works with you to draw cleaner partitions, plans the moves, has fresh reviewers check the plan, and carries it out. Before you commit to either, `propose-topology` sketches a topology from reading the code. After onboarding, `room` posts your requests to the agents from your session, and `change-topology` splits, merges, or adds partitions as the project grows. The [onboarding guide](docs/guides/onboarding.md) walks through each one.

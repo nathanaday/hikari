@@ -1296,7 +1296,7 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 	return api.PartitionView{
 		PartitionAgentView: v,
 		Dirty:              dirty,
-		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills)},
+		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills), Styles: nonNil(grants.Styles)},
 		Private:            priv,
 		Releases:           m.catalog(name),
 		Pins:               m.Pins(name),

@@ -83,6 +83,9 @@ type sharedListing struct {
 	Deliverables []deliverableEntry  `json:"deliverables"`
 	Remotes      []remoteEntry       `json:"remotes"`
 	Contracts    []api.ContractEntry `json:"contracts"`
+	// Styles are the styles of the vault's styles/, each with the agents
+	// that follow it.
+	Styles []skillEntry `json:"styles"`
 }
 
 // vaultRoutes serves the vault to the UI: a release, the public area and
@@ -202,6 +205,16 @@ func (s *Server) vaultRoutes(mux *http.ServeMux, ui func(http.HandlerFunc) http.
 		listing.Deliverables = s.deliverables(st)
 		listing.Remotes = s.remotes(st)
 		listing.Contracts = s.sys.Contracts()
+		listing.Styles = []skillEntry{}
+		for _, name := range st.StyleNames() {
+			entry := skillEntry{sharedEntry{Name: name, Path: st.Rel(st.StyleFile(name))}, []string{}}
+			for _, agent := range s.topo.AgentNames() {
+				if slices.Contains(s.topo.Agents[agent].Grants.Styles, name) {
+					entry.Holders = append(entry.Holders, agent)
+				}
+			}
+			listing.Styles = append(listing.Styles, entry)
+		}
 		writeJSON(w, http.StatusOK, listing)
 	}))
 

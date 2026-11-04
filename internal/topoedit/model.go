@@ -35,6 +35,21 @@ type Project struct {
 	Orchestration string `json:"orchestration"`
 	// Modules is x-hikari.modules.
 	Modules []string `json:"modules,omitempty"`
+	// Profiles are x-hikari.profiles, by name, sorted.
+	Profiles []ProfileEntry `json:"profiles"`
+}
+
+// ProfileEntry is one profile of x-hikari.profiles as the source writes
+// it, with its line.
+type ProfileEntry struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Model       string   `json:"model"`
+	Effort      string   `json:"effort"`
+	Review      string   `json:"review"`
+	Skills      []string `json:"skills"`
+	Styles      []string `json:"styles"`
+	Line        int      `json:"line"`
 }
 
 type Repo struct {
@@ -57,6 +72,12 @@ type Agent struct {
 	Releases     []string   `json:"releases"`
 	Deliverables []string   `json:"deliverables"`
 	Skills       []string   `json:"skills"`
+	Styles       []string   `json:"styles"`
+	// Profile, Effort, and Review are the agent's own, as the source
+	// writes them; the profile's values are not merged in here.
+	Profile string `json:"profile"`
+	Effort  string `json:"effort"`
+	Review  string `json:"review"`
 	// Image and Build describe the container: the image key, and the
 	// build's context and Dockerfile.
 	Image string `json:"image"`
@@ -141,9 +162,10 @@ type srcHikari struct {
 	Project *struct {
 		Branch string `yaml:"branch"`
 	} `yaml:"project"`
-	Repos         map[string]srcRepo `yaml:"repos"`
-	Orchestration string             `yaml:"orchestration"`
-	Modules       []string           `yaml:"modules"`
+	Repos         map[string]srcRepo          `yaml:"repos"`
+	Orchestration string                      `yaml:"orchestration"`
+	Modules       []string                    `yaml:"modules"`
+	Profiles      map[string]topology.Profile `yaml:"profiles"`
 }
 
 type srcRepo struct {
@@ -166,8 +188,12 @@ type srcService struct {
 			Releases     []string `yaml:"releases"`
 			Deliverables []string `yaml:"deliverables"`
 			Skills       []string `yaml:"skills"`
+			Styles       []string `yaml:"styles"`
 		} `yaml:"grants"`
-		Serves string `yaml:"serves"`
+		Profile string `yaml:"profile"`
+		Effort  string `yaml:"effort"`
+		Review  string `yaml:"review"`
+		Serves  string `yaml:"serves"`
 	} `yaml:"x-hikari"`
 }
 
@@ -183,7 +209,7 @@ func ReadModel(text []byte, dir string) *Model {
 	var f srcFile
 	yaml.Unmarshal(text, &f)
 	m := &Model{Repos: []Repo{}, Agents: []Agent{}, Sidecars: []Sidecar{}}
-	m.Project = Project{ID: f.Name, Name: f.Name, Vault: f.Hikari.Vault, Orchestration: f.Hikari.Orchestration, Modules: f.Hikari.Modules}
+	m.Project = Project{ID: f.Name, Name: f.Name, Vault: f.Hikari.Vault, Orchestration: f.Hikari.Orchestration, Modules: f.Hikari.Modules, Profiles: []ProfileEntry{}}
 	if f.Hikari.Name != "" {
 		m.Project.Name = f.Hikari.Name
 	}
@@ -193,6 +219,10 @@ func ReadModel(text []byte, dir string) *Model {
 	vault := vaultDir(f.Hikari.Vault, dir)
 	line := func(p string) int { return topology.LineOf(d.root, p) }
 
+	for _, name := range sorted(f.Hikari.Profiles) {
+		pr := f.Hikari.Profiles[name]
+		m.Project.Profiles = append(m.Project.Profiles, ProfileEntry{Name: name, Description: freeText(pr.Description), Model: pr.Model, Effort: pr.Effort, Review: pr.Review, Skills: nonNil(pr.Skills), Styles: nonNil(pr.Styles), Line: line("x-hikari.profiles." + name)})
+	}
 	for _, id := range sorted(f.Hikari.Repos) {
 		r := f.Hikari.Repos[id]
 		m.Repos = append(m.Repos, Repo{
@@ -208,14 +238,15 @@ func ReadModel(text []byte, dir string) *Model {
 			continue
 		}
 		a := Agent{ID: id, Name: id, Image: s.Image, Build: buildText(&s.Build), Line: line("services." + id),
-			Releases: []string{}, Deliverables: []string{}, Skills: []string{}, Compose: composeKeys(d, id), Template: template(d, id)}
+			Releases: []string{}, Deliverables: []string{}, Skills: []string{}, Styles: []string{}, Compose: composeKeys(d, id), Template: template(d, id)}
 		if h != nil {
 			a.Name = nameOr(h.Name, id)
 			a.Description, a.Instructions, a.Model = freeText(h.Description), freeText(h.Instructions), h.Model
 			if h.Partition != nil {
 				a.Partition = h.Partition.model()
 			}
-			a.Releases, a.Deliverables, a.Skills = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables), nonNil(h.Grants.Skills)
+			a.Releases, a.Deliverables, a.Skills, a.Styles = nonNil(h.Grants.Releases), nonNil(h.Grants.Deliverables), nonNil(h.Grants.Skills), nonNil(h.Grants.Styles)
+			a.Profile, a.Effort, a.Review = h.Profile, h.Effort, h.Review
 		}
 		a.IDLocked = vault != "" && exists(filepath.Join(vault, "partitions", id))
 		m.Agents = append(m.Agents, a)

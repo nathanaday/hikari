@@ -119,7 +119,7 @@ x-hikari:
   orchestration: lead
 services:
   lead: {image: hikari-agent, x-hikari: {grants: {skills: [style]}}}
-  orders: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/orders}]}, grants: {releases: [inventory], skills: [style]}}}
+  orders: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/orders}]}, grants: {releases: [inventory], skills: [style], styles: [terse]}}}
   inventory: {image: hikari-agent, x-hikari: {partition: {folders: [{repo: shop, path: services/inventory}]}}}
 `
 	topo, err := topology.Parse([]byte(src), dir)
@@ -156,6 +156,7 @@ services:
 			bind(filepath.Join(vault, "partitions/orders/staging"), "/hikari/staging", false),
 			bind(filepath.Join(vault, "partitions/inventory/read-only/releases"), "/hikari/grants/inventory/releases", true),
 			bind(filepath.Join(vault, "skills/style"), "/hikari/skills/style", true),
+			bind(filepath.Join(vault, "styles/terse.md"), "/hikari/styles/terse.md", true),
 		},
 		"inventory": {
 			bind(filepath.Join(repo, "services/inventory/.hikari/private"), "/hikari/private", false),

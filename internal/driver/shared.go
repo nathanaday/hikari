@@ -26,10 +26,12 @@ var builtin embed.FS
 // granted, the skill of each deliverable that it holds, and the policies.
 type sharedArea struct {
 	home string
-	// public is the public area in the container, and skills the
-	// directory of its granted skills.
+	// public is the public area in the container, skills the directory
+	// of its granted skills, and styles the directory of its granted
+	// styles.
 	public string
 	skills string
+	styles string
 	// role names the agent's pack of built-in skills, and builtins its
 	// skills.
 	role     string
@@ -38,7 +40,10 @@ type sharedArea struct {
 	extra        map[string]fs.FS
 	deliverables []string
 	granted      []string
-	warned       map[string]bool
+	// grantedStyles are the styles the agent follows, in the order the
+	// topology grants them.
+	grantedStyles []string
+	warned        map[string]bool
 }
 
 func newSharedArea(self api.Self, deliverables, granted []string) (*sharedArea, error) {
@@ -53,7 +58,7 @@ func newSharedArea(self api.Self, deliverables, granted []string) (*sharedArea, 
 			extra[sk.Name] = sk.Files
 		}
 	}
-	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, role: role, builtins: modules.Pack(role, self.Modules), extra: extra, deliverables: deliverables, granted: granted, warned: map[string]bool{}}, nil
+	return &sharedArea{home: home, public: api.PublicDir, skills: api.SkillsDir, styles: api.StylesDir, role: role, builtins: modules.Pack(role, self.Modules), extra: extra, deliverables: deliverables, granted: granted, grantedStyles: self.Styles, warned: map[string]bool{}}, nil
 }
 
 // packRole returns the role whose pack self gets (rule K1 of the skill packs
@@ -72,9 +77,9 @@ func (s *sharedArea) skillsDir() string { return filepath.Join(s.home, ".claude"
 func (s *sharedArea) agentsDir() string { return filepath.Join(s.home, ".claude", "agents") }
 
 // sync links the granted skills and the skills of the agent's
-// deliverables, installs the agent's pack, and returns the policies as a
-// system prompt section. Problems are logged, so that a broken vault never
-// stops a turn.
+// deliverables, installs the agent's pack, and returns the policies and
+// the granted styles as system prompt sections. Problems are logged, so
+// that a broken vault never stops a turn.
 func (s *sharedArea) sync() string {
 	for _, d := range []string{s.skillsDir(), s.agentsDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -106,7 +111,28 @@ func (s *sharedArea) sync() string {
 		s.link(filepath.Join(s.public, vault.Deliverables, name), filepath.Join(s.skillsDir(), name))
 	}
 	s.removeDangling(s.skillsDir())
-	return s.policies()
+	return s.policies() + s.stylesSection()
+}
+
+// stylesSection returns the granted styles, in the order of the grant, as
+// a system prompt section. A style whose file is missing is logged once.
+func (s *sharedArea) stylesSection() string {
+	var b strings.Builder
+	for _, name := range s.grantedStyles {
+		data, err := os.ReadFile(filepath.Join(s.styles, name+".md"))
+		if err != nil {
+			s.warnOnce("style:"+name, "the granted style %s is not at %s", name, filepath.Join(s.styles, name+".md"))
+			continue
+		}
+		if strings.TrimSpace(string(data)) == "" {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\n# Styles\n\nThese styles say how your work should look. Follow them in every change, message, and document you make.\n")
+		}
+		fmt.Fprintf(&b, "\n## %s\n\n%s\n", name, strings.TrimSpace(string(data)))
+	}
+	return b.String()
 }
 
 func (s *sharedArea) warnOnce(key, format string, args ...any) {

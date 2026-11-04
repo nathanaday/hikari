@@ -39,6 +39,9 @@ const (
 	GrantsDir = "/hikari/grants"
 	// SkillsDir holds the skills granted to an agent.
 	SkillsDir = "/hikari/skills"
+	// StylesDir holds the styles granted to an agent, one Markdown file
+	// each, which go into its system prompt.
+	StylesDir = "/hikari/styles"
 )
 
 // PublicWikiPath is where every container sees the public wiki.
@@ -64,6 +67,9 @@ func ReleasesPath(partition string) string {
 
 // SkillPath returns where a container sees a granted skill.
 func SkillPath(skill string) string { return path.Join(SkillsDir, skill) }
+
+// StylePath returns where a container sees a granted style.
+func StylePath(style string) string { return path.Join(StylesDir, style+".md") }
 
 // WorkspacePath returns the container path of a folder's place.
 func WorkspacePath(place string) string {
@@ -280,6 +286,7 @@ type Grants struct {
 	Releases     []string `json:"releases"`
 	Deliverables []string `json:"deliverables"`
 	Skills       []string `json:"skills"`
+	Styles       []string `json:"styles"`
 }
 
 type PublishRequest struct {

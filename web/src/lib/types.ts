@@ -195,6 +195,8 @@ export type SharedListing = {
   deliverables: Deliverable[]
   remotes?: Remote[]
   contracts?: ContractEntry[]
+  // styles are the vault's styles, each with the agents that follow it.
+  styles?: { name: string; path: string; holders: string[] }[]
 }
 
 // ContractEntry is one contract file of the vault, with the interfaces of
@@ -240,7 +242,7 @@ export type PartitionView = {
   repos: RepoState[]
   // dirty says whether a writable folder has uncommitted changes.
   dirty?: boolean
-  grants?: { releases: string[]; deliverables: string[]; skills: string[] }
+  grants?: { releases: string[]; deliverables: string[]; skills: string[]; styles?: string[] }
   flags: Flag[] | null
   providers: Record<string, string[]> | null
 }
@@ -555,7 +557,10 @@ export type Finding = {
 }
 
 // orchestration is the service id of the orchestration agent, or "".
-export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string }
+export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string; profiles?: TopologyProfile[] }
+// TopologyProfile is one profile of x-hikari.profiles: a named bundle of
+// model, effort, review, skills, and styles that an agent takes.
+export type TopologyProfile = { name: string; description: string; model: string; effort: string; review: string; skills: string[]; styles: string[]; line: number }
 export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
 // TopologyFolder is a folder as the file writes it: repo is the repo's id.
 export type TopologyFolder = { repo: string; path: string; read_only: boolean; at: string }
@@ -571,6 +576,12 @@ export type TopologyAgent = {
   releases: string[]
   deliverables: string[]
   skills: string[]
+  styles?: string[]
+  // profile, effort, and review are the agent's own, as the file writes
+  // them; the profile's values are shown as inherited.
+  profile?: string
+  effort?: string
+  review?: string
   image: string
   build: string
   template: string

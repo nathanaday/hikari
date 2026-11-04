@@ -241,6 +241,32 @@ func TestPartitionsAndGrants(t *testing.T) {
 	}
 }
 
+// TestProfilesAndStyles checks the fields of how an agent works: its
+// profile, effort, and review, and its granted styles, and that the model
+// reads x-hikari.profiles.
+func TestProfilesAndStyles(t *testing.T) {
+	shop := strings.Replace(readExample(t, "shop"), "  modules: [tasks]\n", "  modules: [tasks]\n  profiles:\n    careful: {description: Reviewed work., model: opus, effort: high, review: required, styles: [terse]}\n", 1)
+	res, m := apply(t, shop,
+		Op{Op: "set_agent", ID: "orders", Profile: ptr("careful"), Effort: ptr("medium"), Review: ptr("required")},
+		Op{Op: "set_grants", ID: "orders", Styles: &[]string{"conventional-commits"}},
+	)
+	a := agentOf(m, "orders")
+	if a.Profile != "careful" || a.Effort != "medium" || a.Review != "required" || !slices.Equal(a.Styles, []string{"conventional-commits"}) {
+		t.Errorf("%+v\n%s", a, res.Text)
+	}
+	if len(m.Project.Profiles) != 1 || m.Project.Profiles[0].Name != "careful" || m.Project.Profiles[0].Effort != "high" || !slices.Equal(m.Project.Profiles[0].Styles, []string{"terse"}) || m.Project.Profiles[0].Line == 0 {
+		t.Errorf("profiles = %+v", m.Project.Profiles)
+	}
+	// The skills grant stays as it was.
+	if !slices.Equal(a.Skills, []string{"python-style"}) {
+		t.Errorf("skills = %v", a.Skills)
+	}
+	res, m = apply(t, string(res.Text), Op{Op: "set_agent", ID: "orders", Profile: ptr(""), Effort: ptr(""), Review: ptr("")}, Op{Op: "set_grants", ID: "orders", Styles: &[]string{}})
+	if a := agentOf(m, "orders"); a.Profile != "" || a.Effort != "" || a.Review != "" || len(a.Styles) != 0 || strings.Contains(string(res.Text), "styles: [conventional-commits]") {
+		t.Errorf("%+v\n%s", a, res.Text)
+	}
+}
+
 const solo = `name: solo
 
 x-hikari:

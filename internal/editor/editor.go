@@ -452,12 +452,15 @@ func projectName(dir string) string {
 type Options struct {
 	Deliverables []string `json:"deliverables"`
 	Skills       []string `json:"skills"`
+	Styles       []string `json:"styles"`
 	Models       []string `json:"models"`
+	Efforts      []string `json:"efforts"`
+	Reviews      []string `json:"reviews"`
 	Templates    []string `json:"templates"`
 }
 
 func (e *Editor) Options() Options {
-	o := Options{Deliverables: []string{}, Skills: []string{}, Models: []string{"sonnet", "opus", "haiku"}, Templates: []string{}}
+	o := Options{Deliverables: []string{}, Skills: []string{}, Styles: []string{}, Models: []string{"sonnet", "opus", "haiku"}, Efforts: topology.Efforts, Reviews: topology.Reviews, Templates: []string{}}
 	text, ok, _ := e.read()
 	if !ok {
 		return o
@@ -473,6 +476,9 @@ func (e *Editor) Options() Options {
 		}
 		if names := st.SkillNames(); names != nil {
 			o.Skills = names
+		}
+		if names := st.StyleNames(); names != nil {
+			o.Styles = names
 		}
 	}
 	for _, a := range m.Agents {

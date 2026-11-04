@@ -87,8 +87,15 @@ type Self struct {
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that a partition agent publishes.
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
-	// Skills lists the skills of the vault that the agent is granted.
+	// Skills lists the skills of the vault that the agent is granted, and
+	// Styles the styles, whose text goes into the system prompt.
 	Skills []string `json:"skills,omitempty"`
+	Styles []string `json:"styles,omitempty"`
+	// Profile names the agent's profile, Effort its reasoning effort, and
+	// Review whether its parts need a review before done.
+	Profile string `json:"profile,omitempty"`
+	Effort  string `json:"effort,omitempty"`
+	Review  string `json:"review,omitempty"`
 	// Modules lists the modules that the project turns on (rule MO4 of the
 	// task pipeline spec).
 	Modules []string `json:"modules,omitempty"`

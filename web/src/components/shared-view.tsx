@@ -143,6 +143,11 @@ export function SharedView() {
         />
         <Group title="Policies" hint="Add rules for every agent as Markdown files in vault/public/policies/." entries={data.policies} />
         <Group
+          title="Styles"
+          hint="A style says how an agent's work should look: code, commits, documents, messages. Add one as vault/styles/<name>.md, or with hikari toolbox, and grant it with grants.styles or a profile."
+          entries={(data.styles ?? []).map((s) => ({ name: s.name, path: s.path, note: s.holders.length ? `followed by ${s.holders.join(', ')}` : 'followed by no agent' }))}
+        />
+        <Group
           title="Skills"
           hint="Add Claude Code skills in vault/skills/<name>/SKILL.md, and grant each to agents with grants.skills in the topology."
           entries={data.skills.map((s) => ({ name: s.name, path: s.path, note: s.holders.length ? `granted to ${s.holders.join(', ')}` : 'granted to no agent' }))}

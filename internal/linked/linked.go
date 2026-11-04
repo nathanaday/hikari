@@ -39,6 +39,7 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 		fail("%s", f)
 	}
 	out = append(out, checkSkills(topo)...)
+	out = append(out, checkStyles(topo)...)
 	if p := topo.Project; p != nil {
 		repo := gitrepo.Open(p.Path)
 		// Each path to check, with the .gitignore line that ignores it.
@@ -128,6 +129,21 @@ func checkSkills(topo *topology.Topology) []Finding {
 				continue
 			}
 			out = append(out, Finding{Text: fmt.Sprintf("agent %s is granted the skill %s, which %s", name, sk, problem)})
+		}
+	}
+	return out
+}
+
+// checkStyles checks each granted style: it is a Markdown file of the
+// vault's styles/.
+func checkStyles(topo *topology.Topology) []Finding {
+	var out []Finding
+	st := topo.VaultOf()
+	for _, name := range topo.AgentNames() {
+		for _, style := range topo.Agents[name].Grants.Styles {
+			if file := st.StyleFile(style); !exists(file) {
+				out = append(out, Finding{Text: fmt.Sprintf("agent %s is granted the style %s, which does not exist: %s is not a file", name, style, file)})
+			}
 		}
 	}
 	return out

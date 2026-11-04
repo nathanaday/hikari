@@ -387,11 +387,37 @@ orchestration agent has its own `read-only/` and `can-edit/` parts in
 releases. Your skills sit in `skills/`, outside `public/`, because the
 topology grants each one to the agents that use it.
 
-Policies, deliverables, and skills stay yours. A policy changes every
-agent's system prompt, so an agent that could change one would rewrite its
-own rules. The orchestration agent's tools write only the vocabulary and the
-public wiki, and hikari writes no `granted/`. An agent's changes in its
-`can-edit/` are committed with its apply, so they are reviewed like its code.
+Policies, deliverables, skills, and styles stay yours. A policy changes
+every agent's system prompt, so an agent that could change one would rewrite
+its own rules. The orchestration agent's tools write only the vocabulary,
+the contracts, and the public wiki, and hikari writes no `granted/`. An
+agent's changes in its `can-edit/` are committed with its apply, so they are
+reviewed like its code.
+
+## Policies, styles, skills, and profiles
+
+Four things say how an agent works, and each has one home because each
+answers one question. A policy answers "what must every agent do", so it
+is one file for all and goes into every system prompt. A style answers
+"how should this agent's work look", so it is granted to the agents it
+fits and goes into their system prompts alone: the backend's commit style
+need not reach the web client. A skill answers "how is this kind of task
+done", so it is a Claude Code skill that loads when the task comes up, not
+text that every turn carries. A profile answers "which of these does this
+agent take", so it is a named bundle of a model, an effort, a review
+requirement, skills, and styles that several agents can share, with the
+agent's own settings winning over it.
+
+A style is text in the prompt and a skill is a package that loads on
+demand, because a style is short and always applies, while a skill is long
+and applies to one task. The line is where the user draws it: a style that
+grows into procedures should become a skill.
+
+Profiles live in the topology file and not in the vault, because a
+profile is configuration of the agents, like a model, and the topology
+already holds what each agent is. The merge is one rule: the agent's own
+value wins, and its own skills and styles join the profile's, so that a
+profile is a default and never a cage.
 
 hikari moves no file from an earlier layout. It refuses to start on one and
 names the move that fixes it, because a silent start would show empty maps.

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The kinds of documents in the public area.
@@ -32,6 +33,7 @@ const Wiki = "wiki"
 const (
 	PublicDir        = "public"
 	SkillsDir        = "skills"
+	StylesDir        = "styles"
 	PartitionsDir    = "partitions"
 	OrchestrationDir = "orchestration"
 	ReadOnlyDir      = "read-only"
@@ -95,6 +97,25 @@ func (s Vault) PublicWiki() string { return s.Public(Wiki) }
 func (s Vault) SkillsRoot() string { return filepath.Join(s.Root, SkillsDir) }
 
 func (s Vault) SkillDir(name string) string { return filepath.Join(s.SkillsRoot(), name) }
+
+// StylesRoot holds your styles, Markdown documents of how an agent's work
+// should look, which the topology grants to agents.
+func (s Vault) StylesRoot() string { return filepath.Join(s.Root, StylesDir) }
+
+// StyleFile is the file of one style.
+func (s Vault) StyleFile(name string) string { return filepath.Join(s.StylesRoot(), name+".md") }
+
+// StyleNames lists the styles of the vault, sorted.
+func (s Vault) StyleNames() []string {
+	entries, _ := os.ReadDir(s.StylesRoot())
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			out = append(out, strings.TrimSuffix(e.Name(), ".md"))
+		}
+	}
+	return out
+}
 
 func (s Vault) PartitionDir(partition string) string {
 	return filepath.Join(s.Root, PartitionsDir, s.PartitionID(partition))
@@ -173,7 +194,7 @@ func (s Vault) ReleaseDir(partition, deliverable, version string) string {
 // and writes its README once. The orchestration agent's parts exist only
 // when the topology names one (rule V2).
 func (s Vault) Prepare(partitions []string, orchestration bool) error {
-	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.Public(Remotes), s.Public(Contracts), s.PublicWiki(), s.SkillsRoot()}
+	dirs := []string{s.Public(Vocabulary), s.Public(Policies), s.Public(Deliverables), s.Public(Remotes), s.Public(Contracts), s.PublicWiki(), s.SkillsRoot(), s.StylesRoot()}
 	for _, p := range partitions {
 		dirs = append(dirs, s.FeatureMap(p), s.ReleasesOf(p), s.Granted(p), s.CanEdit(p), s.Staging(p))
 	}
@@ -268,6 +289,8 @@ this file once; you can change it.
                                 the vault: your commands, which hikari runs on the host
     skills/<name>/SKILL.md      your Claude Code skills; grants.skills gives them to agents,
                                 at /hikari/skills/<name>
+    styles/<name>.md            your styles: how an agent's work should look; grants.styles
+                                puts each into the agent's system prompt, at /hikari/styles/<name>.md
     partitions/<id>/
       read-only/                the partition agent and the orchestration agent read it,
                                 at /hikari/self and /hikari/partitions/<name>

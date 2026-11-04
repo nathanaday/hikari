@@ -557,6 +557,8 @@ func (s *Server) Self(agent string) api.Self {
 	self.Releases = s.topo.ReadableReleases(agent)
 	self.Deliverables = s.sys.Deliverables(agent)
 	self.Skills = a.Grants.Skills
+	self.Styles = a.Grants.Styles
+	self.Profile, self.Effort, self.Review = a.Profile, a.Effort, a.Review
 	self.Modules = s.topo.Modules
 	for _, m := range self.VisiblePartitions {
 		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
