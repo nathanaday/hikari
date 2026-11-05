@@ -1,0 +1,1 @@
+One unit of work is one apply: a change you can describe in one subject line, with its tests and its documents in the same commit. Keep the code map, the test map, and the feature map true in that unit, not later. Do not fix, rename, or reformat code that the task did not ask for; note it and go on, or open an issue for it. A reviewer reads one change for one reason.

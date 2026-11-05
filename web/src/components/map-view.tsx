@@ -27,6 +27,7 @@ import type { WikiView } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import type { View } from '@/lib/view'
 import { linkTarget } from '@/lib/wiki'
+import { ago, branchLine, openPulls } from '@/lib/repos'
 import { featureMapRef, orchestrationRef, publicRef, wikiIndex, wikiName } from '@/lib/wikis'
 
 const lensKey = { topology: 'hikari.map.lens', wiki: 'hikari.wiki.lens' }
@@ -105,7 +106,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   const [topoSelected, setTopoSelected] = useState<string | null>(null)
   const selected = wiki ? (view.doc ? docNodeID(wiki.ref, view.doc) : null) : topoSelected && graph.nodes.some((n) => n.id === topoSelected) ? topoSelected : null
 
-  const topoCtx = useMemo(() => topologyContext(state.partitions, state.agents), [state.partitions, state.agents])
+  const topoCtx = useMemo(() => topologyContext(state.partitions, state.agents, state.repos), [state.partitions, state.agents, state.repos])
   const features = useMemo(() => (view.partition ? (state.partitions.find((s) => s.partition_agent === view.partition)?.features ?? []) : []), [view.partition, state.partitions])
   const wikiCtx = useMemo(
     () => wikiContext(graph.nodes, (n) => (n.kind === 'doc' && n.wiki ? state.wikis.find((w) => w.ref === n.wiki)?.documents.find((d) => d.id === n.ref) : undefined), features),
@@ -205,7 +206,7 @@ export function MapView({ state, show }: { state: State; show: (v: View) => void
   } else if (doc && wiki) {
     panelBody = <DocumentPanel key={`${wiki.ref}/${doc.id}`} wiki={wiki} doc={doc} index={index} onLink={(href) => selectDoc(linkTarget(decodeURI(href)))} />
   } else if (node?.kind === 'repo') {
-    panelBody = <RepoPanel name={node.ref} state={state} open={(s) => openWiki(featureMapRef(s))} />
+    panelBody = <RepoPanel name={node.ref} state={state} open={(s) => openWiki(featureMapRef(s))} show={show} />
   } else if (node?.kind === 'deliverable') {
     panelBody = <DeliverablePanel name={node.ref} state={state} show={show} />
   }
@@ -283,7 +284,13 @@ function kindLine(n: GraphNode, state: State): string {
     const count = state.wikis.find((w) => w.ref === orchestrationRef)?.documents.length ?? 0
     return `orchestration agent · ${count} document${count === 1 ? '' : 's'} in its feature map`
   }
-  if (n.kind === 'repo') return `repository · branch ${state.repos.find((r) => r.name === n.ref)?.branch ?? ''}`
+  if (n.kind === 'repo') {
+    const r = state.repos.find((x) => x.name === n.ref)
+    if (!r) return 'repository'
+    const open = openPulls(r)
+    const prs = r.forge ? ` · ${open.length} open pull request${open.length === 1 ? '' : 's'}${open.length ? ` (checks ${open.map((p) => p.checks.state).join(', ')})` : ''}` : ''
+    return `repository · ${r.branch} · ${branchLine(r)}${prs}`
+  }
   const holders = state.deliverables.find((d) => d.name === n.ref)?.holders ?? []
   return `deliverable · held by ${holders.join(', ')}`
 }
@@ -402,15 +409,45 @@ function Panel({ children, onClose }: { children: React.ReactNode; onClose: () =
   )
 }
 
-function RepoPanel({ name, state, open }: { name: string; state: State; open: (s: string) => void }) {
+// RepoPanel says where a repository's work stands (rule UI3), and links its
+// page.
+function RepoPanel({ name, state, open, show }: { name: string; state: State; open: (s: string) => void; show: (v: View) => void }) {
   const repo = state.repos.find((r) => r.name === name)
   if (!repo) return null
+  const prs = openPulls(repo)
   return (
-    <div className="space-y-2 pr-6 text-sm">
+    <div className="space-y-2 pr-6 text-sm" data-testid="repo-panel">
       <h2 className="font-semibold">{repo.name}</h2>
       <p className="text-muted-foreground">
-        Repository · branch <code className="text-xs">{repo.branch}</code>
+        Repository · your branch <code className="text-xs">{repo.branch}</code> · {branchLine(repo)}
       </p>
+      {repo.forge && (
+        <p className="text-muted-foreground">
+          {repo.forge.owner}/{repo.forge.name} on {repo.forge.kind} · {prs.length} open pull request{prs.length === 1 ? '' : 's'}
+          {repo.synced ? ` · synced ${ago(repo.synced)}` : ''}
+        </p>
+      )}
+      {prs.map((p) => (
+        <p key={p.number} className="text-xs text-muted-foreground">
+          #{p.number} {p.title} · checks {p.checks.state}
+          {p.mergeable === 'conflicting' ? ' · conflicts' : ''}
+        </p>
+      ))}
+      {repo.error && <p className="text-xs text-red-700">{repo.error}</p>}
+      {repo.uncovered?.length ? (
+        <p className="text-xs text-muted-foreground">
+          {repo.uncovered.length} path{repo.uncovered.length === 1 ? '' : 's'} in no partition: {repo.uncovered.slice(0, 4).join(', ')}
+          {repo.uncovered.length > 4 ? ', …' : ''}
+        </p>
+      ) : null}
+      {repo.drift?.filter((d) => d.paths.length > 0).map((d) => (
+        <p key={d.partition} className="text-xs text-amber-800">
+          {repo.default_branch} changed {d.paths.length} path{d.paths.length === 1 ? '' : 's'} of {d.partition} since your branch diverged
+        </p>
+      ))}
+      <button type="button" className="underline underline-offset-2" onClick={() => show({ kind: 'repo', name: repo.name })}>
+        Open the repository page
+      </button>
       <div>
         <div className="text-xs text-muted-foreground">Partitions</div>
         <ul className="ml-4 list-disc">

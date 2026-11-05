@@ -124,7 +124,6 @@ func TestProblems(t *testing.T) {
 		"other-id.md":      `its id "else" differs`,
 		"ghost.md":         `"billing" in partitions is not a partition agent`,
 		"wrong-feature.md": "[[reserve-stock]] in features is no feature",
-		"queues/api.md":    "[[a-stub]] is a stub",
 		"queues/web.md":    "[[fine]] is in the queue also",
 	}
 	for f, w := range want {
@@ -239,9 +238,11 @@ func TestQueues(t *testing.T) {
 	if _, err := s.ChangeQueue(QueueOp{Op: "add", Queue: "ui", Scope: "b"}); err == nil {
 		t.Error("D2 a scope is in at most one queue: add refuses one in another queue")
 	}
-	if _, err := s.ChangeQueue(QueueOp{Op: "add", Queue: "ui", Scope: "stub"}); err == nil {
-		t.Error("TK11 a stub cannot enter a queue")
+	mustQ(QueueOp{Op: "add", Queue: "ui", Scope: "stub"})
+	if s.Tasks["stub"].Status != Queued || s.QueueOf("stub") != "ui" {
+		t.Errorf("IS3 a task that is not scoped yet enters a queue: %+v", s.Tasks["stub"])
 	}
+	mustQ(QueueOp{Op: "out", Scope: "stub"})
 	if _, err := s.ChangeQueue(QueueOp{Op: "remove", Queue: "ui"}); err == nil {
 		t.Error("TK11 a queue with scopes stays")
 	}

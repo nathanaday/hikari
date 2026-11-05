@@ -1,0 +1,9 @@
+# For a partition that other partitions depend on through releases. Its
+# interfaces are contracts, so the work is careful and recorded.
+library-maintainer:
+  description: Careful, test-first, with every design decision recorded.
+  model: opus
+  effort: high
+  review: required
+  skills: [tdd, refactor-safely, record-a-decision]
+  styles: [terse, conventional-commits, plain-docs]

@@ -994,8 +994,86 @@ func TestDirtyScopes(t *testing.T) {
 	if g := f.m.PartitionView("orders").Grants; !slices.Equal(g.Deliverables, []string{"python-library"}) || len(g.Releases) != 0 || g.Releases == nil {
 		t.Errorf("N1: grants %+v", g)
 	}
-	repos := f.m.Repos()
-	if len(repos) != 1 || repos[0].Name != "shop" || !slices.Equal(repos[0].Partitions, []string{"inventory", "orders"}) {
-		t.Errorf("N2: %+v", repos)
+	if got := f.m.PartitionsIn("shop"); !slices.Equal(got, []string{"inventory", "orders"}) || len(f.m.GitRepos()) != 1 {
+		t.Errorf("N2: %v", got)
+	}
+}
+
+// TestContracts checks the contracts of the vocabulary: an interface that
+// names a contract the vault lacks is flagged, write_contract clears the
+// flag, only the orchestration agent writes, and the listing names the
+// interfaces of each file.
+func TestContracts(t *testing.T) {
+	f := newFixture(t)
+	f.describeOrders(t)
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "POST /orders", Kind: "http", Description: "Creates an order.", Contract: "orders/openapi.yaml"}))
+	must(t, f.m.DefineInterface("lead", vocab.Interface{Name: "inventory.reserve", Kind: "function", Description: "Reserves stock."}))
+	v, err := f.m.GetPartition("lead", "orders")
+	must(t, err)
+	if !slices.Contains(v.Flags, vocab.Flag{Interface: "POST /orders", Problem: vocab.ContractMissing}) {
+		t.Errorf("a missing contract is flagged: %+v", v.Flags)
+	}
+	if list := f.m.Contracts(); len(list) != 1 || !list[0].Missing || list[0].Name != "orders/openapi.yaml" || !slices.Equal(list[0].Interfaces, []string{"POST /orders"}) {
+		t.Errorf("listing = %+v", list)
+	}
+
+	if err := f.m.WriteContract("orders", "orders/openapi.yaml", "openapi: 3.1.0\n"); !errors.Is(err, ErrForbidden) {
+		t.Errorf("a partition agent writes a contract: %v", err)
+	}
+	for _, bad := range []string{"../x", "/x", ""} {
+		if err := f.m.WriteContract("lead", bad, "x"); err == nil {
+			t.Errorf("the contract name %q is accepted", bad)
+		}
+	}
+	if err := f.m.WriteContract("lead", "orders/openapi.yaml", "  \n"); err == nil {
+		t.Error("an empty contract is accepted")
+	}
+	must(t, f.m.WriteContract("lead", "orders/openapi.yaml", "openapi: 3.1.0\npaths:\n  /orders: {post: {}}\n"))
+	if data, err := os.ReadFile(filepath.Join(f.dir, "vault", "public", "contracts", "orders", "openapi.yaml")); err != nil || !strings.HasPrefix(string(data), "openapi: 3.1.0") {
+		t.Errorf("the contract file: %q, %v", data, err)
+	}
+	v, _ = f.m.GetPartition("lead", "orders")
+	if slices.ContainsFunc(v.Flags, func(fl vocab.Flag) bool { return fl.Problem == vocab.ContractMissing }) {
+		t.Errorf("the flag clears once the file exists: %+v", v.Flags)
+	}
+	if list := f.m.Contracts(); len(list) != 1 || list[0].Missing || list[0].Path != "public/contracts/orders/openapi.yaml" {
+		t.Errorf("listing after the write = %+v", list)
+	}
+}
+
+// TestChanges checks the diff that a partition agent reads for a review:
+// its folders' committed and uncommitted changes since the base, and the
+// files git does not track yet, and nothing of another partition.
+func TestChanges(t *testing.T) {
+	f := newFixture(t)
+	write(t, f.repo, "services/orders/cancel.py", "def cancel(): pass\n")
+	write(t, f.repo, "services/orders/create.py", "def create():\n    return 1\n")
+	write(t, f.repo, "services/inventory/stock.py", "def reserve():\n    return 2\n")
+	if _, err := f.m.Commit("orders", "orders: add cancel"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, f.repo, "services/orders/create.py", "def create():\n    return 3\n")
+	write(t, f.repo, "services/orders/notes.txt", "draft\n")
+	ch, err := f.m.Changes("orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Repos) != 1 || ch.Repos[0].Repo != "shop" || ch.Repos[0].Base == "" {
+		t.Fatalf("changes = %+v", ch)
+	}
+	d := ch.Repos[0].Diff
+	for _, want := range []string{"services/orders/cancel.py", "+def cancel(): pass", "+    return 3"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the diff lacks %q:\n%s", want, d)
+		}
+	}
+	if strings.Contains(d, "inventory") {
+		t.Errorf("the diff holds another partition's change:\n%s", d)
+	}
+	if !slices.Equal(ch.Repos[0].Untracked, []string{"services/orders/notes.txt"}) {
+		t.Errorf("untracked = %v", ch.Repos[0].Untracked)
+	}
+	if _, err := f.m.Changes("lead"); err == nil {
+		t.Error("the orchestration agent has no changes to read")
 	}
 }

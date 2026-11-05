@@ -23,6 +23,13 @@ const (
 	maxWait  = 60 * time.Second
 )
 
+// BuildContext builds an agent's context, what its container puts before
+// Claude Code, from its Self and the vault's root, for the agent context
+// view. The command that starts hikari sets it to the driver's builder; the
+// server does not import the driver, whose MCP server the server's tests
+// are imported by.
+var BuildContext func(self api.Self, vaultRoot string) any
+
 // Handler serves the agent API and the web UI. Node requests authenticate with
 // an agent token. The UI authenticates with uiToken, so that agents, which can
 // reach the server, cannot read the full log or speak as the user.
@@ -88,6 +95,7 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	}))
 	mux.HandleFunc("GET /api/ui/events", ui(s.events))
 	s.vaultRoutes(mux, ui)
+	s.repoRoutes(mux, ui)
 	s.moduleRoutes(mux, ui)
 	// The user's changes to the wikis (rules U6, U8, and C4 of the wikis
 	// spec). {ref} is public or partition:<name>.
@@ -115,7 +123,38 @@ func (s *Server) Handler(uiToken string) http.Handler {
 	mux.HandleFunc("POST /api/ui/send", ui(func(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, topology.User)
 	}))
+	mux.HandleFunc("POST /api/ui/decide", ui(func(w http.ResponseWriter, r *http.Request) {
+		var req DecideRequest
+		if err := decode(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		m, err := s.Decide(req)
+		switch {
+		case errors.Is(err, errForbidden):
+			writeError(w, http.StatusForbidden, err.Error())
+		case err != nil:
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeJSON(w, http.StatusOK, m)
+		}
+	}))
 	s.assistantRoutes(mux, ui)
+	// The context of an agent: its system prompt as the driver builds it,
+	// with the policies and the styles of the vault (the agent context
+	// view).
+	mux.HandleFunc("GET /api/ui/agents/{name}/context", ui(func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if _, ok := s.topo.Agents[name]; !ok {
+			writeError(w, http.StatusNotFound, "no agent "+name)
+			return
+		}
+		if BuildContext == nil {
+			writeError(w, http.StatusServiceUnavailable, "this hikari builds no agent context")
+			return
+		}
+		writeJSON(w, http.StatusOK, BuildContext(s.Self(name), s.topo.Vault))
+	}))
 
 	static(mux)
 	return mux
@@ -173,6 +212,9 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 	handle("POST /api/agent/map/current", func(r *http.Request, agent string) (any, error) {
 		commits, err := sys.MarkCurrent(agent)
 		return api.CommitResponse{Commits: commits}, err
+	})
+	handle("GET /api/agent/changes", func(r *http.Request, agent string) (any, error) {
+		return sys.Changes(agent)
 	})
 	handle("POST /api/agent/commit", func(r *http.Request, agent string) (any, error) {
 		var req api.CommitRequest
@@ -270,6 +312,13 @@ func (s *Server) partitionRoutes(mux *http.ServeMux) {
 		return sys.GetPartition(agent, r.PathValue("name"))
 	})
 
+	handle("POST /api/agent/contracts", func(r *http.Request, agent string) (any, error) {
+		var req api.ContractRequest
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return nil, sys.WriteContract(agent, req.Name, req.Text)
+	})
 	handle("GET /api/agent/vocabulary", func(r *http.Request, agent string) (any, error) {
 		return sys.Vocabulary(), nil
 	})

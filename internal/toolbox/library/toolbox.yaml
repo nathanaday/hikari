@@ -1,0 +1,62 @@
+# The toolbox: hikari's built-in policies, styles, skills, and profile
+# recipes. hikari toolbox list prints them, and hikari toolbox add installs
+# one into the vault, where it is yours to change.
+version: 1
+items:
+  - kind: policy
+    name: no-workarounds
+    description: "A block outside your partition is reported, never worked around."
+  - kind: policy
+    name: tests-are-evidence
+    description: "Never weaken, skip, or delete a test to get green; say when coverage drops."
+  - kind: policy
+    name: ask-when-it-costs
+    description: "Decide small reversible things alone; ask, with choices, when a choice costs others."
+  - kind: policy
+    name: small-steps
+    description: "One unit of work is one apply, with its documents kept true, and no drive-by changes."
+  - kind: policy
+    name: say-what-you-did
+    description: "A report names what changed, what ran, and what is left; nothing \"should work\"."
+  - kind: policy
+    name: no-secrets
+    description: "Never print, commit, or send a credential."
+  - kind: style
+    name: terse
+    description: "Messages and documents in short sentences, plain words, the result first."
+  - kind: style
+    name: conventional-commits
+    description: "Commit subjects as type(scope) and an imperative, with the why in the body."
+  - kind: style
+    name: python-idiomatic
+    description: "Typed, small, tested Python with pathlib, dataclasses, and named exceptions."
+  - kind: style
+    name: go-idiomatic
+    description: "gofmt, wrapped errors, table tests, small interfaces, no clever code."
+  - kind: style
+    name: typescript-strict
+    description: "Strict TypeScript with no any, named exports, and types next to their use."
+  - kind: style
+    name: plain-docs
+    description: "Documentation that says what a thing is, why it exists, and how to use it, with explained examples."
+  - kind: skill
+    name: tdd
+    description: "Red, green, refactor for a change of a feature, with the suite recorded at each green."
+  - kind: skill
+    name: refactor-safely
+    description: "Characterize first, move in behavior-preserving steps, run the suites between steps."
+  - kind: skill
+    name: debug-a-failure
+    description: "Reproduce, isolate, name the cause, fix it, and keep the test that would have caught it."
+  - kind: skill
+    name: record-a-decision
+    description: "Write a decision as a principle or a note of the feature map, with its reasons and its rejected options."
+  - kind: profile
+    name: careful
+    description: "A strong model at high effort, reviewed work, terse and conventional."
+  - kind: profile
+    name: quick
+    description: "A fast model for small partitions and chores; no review."
+  - kind: profile
+    name: library-maintainer
+    description: "For a partition that others depend on: careful, with TDD and refactoring skills."

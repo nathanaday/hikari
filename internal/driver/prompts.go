@@ -31,11 +31,14 @@ func partitionAgentPrompt(self api.Self) string {
 - When a request asks you to change code, load the hikari-plan-work skill first: before a change of more than one feature, you post your plan in the room.
 - Releases follow your deliverables, listed below. Your published releases are in /hikari/self/releases/ and never change.
 - /hikari/self/granted/ holds files that the user gives you to read, and /hikari/can-edit/ files that the user gives you to change. hikari commits your changes in /hikari/can-edit/ with your code.
-- For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary).
+- For domain terms and interface names, use the names in the vocabulary (mcp__hikari__get_vocabulary). When an interface you provide or consume names a contract, the file is in /hikari/public/contracts/: build and test your side against it, and tell the orchestration agent when the code and the contract disagree.
 `)
 	fmt.Fprintf(&b, "- After each unit of work, call mcp__hikari__apply with a message that says what changed and why: a subject line and an optional body, with no trailers such as Co-Authored-By, because hikari sets the author. hikari makes one commit with that message in each repo whose folders changed, on its branch: %s. hikari also commits what you leave at the end of each turn.\n", branches(s))
 	b.WriteString("- Make a change with the hikari-do-work skill. Before you say that it is done, load the hikari-validate-work skill: run the suites that touch the affected features, call mcp__hikari__record_test_run for each run, update the documents, and call mark_map_current. hikari computes each feature's health from the tests that touch it.\n")
 	b.WriteString("- If a task needs a change outside your partition, tell the orchestration agent, or the partition agent of that partition, what you need and why. Do not work around it.\n")
+	if self.Review == "required" {
+		b.WriteString("- Your work is reviewed: before you ask for done on a part of a scope, load the hikari-review-work skill, have the hikari-reviewer agent read your change, fix what it finds, and pass its verdict as the review of set_task_status. hikari refuses done without it.\n")
+	}
 	return b.String()
 }
 
@@ -62,9 +65,9 @@ The map and the releases of each of your partitions are in /hikari/partitions/<p
 	fmt.Fprintf(&b, "\n## Your feature map\n\nYour feature map, %s/features/, holds the features that cross partitions: each is a flow that links the features of the partitions that carry it out, and its health is computed from theirs. Change it only with mcp__hikari__change_wiki. Only you read it.\n", api.SelfDir)
 	fmt.Fprintf(&b, "\n## The public wiki\n\nYou keep the public wiki, %s: the rules and principles that every agent keeps. Change it only with mcp__hikari__change_public_wiki. Before you write or change your feature map, the public wiki, or the vocabulary, load the %s skill. When a request needs work in the partitions, load the %s skill; to check how the project stands, load the %s skill.\n", api.PublicWikiPath, api.MapFeaturesSkill, api.PlanWorkSkill, api.HealthCheckSkill)
 	fmt.Fprintf(&b, "\n## Your files\n\n%s/granted/ holds files that the user gives you to read, and %s files that the user gives you to change. hikari commits your changes there at the end of each turn.\n", api.SelfDir, api.CanEditDir)
-	b.WriteString("\n## The vocabulary\n\nYou keep the vocabulary: the names that everyone in the project uses for domain terms and for the interfaces between partitions. Use mcp__hikari__define_term, define_interface, and remove_entry. When a partition agent uses a different name for something that the vocabulary defines, ask the partition agent to rename it.")
+	b.WriteString("\n## The vocabulary\n\nYou keep the vocabulary: the names that everyone in the project uses for domain terms and for the interfaces between partitions. Use mcp__hikari__define_term, define_interface, and remove_entry. When a partition agent uses a different name for something that the vocabulary defines, ask the partition agent to rename it. An interface that two partitions share should name a contract: a file in " + api.PublicDir + "/contracts/ that says its shape precisely (an OpenAPI document, a proto file, a JSON schema, or type definitions), which you write with write_contract from what the provider tells you, so that the provider and each consumer test against the same shape.")
 	if len(self.VisiblePartitions) > 0 {
-		b.WriteString(" get_partition flags interface names that are not in the vocabulary, and consumed interfaces that no partition provides.")
+		b.WriteString(" get_partition flags interface names that are not in the vocabulary, consumed interfaces that no partition provides, and interfaces whose contract file the vault lacks.")
 	}
 	b.WriteString("\n")
 	return b.String()
@@ -303,7 +306,11 @@ func branches(s *api.SelfPartition) string {
 
 func sharedPrompt(self api.Self) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, and the deliverables in deliverables/. It is read-only.\n", api.PublicDir)
+	fmt.Fprintf(&b, "\n## Shared knowledge\n\n%s holds what every agent in this network shares: the vocabulary in vocabulary/terms.yaml, the public wiki in wiki/, the policies in policies/, which apply to you below when there are any, the contracts in contracts/, and the deliverables in deliverables/. It is read-only.", api.PublicDir)
+	if len(self.Styles) > 0 {
+		fmt.Fprintf(&b, " The user granted you the styles %s, in %s: they say how your work should look, and apply to you below.", strings.Join(self.Styles, ", "), api.StylesDir)
+	}
+	b.WriteString("\n")
 	if pack := modules.Pack(packRole(self), self.Modules); len(pack) > 0 {
 		fmt.Fprintf(&b, "\nHikari gives you these skills, for the tasks of your role: %s. Load the one that the task names.\n", strings.Join(pack, ", "))
 	}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agent, doc, feature, partition, wikiOf, withHealth } from './fixtures'
+import { agent, branchView, doc, feature, partition, pullRequest, repoView, wikiOf, withHealth } from './fixtures'
 import { topologyGraph, wikiGraph, type GraphNode } from './graph'
 import {
   activityPaint,
@@ -55,6 +55,7 @@ describe('topology lenses', () => {
     repos: [
       { name: 'shop', branch: 'h', partitions: ['orders', 'inventory'] },
       { name: 'site', branch: 'h', partitions: ['docs'] },
+      { name: 'project', branch: 'h', partitions: [], project: true },
     ],
     deliverables: [{ name: 'lib', holders: ['orders'] }],
   })
@@ -76,6 +77,21 @@ describe('topology lenses', () => {
     expect(topologyPaint('git', node('repo:site'), ctx)).toEqual(neutral)
     for (const lens of ['activity', 'tests'] as const) expect(topologyPaint(lens, node('repo:shop'), ctx)).toEqual(neutral)
     for (const lens of ['activity', 'tests', 'git'] as const) expect(topologyPaint(lens, node('deliverable:lib'), ctx)).toEqual(neutral)
+  })
+
+  it('colors a repository from its view under git (UI3)', () => {
+    const views = [
+      repoView('shop', { pull_requests: [pullRequest(1, { checks: { state: 'failing', passed: 0, failed: 1, pending: 0, runs: [] } })] }),
+      repoView('site', { branches: [branchView('hikari', { yours: true, remote: false, unpushed: 2 }), branchView('main', { default: true })] }),
+    ]
+    const withViews = topologyContext(partitions, [], views)
+    expect(topologyPaint('git', node('repo:shop'), withViews).fill).toBe('fail')
+    expect(topologyDetail('git', node('repo:shop'), withViews)).toBe('checks failing or conflicts')
+    expect(topologyPaint('git', node('repo:site'), withViews).fill).toBe('pending')
+    const passing = topologyContext(partitions, [], [repoView('site', { pull_requests: [pullRequest(2, { checks: { state: 'passing', passed: 1, failed: 0, pending: 0, runs: [] } })] })])
+    expect(topologyPaint('git', node('repo:site'), passing).fill).toBe('pass')
+    expect(topologyPaint('git', node('repo:site'), topologyContext(partitions, [], [repoView('site')])).fill).toBe('white')
+    expect(legend('git').map((e) => e.label)).toContain('checks passing')
   })
 
   it('says the lens detail in the hover card (U36)', () => {

@@ -8,6 +8,7 @@ describe('view', () => {
       { kind: 'room' },
       { kind: 'room', tab: 'vocabulary' },
       { kind: 'dm', name: 'eng-lead' },
+      { kind: 'dm', name: 'eng-lead', tab: 'context' },
       { kind: 'partition', name: 'orders' },
       { kind: 'release', name: 'orders', deliverable: 'python-library', version: '1.2.0-rc.1' },
       { kind: 'shared' },
@@ -25,6 +26,7 @@ describe('view', () => {
     expect(parseHash('#/nonsense')).toEqual({ kind: 'all' })
     expect(parseHash('#/team/eng')).toEqual({ kind: 'all' })
     expect(viewKey({ kind: 'room', tab: 'vocabulary' })).toBe(viewKey({ kind: 'room' }))
+    expect(viewKey({ kind: 'dm', name: 'dev', tab: 'context' })).toBe(viewKey({ kind: 'dm', name: 'dev' }))
   })
 
   it('files a message under its conversation', () => {

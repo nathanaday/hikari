@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nathanaday/hikari/internal/api"
 	"github.com/nathanaday/hikari/internal/featuremap"
+	"github.com/nathanaday/hikari/internal/repos"
 	"github.com/nathanaday/hikari/internal/vault"
 	"github.com/nathanaday/hikari/internal/vocab"
 	"github.com/nathanaday/hikari/internal/wiki"
@@ -273,6 +275,17 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_changes",
+		Description: "Read your work on your branch as a reviewer would: in each repository of your writable folders, the unified diff from the merge base with the default branch to your working tree (committed and uncommitted), and the files git does not track yet. Use it with the hikari-review-work skill before you ask for done, and whenever you want to see the whole change you made.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		ch, err := c.Changes(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(formatChanges(ch)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "apply",
 		Description: "Commit the changes in your writable folders: one commit in each repository whose folders changed, on its work branch, with this message. Call it after each unit of work.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a commitArgs) (*mcp.CallToolResult, any, error) {
@@ -288,6 +301,34 @@ func addPartitionAgentTools(s *mcp.Server, c *api.Client) {
 		}
 		return text(fmt.Sprintf("Committed %s.", shortCommits(commits))), nil, nil
 	})
+}
+
+// formatChanges writes the changes of a partition for the agent: one
+// section per repo, with its base, its untracked files, and its diff.
+func formatChanges(ch api.Changes) string {
+	var b strings.Builder
+	empty := true
+	for _, r := range ch.Repos {
+		fmt.Fprintf(&b, "## %s, your branch %s, from %s\n\n", r.Repo, r.Branch, short(r.Base))
+		if len(r.Untracked) > 0 {
+			empty = false
+			fmt.Fprintf(&b, "Files not tracked by git yet (not in the diff): %s\n\n", strings.Join(r.Untracked, ", "))
+		}
+		if strings.TrimSpace(r.Diff) == "" {
+			b.WriteString("No tracked change in your folders.\n\n")
+			continue
+		}
+		empty = false
+		b.WriteString("```diff\n" + r.Diff + "\n```\n")
+		if r.Truncated {
+			b.WriteString("\nThe diff was cut here; review the rest file by file.\n")
+		}
+		b.WriteString("\n")
+	}
+	if empty {
+		return "Your folders hold no change since the base: nothing to review."
+	}
+	return b.String()
 }
 
 // published says what a publish or a record made.
@@ -429,6 +470,12 @@ type vocabInterfaceArgs struct {
 	Name        string `json:"name" jsonschema:"the canonical interface name"`
 	Kind        string `json:"kind" jsonschema:"one lowercase word, for example http, grpc, event, function, file, or cli"`
 	Description string `json:"description" jsonschema:"what the interface does"`
+	Contract    string `json:"contract,omitempty" jsonschema:"the contract file that says the interface's shape, as its path in /hikari/public/contracts/, such as orders/openapi.yaml; write it with write_contract"`
+}
+
+type contractArgs struct {
+	Name string `json:"name" jsonschema:"the contract's path in /hikari/public/contracts/, with slashes, such as orders/openapi.yaml or events/order-created.schema.json"`
+	Text string `json:"text" jsonschema:"the whole content of the contract: an OpenAPI document, a proto file, a JSON schema, a type definition, or any text that says the interface's shape precisely"`
 }
 
 type removeEntryArgs struct {
@@ -436,6 +483,17 @@ type removeEntryArgs struct {
 }
 
 func addOrchestrationTools(s *mcp.Server, c *api.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_repositories",
+		Description: "Read where the work stands in git, for each repository of the project: your branch (the one hikari commits the agents' work to), how far it is ahead of the default branch, whether it is pushed, and each open pull request with its checks and review. Use it to report facts about branches, pull requests, and merges instead of recalling them.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
+		var views []api.RepoView
+		if err := c.Call(ctx, http.MethodGet, "/api/agent/repos", nil, &views); err != nil {
+			return nil, nil, err
+		}
+		return text(repos.Summary(views)), nil, nil
+	})
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_partitions",
 		Description: "List every partition, with its summary, map state, and features counted by health.",
@@ -485,13 +543,26 @@ func addOrchestrationTools(s *mcp.Server, c *api.Client) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "define_interface",
-		Description: "Add an interface name to the vocabulary, or replace the interface with this name.",
+		Description: "Add an interface name to the vocabulary, or replace the interface with this name. An interface may name a contract, a file in /hikari/public/contracts/ that says its shape; write the file with write_contract.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a vocabInterfaceArgs) (*mcp.CallToolResult, any, error) {
-		in := vocab.Interface{Name: a.Name, Kind: a.Kind, Description: a.Description}
+		in := vocab.Interface{Name: a.Name, Kind: a.Kind, Description: a.Description, Contract: a.Contract}
 		if err := c.ChangeVocabulary(ctx, api.VocabularyChange{Op: "define_interface", Interface: &in}); err != nil {
 			return nil, nil, err
 		}
+		if a.Contract != "" {
+			return text(fmt.Sprintf("Defined the interface %q, with the contract %s. Write the contract with write_contract when it does not exist yet; get_partition flags an interface whose contract the vault lacks.", a.Name, a.Contract)), nil, nil
+		}
 		return text(fmt.Sprintf("Defined the interface %q.", a.Name)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "write_contract",
+		Description: "Write a contract of the vocabulary: a file in /hikari/public/contracts/ that says the shape of an interface between partitions precisely, such as an OpenAPI document, a proto file, a JSON schema, or type definitions. Every agent reads it there. Name it in the interface with define_interface's contract, so that the provider and each consumer test against the same shape. Writing an existing contract replaces it; hikari commits each write as yours.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a contractArgs) (*mcp.CallToolResult, any, error) {
+		if err := c.WriteContract(ctx, api.ContractRequest{Name: a.Name, Text: a.Text}); err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Wrote the contract %s; every agent reads it at %s/%s.", a.Name, api.PublicDir, "contracts/"+a.Name)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

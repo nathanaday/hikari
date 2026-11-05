@@ -46,10 +46,12 @@ Usage:
   hikari push [topology.yaml]            push your branches of the linked repos and the project
   hikari status [flags] [topology.yaml]  show each partition's feature map and recorded tests
   hikari release <command>               list the releases, set tags, pull products, and pin
+  hikari toolbox <command>               list, show, and install built-in policies, styles, skills, and profiles
   hikari send [flags] <message>          post a message to the room of the running project
   hikari doctor [topology.yaml]          check this machine, and the project, for hikari up
   hikari image                           build the hikari-agent image
-  hikari task <command>                  plant stubs, list the pipeline, set statuses (the tasks module)
+  hikari issue <command>                 list, open, and hand off issues (the tasks module)
+  hikari task <command>                  list the pipeline, set statuses (the tasks module)
   hikari queue <command>                 make, arrange, start, and pause queues (the tasks module)
   hikari version                         print the version
 
@@ -85,6 +87,8 @@ func main() {
 		err = status(ctx, os.Args[2:])
 	case "release":
 		err = release(ctx, os.Args[2:])
+	case "toolbox":
+		err = toolboxCmd(ctx, os.Args[2:])
 	case "send":
 		err = send(ctx, os.Args[2:])
 	case "doctor":
@@ -157,6 +161,10 @@ func up(ctx context.Context, args []string) error {
 		return errShown
 	}
 	uiToken := server.NewToken()
+	// The UI's agent context view builds each agent's prompt as the driver
+	// does; the server takes the builder from here, so that it imports no
+	// driver.
+	server.BuildContext = func(self api.Self, root string) any { return driver.BuildContext(self, root) }
 	host := server.NewHost(uiToken, ed)
 	httpSrv := &http.Server{Handler: host.Handler()}
 	go httpSrv.Serve(ln)

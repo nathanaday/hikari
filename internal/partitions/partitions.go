@@ -578,7 +578,7 @@ func (m *Manager) movedInterfaces(except string) []string {
 // view.
 func (m *Manager) interfaceStamp(name string, providers map[string][]string, known map[string]bool) string {
 	mp := m.partitionAgents[name].featureMap.Map()
-	flags := vocab.Check(interfaceNames(mp.Partition.Interfaces.Provides), interfaceNames(mp.Partition.Interfaces.Consumes), known, keys(providers))
+	flags := vocab.Check(interfaceNames(mp.Partition.Interfaces.Provides), interfaceNames(mp.Partition.Interfaces.Consumes), known, keys(providers), m.missingContracts())
 	data, _ := json.Marshal([]any{flags, providersOf(mp.Partition.Interfaces.Consumes, providers, name)})
 	return string(data)
 }
@@ -698,23 +698,57 @@ func (m *Manager) apply(o *partitionAgent, message string) ([]string, error) {
 	return out, errors.Join(errs...)
 }
 
-// Repos returns the repositories of the topology with their partitions, for
-// the UI (rule N2).
-func (m *Manager) Repos() []api.RepoInfo {
-	out := []api.RepoInfo{}
-	for _, name := range slices.Sorted(maps.Keys(m.topo.Repos)) {
-		info := api.RepoInfo{Name: name, Branch: m.topo.Repos[name].Branch, Partitions: []string{}}
-		for _, partitionAgent := range m.topo.PartitionAgents() {
-			if slices.Contains(m.partitionAgents[partitionAgent].repos, name) {
-				info.Partitions = append(info.Partitions, partitionAgent)
+// Changes returns the work of a partition agent on its branch, for a
+// review: in each repo of its writable folders, the diff from the merge
+// base with the default branch (or from the commit at the start of the run
+// when the repo has no default branch) to the working tree, and the files
+// git does not track yet.
+func (m *Manager) Changes(agent string) (api.Changes, error) {
+	o, err := m.partitionAgent(agent)
+	if err != nil {
+		return api.Changes{}, err
+	}
+	out := api.Changes{Repos: []api.RepoChanges{}}
+	for _, name := range o.repos {
+		repo := m.repos[name]
+		base := m.start[name]
+		if def := repo.DefaultBranch(gitrepo.Origin); def != "" {
+			for _, ref := range []string{"refs/remotes/origin/" + def, "refs/heads/" + def} {
+				if mb := repo.MergeBase(ref, "HEAD"); mb != "" {
+					base = mb
+					break
+				}
 			}
 		}
-		slices.Sort(info.Partitions)
-		if name == topology.ProjectRepo && len(info.Partitions) == 0 {
-			continue
+		folders := o.folders(name)
+		diff, err := repo.DiffAgainst(base, folders...)
+		if err != nil {
+			return api.Changes{}, fmt.Errorf("repo %q: %w", name, err)
 		}
-		out = append(out, info)
+		untracked, _ := repo.Untracked(folders...)
+		rc := api.RepoChanges{Repo: name, Branch: m.topo.Repos[name].Branch, Base: base, Diff: diff, Untracked: untracked}
+		if len(rc.Diff) > api.MaxDiffBytes {
+			rc.Diff, rc.Truncated = rc.Diff[:api.MaxDiffBytes], true
+		}
+		out.Repos = append(out.Repos, rc)
 	}
+	return out, nil
+}
+
+// GitRepos returns the prepared git repos, by name, so that one handle
+// serializes the git commands of each repo.
+func (m *Manager) GitRepos() map[string]*gitrepo.Repo { return maps.Clone(m.repos) }
+
+// PartitionsIn names the partitions with a writable folder in repo, sorted
+// (rule N2).
+func (m *Manager) PartitionsIn(repo string) []string {
+	out := []string{}
+	for _, partitionAgent := range m.topo.PartitionAgents() {
+		if slices.Contains(m.partitionAgents[partitionAgent].repos, repo) {
+			out = append(out, partitionAgent)
+		}
+	}
+	slices.Sort(out)
 	return out
 }
 
@@ -1240,7 +1274,7 @@ func (m *Manager) GetPartition(agent, name string) (api.OrchestrationPartition, 
 		Folders:   folders(o),
 		Releases:  m.catalog(name),
 		Pins:      m.Pins(name),
-		Flags:     vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), known, keys(providers)),
+		Flags:     vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), known, keys(providers), m.missingContracts()),
 		Providers: providersOf(v.Partition.Interfaces.Consumes, providers, name),
 	}, nil
 }
@@ -1299,16 +1333,78 @@ func (m *Manager) PartitionView(name string) api.PartitionView {
 	return api.PartitionView{
 		PartitionAgentView: v,
 		Dirty:              dirty,
-		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills)},
+		Grants:             api.Grants{Releases: nonNil(grants.Releases), Deliverables: nonNil(grants.Deliverables), Skills: nonNil(grants.Skills), Styles: nonNil(grants.Styles)},
 		Private:            priv,
 		Releases:           m.catalog(name),
 		Pins:               m.Pins(name),
 		PartitionAgent:     name,
 		Folders:            folders(o),
 		Repos:              repos,
-		Flags:              vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), m.vocabularyNames(), keys(providers)),
+		Flags:              vocab.Check(interfaceNames(v.Partition.Interfaces.Provides), interfaceNames(v.Partition.Interfaces.Consumes), m.vocabularyNames(), keys(providers), m.missingContracts()),
 		Providers:          providersOf(v.Partition.Interfaces.Consumes, providers, name),
 	}
+}
+
+// missingContracts names the interfaces of the vocabulary whose contract
+// file the vault lacks.
+func (m *Manager) missingContracts() map[string]bool {
+	return vocab.MissingContracts(m.Vocabulary(), func(c string) bool { return exists(m.vault.ContractFile(c)) })
+}
+
+// WriteContract writes a contract of the vocabulary, a file in the
+// vault's public contracts/, as the orchestration agent, and commits it.
+// The name is the file's path in that directory, with slashes.
+func (m *Manager) WriteContract(agent, name, text string) error {
+	if err := m.orchestration(agent, "writes the contracts"); err != nil {
+		return err
+	}
+	if !vocab.ValidContract(name) {
+		return fmt.Errorf("the contract %q must be a relative path inside contracts/, with slashes", name)
+	}
+	if strings.TrimSpace(text) == "" {
+		return errors.New("a contract needs a text")
+	}
+	file := m.vault.ContractFile(name)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+		return err
+	}
+	m.commitVault(agent, fmt.Sprintf("%s: write the contract %s", agent, name), m.vault.Rel(file))
+	m.changed(Change{Vocabulary: true})
+	return nil
+}
+
+// Contracts lists the contract files of the vault, relative to its
+// contracts directory, sorted, with the interfaces that name each.
+func (m *Manager) Contracts() []api.ContractEntry {
+	root := m.vault.Public(vault.Contracts)
+	byFile := map[string][]string{}
+	for _, in := range m.Vocabulary().Interfaces {
+		if in.Contract != "" {
+			byFile[in.Contract] = append(byFile[in.Contract], in.Name)
+		}
+	}
+	out := []api.ContractEntry{}
+	seen := map[string]bool{}
+	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		name := filepath.ToSlash(rel)
+		seen[name] = true
+		out = append(out, api.ContractEntry{Name: name, Path: m.vault.Rel(p), Interfaces: nonNil(byFile[name])})
+		return nil
+	})
+	for name, ins := range byFile {
+		if !seen[name] {
+			out = append(out, api.ContractEntry{Name: name, Path: m.vault.Rel(m.vault.ContractFile(name)), Interfaces: ins, Missing: true})
+		}
+	}
+	slices.SortFunc(out, func(a, b api.ContractEntry) int { return strings.Compare(a.Name, b.Name) })
+	return out
 }
 
 func (m *Manager) vocabularyNames() map[string]bool {

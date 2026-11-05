@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Boxes, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
+import { Activity, BookOpen, Boxes, GitBranch, LayoutGrid, ListChecks, MessagesSquare, Network, Package } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { MapStateDot } from '@/components/health'
@@ -27,20 +27,27 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   )
 }
 
-// OrchestrationTabs are the tabs of the orchestration agent's page: its
-// messages, and its feature map (rule K12 of the skill packs spec).
-function OrchestrationTabs({ state, name, show }: { state: State; name: string; show: (v: View) => void }) {
+// AgentTabs are the tabs of an agent's page: its messages, its context
+// (what its container puts before Claude Code), and, for the orchestration
+// agent, its feature map (rule K12 of the skill packs spec).
+function AgentTabs({ state, name, orchestration, show }: { state: State; name: string; orchestration: boolean; show: (v: View) => void }) {
   const v = state.view
   const onMap = v.kind === 'map' && !!v.orchestration
+  const onContext = v.kind === 'dm' && v.tab === 'context'
   const docs = state.wikis.find((w) => w.ref === orchestrationRef)?.documents.length ?? 0
   return (
-    <div className="mt-3 -mb-3 flex gap-4">
-      <TabButton active={!onMap} onClick={() => show({ kind: 'dm', name })}>
+    <div className="mt-3 -mb-3 flex gap-4" data-testid="agent-tabs">
+      <TabButton active={!onMap && !onContext} onClick={() => show({ kind: 'dm', name })}>
         Messages
       </TabButton>
-      <TabButton active={onMap} onClick={() => show({ kind: 'map', orchestration: true })}>
-        {docs ? `Feature map (${docs})` : 'Feature map'}
+      <TabButton active={onContext} onClick={() => show({ kind: 'dm', name, tab: 'context' })}>
+        Context
       </TabButton>
+      {orchestration && (
+        <TabButton active={onMap} onClick={() => show({ kind: 'map', orchestration: true })}>
+          {docs ? `Feature map (${docs})` : 'Feature map'}
+        </TabButton>
+      )}
     </div>
   )
 }
@@ -51,7 +58,17 @@ export function ConversationHeader({ state, show, onMention }: Props) {
   const status = (name: string) => state.agents.find((a) => a.name === name)?.status.state ?? 'idle'
 
   let body: React.ReactNode
-  if (v.kind === 'all') {
+  if (v.kind === 'grid') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <LayoutGrid className="size-4 text-muted-foreground" />
+          Grid
+        </h1>
+        <p className="text-sm text-muted-foreground">Every agent at a glance: what it does right now, the tasks it holds, its last message, and whether it waits for you. Click a tile for its direct messages.</p>
+      </>
+    )
+  } else if (v.kind === 'all') {
     body = (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
@@ -96,7 +113,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
         <p className="text-sm text-muted-foreground">
           The orchestration feature map: features that cross partitions, each with the health of the partition features it links, its principles and rules, and your plans and notes.
         </p>
-        {orchestrationOf(state.participants) && <OrchestrationTabs state={state} name={orchestrationOf(state.participants)!} show={show} />}
+        {orchestrationOf(state.participants) && <AgentTabs state={state} name={orchestrationOf(state.participants)!} orchestration show={show} />}
       </>
     ) : v.public ? (
       <>
@@ -251,14 +268,58 @@ export function ConversationHeader({ state, show, onMention }: Props) {
       </>
     )
   } else if (v.kind === 'work') {
+    const issues = state.modules.tasks?.issues.filter((i) => i.state === 'open').length ?? 0
     body = (
       <>
         <h1 className="flex items-center gap-1.5 text-base font-semibold">
           <ListChecks className="size-4 text-muted-foreground" />
           Work
+          {issues > 0 && (
+            <Badge variant="secondary" className="font-normal">
+              {issues} open
+            </Badge>
+          )}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The task pipeline: your stubs, the scopes that the orchestration agent writes from them, and the queues that run them. Each task is a document in vault/tasks/, which Obsidian opens too.
+          The issues of the project's repositories and of the vault, and the queues that hand them to the agents. Drag an issue into a queue, or press Work on this.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'repos') {
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <GitBranch className="size-4 text-muted-foreground" />
+          Repositories
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Each repository of the project: your branch against the default branch, the pull requests with their checks, and what is merged. Push, open a pull request, and merge from here.
+        </p>
+      </>
+    )
+  } else if (v.kind === 'repo') {
+    const repo = state.repos.find((r) => r.name === v.name)
+    body = (
+      <>
+        <h1 className="flex items-center gap-1.5 text-base font-semibold">
+          <GitBranch className="size-4 text-muted-foreground" />
+          <button type="button" className="font-normal text-muted-foreground hover:text-foreground" onClick={() => show({ kind: 'repos' })}>
+            Repositories
+          </button>
+          <span className="font-normal text-muted-foreground">/</span>
+          {v.name}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {repo?.forge ? (
+            <>
+              <a href={repo.forge.web} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                {repo.forge.owner}/{repo.forge.name}
+              </a>{' '}
+              on {repo.forge.kind} ·{' '}
+            </>
+          ) : null}
+          the agents commit to <code className="text-xs">{repo?.branch}</code>
+          {repo?.partitions.length ? <> · partitions {repo.partitions.join(', ')}</> : null}
         </p>
       </>
     )
@@ -288,7 +349,7 @@ export function ConversationHeader({ state, show, onMention }: Props) {
             )}
           </p>
           {agent.status.detail && <p className="mt-1 text-sm break-words text-red-600">{agent.status.detail}</p>}
-          {agent.role === 'orchestration' && <OrchestrationTabs state={state} name={agent.name} show={show} />}
+          <AgentTabs state={state} name={agent.name} orchestration={agent.role === 'orchestration'} show={show} />
         </div>
       </div>
     )

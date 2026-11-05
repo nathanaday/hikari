@@ -21,7 +21,7 @@ Sources: `docs/brainstorm/shared-language.md` (questions F1 to F4, B7, and G1) a
 
 ## Summary
 
-Each kind of agent gets a pack of built-in skills from the binary. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, and `hikari-map-features`. The orchestration agent's pack is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. Today's `hikari-partition` and `hikari-orchestration` split across them. The orchestration agent gets a feature map of its own, in `orchestration/read-only/features/`: features that link the partition features they are made of, with health computed from theirs. Stories leave the public wiki for it.
+Each kind of agent gets a pack of built-in skills from the binary. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, `hikari-review-work` (added later, with the review before done; see `docs/design.md`), and `hikari-map-features`. The orchestration agent's pack is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. Today's `hikari-partition` and `hikari-orchestration` split across them. The orchestration agent gets a feature map of its own, in `orchestration/read-only/features/`: features that link the partition features they are made of, with health computed from theirs. Stories leave the public wiki for it.
 
 ## Decisions
 

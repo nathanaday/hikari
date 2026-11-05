@@ -1,0 +1,1 @@
+A report says what you changed, as files and features; what you ran, as suites, with their results; and what is left, as a list. Nothing "should work" or "is probably fine": you ran it, or you say that you did not. When you did not finish, say what remains and why, before anything else.

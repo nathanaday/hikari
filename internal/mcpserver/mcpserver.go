@@ -22,6 +22,19 @@ type directArgs struct {
 	Body string `json:"body" jsonschema:"the message text"`
 }
 
+type askArgs struct {
+	Question string   `json:"question" jsonschema:"the question, in one or two sentences, with what each choice means"`
+	Options  []string `json:"options" jsonschema:"two to six choices, each a short phrase; put the one you recommend first"`
+	Task     string   `json:"task,omitempty" jsonschema:"the task the question concerns, by id, when it concerns one"`
+}
+
+type proposeArgs struct {
+	ID     string `json:"id" jsonschema:"the rule's id: lowercase letters, digits, and dashes, such as no-silent-retries"`
+	Name   string `json:"name" jsonschema:"two to five words that name the rule"`
+	Rule   string `json:"rule" jsonschema:"the rule as one sentence that is true or false at any moment, under 200 characters"`
+	Reason string `json:"reason" jsonschema:"what happened that taught it, and what the rule prevents: the block, the refusal, the review finding, or the question"`
+}
+
 type noArgs struct{}
 
 // New returns the MCP server of the agent described by self. Every agent
@@ -65,6 +78,29 @@ func New(c *api.Client, self api.Self) *mcp.Server {
 			return nil, nil, err
 		}
 		return text(fmt.Sprintf("Sent direct message %d to %s.", m.ID, m.To)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "ask_user",
+		Description: "Ask the user one question with numbered choices. The UI shows it as a card that the user answers with one click, and the answer reaches you as a direct message, \"<n>. <choice>\" with any words the user adds. Use it when a choice between two or three readings would waste work either way; state your own reading as the first choice. It does not wait: end your turn after asking.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a askArgs) (*mcp.CallToolResult, any, error) {
+		m, err := c.Send(ctx, api.SendRequest{To: "user", Decision: &api.Decision{Question: a.Question, Options: a.Options, Task: strings.Trim(a.Task, "[] ")}})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Asked the user (message %d). The answer arrives as a direct message; end your turn.", m.ID)), nil, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "propose_rule",
+		Description: "Propose a rule for every agent, from a lesson of your work: a block that a rule would have prevented, a done that was refused, a review finding that will recur, a question the user answered that every agent should know. The user sees it as a card; Accept writes it into the public wiki as a rule, which every agent reads from its next turn, and the answer reaches you as a direct message. Propose a rule that is one sentence and true or false at any moment, with its reason; do not propose what the public wiki already says.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a proposeArgs) (*mcp.CallToolResult, any, error) {
+		d := api.ProposeRule(self.Name, api.Proposal{ID: a.ID, Name: a.Name, Rule: a.Rule, Reason: a.Reason})
+		m, err := c.Send(ctx, api.SendRequest{To: "user", Decision: &d})
+		if err != nil {
+			return nil, nil, err
+		}
+		return text(fmt.Sprintf("Proposed the rule %s to the user (message %d). The answer arrives as a direct message; go on with your work.", a.ID, m.ID)), nil, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

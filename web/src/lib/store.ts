@@ -1,4 +1,4 @@
-import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoInfo, ServerEvent, PartitionView, Vocabulary, WikiView } from './types'
+import type { Activity, Agent, AssistantEvent, AssistantView, DeliverableInfo, Entry, Finding, Message, Mode, Modules, Peer, RepoView, ServerEvent, PartitionView, Turn, Vocabulary, WikiView } from './types'
 import { allView, conversationKeys, viewKey, type View } from './view'
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'signed-out'
@@ -24,8 +24,9 @@ export type State = {
   messages: Message[]
   partitions: PartitionView[]
   vocabulary: Vocabulary
-  // repos and deliverables let the map draw the topology.
-  repos: RepoInfo[]
+  // repos holds the view of each repository; with deliverables it lets the
+  // map draw the topology.
+  repos: RepoView[]
   deliverables: DeliverableInfo[]
   // wikis holds the public wiki and the wiki of every partition.
   wikis: WikiView[]
@@ -36,6 +37,8 @@ export type State = {
   // feed holds the recent entries of the feed, oldest first, and cost the
   // run's cost so far.
   feed: Entry[]
+  // turns holds every ended turn of the run, oldest first.
+  turns: Turn[]
   cost: number
   // assistant is the hikari agent; panel says whether its panel is open,
   // and assistantUnread that a turn ended while it was closed (rule HA18).
@@ -76,6 +79,7 @@ export function initialState(view: View): State {
     activity: {},
     modules: {},
     feed: [],
+    turns: [],
     cost: 0,
     assistant: assistantOff,
     panel: false,
@@ -94,11 +98,13 @@ const emptyVocabulary: Vocabulary = { version: 1, terms: [], interfaces: [] }
 
 // resolve returns v if it names an agent or a partition of s, and All activity
 // if not. Without agents, only the Topology view exists (rule YV5).
-function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules'>): View {
+function resolve(v: View, s: Pick<State, 'agents' | 'partitions' | 'mode' | 'modules' | 'repos'>): View {
   if (v.kind === 'topology') return v
   if (s.mode !== 'running') return { kind: 'topology' }
-  if (v.kind === 'room') return v
+  if (v.kind === 'room' || v.kind === 'grid') return v
   if (v.kind === 'work') return s.modules.tasks ? v : allView
+  if (v.kind === 'repos') return v
+  if (v.kind === 'repo') return s.repos.some((r) => r.name === v.name) ? v : { kind: 'repos' }
   if (v.kind === 'dm' && s.agents.some((a) => a.name === v.name)) return v
   if ((v.kind === 'partition' || v.kind === 'release') && s.partitions.some((x) => x.partition_agent === v.name)) return v
   if (v.kind === 'shared') return v
@@ -152,9 +158,10 @@ function applyEvent(s: State, e: ServerEvent): State {
         activity: e.snapshot.activity ?? {},
         modules: e.snapshot.modules ?? {},
         feed: e.snapshot.feed ?? [],
+        turns: e.snapshot.turns ?? [],
         cost: e.snapshot.cost ?? 0,
         assistant: e.snapshot.assistant ?? assistantOff,
-        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {} }),
+        view: resolve(s.view, { agents, partitions, mode: e.snapshot.mode ?? 'running', modules: e.snapshot.modules ?? {}, repos: e.snapshot.repos ?? [] }),
         unread: {},
       }
     }
@@ -179,7 +186,12 @@ function applyEvent(s: State, e: ServerEvent): State {
       return applyAssistant(s, e.assistant)
     case 'activity': {
       const list = s.activity[e.agent] ?? []
-      return { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+      const next = { ...s, activity: { ...s.activity, [e.agent]: replaceBy(list, e.activity, (x) => String(x.id)) } }
+      // An ended turn joins the run's turns, once.
+      if (e.activity.kind === 'done' && !s.turns.some((t) => t.agent === e.agent && t.turn === e.activity.turn)) {
+        next.turns = [...s.turns, { agent: e.agent, turn: e.activity.turn, time: e.activity.time, cost: e.activity.cost ?? 0, duration: e.activity.duration ?? 0, error: e.activity.error }]
+      }
+      return next
     }
     case 'partition':
       return { ...s, partitions: replaceBy(s.partitions, e.partition, (x) => x.partition_agent) }
@@ -191,6 +203,8 @@ function applyEvent(s: State, e: ServerEvent): State {
       return { ...s, revision: e.revision }
     case 'module':
       return { ...s, modules: { ...s.modules, [e.module]: e.view } }
+    case 'repo':
+      return { ...s, repos: replaceBy(s.repos, e.repo, (x) => x.name) }
   }
 }
 

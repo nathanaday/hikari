@@ -29,6 +29,9 @@ type Op struct {
 	Description  *string `json:"description,omitempty"`
 	Instructions *string `json:"instructions,omitempty"`
 	Model        *string `json:"model,omitempty"`
+	Profile      *string `json:"profile,omitempty"`
+	Effort       *string `json:"effort,omitempty"`
+	Review       *string `json:"review,omitempty"`
 	URL          *string `json:"url,omitempty"`
 	Path         *string `json:"path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
@@ -41,6 +44,7 @@ type Op struct {
 	Releases     *[]string `json:"releases,omitempty"`
 	Deliverables *[]string `json:"deliverables,omitempty"`
 	Skills       *[]string `json:"skills,omitempty"`
+	Styles       *[]string `json:"styles,omitempty"`
 }
 
 // Rename is a change of the name of an agent, which a plan can
@@ -325,7 +329,7 @@ func (e *editor) apply(op Op) error {
 			key    string
 			v      *string
 			escape bool
-		}{{"description", op.Description, true}, {"instructions", op.Instructions, true}, {"model", op.Model, false}} {
+		}{{"description", op.Description, true}, {"instructions", op.Instructions, true}, {"model", op.Model, false}, {"profile", op.Profile, false}, {"effort", op.Effort, false}, {"review", op.Review, false}} {
 			if err := e.setField(p, f.key, f.v, f.escape); err != nil {
 				return err
 			}
@@ -366,9 +370,12 @@ func (e *editor) apply(op Op) error {
 		if err := e.setList(p, "skills", op.Skills); err != nil {
 			return err
 		}
+		if err := e.setList(p, "styles", op.Styles); err != nil {
+			return err
+		}
 		if m := ReadModel(e.text, e.dir); m != nil {
 			for _, x := range m.Agents {
-				if x.ID == a.ID && len(x.Releases) == 0 && len(x.Deliverables) == 0 && len(x.Skills) == 0 {
+				if x.ID == a.ID && len(x.Releases) == 0 && len(x.Deliverables) == 0 && len(x.Skills) == 0 && len(x.Styles) == 0 {
 					if err := e.deleteKey("services."+a.ID+".x-hikari", "grants"); err != nil {
 						return err
 					}

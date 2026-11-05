@@ -54,9 +54,13 @@ A partition agent works inside its small context until its own tests pass. Hikar
   <img alt="A plan splits into three partition loops of edit, test, and map, which join into one end-to-end health check that sends failures back" src="docs/images/loops-light.svg">
 </picture>
 
-### A Pipeline of Work
+### A Pipeline of Work, from Your Issues
 
-Work starts as a stub: an idea in a few words, planted from the web UI, a terminal, Obsidian, or your Claude Code session. The orchestration agent scopes a stub with you into a scope that names the partitions it touches and the features whose health says it is done. You order scopes into queues, and a running queue starts them one after another, one scope at a time in each partition. Each partition agent reports the status of its part, and hikari grants done only when the scope's features pass. Every task is a markdown file in the vault. The [task pipeline guide](docs/guides/tasks.md) follows one idea from stub to done.
+Work starts as an issue. When a repository of the project is on GitHub, its issues are the project's: the Work tab of the web UI shows them, lets you open, edit, and triage them, and keeps them in step with GitHub. Drag an issue into a queue, or press Work on this, and the agents take it: a running queue starts its issues one after another, one scope at a time in each partition. The orchestration agent scopes each issue when its turn comes, from the issue's words and the feature maps, and hikari comments on the issue with the scope, each block, and the finish, with labels that follow the status, so the plan and the progress are public. hikari grants done only when the scope's features pass, and, for a partition whose profile requires it, only with a review by a fresh reviewer. Once a scope is done, the issue's panel opens a pull request for each repository it wrote to, prefilled from the scope and closing the issue, and sums a scorecard: how long the scope took, what its agents' turns cost, how often it was blocked or refused, and a timeline of the log with the decisions you took. A project without a GitHub repository keeps its issues in the vault, as markdown. The [task pipeline guide](docs/guides/tasks.md) follows one issue to done.
+
+### Where the Work Stands
+
+Each repository has a page in the web UI: your branch against the default branch, every branch with how far it is ahead or behind, the pull requests with their checks, reviews, and whether they can merge, the code that no partition owns, and the files the default branch changed under each partition since your branch diverged. Push, open a pull request, and merge from there. The map shows the same at a glance, and the orchestration agent reads it through a tool, so that when you ask where the work stands, the answer comes from git and GitHub and not from memory. The [repositories guide](docs/guides/repositories.md) has the details.
 
 ## Quickstart
 
@@ -123,6 +127,18 @@ services:
 
 Save it as `topology.yaml` and run `hikari up`. Each folder appears in the agent's container at `/workspace/<repo>/<path>`, and the test command runs in `/workspace`. Agents never touch git: Hikari commits each agent's changes to the branch that the file names for each repository, with the agent as author, and you review and merge it.
 
+How an agent works is yours to set too. A **policy**, `vault/public/policies/<name>.md`, is a rule for every agent. A **style**, `vault/styles/<name>.md`, says how one agent's work should look, and `grants.styles` puts it into that agent's system prompt. A **skill** in `vault/skills/<name>/` teaches a way of working, and `grants.skills` gives it to an agent. A **profile** under `x-hikari.profiles` bundles a model, an effort, a review requirement, skills, and styles under one name, which an agent takes with `profile:`; what the agent sets itself wins. `hikari toolbox` installs ready-made policies, styles, and skills into the vault, and the [workflows guide](docs/guides/workflows.md) explains the four.
+
+```yaml
+x-hikari:
+  profiles:
+    careful: {model: opus, effort: high, review: required, styles: [terse, conventional-commits]}
+
+services:
+  api:
+    x-hikari: {description: The order API., profile: careful, grants: {skills: [tdd]}}
+```
+
 ## Bring Your Own Repositories
 
 Onboarding turns your repositories into a project through two skills of the plugin, which the `hikari` skill hands you to. `containerize-repo` wraps each repository as one partition, with no change to its code, and hikari's agents record a baseline of every test. `hikify` works with you to draw cleaner partitions, plans the moves, has fresh reviewers check the plan, and carries it out. Before you commit to either, `propose-topology` sketches a topology from reading the code. After onboarding, `room` posts your requests to the agents from your session, and `change-topology` splits, merges, or adds partitions as the project grows. The [onboarding guide](docs/guides/onboarding.md) walks through each one.
@@ -134,8 +150,10 @@ Partitions share their work as releases, and a release travels: its record is co
 - [Design notes](docs/design.md): the reason behind each decision
 - [Glossary](docs/glossary.md): every Hikari term in one place
 - [The vault](docs/guides/vault.md): where each file lives, and where each container sees it
+- [Agent workflows](docs/guides/workflows.md): policies, styles, skills, and profiles, and the toolbox
 - [Onboarding guide](docs/guides/onboarding.md): bring existing repositories into a project
-- [Task pipeline](docs/guides/tasks.md): stubs, scopes, and queues of work
+- [Task pipeline](docs/guides/tasks.md): issues, scopes, and queues of work
+- [Repositories](docs/guides/repositories.md): branches, pull requests, and checks in the UI
 - [Releases](docs/guides/releases.md): set up remotes, tags, and pins so that releases travel
 - [Migration guide](docs/guides/migrating.md): move a project from before the glossary's words to now
 - [Shop example](examples/shop/): two partitions and an orchestration agent

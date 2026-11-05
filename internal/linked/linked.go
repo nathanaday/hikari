@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nathanaday/hikari/internal/coverage"
 	"github.com/nathanaday/hikari/internal/featuremap"
 	"github.com/nathanaday/hikari/internal/gitrepo"
 	"github.com/nathanaday/hikari/internal/partitions"
@@ -38,6 +39,7 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 		fail("%s", f)
 	}
 	out = append(out, checkSkills(topo)...)
+	out = append(out, checkStyles(topo)...)
 	if p := topo.Project; p != nil {
 		repo := gitrepo.Open(p.Path)
 		// Each path to check, with the .gitignore line that ignores it.
@@ -61,6 +63,12 @@ func Check(topo *topology.Topology, credentials bool) []Finding {
 		}
 		if changed := Uncommitted(topo, name); len(changed) > 0 {
 			fail("%s has uncommitted changes; commit or stash them before hikari starts: %s", label(topo, name), listed(changed))
+		}
+		if name == topology.ProjectRepo {
+			continue
+		}
+		if uncovered, _ := coverage.Uncovered(gitrepo.Open(topo.Repos[name].Path), "HEAD", coverage.WritableFolders(topo, name)); len(uncovered) > 0 {
+			out = append(out, Finding{Text: fmt.Sprintf("%s has %d path(s) that no partition owns, so no agent can change them: %s", label(topo, name), len(uncovered), listed(uncovered)), Warning: true})
 		}
 	}
 	if credentials {
@@ -121,6 +129,21 @@ func checkSkills(topo *topology.Topology) []Finding {
 				continue
 			}
 			out = append(out, Finding{Text: fmt.Sprintf("agent %s is granted the skill %s, which %s", name, sk, problem)})
+		}
+	}
+	return out
+}
+
+// checkStyles checks each granted style: it is a Markdown file of the
+// vault's styles/.
+func checkStyles(topo *topology.Topology) []Finding {
+	var out []Finding
+	st := topo.VaultOf()
+	for _, name := range topo.AgentNames() {
+		for _, style := range topo.Agents[name].Grants.Styles {
+			if file := st.StyleFile(style); !exists(file) {
+				out = append(out, Finding{Text: fmt.Sprintf("agent %s is granted the style %s, which does not exist: %s is not a file", name, style, file)})
+			}
 		}
 	}
 	return out

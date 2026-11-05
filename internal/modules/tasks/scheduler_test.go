@@ -224,3 +224,91 @@ func TestStatuses(t *testing.T) {
 		}
 	}
 }
+
+// TestReviewRequired checks that a partition whose agent's review is
+// required gets done only with a review, that the review goes into the
+// log, and that a partition without the requirement needs none.
+func TestReviewRequired(t *testing.T) {
+	s, health := pipeline(t)
+	s.check.Reviewed = func(p string) bool { return p == "orders" }
+	health["orders/create-order"] = "passing"
+	cancel := scoped(t, s, "cancel", "orders", "inventory")
+	if _, err := s.ChangeQueue(QueueOp{Op: "create", Name: "Work"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeQueue(QueueOp{Op: "add", Queue: "work", Scope: cancel.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetQueueState("work", Running, &Change{}); err != nil {
+		t.Fatal(err)
+	}
+	status(t, s, "orders", cancel.ID, "", Started, "")
+	g, _ := status(t, s, "orders", cancel.ID, "", Done, "all green")
+	if g.Status != Testing || !slices.Contains(g.Refused, ReviewRequired) {
+		t.Errorf("done without a review = %+v", g)
+	}
+	if s.Tasks[cancel.ID].PartStatus("orders") != Testing {
+		t.Errorf("the part stays testing: %s", s.Tasks[cancel.ID].PartStatus("orders"))
+	}
+	var c Change
+	g, err := s.SetStatusReviewed("orders", cancel.ID, "", Done, "all green", "hikari-reviewer: 1 should fixed, 1 nit left", &c)
+	if err != nil || g.Status != Done || len(g.Refused) != 0 {
+		t.Errorf("done with a review = %+v, %v", g, err)
+	}
+	body := s.Tasks[cancel.ID].Body
+	if !strings.Contains(body, "reviewed: hikari-reviewer: 1 should fixed, 1 nit left") {
+		t.Errorf("the log keeps the review:\n%s", body)
+	}
+	// inventory needs no review.
+	status(t, s, "inventory", cancel.ID, "", Started, "")
+	if g, _ := status(t, s, "inventory", cancel.ID, "", Done, ""); g.Status != Done {
+		t.Errorf("inventory's done = %+v", g)
+	}
+}
+
+// TestScorecard checks what the log says of a scope: its start and finish,
+// each part's window, the blocks, the refused dones, and the reviews.
+func TestScorecard(t *testing.T) {
+	s, health := pipeline(t)
+	s.check.Reviewed = func(p string) bool { return p == "orders" }
+	cancel := scoped(t, s, "cancel", "orders", "inventory")
+	for _, op := range []QueueOp{{Op: "create", Name: "Work"}, {Op: "add", Queue: "work", Scope: cancel.ID}} {
+		if _, err := s.ChangeQueue(op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetQueueState("work", Running, &Change{}); err != nil {
+		t.Fatal(err)
+	}
+	status(t, s, "orders", cancel.ID, "", Started, "")
+	status(t, s, "orders", cancel.ID, "", Blocked, "need the stock interface")
+	status(t, s, "orders", cancel.ID, "", Testing, "")
+	status(t, s, "orders", cancel.ID, "", Done, "") // refused: create-order fails, and no review
+	health["orders/create-order"] = "passing"
+	if _, err := s.SetStatusReviewed("orders", cancel.ID, "", Done, "", "hikari-reviewer: clean", &Change{}); err != nil {
+		t.Fatal(err)
+	}
+	status(t, s, "inventory", cancel.ID, "", Started, "")
+	v := s.TaskView(s.Tasks[cancel.ID])
+	sc := v.Scorecard
+	if sc == nil {
+		t.Fatal("a scope has a scorecard")
+	}
+	if sc.Started.IsZero() || !sc.Finished.IsZero() || sc.Blocks != 1 || sc.Refusals != 1 || sc.Reviews != 1 {
+		t.Errorf("scorecard = started %v, finished %v, blocks %d, refusals %d, reviews %d", sc.Started, sc.Finished, sc.Blocks, sc.Refusals, sc.Reviews)
+	}
+	if len(sc.Parts) != 2 || sc.Parts[0].Partition != "orders" || sc.Parts[0].Started.IsZero() || sc.Parts[0].Finished.IsZero() || sc.Parts[1].Partition != "inventory" || sc.Parts[1].Started.IsZero() || !sc.Parts[1].Finished.IsZero() {
+		t.Errorf("parts = %+v", sc.Parts)
+	}
+	if len(sc.Log) < 6 || sc.Log[0].Time.IsZero() || !strings.Contains(sc.Log[len(sc.Log)-1].Text, "inventory to started") {
+		t.Errorf("log = %+v", sc.Log)
+	}
+	// A stub has none.
+	stub, _, err := s.PlantStub("idea", "", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.TaskView(stub).Scorecard != nil {
+		t.Error("a stub has no scorecard")
+	}
+}

@@ -135,7 +135,8 @@
       "vault": "",
       "repo": true,
       "branch": "main",
-      "orchestration": "lead"
+      "orchestration": "lead",
+      "profiles": []
     },
     "repos": [],
     "agents": [
@@ -159,6 +160,10 @@
         "releases": [],
         "deliverables": [],
         "skills": [],
+        "styles": [],
+        "profile": "",
+        "effort": "",
+        "review": "",
         "image": "hikari-agent",
         "build": "",
         "template": "",
@@ -179,6 +184,10 @@
         "releases": [],
         "deliverables": [],
         "skills": [],
+        "styles": [],
+        "profile": "",
+        "effort": "",
+        "review": "",
         "image": "hikari-agent",
         "build": "",
         "template": "",
@@ -264,6 +273,7 @@
       "hikari-plan-work",
       "hikari-do-work",
       "hikari-validate-work",
+      "hikari-review-work",
       "hikari-map-features"
     ]
   }

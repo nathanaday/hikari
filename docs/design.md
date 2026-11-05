@@ -353,6 +353,21 @@ must describe what the code does. It flags names that the vocabulary lacks,
 and consumed interfaces that no partition provides, and the orchestration
 agent decides whether to add the name or to ask the partition agent to rename.
 
+A name is not a shape. Two partitions can agree that the interface is
+`POST /orders` and disagree on every field of the body, and no unit test
+of either partition finds it, because each tests its own side against its
+own reading. So an interface of the vocabulary may name a contract: a file
+in `public/contracts/` that says the shape precisely, in whatever form the
+interface's kind has, such as an OpenAPI document, a proto file, a JSON
+schema, or type definitions. The orchestration agent writes it with
+`write_contract` from what the provider tells it, every container reads it
+in the public area, and the provider and each consumer build and test
+against one shape. hikari gives a contract no format and runs no check
+against it: the file is evidence that the agents can read, where before
+there was prose in a message. An interface that names a contract the vault
+lacks is flagged like a name the vocabulary lacks, so that a promised
+contract is written.
+
 ## One vault for everything that is not code
 
 Feature maps, the vocabulary, shared rules, and releases live in one
@@ -372,11 +387,92 @@ orchestration agent has its own `read-only/` and `can-edit/` parts in
 releases. Your skills sit in `skills/`, outside `public/`, because the
 topology grants each one to the agents that use it.
 
-Policies, deliverables, and skills stay yours. A policy changes every
-agent's system prompt, so an agent that could change one would rewrite its
-own rules. The orchestration agent's tools write only the vocabulary and the
-public wiki, and hikari writes no `granted/`. An agent's changes in its
-`can-edit/` are committed with its apply, so they are reviewed like its code.
+Policies, deliverables, skills, and styles stay yours. A policy changes
+every agent's system prompt, so an agent that could change one would rewrite
+its own rules. The orchestration agent's tools write only the vocabulary,
+the contracts, and the public wiki, and hikari writes no `granted/`. An
+agent's changes in its `can-edit/` are committed with its apply, so they are
+reviewed like its code.
+
+## A review before done
+
+Health says that the tests pass, and the partition agent writes the tests.
+An agent that wants done can weaken a test, drop a key of the test map,
+or stub a behavior, and health reads passing. The user's policies and
+styles are text in a prompt that nothing checks. So a partition whose
+agent's review is required gets done only with a review: a fresh subagent,
+`hikari-reviewer`, with no memory of the turn that made the change, reads
+the diff of the partition's folders against the part of the scope, the
+policies, the styles, and the feature documents, and returns findings with
+a place and the rule each cites. The agent fixes the blockers and carries
+the verdict into its request for done, which hikari refuses without one and
+logs with one.
+
+The reviewer runs in the partition agent's container, as a subagent, and
+not as an agent of the topology, because it needs the code and the
+partition's tools and nothing else: it reads, and it never writes a file
+or calls a hikari tool. The diff it reads comes from `get_changes`, which
+hikari computes on the host from the merge base with the default branch,
+so that the reviewer sees the whole change and not the last turn's. The
+verdict is one line in the log and not a document, because the review's
+findings are the agent's to act on; what the user needs is who reviewed,
+what was found, and what was left.
+
+## Rules the agents propose
+
+A lesson that stays in a message is lost at the next turn, and a lesson
+that an agent writes into a rule by itself is a rule nobody chose. So an
+agent proposes: `propose_rule` sends the user a decision whose first option
+accepts. The proposal is one sentence that is true or false at any moment,
+with its reason, because that is what a rule of the public wiki is, and
+hikari checks it as the wiki would before the card is shown. On Accept,
+hikari writes the rule into the public wiki as the user's document, not the
+agent's, because the user chose it; the author in git says so, and the
+user can edit it in the UI as any document of theirs. On Decline, nothing
+is written, and the agent hears the answer and goes on. A proposal is a
+decision and not a new kind of thing, so it travels, journals, and shows in
+the inbox like every other question for the user.
+
+## The scorecard of a scope
+
+A change of a policy or a style is a guess until something says whether
+the agents work better with it. The task's log already records every
+status with its time and its author, so the scorecard is computed from the
+log and nothing new is stored: when the scope started and finished, how
+often a part was blocked, how often done was refused, and how many reviews
+it carried. The cost comes from the run's ended turns, which the server
+keeps for the run: the turns of a partition agent from when its part
+started to when it was done are the part's, which is a measure and not a
+bill, because an agent that waits on a block and answers a question in the
+room spends turns inside the window too. The UI sums it, so that the
+server stores one list of turns and no per-task account that could go
+stale. A user who installs a policy and watches the refusals fall over the
+next ten scopes has what no prompt could give: evidence.
+
+## Policies, styles, skills, and profiles
+
+Four things say how an agent works, and each has one home because each
+answers one question. A policy answers "what must every agent do", so it
+is one file for all and goes into every system prompt. A style answers
+"how should this agent's work look", so it is granted to the agents it
+fits and goes into their system prompts alone: the backend's commit style
+need not reach the web client. A skill answers "how is this kind of task
+done", so it is a Claude Code skill that loads when the task comes up, not
+text that every turn carries. A profile answers "which of these does this
+agent take", so it is a named bundle of a model, an effort, a review
+requirement, skills, and styles that several agents can share, with the
+agent's own settings winning over it.
+
+A style is text in the prompt and a skill is a package that loads on
+demand, because a style is short and always applies, while a skill is long
+and applies to one task. The line is where the user draws it: a style that
+grows into procedures should become a skill.
+
+Profiles live in the topology file and not in the vault, because a
+profile is configuration of the agents, like a model, and the topology
+already holds what each agent is. The merge is one rule: the agent's own
+value wins, and its own skills and styles join the profile's, so that a
+profile is a default and never a cage.
 
 hikari moves no file from an earlier layout. It refuses to start on one and
 names the move that fixes it, because a silent start would show empty maps.
@@ -443,6 +539,28 @@ health that the teammate's machine recorded, instead of dropping every feature
 to pending and committing the drop. The partition agent's first turn runs its
 suites again. The records of releases do travel, and `hikari sync` pulls the
 products that the pins need; see "Releases travel as records".
+
+## The code no partition owns, and the drift of the default branch
+
+A topology says what each agent sees, and nothing says what no agent
+sees. A folder that no partition owns is code that no agent can change,
+and a request that touches it blocks for a reason that no map shows. So
+each repository's view lists the tracked paths of your branch outside
+every writable folder, at the highest directory that holds no partition
+folder, and `hikari check` warns about them. A read-only folder counts as
+unowned: someone reads it, and nobody changes it. The project repository
+is left out, because its topology and vault are yours by design.
+
+Agents work on your branch, and the default branch moves without them. A
+teammate's change in a partition's folders is work the partition agent
+does not see, and a map that describes a file the default branch has
+since changed describes the past. So each repository's view also lists,
+for each partition with a folder in it, the paths of its folders that the
+default branch changed since your branch diverged, from the merge base to
+the default branch's head. Hikari never merges or rebases for you; it
+shows the drift on the repository's page and the partition's page, and
+the orchestration agent reads it, so that the decision to bring the
+changes in is yours and informed.
 
 ## Onboarding runs in your own session
 
@@ -558,20 +676,63 @@ module widens it.
 as "the queue api started [[cancel]]". Writing them as you would say that you
 wrote messages you did not write.
 
+## Work starts as an issue of the repository
+
+The unit of work is an issue, and when a repository's origin is on GitHub,
+its issues are the project's. Work that lived only in one machine's vault
+could not be triaged with a team, and the agents had to recap where it
+stood in conversation. An issue on the forge is public: you plan it there
+or in the Work tab, which read and write the same thing, and hikari posts the
+scope, each block, and the finish back to it as comments and labels, so the
+history of the work is on the issue and not in a chat. A project whose
+repositories are not on a forge keeps its issues in the vault, as markdown,
+and the Work tab draws one list of both.
+
+The forge is read from the `origin` URL and reached with the credential of
+your machine, `GITHUB_TOKEN` or the GitHub CLI's, which the agents' containers
+never see: every tool that touches the forge goes through the server. The
+code is behind two interfaces, a forge for the pull requests and the checks,
+and a tracker for the issues, so that a later GitLab, Linear, or Jira is one
+more implementation and not a change of the pipeline.
+
+The orchestration agent scopes an issue when the queue starts it, not in a
+separate step that you drive. The earlier pipeline asked you to hand an idea
+to the agent, answer its questions, and then queue the result, and the steps
+were hard to find. Now the issue is the request, the queue is the approval,
+and the scope is the agent's plan, written from the issue and the feature
+maps with its assumptions stated, which you read on the issue. While a started
+task is being scoped, no other queue starts, so that the partitions it names
+are known before the next task takes one.
+
 ## The task pipeline keeps work as documents
 
 Every task is a markdown document with a property header, so it opens in
 Obsidian, diffs in git, and takes your own properties without a migration:
-hikari owns the properties it names and leaves the rest. A stub needs only a
-name, so planting an idea costs nothing, and a stub becomes a scope in its own
-file, with its stage as a property, so that every link to it holds. The scope
-keeps your words as its Request, which the orchestration agent never changes.
+hikari owns the properties it names and leaves the rest. A task that stands
+for a tracker issue names it in one property, and its stage says whether it
+is scoped, so that every link to it holds through the change. The scope keeps
+the issue's words as its Request, which the orchestration agent never changes.
 
-A queue is its own document with its scopes in order, not a `next` link on
-each scope. Moving one scope then rewrites one file, and two edits cannot
-break a chain. Putting a scope in a queue approves it, so there is no separate
-approval to remember; until then it is a draft that the orchestration agent
-may revise.
+A queue is its own document with its tasks in order, not a `next` link on
+each task. Moving one task then rewrites one file, and two edits cannot break
+a chain. Putting an issue in a queue approves it, so there is no separate
+approval to remember.
+
+## The repositories page shows where the work stands
+
+Agents never run git, and hikari commits their work to your branch of each
+repository. What happens next, the push, the pull request, its checks, and
+the merge, is yours, and it used to be invisible in the UI: the agents said in
+conversation which branch held the work, and the recap was lost. The server
+now keeps one view of each repository, your branch against the default branch,
+every branch with how far it is ahead or behind, and the pull requests with
+their checks and reviews, read from git on the host and from the forge on a
+slow poll, and the UI shows it on a page for each repository and on the map.
+Push, open a pull request, and merge are buttons there, never something hikari
+does by itself; a fetch is the one network call hikari makes on its own, with
+git's prompts off and a timeout, so that a passphrase never hangs a run. The
+orchestration agent reads the same view through a tool, so that it reports
+facts and not memory.
 
 A partition works on one scope at a time, across all queues. A partition agent
 is one container, so two scopes at once would mix its context and its commits;

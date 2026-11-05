@@ -15,6 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -87,11 +88,20 @@ type Host interface {
 	Commit(author, message string, paths ...string)
 	// Notify sends to a direct message from hikari.
 	Notify(to, body string)
+	// Ask sends the user a decision from hikari, whose answer goes to
+	// d.ReplyTo (rule DC2 of the attention spec).
+	Ask(d api.Decision)
 	// Feed adds a line of the module to the feed, as hikari's, linked to
 	// the task it concerns when task is set (rule FD5 of the feed spec).
 	Feed(text, task string)
 	// Changed tells the UI that the module's view changed.
 	Changed()
+	// Tracker is the issue tracker of a repository's forge, when it has
+	// one, and TrackerRepos lists the repositories that have one, the
+	// project repository first (section 3 of the repositories, forges,
+	// and issues spec).
+	Tracker(repo string) (forge.Tracker, bool)
+	TrackerRepos() []string
 }
 
 // ErrForbidden and ErrNotFound make a route answer 403 and 404.

@@ -6,28 +6,37 @@ export type TopologyTab = 'structure' | 'yaml'
 
 export type View =
   | { kind: 'all' }
+  // grid shows every agent as a tile (rule GR1 of the attention spec).
+  | { kind: 'grid' }
   | { kind: 'shared' }
   // topology is the topology file: its Structure tab, or its YAML tab, where
   // line moves the editor to a line.
   // select is the entity that the Structure tab shows, as kind:id.
   | { kind: 'topology'; tab?: TopologyTab; line?: number; select?: string }
   | { kind: 'room'; tab?: RoomTab }
-  | { kind: 'dm'; name: string }
+  // dm is an agent's direct messages, or with the context tab what its
+  // container puts before Claude Code on each turn.
+  | { kind: 'dm'; name: string; tab?: 'context' }
   | { kind: 'partition'; name: string }
   | { kind: 'release'; name: string; deliverable: string; version: string }
   // map is the topology map, or the wiki map of one partition, or with public
   // the map of the public wiki, or with orchestration the orchestration
   // agent's feature map; doc selects one of its documents.
   | { kind: 'map'; partition?: string; public?: boolean; orchestration?: boolean; doc?: string }
-  // work is the task pipeline's Work tab, with task open.
-  | { kind: 'work'; task?: string }
+  // work is the task pipeline's Work tab, with an issue open: its ref,
+  // <repo>#<number> or a local issue's id (rule UI4).
+  | { kind: 'work'; issue?: string }
+  // repos is the Repositories page, and repo one repository's page (rules
+  // UI1 and UI2).
+  | { kind: 'repos' }
+  | { kind: 'repo'; name: string }
 
 export const allView: View = { kind: 'all' }
 
 // viewKey names a conversation for unread counts. The tabs of the room
 // share one key.
 export function viewKey(v: View): string {
-  if (v.kind === 'all' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work') return v.kind
+  if (v.kind === 'all' || v.kind === 'grid' || v.kind === 'shared' || v.kind === 'topology' || v.kind === 'room' || v.kind === 'work' || v.kind === 'repos') return v.kind
   if (v.kind === 'map') return v.partition ? `map:${v.partition}` : v.public ? 'map:public' : v.orchestration ? 'map:@orchestration' : 'map'
   if (v.kind === 'release') return `release:${v.name}:${v.deliverable}:${v.version}`
   return `${v.kind}:${v.name}`
@@ -35,6 +44,7 @@ export function viewKey(v: View): string {
 
 export function viewHash(v: View): string {
   if (v.kind === 'all') return '#/'
+  if (v.kind === 'grid') return '#/grid'
   if (v.kind === 'shared') return '#/shared'
   if (v.kind === 'topology') return v.tab === 'yaml' ? '#/topology/yaml' : v.select ? `#/topology?select=${encodeURIComponent(v.select)}` : '#/topology'
   if (v.kind === 'map') {
@@ -44,17 +54,24 @@ export function viewHash(v: View): string {
     if (v.orchestration) return `#/orchestration/map${doc}`
     return '#/map'
   }
-  if (v.kind === 'work') return v.task ? `#/work/${encodeURIComponent(v.task)}` : '#/work'
+  if (v.kind === 'work') return v.issue ? `#/work/${encodeURIComponent(v.issue)}` : '#/work'
+  if (v.kind === 'repos') return '#/repos'
+  if (v.kind === 'repo') return `#/repos/${encodeURIComponent(v.name)}`
   if (v.kind === 'room') return v.tab && v.tab !== 'messages' ? `#/room/${v.tab}` : '#/room'
   if (v.kind === 'release') return `#/partition/${v.name}/release/${v.deliverable}/${v.version}`
+  if (v.kind === 'dm' && v.tab === 'context') return `#/dm/${v.name}/context`
   return `#/${v.kind}/${v.name}`
 }
 
 export function parseHash(hash: string): View {
   if (hash === '#/shared') return { kind: 'shared' }
+  if (hash === '#/grid') return { kind: 'grid' }
   if (hash === '#/work') return { kind: 'work' }
   const work = hash.match(/^#\/work\/([^/]+)$/)
-  if (work) return { kind: 'work', task: decodeURIComponent(work[1]) }
+  if (work) return { kind: 'work', issue: decodeURIComponent(work[1]) }
+  if (hash === '#/repos') return { kind: 'repos' }
+  const repo = hash.match(/^#\/repos\/([^/]+)$/)
+  if (repo) return { kind: 'repo', name: decodeURIComponent(repo[1]) }
   if (hash === '#/topology') return { kind: 'topology' }
   const select = hash.match(/^#\/topology\?select=([^&]+)$/)
   if (select) return { kind: 'topology', select: decodeURIComponent(select[1]) }
@@ -71,6 +88,8 @@ export function parseHash(hash: string): View {
   if (hash === '#/room') return { kind: 'room' }
   const room = hash.match(/^#\/room\/(vocabulary|wiki)$/)
   if (room) return { kind: 'room', tab: room[1] as RoomTab }
+  const context = hash.match(/^#\/dm\/([\w-]+)\/context$/)
+  if (context) return { kind: 'dm', name: context[1], tab: 'context' }
   const m = hash.match(/^#\/(dm|partition)\/([\w-]+)$/)
   return m ? { kind: m[1] as 'dm' | 'partition', name: m[2] } : allView
 }

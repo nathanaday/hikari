@@ -39,6 +39,9 @@ const (
 	GrantsDir = "/hikari/grants"
 	// SkillsDir holds the skills granted to an agent.
 	SkillsDir = "/hikari/skills"
+	// StylesDir holds the styles granted to an agent, one Markdown file
+	// each, which go into its system prompt.
+	StylesDir = "/hikari/styles"
 )
 
 // PublicWikiPath is where every container sees the public wiki.
@@ -64,6 +67,9 @@ func ReleasesPath(partition string) string {
 
 // SkillPath returns where a container sees a granted skill.
 func SkillPath(skill string) string { return path.Join(SkillsDir, skill) }
+
+// StylePath returns where a container sees a granted style.
+func StylePath(style string) string { return path.Join(StylesDir, style+".md") }
 
 // WorkspacePath returns the container path of a folder's place.
 func WorkspacePath(place string) string {
@@ -280,14 +286,7 @@ type Grants struct {
 	Releases     []string `json:"releases"`
 	Deliverables []string `json:"deliverables"`
 	Skills       []string `json:"skills"`
-}
-
-// RepoInfo is one repository of the topology, for the UI: its hikari
-// branch and the partitions with a writable folder in it. It holds no host path.
-type RepoInfo struct {
-	Name       string   `json:"name"`
-	Branch     string   `json:"branch"`
-	Partitions []string `json:"partitions"`
+	Styles       []string `json:"styles"`
 }
 
 type PublishRequest struct {
@@ -494,4 +493,54 @@ func (c *Client) GetVocabulary(ctx context.Context) (vocab.Vocabulary, error) {
 
 func (c *Client) ChangeVocabulary(ctx context.Context, ch VocabularyChange) error {
 	return c.do(ctx, http.MethodPost, "/api/agent/vocabulary", ch, nil)
+}
+
+// ContractRequest writes one contract of the vocabulary: Name is its path
+// in the vault's public contracts/, and Text its whole content.
+type ContractRequest struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// ContractEntry is one contract file of the vault, with the interfaces of
+// the vocabulary that name it. Missing marks a contract that an interface
+// names and the vault lacks.
+type ContractEntry struct {
+	Name       string   `json:"name"`
+	Path       string   `json:"path"`
+	Interfaces []string `json:"interfaces"`
+	Missing    bool     `json:"missing,omitempty"`
+}
+
+func (c *Client) WriteContract(ctx context.Context, req ContractRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/agent/contracts", req, nil)
+}
+
+// Changes is the work of a partition on your branch, for a review: the
+// diff of its writable folders in each repo from the base, with the files
+// that git does not track yet.
+type Changes struct {
+	Repos []RepoChanges `json:"repos"`
+}
+
+// RepoChanges is the diff of one repo's folders. Base is the commit the
+// diff starts from: the merge base with the default branch, or the commit
+// at the start of the run when the repo has no default branch. Truncated
+// says that the diff was cut at MaxDiffBytes.
+type RepoChanges struct {
+	Repo      string   `json:"repo"`
+	Branch    string   `json:"branch"`
+	Base      string   `json:"base"`
+	Diff      string   `json:"diff"`
+	Untracked []string `json:"untracked,omitempty"`
+	Truncated bool     `json:"truncated,omitempty"`
+}
+
+// MaxDiffBytes is the most of a repo's diff that Changes carries.
+const MaxDiffBytes = 400 << 10
+
+func (c *Client) Changes(ctx context.Context) (Changes, error) {
+	var out Changes
+	err := c.do(ctx, http.MethodGet, "/api/agent/changes", nil, &out)
+	return out, err
 }

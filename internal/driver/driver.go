@@ -101,7 +101,7 @@ func (d *driver) turn(ctx context.Context, state, why, prompt string) {
 	// The vault can change between turns, so the skills and the policies
 	// are connected again before each one.
 	partition := systemPrompt(d.self) + d.shared.sync()
-	t := turn{prompt: prompt, session: d.session, model: d.self.Model, mcpConfig: d.mcpConfig, partition: partition, tap: d.tap}
+	t := turn{prompt: prompt, session: d.session, model: d.self.Model, effort: d.self.Effort, mcpConfig: d.mcpConfig, partition: partition, tap: d.tap}
 	res, err := t.run(ctx)
 	d.tap.End(res.closing, res.cost, res.duration, err)
 	if res.session != "" {
@@ -192,8 +192,8 @@ func systemPrompt(self api.Self) string {
 }
 
 type turn struct {
-	prompt, session, model, mcpConfig, partition string
-	tap                                          *claude.Tap
+	prompt, session, model, effort, mcpConfig, partition string
+	tap                                                  *claude.Tap
 }
 
 type turnResult struct {
@@ -218,6 +218,9 @@ func (t turn) run(ctx context.Context) (turnResult, error) {
 	}
 	if t.model != "" {
 		args = append(args, "--model", t.model)
+	}
+	if t.effort != "" {
+		args = append(args, "--effort", t.effort)
 	}
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Stdin = strings.NewReader(t.prompt)

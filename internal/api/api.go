@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,62 @@ type Message struct {
 	Time time.Time `json:"time"`
 	// Woke lists the recipients that the message started a turn for.
 	Woke []string `json:"woke,omitempty"`
+	// Decision is a question with numbered options, which the UI shows as
+	// a card (the decisions of the attention spec). Answers is the id of
+	// the decision message that this message answers.
+	Decision *Decision `json:"decision,omitempty"`
+	Answers  int64     `json:"answers,omitempty"`
+}
+
+// Decision is a question for the user with two to six options. The answer
+// comes back as a direct message to ReplyTo, "<n>. <option>", with any words
+// the user adds.
+type Decision struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	// Task is the task the decision concerns, or "".
+	Task string `json:"task,omitempty"`
+	// ReplyTo receives the answer: the sender, or for a decision of hikari,
+	// the orchestration agent.
+	ReplyTo string `json:"reply_to,omitempty"`
+	// Proposal is set when the decision proposes a rule for the public
+	// wiki (a proposed rule): the first option accepts it, and hikari
+	// writes the rule as the user.
+	Proposal *Proposal `json:"proposal,omitempty"`
+}
+
+// Proposal is a rule that an agent proposes for every agent, from a lesson
+// of its work: the document's id and name, the rule as one sentence, and
+// the reason, which becomes the rule's Purpose.
+type Proposal struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Rule   string `json:"rule"`
+	Reason string `json:"reason"`
+}
+
+// ProposeRule makes the decision of a proposed rule for the agent from:
+// the question, the two options, and the proposal.
+func ProposeRule(from string, p Proposal) Decision {
+	return Decision{
+		Question: fmt.Sprintf("%s proposes a rule for every agent: %s Accept it into the public wiki?", from, strings.TrimRight(strings.TrimSpace(p.Rule), ".")+"."),
+		Options:  []string{"Accept: hikari writes it into the public wiki as the rule " + p.ID, "Decline"},
+		ReplyTo:  from,
+		Proposal: &p,
+	}
+}
+
+// MaxOptions is the most options a decision has.
+const MaxOptions = 6
+
+// Text writes a decision as plain text: the question, then the numbered
+// options.
+func (d *Decision) Text() string {
+	out := d.Question
+	for i, o := range d.Options {
+		out += fmt.Sprintf("\n%d. %s", i+1, o)
+	}
+	return out
 }
 
 const (
@@ -56,8 +113,15 @@ type Self struct {
 	Releases []string `json:"releases,omitempty"`
 	// Deliverables lists the deliverables that a partition agent publishes.
 	Deliverables []DeliverableInfo `json:"deliverables,omitempty"`
-	// Skills lists the skills of the vault that the agent is granted.
+	// Skills lists the skills of the vault that the agent is granted, and
+	// Styles the styles, whose text goes into the system prompt.
 	Skills []string `json:"skills,omitempty"`
+	Styles []string `json:"styles,omitempty"`
+	// Profile names the agent's profile, Effort its reasoning effort, and
+	// Review whether its parts need a review before done.
+	Profile string `json:"profile,omitempty"`
+	Effort  string `json:"effort,omitempty"`
+	Review  string `json:"review,omitempty"`
 	// Modules lists the modules that the project turns on (rule MO4 of the
 	// task pipeline spec).
 	Modules []string `json:"modules,omitempty"`
@@ -88,6 +152,7 @@ const (
 	PlanWorkSkill     = "hikari-plan-work"
 	DoWorkSkill       = "hikari-do-work"
 	ValidateWorkSkill = "hikari-validate-work"
+	ReviewWorkSkill   = "hikari-review-work"
 	MapFeaturesSkill  = "hikari-map-features"
 	HealthCheckSkill  = "hikari-health-check"
 )
@@ -96,21 +161,25 @@ const (
 // of the same name in two packs is two skills (decision 1 of the skill
 // packs spec).
 var Packs = map[string][]string{
-	RolePartition:     {PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill},
+	RolePartition:     {PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, ReviewWorkSkill, MapFeaturesSkill},
 	RoleOrchestration: {PlanWorkSkill, HealthCheckSkill, MapFeaturesSkill},
 }
 
 // BuiltinSkills are the names of every built-in skill.
-var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, MapFeaturesSkill, HealthCheckSkill}
+var BuiltinSkills = []string{PlanWorkSkill, DoWorkSkill, ValidateWorkSkill, ReviewWorkSkill, MapFeaturesSkill, HealthCheckSkill}
 
 // AgentPrefix starts the name of each of hikari's own skills and agents.
 // No skill of the vault may use it.
 const AgentPrefix = "hikari-"
 
 // SendRequest posts to the room, or sends a direct message when To is set.
+// A Decision goes to the user as a direct message; Answers names the
+// decision that the message answers.
 type SendRequest struct {
-	To   string `json:"to,omitempty"`
-	Body string `json:"body"`
+	To       string    `json:"to,omitempty"`
+	Body     string    `json:"body"`
+	Decision *Decision `json:"decision,omitempty"`
+	Answers  int64     `json:"answers,omitempty"`
 }
 
 const (
@@ -180,6 +249,18 @@ type Activity struct {
 	// Unheard marks closing text that reached no one: the agent sent no
 	// message during the turn. The server sets it.
 	Unheard bool `json:"unheard,omitempty"`
+}
+
+// Turn is one ended turn of an agent, kept for the run: its time, its
+// cost, and its duration, so that the cost of a scope can be summed from
+// the turns of its partition agents inside their parts' windows.
+type Turn struct {
+	Agent    string    `json:"agent"`
+	Turn     int64     `json:"turn"`
+	Time     time.Time `json:"time"`
+	Cost     float64   `json:"cost"`
+	Duration int64     `json:"duration"`
+	Error    bool      `json:"error,omitempty"`
 }
 
 type Status struct {

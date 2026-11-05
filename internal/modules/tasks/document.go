@@ -62,6 +62,10 @@ type Task struct {
 	Wait  string
 	Queue string
 	Parts []Part
+	// Issue is the tracker issue that the task stands for, as
+	// <repo>#<number>, or "" for a local issue (rule IS1 of the
+	// repositories, forges, and issues spec).
+	Issue string
 	// Extra holds the properties that hikari does not name, in their
 	// order (B4).
 	Extra []Property
@@ -96,7 +100,7 @@ type Property struct {
 }
 
 var (
-	taskKeys  = []string{"version", "id", "kind", "stage", "name", "author", "created", "updated", "partitions", "features", "needs", "status", "block", "wait", "queue", "parts"}
+	taskKeys  = []string{"version", "id", "kind", "stage", "name", "author", "created", "updated", "partitions", "features", "needs", "status", "block", "wait", "queue", "parts", "issue"}
 	queueKeys = []string{"version", "id", "kind", "name", "state", "created", "updated", "scopes"}
 	validID   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	link      = regexp.MustCompile(`^\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]$`)
@@ -248,6 +252,8 @@ func ParseTask(text string) (*Task, error) {
 			}
 		case "parts":
 			t.Parts, err = parts(val)
+		case "issue":
+			t.Issue, err = scalar(key, val)
 		default:
 			t.Extra = append(t.Extra, Property{Key: key, Value: val})
 		}
@@ -413,6 +419,9 @@ func (t *Task) Format() string {
 		}
 		h.add("parts", m)
 	}
+	if t.Issue != "" {
+		h.add("issue", str(t.Issue))
+	}
 	return h.text(t.Extra, t.Body)
 }
 
@@ -564,4 +573,24 @@ func scopeBody(request, goal string, parts map[string]string, order []string, do
 // that is not done (D4).
 func active(status string) bool {
 	return slices.Contains([]string{Started, Blocked, Testing, Validating}, status)
+}
+
+// scoping reports whether a task has started but is not scoped yet: the
+// orchestration agent is scoping it (rule IS3).
+func scoping(t *Task) bool { return t.Stage == StageStub && active(t.Status) }
+
+// IssueRef writes a tracker issue as <repo>#<number>.
+func IssueRef(repo string, number int) string { return fmt.Sprintf("%s#%d", repo, number) }
+
+// ParseIssueRef reads <repo>#<number>; ok is false for anything else, such
+// as the id of a local issue.
+func ParseIssueRef(ref string) (repo string, number int, ok bool) {
+	repo, n, found := strings.Cut(strings.TrimSpace(ref), "#")
+	if !found || repo == "" {
+		return "", 0, false
+	}
+	if _, err := fmt.Sscanf(n, "%d", &number); err != nil || number <= 0 || fmt.Sprint(number) != n {
+		return "", 0, false
+	}
+	return repo, number, true
 }

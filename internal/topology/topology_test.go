@@ -350,6 +350,12 @@ func TestDeliverableGrants(t *testing.T) {
 		"V7 skill name":           {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {skills: [Style]}", 1), `skill "Style" is not a valid name`},
 		"V7 skill twice":          {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {skills: [style, style]}", 1), `skill "style" is granted twice`},
 		"V7 hikari skill":         {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {skills: [hikari-mine]}", 1), `the prefix hikari- is reserved`},
+		"style name":              {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {styles: [Terse]}", 1), `style "Terse" is not a valid name`},
+		"style twice":             {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, grants: {styles: [terse, terse]}", 1), `style "terse" is granted twice`},
+		"unknown profile":         {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, profile: careful", 1), `the profile "careful" is not in x-hikari.profiles`},
+		"bad effort":              {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, effort: extreme", 1), `effort "extreme" is not one of low, medium, high, xhigh, max`},
+		"bad review":              {strings.Replace(validPartitionAgents, "services/orders}]}", "services/orders}]}, review: sometimes", 1), `review "sometimes" is not one of required, none`},
+		"review of orchestration": {validPartitionAgents + "  writer: {x-hikari: {review: required}}\n", `only a partition agent's work is reviewed`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Parse([]byte(partitionsTopology(repo, c.services)), dir)
@@ -661,5 +667,65 @@ func TestModules(t *testing.T) {
 	topo, _ = Parse([]byte(compose("  orchestration: a", "  a: {x-hikari: {}}")), t.TempDir())
 	if len(topo.Modules) != 0 || topo.HasModule("tasks") {
 		t.Errorf("MO5 a project without the key has no module: %v", topo.Modules)
+	}
+}
+
+// TestProfiles checks x-hikari.profiles: an agent takes a profile's model,
+// effort, review, skills, and styles, its own values win, and a bad
+// profile is an error of the file.
+func TestProfiles(t *testing.T) {
+	repo := fakeRepo(t, "services/orders", "services/inventory")
+	src := compose(`
+  repos:
+    shop: {path: `+repo+`, branch: hikari/work}
+  orchestration: lead
+  profiles:
+    careful: {description: Slow and reviewed., model: opus, effort: high, review: required, skills: [tdd], styles: [terse, conventional-commits]}
+    quick: {model: haiku}`, `
+  lead: {x-hikari: {profile: quick}}
+  orders:
+    x-hikari:
+      profile: careful
+      model: sonnet
+      partition: {folders: [{repo: shop, path: services/orders}]}
+      grants: {skills: [python-style, tdd], styles: [go-idioms]}
+  inventory:
+    x-hikari:
+      partition: {folders: [{repo: shop, path: services/inventory}]}
+`)
+	topo, err := Parse([]byte(src), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := topo.Agents["orders"]
+	if o.Profile != "careful" || o.Model != "sonnet" || o.Effort != "high" || o.Review != ReviewRequired {
+		t.Errorf("orders = profile %q, model %q, effort %q, review %q", o.Profile, o.Model, o.Effort, o.Review)
+	}
+	if !slices.Equal(o.Grants.Skills, []string{"tdd", "python-style"}) || !slices.Equal(o.Grants.Styles, []string{"terse", "conventional-commits", "go-idioms"}) {
+		t.Errorf("orders grants = skills %v, styles %v", o.Grants.Skills, o.Grants.Styles)
+	}
+	if l := topo.Agents["lead"]; l.Model != "haiku" || l.Effort != "" || l.Review != "" || l.Grants.Skills != nil {
+		t.Errorf("lead = %+v", l)
+	}
+	if i := topo.Agents["inventory"]; i.Profile != "" || i.Model != "" || i.Grants.Styles != nil {
+		t.Errorf("inventory = %+v", i)
+	}
+	if len(topo.Profiles) != 2 || topo.Profiles["careful"].Description != "Slow and reviewed." {
+		t.Errorf("profiles = %+v", topo.Profiles)
+	}
+	for name, c := range map[string]struct{ from, to, want string }{
+		"bad profile name": {"    quick: {model: haiku}", "    Quick: {model: haiku}", `"Quick" is not a valid profile name`},
+		"bad effort":       {"effort: high", "effort: huge", `profile "careful": effort "huge" is not one of`},
+		"bad review":       {"review: required", "review: maybe", `profile "careful": review "maybe" is not one of`},
+		"reserved skill":   {"skills: [tdd]", "skills: [hikari-x]", `the prefix hikari- is reserved`},
+		"style twice":      {"styles: [terse, conventional-commits]", "styles: [terse, terse]", `style "terse" is listed twice`},
+		"profile's review on the orchestration agent": {"lead: {x-hikari: {profile: quick}}", "lead: {x-hikari: {profile: careful}}", `only a partition agent's work is reviewed`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(strings.Replace(src, c.from, c.to, 1)), t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want %q", err, c.want)
+			}
+		})
 	}
 }

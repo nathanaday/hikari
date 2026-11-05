@@ -5,6 +5,8 @@ import { releaseCommits } from '@/lib/labels'
 import type { State } from '@/lib/store'
 import type { Feature, Interface, Private, Release, PartitionView, TaskView } from '@/lib/types'
 import { StatusChip } from '@/components/work-view'
+import { Contract } from '@/components/vocabulary-panel'
+import { driftOf, issueRef } from '@/lib/repos'
 
 function ago(iso?: string): string {
   if (!iso) return ''
@@ -77,7 +79,7 @@ function List({ label, items }: { label: string; items?: string[] }) {
   )
 }
 
-function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: string; warning?: string[] }) {
+function InterfaceRow({ iface, note, warning, contract }: { iface: Interface; note?: string; warning?: string[]; contract?: string }) {
   return (
     <li className="space-y-0.5 py-1.5" data-testid="interface">
       <div className="flex flex-wrap items-center gap-2">
@@ -88,6 +90,7 @@ function InterfaceRow({ iface, note, warning }: { iface: Interface; note?: strin
         {note && <span className="text-xs text-muted-foreground">{note}</span>}
       </div>
       {iface.description && <p className="text-sm text-muted-foreground">{iface.description}</p>}
+      {contract && <Contract iface={{ ...iface, contract }} />}
       {warning?.map((w) => (
         <p key={w} className="flex items-center gap-1 text-xs text-amber-700" data-testid="flag">
           <TriangleAlert className="size-3" />
@@ -183,12 +186,39 @@ function Workspace({ v }: { v: PartitionView }) {
       <ul className="mt-2 space-y-0.5 text-sm text-muted-foreground" data-testid="workspace-repos">
         {v.repos.map((r) => (
           <li key={r.name}>
-            {r.name} on <code className="text-xs">{r.branch}</code>
+            <a href={`#/repos/${encodeURIComponent(r.name)}`} className="underline underline-offset-2">
+              {r.name}
+            </a>{' '}
+            on <code className="text-xs">{r.branch}</code>
             {r.dirty ? ', with uncommitted changes' : ', clean'}
           </li>
         ))}
       </ul>
     </Section>
+  )
+}
+
+// DriftNote says which paths of the partition's folders the default branch
+// changed since your branch diverged, by repository: work the agent does
+// not see.
+function DriftNote({ state, partition }: { state: State; partition: string }) {
+  const drift = driftOf(state.repos, partition)
+  if (drift.length === 0) return null
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="partition-drift">
+      {drift.map((d) => (
+        <p key={d.repo}>
+          <span className="font-medium">
+            {d.default_branch} of{' '}
+            <a href={`#/repos/${encodeURIComponent(d.repo)}`} className="underline underline-offset-2">
+              {d.repo}
+            </a>{' '}
+            changed {d.paths.length} path{d.paths.length === 1 ? '' : 's'} of this partition
+          </span>{' '}
+          since your branch diverged: <span className="text-xs">{d.paths.slice(0, 8).join(', ')}{d.paths.length > 8 ? `, and ${d.paths.length - 8} more` : ''}</span>
+        </p>
+      ))}
+    </div>
   )
 }
 
@@ -205,7 +235,7 @@ function openFeature(e: React.MouseEvent, id: string) {
 function scopesOf(state: State, partition: string): TaskView[] {
   const work = state.modules.tasks
   if (!work) return []
-  return [...work.queues.flatMap((q) => q.scopes), ...work.drafts].filter((t) => t.partitions.includes(partition))
+  return work.tasks.filter((t) => t.stage === 'scope' && t.partitions.includes(partition))
 }
 
 export function PartitionDetail({ state, partition: v }: { state: State; partition: PartitionView }) {
@@ -213,6 +243,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
   const flags = v.flags ?? []
   const providers = v.providers ?? {}
   const flagsFor = (name: string) => flags.filter((f) => f.interface === name).map((f) => f.problem)
+  const contractOf = (name: string) => state.vocabulary.interfaces.find((i) => i.name === name)?.contract
   const s = v.partition
   const priv = v.private
   const parts = priv.code_map.parts ?? []
@@ -243,6 +274,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
           </p>
         )}
         <Workspace v={v} />
+        <DriftNote state={state} partition={v.partition_agent} />
         {v.state === 'unbuilt' && !s.summary && v.features.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             {partitionAgent?.status.state === 'indexing'
@@ -268,7 +300,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 {s.interfaces.provides.length ? (
                   <ul className="divide-y">
                     {s.interfaces.provides.map((i) => (
-                      <InterfaceRow key={i.name} iface={i} warning={flagsFor(i.name)} />
+                      <InterfaceRow key={i.name} iface={i} warning={flagsFor(i.name)} contract={contractOf(i.name)} />
                     ))}
                   </ul>
                 ) : (
@@ -284,6 +316,7 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                         iface={i}
                         note={providers[i.name]?.length ? `from ${providers[i.name].join(', ')}` : undefined}
                         warning={flagsFor(i.name)}
+                        contract={contractOf(i.name)}
                       />
                     ))}
                   </ul>
@@ -349,9 +382,10 @@ export function PartitionDetail({ state, partition: v }: { state: State; partiti
                 <ul className="space-y-1" data-testid="partition-scopes">
                   {scopesOf(state, v.partition_agent).map((t) => (
                     <li key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
-                      <a href={`#/work/${encodeURIComponent(t.id)}`} className="hover:underline">
+                      <a href={`#/work/${encodeURIComponent(issueRef(t))}`} className="hover:underline">
                         {t.name}
                       </a>
+                      {t.issue && <code className="text-xs text-muted-foreground">{t.issue}</code>}
                       <StatusChip status={t.status} />
                       {t.parts.find((p) => p.partition === v.partition_agent) && <StatusChip status={t.parts.find((p) => p.partition === v.partition_agent)!.status} label="part" />}
                       {t.queue && <span className="text-xs text-muted-foreground">in {t.queue}</span>}

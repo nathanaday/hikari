@@ -174,8 +174,8 @@ func TestFoldersOfTwoRepos(t *testing.T) {
 	if self := r.m.Self("orders"); len(self.Repos) != 2 || self.Folders[0].Place != "shop/services/orders" {
 		t.Errorf("F11: %+v", self)
 	}
-	if repos := r.m.Repos(); len(repos) != 2 || repos[0].Name != "protos" || !slices.Equal(repos[0].Partitions, []string{"orders"}) || !slices.Equal(repos[1].Partitions, []string{"inventory", "orders"}) {
-		t.Errorf("repos = %+v", repos)
+	if !slices.Equal(r.m.PartitionsIn("protos"), []string{"orders"}) || !slices.Equal(r.m.PartitionsIn("shop"), []string{"inventory", "orders"}) || len(r.m.GitRepos()) != 2 {
+		t.Errorf("repos = %v, %v", r.m.PartitionsIn("protos"), r.m.PartitionsIn("shop"))
 	}
 }
 

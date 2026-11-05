@@ -74,6 +74,9 @@ func VaultMounts(t *topology.Topology, agent string) []Mount {
 	for _, sk := range t.Agents[agent].Grants.Skills {
 		mounts = append(mounts, Mount{Source: st.SkillDir(sk), Target: api.SkillPath(sk), ReadOnly: true})
 	}
+	for _, style := range t.Agents[agent].Grants.Styles {
+		mounts = append(mounts, Mount{Source: st.StyleFile(style), Target: api.StylePath(style), ReadOnly: true})
+	}
 	for _, m := range modules.Of(t) {
 		for _, mt := range m.Mounts(t, agent) {
 			mounts = append(mounts, Mount(mt))

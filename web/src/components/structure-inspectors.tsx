@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { findingsOf, partitionAgents, partitionsIn, placeOf, type AddKind, type Op, type Selection } from '@/lib/structure'
 import { branchProblem, nameProblem, urlProblem, validProjectName } from '@/lib/topology-rules'
-import type { Finding, Mount, Packs, TopologyAgent, TopologyFolder, TopologyModel } from '@/lib/types'
+import type { Finding, Mount, Packs, TopologyAgent, TopologyFolder, TopologyModel, TopologyProfile } from '@/lib/types'
 
-export type Options = { deliverables: string[]; skills: string[]; models: string[]; templates: string[] }
+export type Options = { deliverables: string[]; skills: string[]; styles?: string[]; models: string[]; efforts?: string[]; reviews?: string[]; templates: string[] }
 
 export type InspectorProps = {
   model: TopologyModel
@@ -220,9 +220,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
       <Identity kind="agent" id={a.id} name={a.name} locked={a.id_locked} p={p} />
       <TextField label="Description" value={a.description} multiline onCommit={(v) => p.add({ op: 'set_agent', id, description: v })} hint="Every agent in the room sees it." />
       <TextField label="Instructions" value={a.instructions} multiline onCommit={(v) => p.add({ op: 'set_agent', id, instructions: v })} hint="Only this agent sees them, in its system prompt." />
-      <Field label="Model">
-        <Select value={a.model} options={modelOptions(p.options, a.model)} onChange={(v) => p.add({ op: 'set_agent', id, model: v })} />
-      </Field>
+      <HowItWorks a={a} orchestration={orchestration} p={p} />
 
       <PartitionSection a={a} orchestration={orchestration} p={p} />
 
@@ -253,7 +251,7 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
           </Field>
         )}
         <BuiltinSkills skills={(orchestration ? p.packs.orchestration : a.partition ? p.packs.partition : undefined) ?? []} />
-        <Field label="Skills it uses" hint="Your skills in the vault's skills/, which its container reads at /hikari/skills/<name>.">
+        <Field label="Skills it uses" hint={`Your skills in the vault's skills/, which its container reads at /hikari/skills/<name>.${fromProfile(a, p.model)?.skills.length ? ` Its profile adds ${fromProfile(a, p.model)!.skills.join(', ')}.` : ''}`}>
           <Chips
             items={a.skills.map((s) => ({ value: s, label: s }))}
             onRemove={(s) => p.add({ op: 'set_grants', id, skills: a.skills.filter((x) => x !== s) })}
@@ -261,6 +259,16 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
             choices={p.options.skills.filter((s) => !a.skills.includes(s) && !a.deliverables.includes(s)).map((s) => ({ value: s, label: s }))}
             addLabel="Grant a skill…"
             empty={p.options.skills.length ? 'None' : 'None; the vault has no skill yet.'}
+          />
+        </Field>
+        <Field label="Styles it follows" hint={`Your styles in the vault's styles/<name>.md: how its work should look, in its system prompt.${fromProfile(a, p.model)?.styles.length ? ` Its profile adds ${fromProfile(a, p.model)!.styles.join(', ')}.` : ''}`}>
+          <Chips
+            items={(a.styles ?? []).map((s) => ({ value: s, label: s }))}
+            onRemove={(s) => p.add({ op: 'set_grants', id, styles: (a.styles ?? []).filter((x) => x !== s) })}
+            onAdd={(s) => p.add({ op: 'set_grants', id, styles: [...(a.styles ?? []), s] })}
+            choices={(p.options.styles ?? []).filter((s) => !(a.styles ?? []).includes(s)).map((s) => ({ value: s, label: s }))}
+            addLabel="Grant a style…"
+            empty={p.options.styles?.length ? 'None' : 'None; the vault has no style yet. Add one with hikari toolbox, or write vault/styles/<name>.md.'}
           />
         </Field>
       </Section>
@@ -281,6 +289,46 @@ export function AgentInspector({ id, ...p }: InspectorProps & { id: string }) {
         }}
       />
     </div>
+  )
+}
+
+// fromProfile returns the profile an agent takes, when the file has it.
+function fromProfile(a: TopologyAgent, m: TopologyModel): TopologyProfile | undefined {
+  return a.profile ? m.project.profiles?.find((x) => x.name === a.profile) : undefined
+}
+
+const choice = (values: string[] | undefined, current: string, none: string) => {
+  const list = [{ value: '', label: none }, ...(values ?? []).map((v) => ({ value: v, label: v }))]
+  if (current && !(values ?? []).includes(current)) list.push({ value: current, label: current })
+  return list
+}
+
+// HowItWorks edits how the agent works: its profile, and its own model,
+// effort, and review, each showing what the profile gives when the agent
+// sets none.
+function HowItWorks({ a, orchestration, p }: { a: TopologyAgent; orchestration: boolean; p: InspectorProps }) {
+  const profiles = p.model.project.profiles ?? []
+  const pr = fromProfile(a, p.model)
+  const inherited = (own: string | undefined, theirs: string | undefined, what: string) => (own ? undefined : theirs ? `From the profile ${pr!.name}: ${theirs}.` : `No ${what} is set.`)
+  return (
+    <Section title="How it works">
+      <Field label="Profile" hint={profiles.length ? 'A named bundle of model, effort, review, skills, and styles from x-hikari.profiles. What the agent sets itself wins.' : 'No profile yet: define x-hikari.profiles in the YAML, or add one with hikari toolbox.'}>
+        <Select value={a.profile ?? ''} options={[{ value: '', label: 'None' }, ...profiles.map((x) => ({ value: x.name, label: x.description ? `${x.name} · ${x.description}` : x.name }))]} onChange={(v) => p.add({ op: 'set_agent', id: a.id, profile: v })} />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Model" hint={inherited(a.model, pr?.model, 'model')}>
+          <Select value={a.model} options={modelOptions(p.options, a.model)} onChange={(v) => p.add({ op: 'set_agent', id: a.id, model: v })} />
+        </Field>
+        <Field label="Effort" hint={inherited(a.effort, pr?.effort, 'effort')}>
+          <Select value={a.effort ?? ''} options={choice(p.options.efforts, a.effort ?? '', 'The default effort')} onChange={(v) => p.add({ op: 'set_agent', id: a.id, effort: v })} />
+        </Field>
+        {!orchestration && (
+          <Field label="Review" hint={inherited(a.review, pr?.review, 'review') ?? (a.review === 'required' ? 'A fresh reviewer reads each part before the agent asks for done.' : undefined)}>
+            <Select value={a.review ?? ''} options={choice(p.options.reviews, a.review ?? '', 'None')} onChange={(v) => p.add({ op: 'set_agent', id: a.id, review: v })} />
+          </Field>
+        )}
+      </div>
+    </Section>
   )
 }
 

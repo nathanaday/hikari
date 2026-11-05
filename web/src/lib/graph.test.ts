@@ -11,7 +11,7 @@ const shop = () => ({
     }),
     partition('inventory', [feature('x')], { grants: { releases: [], deliverables: ['python-library'], skills: [] }, providers: {} }),
   ],
-  repos: [{ name: 'shop', branch: 'hikari/demo', partitions: ['inventory', 'orders'] }],
+  repos: [{ name: 'shop', branch: 'hikari/demo', partitions: ['inventory', 'orders'] }] as { name: string; branch: string; partitions: string[]; project?: boolean }[],
   deliverables: [
     { name: 'python-library', holders: ['inventory', 'orders'] },
     { name: 'unheld', holders: [] },
@@ -39,6 +39,14 @@ describe('topologyGraph', () => {
       'deliverable:python-library partition:orders',
       'partition:orders partition:inventory dashed',
     ])
+  })
+
+  it('leaves the project repository off the map when no partition is in it (PR27)', () => {
+    const input = shop()
+    input.repos.push({ name: 'project', branch: 'hikari/demo', partitions: [], project: true })
+    expect(topologyGraph(input).nodes.some((n) => n.id === 'repo:project')).toBe(false)
+    input.repos[1].partitions.push('orders')
+    expect(topologyGraph(input).nodes.some((n) => n.id === 'repo:project')).toBe(true)
   })
 
   it('leaves out edges to partitions that are not in the graph', () => {

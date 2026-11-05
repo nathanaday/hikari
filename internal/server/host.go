@@ -246,7 +246,7 @@ func (h *Host) editingSnapshot(mode string, findings []topology.Finding) Snapsho
 	snap := Snapshot{
 		Version: version.Version, Mode: mode, Me: topology.User, File: linked.Shown(h.editor.File),
 		Agents: []AgentView{}, Participants: []api.Peer{}, Messages: []api.Message{}, Partitions: []api.PartitionView{},
-		Repos: []api.RepoInfo{}, Deliverables: []deliverableEntry{}, Wikis: []api.WikiView{},
+		Repos: []api.RepoView{}, Deliverables: []deliverableEntry{}, Wikis: []api.WikiView{},
 		Activity: map[string][]api.Activity{}, StartFindings: findings,
 	}
 	if text, err := readFile(h.editor.File); err == nil {

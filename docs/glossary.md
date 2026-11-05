@@ -16,6 +16,8 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Vocabulary.** The project's shared dictionary, so that every agent maps features with the same names. Every agent reads it, and only the orchestration agent changes it, through tools. It is a directory, `vocabulary/`, whose file `terms.yaml` holds the terms and the interfaces; hikari reads only that file, so that later vocabulary-like files can join it.
 
+**Contract.** The file that an interface of the vocabulary names as its shape: an OpenAPI document, a proto file, a JSON schema, or type definitions, in `public/contracts/`, which every container reads. The orchestration agent writes one with `write_contract` from what the provider says, and you may write one by hand. An interface whose contract the vault lacks is flagged, like a name the vocabulary lacks.
+
 **Partition.** The folders that one container mounts as its workspace. It may or may not be a whole repository. The agent inside sees what is mounted as one monorepo, without any concern for the topology or the mounts. It is a flat list of folders, each a path in any repository of the project, writable or read-only, and the container sees each folder at `/workspace/<repo>/<path>`, or at the folder's `at:`.
 
 **Secrets.** A partition's secrets are Compose's `env_file` and `environment` on its service. A secret system of hikari's own is left for later.
@@ -38,7 +40,19 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Catalog.** Every release record in the vault, listed by `list_releases` and `hikari release list`.
 
+**Policy.** A rule for every agent: a Markdown file in `public/policies/`, which goes into every agent's system prompt. You write them; hikari never does.
+
+**Style.** How one agent's work should look: a Markdown file in `styles/`, which `grants.styles` or a profile gives to an agent, and which goes into that agent's system prompt under `# Styles`. A style is granted; a policy applies to everyone.
+
+**Profile.** A named bundle of how an agent works, under `x-hikari.profiles`: a model, an effort, whether its parts are reviewed, and the skills and styles it is granted. An agent takes one with `profile:`, and what the agent sets itself wins.
+
+**Effort.** The reasoning effort of an agent's turns: `low`, `medium`, `high`, `xhigh`, or `max`, set on the agent or its profile, and passed to Claude Code.
+
+**Toolbox.** The built-in library of policies, styles, and skills that `hikari toolbox` lists and installs into the vault.
+
 **Hikari agent.** A Claude Code session on the host with the Hikari plugin, whose host skills, such as `containerize-repo` and `hikify`, help you work with a hikari project. It runs in your terminal, or in the panel of the web UI, where `hikari up` runs it for you in the project root, as you, with your permissions asked. It is not in the room, and it does not work on the code.
+
+**Context.** What an agent's container puts before Claude Code on each turn: its system prompt, with the policies and the granted styles, built from the topology and the vault. The Context tab of the agent's page shows it, built on the host from the same files.
 
 **Panel.** Your chat with the hikari agent, anchored to the right of the web UI's page: your messages, its turns, a card for each permission it asks for, and the model, the effort, and the permission mode of its next turn. Hikari, the cat, toggles it.
 
@@ -66,21 +80,33 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 
 **Test map.** Private to the partition: how its suites run and which features each test touches, in `tests.yaml`.
 
-**Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
+**Skill pack.** The built-in skills that hikari installs in an agent's container for the tasks of its kind. A partition agent's pack is `hikari-plan-work`, `hikari-do-work`, `hikari-validate-work`, `hikari-review-work`, and `hikari-map-features`; the orchestration agent's is `hikari-plan-work`, `hikari-health-check`, and `hikari-map-features`. A skill of the same name in two packs is two skills, and the prefix `hikari-` is reserved for them.
 
 **Module.** A piece of hikari that a project turns on in `x-hikari.modules`. It owns a directory of the vault, its tools, a skill for each kind of agent, its routes, its commands, and a tab of the UI, behind one interface in the binary. `tasks` is the first.
 
-**Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads. Its stage says what it is: a stub or a scope.
+**Forge.** The service that hosts a repository's remote, with its pull requests, its checks, and its issues: GitHub, and later others. hikari reads it from the repository's `origin` URL, and reaches it with the credential of your machine.
 
-**Stub.** A task in its first stage: an idea in a few words, planted by you or an agent, and not yet scoped.
+**Tracker.** Where a project's issues live: the forge of a repository that has issues, or the vault for a project with no such repository.
 
-**Scope.** A task that the orchestration agent wrote from a stub with you: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. A scope outside any queue is a draft; one in a queue is approved.
+**Issue.** One piece of work, as the tracker holds it: a GitHub issue of one of the project's repositories, or a local issue, a task document in `vault/tasks/` that stands for no tracker issue. An issue is where work starts; you open one in the Work tab, on GitHub, in a terminal, or from your Claude Code session, and an agent opens one for work it finds outside its part.
+
+**Pull request.** The forge's proposal to merge a branch. hikari shows each repository's pull requests with their checks, and opens one from your branch when you ask.
+
+**Task.** One markdown document of the task pipeline, `vault/tasks/<id>.md`, with a property header that Obsidian reads: the record of an issue in the pipeline. A task that stands for a tracker issue names it in its `issue` property. Its stage says whether the orchestration agent has scoped it.
+
+**Proposed rule.** A rule for every agent that an agent proposes from a lesson of its work, with `propose_rule`: one sentence and its reason. It reaches you as a decision card; Accept has hikari write it into the public wiki as a rule, as yours, and Decline leaves nothing. Every agent reads the public wiki, so an accepted rule binds them from their next turn.
+
+**Scorecard.** What a scope's log says of how the work went: when it started and finished, how often it was blocked, how often done was refused, how many reviews it carried, and, from the run's turns, how many turns each partition agent spent inside its part and what they cost. The issue's panel shows it with the scope's timeline.
+
+**Scope.** A task once the orchestration agent has written what the work changes: the partitions it touches, the features it changes, each partition's part, and what shows that it is done. The agent scopes an issue when the queue starts it, from the issue's words and the feature maps, and hikari posts the scope to the issue.
 
 **Part.** The share of a scope that one partition does. Its partition agent reports its status.
 
-**Queue.** An ordered list of scopes, `vault/tasks/queues/<id>.md`. A running queue starts its scopes in order, and a partition works on one scope at a time across all queues.
+**Queue.** An ordered list of issues, `vault/tasks/queues/<id>.md`, by their tasks. Putting an issue in a queue approves it. A running queue starts its issues in order, and a partition works on one scope at a time across all queues. Work on this puts an issue at the front of the `work` queue and starts it.
 
-**Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes.
+**Status.** Where a scope or a part stands: queued, waiting, started, blocked, testing, validating, or done. hikari grants done only when the health of the scope's features passes, and, for a partition whose agent's review is required, only with a review.
+
+**Review.** A second reading of a partition agent's change by `hikari-reviewer`, a fresh subagent that reads the diff from `get_changes` against the scope's part, the policies, the styles, and the feature documents, and returns findings by severity. The `hikari-review-work` skill runs it; the agent fixes the blockers and carries the verdict into `set_task_status`, where the task's log keeps it. An agent or a profile with `review: required` gets done only with one.
 
 **Apply.** Commit a partition's changes to its source repositories: one commit in each repository whose writable folders changed. An agent calls `apply` to name the commit, and hikari applies what is left at the end of every turn and at stop.
 
@@ -100,4 +126,5 @@ These are the words of hikari. Each concept has one name in the code, the docs, 
 | story | orchestration feature | A flow across partitions is a feature of the orchestration feature map. |
 | layout, code layout | code map | The private document of where each feature lives. |
 | `commit_changes` | `apply` | The name of the event in the glossary. |
-| work order | task | The pipeline's documents are tasks: stubs, then scopes. |
+| work order | task | The pipeline's documents are tasks. |
+| stub | issue | Work starts as an issue of the tracker, or a local issue; a task that is not scoped yet keeps `stage: stub` in its file. |

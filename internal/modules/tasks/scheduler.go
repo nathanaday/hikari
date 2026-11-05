@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/nathanaday/hikari/internal/api"
 )
 
 // Change is what one change of the pipeline did beyond its own files: the
@@ -51,6 +53,60 @@ func (c *Change) note(to, body string) {
 // Hikari is hikari's own name as a writer and a sender.
 const Hikari = "hikari"
 
+// The kinds of a hook: the moments at which hikari writes to a task's
+// tracker issue (decision 10 of the repositories, forges, and issues spec).
+const (
+	HookQueued    = "queued"
+	HookOut       = "out"
+	HookStarted   = "started"
+	HookScoped    = "scoped"
+	HookBlocked   = "blocked"
+	HookUnblocked = "unblocked"
+	HookDone      = "done"
+)
+
+// Hook is one moment of a task that stands for a tracker issue, with a copy
+// of the task as it was then.
+type Hook struct {
+	Kind string
+	Task Task
+}
+
+// hook keeps a hook for the instance, for a task that has an issue.
+func (s *Store) hook(kind string, t *Task) {
+	if t.Issue == "" {
+		return
+	}
+	s.hooks = append(s.hooks, Hook{Kind: kind, Task: *t})
+}
+
+// Ask is a decision for the user that the pipeline raises: when the
+// orchestration agent scopes a queued task with assumptions, and when a
+// scope is blocked (rule DC4 of the attention spec). Its answer goes to
+// the orchestration agent.
+type Ask = api.Decision
+
+// TakeAsks returns the decisions kept since the last call.
+func (s *Store) TakeAsks() []Ask {
+	asks := s.asks
+	s.asks = nil
+	return asks
+}
+
+func (s *Store) ask(t *Task, question string, options ...string) {
+	if s.check.Orchestration == "" {
+		return
+	}
+	s.asks = append(s.asks, Ask{Question: question, Options: options, Task: t.ID, ReplyTo: s.check.Orchestration})
+}
+
+// TakeHooks returns the hooks kept since the last call.
+func (s *Store) TakeHooks() []Hook {
+	hooks := s.hooks
+	s.hooks = nil
+	return hooks
+}
+
 // User is the user's name as a writer.
 const User = "user"
 
@@ -89,13 +145,34 @@ func (s *Store) refused(t *Task, who, subject string, why []string) {
 	s.log(t, fmt.Sprintf("%s asked for done of %s: refused, since %s", who, subject, strings.Join(why, ", ")))
 }
 
-// setScope sets t's status, with a line in its log (rule TK18).
+// setScope sets t's status, with a line in its log (rule TK18), and keeps
+// a hook for a block, its end, and done.
 func (s *Store) setScope(t *Task, who, status, note string) {
 	if t.Status == status {
 		return
 	}
 	s.log(t, logText(who, "the scope", t.Status, status, note))
+	from := t.Status
 	t.Status = status
+	switch {
+	case status == Blocked:
+		s.hook(HookBlocked, t)
+		if who != User {
+			reason := t.Block
+			if reason == "" {
+				reason = strings.TrimSpace(note)
+			}
+			if reason == "" {
+				reason = blockReason(t)
+			}
+			s.ask(t, fmt.Sprintf("[[%s]] is blocked: %s What now?", t.ID, strings.TrimRight(reason, ".")+"."),
+				"Resolved: carry on", "Skip this part for now, and go on with the rest", "Keep it blocked; I will follow up myself")
+		}
+	case status == Done:
+		s.hook(HookDone, t)
+	case from == Blocked && active(status):
+		s.hook(HookUnblocked, t)
+	}
 }
 
 func (s *Store) setPart(t *Task, who, partition, status, note string) {
@@ -182,9 +259,22 @@ func (s *Store) Schedule(c *Change) error {
 			}
 			continue
 		}
+		if t.Stage == StageStub && s.check.Orchestration == "" {
+			// No one can scope it (rule IS5).
+			if t.Block == "" {
+				t.Block = "the project has no orchestration agent to scope it; scope it by hand, or add one"
+				s.setScope(t, Hikari, Blocked, t.Block)
+				f, err := s.saveTask(t)
+				if err != nil {
+					return err
+				}
+				c.wrote(Hikari, f)
+			}
+			continue
+		}
 		s.setScope(t, Hikari, Started, "the queue "+q.ID+" started it")
 		t.Wait = ""
-
+		s.hook(HookStarted, t)
 		for _, p := range t.Partitions {
 			t.SetPart(p, Queued)
 		}
@@ -193,9 +283,17 @@ func (s *Store) Schedule(c *Change) error {
 			return err
 		}
 		c.wrote(Hikari, f)
-		if s.check.Orchestration != "" {
+		switch {
+		case t.Stage == StageStub:
+			// The orchestration agent scopes it first (rule IS3).
+			what := "[[" + t.ID + "]]"
+			if t.Issue != "" {
+				what = fmt.Sprintf("[[%s]], the issue %s %q", t.ID, t.Issue, t.Name)
+			}
+			c.note(s.check.Orchestration, fmt.Sprintf("The queue %s started %s, which is not scoped yet. Scope it now: follow the Scope an issue procedure of the hikari-scope-work skill, write the scope with scope_task, then follow the Carry out a scope procedure.", q.ID, what))
+		case s.check.Orchestration != "":
 			c.note(s.check.Orchestration, fmt.Sprintf("The queue %s started [[%s]]. Follow the Carry out a scope procedure of the hikari-scope-work skill.", q.ID, t.ID))
-		} else {
+		default:
 			for _, p := range t.Partitions {
 				c.note(p, fmt.Sprintf("The queue %s started [[%s]], with a part for you. Follow the hikari-task-work skill.", q.ID, t.ID))
 			}
@@ -204,12 +302,19 @@ func (s *Store) Schedule(c *Change) error {
 	return nil
 }
 
-// blockers says why t cannot start yet, or "" when it can (D4 and D5).
+// blockers says why t cannot start yet, or "" when it can (D4 and D5, and
+// rule IS3: while a started task is being scoped, nothing else starts).
 func (s *Store) blockers(t *Task) string {
 	var why []string
 	for _, n := range t.Needs {
 		if o := s.Tasks[n]; o == nil || o.Status != Done {
 			why = append(why, fmt.Sprintf("it needs [[%s]] done", n))
+		}
+	}
+	for _, id := range sortedKeys(s.Tasks) {
+		if o := s.Tasks[id]; id != t.ID && scoping(o) {
+			why = append(why, fmt.Sprintf("[[%s]] is being scoped", id))
+			break
 		}
 	}
 	for _, p := range t.Partitions {
@@ -281,6 +386,18 @@ var errForbidden = errors.New("not allowed")
 // scope, for the orchestration agent or the user (rules TK14 to TK19).
 // part names the part for the user; an agent's part is its own.
 func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Grant, error) {
+	return s.SetStatusReviewed(caller, id, part, status, note, "", c)
+}
+
+// ReviewRequired is the refusal of a done that lacks the review a
+// partition's profile requires.
+const ReviewRequired = "a review is required before done: load the hikari-review-work skill, fix what the reviewer finds, and pass its verdict as review"
+
+// SetStatusReviewed is SetStatus with the review that a partition agent
+// carries into its request for done: one line on who reviewed the change
+// and what was found. A partition whose agent's review is required gets
+// done only with one, and the log keeps it.
+func (s *Store) SetStatusReviewed(caller, id, part, status, note, review string, c *Change) (Grant, error) {
 	t, err := s.task(id)
 	if err != nil {
 		return Grant{}, err
@@ -306,7 +423,7 @@ func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Gra
 	}
 	var g Grant
 	if part != "" {
-		g, err = s.setPartStatus(t, caller, part, status, note, c)
+		g, err = s.setPartStatus(t, caller, part, status, note, review, c)
 	} else {
 		g, err = s.setScopeStatus(t, caller, status, note, c)
 	}
@@ -324,7 +441,7 @@ func (s *Store) SetStatus(caller, id, part, status, note string, c *Change) (Gra
 	return g, err
 }
 
-func (s *Store) setPartStatus(t *Task, caller, part, status, note string, c *Change) (Grant, error) {
+func (s *Store) setPartStatus(t *Task, caller, part, status, note, review string, c *Change) (Grant, error) {
 	if !slices.Contains(t.Partitions, part) {
 		return Grant{}, fmt.Errorf("[[%s]] has no part for %s", t.ID, part)
 	}
@@ -344,10 +461,16 @@ func (s *Store) setPartStatus(t *Task, caller, part, status, note string, c *Cha
 	}
 	g := Grant{Status: status}
 	if status == Done && caller != User {
-		if refused := s.notPassing(t, part); len(refused) > 0 {
+		refused := s.notPassing(t, part)
+		if s.check.Reviewed != nil && s.check.Reviewed(part) && strings.TrimSpace(review) == "" {
+			refused = append(refused, ReviewRequired)
+		}
+		if len(refused) > 0 {
 			g = Grant{Status: Testing, Refused: refused}
 			s.refused(t, caller, "the part of "+part, refused)
 			status, note = Testing, ""
+		} else if review = strings.TrimSpace(review); review != "" {
+			note = strings.TrimSpace(note + "\nreviewed: " + review)
 		}
 	}
 	from := t.PartStatus(part)

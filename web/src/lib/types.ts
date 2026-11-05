@@ -9,7 +9,20 @@ export type Message = {
   body: string
   time: string
   woke?: string[]
+  // decision is a question with numbered choices, shown as a card, and
+  // answers the id of the decision that this message answers (rules DC1
+  // and DC3 of the attention spec).
+  decision?: Decision
+  answers?: number
 }
+
+// Decision is a question for you with two to six choices; the answer goes
+// to reply_to as a direct message.
+export type Decision = { question: string; options: string[]; task?: string; reply_to?: string; proposal?: Proposal }
+
+// Proposal is a rule an agent proposes for every agent: Accept writes it
+// into the public wiki.
+export type Proposal = { id: string; name: string; rule: string; reason: string }
 
 // hikari is hikari itself, which writes the messages of its modules.
 export type Role = 'orchestration' | 'partition' | 'operator' | 'hikari'
@@ -75,7 +88,9 @@ export type Agent = {
   status: Status
 }
 
-export type Interface = { name: string; kind: string; description?: string }
+// contract is the file in the vault's public contracts/ that says the
+// interface's shape, when the vocabulary names one.
+export type Interface = { name: string; kind: string; description?: string; contract?: string }
 
 export type Health = 'passing' | 'failing' | 'pending' | 'untested'
 
@@ -183,7 +198,23 @@ export type SharedListing = {
   skills: { name: string; path: string; holders: string[] }[]
   deliverables: Deliverable[]
   remotes?: Remote[]
+  contracts?: ContractEntry[]
+  // styles are the vault's styles, each with the agents that follow it.
+  styles?: { name: string; path: string; holders: string[] }[]
 }
+
+// AgentContext is what an agent's container puts before Claude Code on
+// each turn, built on the host: the prompt and the names of what shapes it.
+export type AgentContext = { prompt: string; pack: string[]; skills: string[]; styles: string[]; policies: string[]; profile?: string; model?: string; effort?: string; review?: string; missing?: string[] }
+
+// ToolboxItem is one built-in item of hikari's toolbox, with whether the
+// vault has it.
+export type ToolboxItem = { kind: 'policy' | 'style' | 'skill' | 'profile'; name: string; description: string; installed: boolean; path?: string }
+
+// ContractEntry is one contract file of the vault, with the interfaces of
+// the vocabulary that name it; missing marks one an interface names and the
+// vault lacks.
+export type ContractEntry = { name: string; path: string; interfaces: string[]; missing?: boolean }
 
 // Remote is how products are pushed to and pulled from a home outside the
 // vault: the project's commands.
@@ -223,7 +254,7 @@ export type PartitionView = {
   repos: RepoState[]
   // dirty says whether a writable folder has uncommitted changes.
   dirty?: boolean
-  grants?: { releases: string[]; deliverables: string[]; skills: string[] }
+  grants?: { releases: string[]; deliverables: string[]; skills: string[]; styles?: string[] }
   flags: Flag[] | null
   providers: Record<string, string[]> | null
 }
@@ -291,7 +322,7 @@ export type Snapshot = {
   messages: Message[]
   partitions: PartitionView[]
   vocabulary: Vocabulary
-  repos?: RepoInfo[]
+  repos?: RepoView[]
   deliverables?: DeliverableInfo[]
   wikis?: WikiView[]
   activity?: Record<string, Activity[]>
@@ -301,25 +332,33 @@ export type Snapshot = {
   // far (rules FD2 and FD6).
   feed?: Entry[]
   cost?: number
+  // turns holds every ended turn of the run, oldest first.
+  turns?: Turn[]
   // assistant is the hikari agent's view, or why the run has none.
   assistant?: AssistantView
 }
 
-// The task pipeline, the tasks module (rule TK27 of the task pipeline spec).
+// The task pipeline, the tasks module (rule TK27 of the task pipeline spec,
+// and section 3 of the repositories, forges, and issues spec).
 export type TaskStatus = 'queued' | 'waiting' | 'started' | 'blocked' | 'testing' | 'validating' | 'done'
 
 export type TaskPart = { partition: string; status: TaskStatus }
 
+// TaskView is a task: the record of an issue's work. stage is stub while
+// the orchestration agent has not scoped it yet, which can be while it is
+// in a queue and started.
 export type TaskView = {
   id: string
   name: string
   stage: 'stub' | 'scope'
   author?: string
-  // status is empty for a stub and for a draft scope.
+  // status is empty for a task in no queue.
   status?: TaskStatus
   block?: string
   wait?: string
   queue?: string
+  // issue is the tracker issue the task stands for, as <repo>#<number>.
+  issue?: string
   partitions: string[]
   features: string[]
   needs: string[]
@@ -328,17 +367,67 @@ export type TaskView = {
   updated?: string
   file: string
   hash: string
+  // scorecard is what the task's log says of how the work went.
+  scorecard?: Scorecard
 }
+
+// Scorecard is when a scope started and finished, how often it was blocked,
+// how often done was refused, how many reviews it carried, the window of
+// each part, and the log's lines with their times.
+export type Scorecard = {
+  started?: string
+  finished?: string
+  blocks: number
+  refusals: number
+  reviews: number
+  parts: { partition: string; started?: string; finished?: string }[]
+  log: { time?: string; text: string }[]
+}
+
+// Turn is one ended turn of an agent, kept for the run.
+export type Turn = { agent: string; turn: number; time: string; cost: number; duration: number; error?: boolean }
 
 export type QueueView = { id: string; name: string; state: 'running' | 'paused'; scopes: TaskView[]; file: string }
 
+// IssueView is one issue (rule IS2): a tracker's, or a local one, with its
+// task when it has one. ref is <repo>#<number>, or the task id of a local
+// issue.
+export type IssueView = {
+  ref: string
+  repo?: string
+  number?: number
+  title: string
+  body?: string
+  url?: string
+  state: 'open' | 'closed'
+  labels: string[]
+  author?: string
+  comments: number
+  created?: string
+  updated?: string
+  local?: boolean
+  task?: TaskView
+  assignees?: string[]
+}
+
+// IssueComment is one comment of a tracker issue.
+export type IssueComment = { id: number; author?: string; body: string; created?: string; url?: string }
+
+// IssueDetail is an issue with its comments and its task's document.
+export type IssueDetail = { issue: IssueView; comments: IssueComment[]; task?: { task: TaskView; text: string } }
+
+// TrackerView is one issue tracker of the project, with its last sync.
+export type TrackerView = { repo: string; kind: string; url?: string; synced?: string; error?: string }
+
 export type TasksView = {
-  stubs: TaskView[]
-  drafts: TaskView[]
+  issues: IssueView[]
+  trackers: TrackerView[]
+  tasks: TaskView[]
   queues: QueueView[]
   problems: { file: string; reason: string }[]
   orchestration: string
   partitions: string[]
+  work_queue: string
 }
 
 export type Modules = { tasks?: TasksView }
@@ -383,8 +472,89 @@ export type AssistantEvent =
   | { type: 'prompt'; prompt: AssistantPrompt }
   | { type: 'status'; status: AssistantStatus }
 
-// RepoInfo is one repository of the topology with the partitions in it.
-export type RepoInfo = { name: string; branch: string; partitions: string[] }
+// The repositories (section 2 of the repositories, forges, and issues spec).
+
+// ForgeRemote is what a repository's origin URL says about its forge.
+export type ForgeRemote = { kind: string; host: string; owner: string; name: string; web: string; api: string }
+
+export type CheckState = 'passing' | 'failing' | 'pending' | 'skipped' | 'none'
+
+export type CheckRun = { name: string; state: CheckState; url?: string }
+
+// Checks is every check of a commit, with a summary (rule RP3).
+export type Checks = { state: CheckState; passed: number; failed: number; pending: number; runs: CheckRun[] }
+
+export type PullRequestView = {
+  number: number
+  title: string
+  body?: string
+  url: string
+  state: 'open' | 'closed' | 'merged'
+  draft?: boolean
+  author?: string
+  head: string
+  base: string
+  sha: string
+  merged?: string
+  mergeable?: 'mergeable' | 'conflicting' | 'unknown'
+  review?: 'approved' | 'changes_requested'
+  additions?: number
+  deletions?: number
+  files?: number
+  created?: string
+  updated?: string
+  closes?: number[]
+  checks: Checks
+}
+
+// BranchView is one branch of a repository (rule RP2): local, on origin, or
+// both.
+export type BranchView = {
+  name: string
+  sha: string
+  subject?: string
+  author?: string
+  time?: string
+  local: boolean
+  remote: boolean
+  ahead: number
+  behind: number
+  unpushed: number
+  yours?: boolean
+  default?: boolean
+  merged?: boolean
+  pull_request?: number
+}
+
+// RepoView is one repository of the topology (rule RP1): your branch, the
+// partitions with a writable folder in it, its forge, its branches, and its
+// pull requests.
+export type RepoView = {
+  name: string
+  branch: string
+  partitions: string[]
+  project?: boolean
+  url?: string
+  forge?: ForgeRemote
+  default_branch?: string
+  head?: string
+  dirty?: boolean
+  branches: BranchView[]
+  pull_requests: PullRequestView[]
+  synced?: string
+  fetched?: string
+  error?: string
+  git_error?: string
+  // uncovered lists the tracked paths that no partition owns, each at the
+  // highest directory that holds no partition folder; a directory ends in
+  // a slash. drift lists, for each partition with a folder here, the paths
+  // of its folders that the default branch changed since your branch
+  // diverged.
+  uncovered?: string[]
+  drift?: PartitionDrift[]
+}
+
+export type PartitionDrift = { partition: string; paths: string[] }
 
 // DeliverableInfo is a deliverable of the vault with the agents that hold it.
 export type DeliverableInfo = { name: string; description?: string; holders: string[]; error?: string }
@@ -399,6 +569,7 @@ export type ServerEvent =
   | { type: 'wiki'; wiki: WikiView }
   | { type: 'topology'; revision: string }
   | { type: 'module'; module: string; view: unknown }
+  | { type: 'repo'; repo: RepoView }
   | { type: 'feed'; entry: Entry }
   | { type: 'assistant'; assistant: AssistantEvent }
 
@@ -418,7 +589,10 @@ export type Finding = {
 }
 
 // orchestration is the service id of the orchestration agent, or "".
-export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string }
+export type TopologyProject = { id: string; name: string; vault: string; repo: boolean; branch: string; orchestration: string; profiles?: TopologyProfile[] }
+// TopologyProfile is one profile of x-hikari.profiles: a named bundle of
+// model, effort, review, skills, and styles that an agent takes.
+export type TopologyProfile = { name: string; description: string; model: string; effort: string; review: string; skills: string[]; styles: string[]; line: number }
 export type TopologyRepo = { id: string; name: string; url: string; path: string; branch: string; line: number; id_locked: boolean }
 // TopologyFolder is a folder as the file writes it: repo is the repo's id.
 export type TopologyFolder = { repo: string; path: string; read_only: boolean; at: string }
@@ -434,6 +608,12 @@ export type TopologyAgent = {
   releases: string[]
   deliverables: string[]
   skills: string[]
+  styles?: string[]
+  // profile, effort, and review are the agent's own, as the file writes
+  // them; the profile's values are shown as inherited.
+  profile?: string
+  effort?: string
+  review?: string
   image: string
   build: string
   template: string

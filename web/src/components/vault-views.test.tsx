@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { DeliverableEntry } from '@/components/shared-view'
+import { DeliverableEntry, ToolboxList } from '@/components/shared-view'
 import { PartitionDetail } from '@/components/partition-detail'
 import { ReleaseBody } from '@/components/release-view'
 import { partition } from '@/lib/fixtures'
@@ -110,5 +110,40 @@ describe('PartitionDetail releases', () => {
     for (const want of ['data-testid="tag"', 'staging', 'product absent', 'remote local-dir', 'pinned by orders', 'data-testid="pins"', 'follows the tag staging']) {
       expect(html).toContain(want)
     }
+  })
+})
+
+describe('contracts', () => {
+  it('shows the contract an interface names, in the vocabulary and on the partition page', async () => {
+    const { VocabularyPanel } = await import('@/components/vocabulary-panel')
+    const vocabulary = { version: 1, terms: [], interfaces: [{ name: 'POST /orders', kind: 'http', description: 'Creates an order.', contract: 'orders/openapi.yaml' }, { name: 'Stock.reserve', kind: 'function', description: 'Reserves stock.' }] }
+    const html = renderToStaticMarkup(<VocabularyPanel orchestration="lead" vocabulary={vocabulary} />)
+    expect(html.split('data-testid="contract"').length - 1).toBe(1)
+    expect(html).toContain('orders/openapi.yaml')
+    const v = partition('orders')
+    v.partition.interfaces.provides = [{ name: 'POST /orders', kind: 'http' }]
+    v.flags = [{ interface: 'POST /orders', problem: 'names a contract that the vault lacks' }]
+    const page = renderToStaticMarkup(<PartitionDetail state={{ ...initialState({ kind: 'room' }), vocabulary }} partition={v} />)
+    expect(page).toContain('data-testid="contract"')
+    expect(page).toContain('names a contract that the vault lacks')
+  })
+})
+
+describe('ToolboxList', () => {
+  it('groups the items by kind, offers Add for what the vault lacks, and marks what it has', () => {
+    const items = [
+      { kind: 'policy' as const, name: 'no-secrets', description: 'Never print a credential.', installed: true, path: 'public/policies/no-secrets.md' },
+      { kind: 'style' as const, name: 'terse', description: 'Short sentences.', installed: false, path: 'styles/terse.md' },
+      { kind: 'profile' as const, name: 'careful', description: 'Reviewed work.', installed: false },
+    ]
+    const html = renderToStaticMarkup(<ToolboxList items={items} add={async () => ({})} />)
+    expect(html).toContain('data-toolbox="policy/no-secrets"')
+    expect(html).toContain('data-installed="true"')
+    const terse = html.slice(html.indexOf('data-toolbox="style/terse"'), html.indexOf('data-toolbox="profile/careful"'))
+    expect(terse).toContain('Add')
+    expect(terse).not.toContain('data-installed')
+    expect(html.slice(html.indexOf('data-toolbox="profile/careful"'))).toContain('Show')
+    expect(html).toContain('Policies')
+    expect(html).toContain('Profiles')
   })
 })

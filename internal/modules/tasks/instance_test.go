@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/nathanaday/hikari/internal/api"
+	"github.com/nathanaday/hikari/internal/forge"
 	"github.com/nathanaday/hikari/internal/topology"
 )
 
@@ -25,6 +27,9 @@ type fakeHost struct {
 	commits []commit
 	notes   []Note
 	lines   []Line
+	asks    []api.Decision
+	// trackers holds a fake tracker per repo, when a test gives one.
+	trackers map[string]forge.Tracker
 }
 
 func (h *fakeHost) Topology() *topology.Topology { return h.topo }
@@ -43,12 +48,31 @@ func (h *fakeHost) Notify(to, body string) {
 	defer h.mu.Unlock()
 	h.notes = append(h.notes, Note{To: to, Body: body})
 }
+func (h *fakeHost) Ask(d api.Decision) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.asks = append(h.asks, d)
+}
+
 func (h *fakeHost) Feed(text, task string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.lines = append(h.lines, Line{Task: task, Text: text})
 }
 func (h *fakeHost) Changed() {}
+
+func (h *fakeHost) Tracker(repo string) (forge.Tracker, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t, ok := h.trackers[repo]
+	return t, ok
+}
+
+func (h *fakeHost) TrackerRepos() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return sortedKeys(h.trackers)
+}
 
 func (h *fakeHost) authors() []string {
 	h.mu.Lock()
@@ -138,7 +162,7 @@ func TestInstance(t *testing.T) {
 		t.Errorf("TK7 your edit, then hikari's fill: %v %+v", got, h.commits[before:])
 	}
 	v := i.View().(View)
-	if len(v.Stubs) != 1 || v.Stubs[0].ID != "gift-wrap" || len(v.Queues) != 1 || v.Queues[0].Scopes[0].Status != Started {
+	if len(v.Tasks) != 2 || len(v.Issues) != 2 || v.Issues[1].Ref != "gift-wrap" || !v.Issues[1].Local || v.Issues[0].Body != "Cancel orders." || len(v.Queues) != 1 || v.Queues[0].Scopes[0].Status != Started {
 		t.Errorf("the view: %+v", v)
 	}
 }

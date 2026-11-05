@@ -44,7 +44,7 @@ Show the user the list in a few lines, each with its origin, and ask which ones 
 | An open change in `changes/` | `change-topology`, to continue it |
 | An onboarded project (`hikify: done`, or partitions and no `onboarding/`), with a request to add a repository, split, merge, or move partitions, or extract a library | `change-topology` |
 | An onboarded project, with a request for work, or to start hikari | `room` |
-| A project with the tasks module, with an idea to keep for later, or a request about stubs, scopes, or queues | `tasks` |
+| A project with the tasks module, with an idea to keep for later, or a request about issues, scopes, or queues | `tasks` |
 
 When the request spans several stages, such as "take these repos, build a hikari topology, and start working", start at the first, and tell the user the path ahead (section 5) before the first step that costs agent time. A user who wants to work on a containerized project as it is can go to `room` from `containerize: done`; say that hikify is where the partitions become cleaner than one for each repository.
 
@@ -69,6 +69,7 @@ Before the first step that costs agent time, tell the user in a few lines:
 3. **Carry out.** This session restructures the repositories, and hikari's agents carry out the plan, each in its own partition.
 4. **Verify.** Every test of the baseline is kept, moved, or dropped with the user's approval, and a fresh clone of the project starts.
 5. **Work.** The user, or this session with `room`, posts requests to the orchestration agent.
+6. **Shape the agents.** `hikari toolbox list` shows ready-made policies, styles, skills, and profiles; `hikari toolbox add <kind>/<name>` installs one into the vault, and `x-hikari.profiles` with `profile:` on an agent bundles a model, an effort, a review, skills, and styles. The user can do this at any stage; suggest it when the user asks how to make the agents work differently.
 
 Each stage records its progress in the project's `onboarding/state.md`, so the user can stop after any stage and continue in a new session.
 

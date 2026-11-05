@@ -23,9 +23,11 @@ import (
 	"github.com/nathanaday/hikari/internal/editor"
 	"github.com/nathanaday/hikari/internal/linked"
 	"github.com/nathanaday/hikari/internal/partitions"
+	"github.com/nathanaday/hikari/internal/repos"
 	"github.com/nathanaday/hikari/internal/topology"
 	"github.com/nathanaday/hikari/internal/version"
 	"github.com/nathanaday/hikari/internal/vocab"
+	"github.com/nathanaday/hikari/internal/wiki"
 )
 
 const maxBodyBytes = 64 << 10
@@ -49,6 +51,9 @@ type Event struct {
 	View   any    `json:"view,omitempty"`
 	// Entry is a new entry of the feed, in a feed event (rule FD2).
 	Entry *api.Entry `json:"entry,omitempty"`
+	// Repo is a changed repository view, in a repo event (rule RP6 of the
+	// repositories, forges, and issues spec).
+	Repo *api.RepoView `json:"repo,omitempty"`
 	// Assistant is a change of the hikari agent, in an assistant event
 	// (rule HA9 of the hikari agent spec).
 	Assistant *assistant.Event `json:"assistant,omitempty"`
@@ -81,8 +86,10 @@ type Snapshot struct {
 	Messages     []api.Message       `json:"messages"`
 	Partitions   []api.PartitionView `json:"partitions"`
 	Vocabulary   vocab.Vocabulary    `json:"vocabulary"`
-	// Repos and Deliverables let the UI draw the topology (rules N2, N3).
-	Repos        []api.RepoInfo     `json:"repos"`
+	// Repos holds the view of each repository (rule RP1), and Deliverables
+	// the deliverables; together they let the UI draw the topology (rules
+	// N2, N3).
+	Repos        []api.RepoView     `json:"repos"`
 	Deliverables []deliverableEntry `json:"deliverables"`
 	// Wikis holds the public wiki and every feature map.
 	Wikis []api.WikiView `json:"wikis"`
@@ -94,6 +101,8 @@ type Snapshot struct {
 	// so far (rules FD2 and FD6).
 	Feed []api.Entry `json:"feed"`
 	Cost float64     `json:"cost"`
+	// Turns holds every ended turn of the run, oldest first.
+	Turns []api.Turn `json:"turns"`
 	// Assistant is the hikari agent's view, or why the run has none
 	// (rule HA9).
 	Assistant assistant.View `json:"assistant"`
@@ -113,6 +122,7 @@ type Server struct {
 	topo    *topology.Topology
 	journal io.Writer
 	sys     *partitions.Manager
+	repos   *repos.Manager
 
 	mu     sync.Mutex
 	tokens map[string]string
@@ -135,6 +145,8 @@ type Server struct {
 	nextEntry   int64
 	feedJournal io.Writer
 	cost        float64
+	// turns are the ended turns of the run, oldest first.
+	turns []api.Turn
 	// assistant is the hikari agent of the run, or nil with assistantOff
 	// saying why.
 	assistant    *assistant.Assistant
@@ -144,6 +156,9 @@ type Server struct {
 // maxActivity is the most entries kept per agent. Older turns are dropped
 // whole.
 const maxActivity = 400
+
+// maxTurns is the most ended turns the run keeps for the scorecards.
+const maxTurns = 20000
 
 // New returns a server for topo and its partitions. Each message is also
 // written to journal as one line of JSON when journal is not nil.
@@ -165,8 +180,18 @@ func New(topo *topology.Topology, journal io.Writer, sys *partitions.Manager) *S
 		s.status[n] = api.Status{State: api.StateStarting}
 	}
 	sys.OnChange(s.partitionChanged)
+	s.repos = repos.New(topo, sys.GitRepos(), repos.Options{PartitionsOf: sys.PartitionsIn, OnChange: s.repoChanged})
 	s.openModules()
 	return s
+}
+
+// Repos returns the repository views.
+func (s *Server) Repos() *repos.Manager { return s.repos }
+
+func (s *Server) repoChanged(v api.RepoView) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publish(Event{Type: "repo", Repo: &v})
 }
 
 // SetAssistant gives the run its hikari agent, or with nil the reason it
@@ -247,8 +272,34 @@ func (s *Server) agentForToken(token string) (string, bool) {
 
 var errForbidden = errors.New("not allowed")
 
-// Send posts to the room, or sends a direct message when req.To is set.
+// Send posts to the room, or sends a direct message when req.To is set. A
+// decision is a direct message to the user, whose body is the decision's
+// text when the request gives none (rule DC1 of the attention spec).
 func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
+	if d := req.Decision; d != nil {
+		if req.To != topology.User {
+			return api.Message{}, fmt.Errorf("a decision is a direct message to %s", topology.User)
+		}
+		if strings.TrimSpace(d.Question) == "" || len(d.Options) < 2 || len(d.Options) > api.MaxOptions {
+			return api.Message{}, fmt.Errorf("a decision needs a question and 2 to %d options", api.MaxOptions)
+		}
+		for _, o := range d.Options {
+			if strings.TrimSpace(o) == "" {
+				return api.Message{}, errors.New("an option of a decision is not empty")
+			}
+		}
+		if d.ReplyTo == "" {
+			d.ReplyTo = from
+		}
+		if p := d.Proposal; p != nil {
+			if err := checkProposal(p); err != nil {
+				return api.Message{}, err
+			}
+		}
+		if strings.TrimSpace(req.Body) == "" {
+			req.Body = d.Text()
+		}
+	}
 	if strings.TrimSpace(req.Body) == "" {
 		return api.Message{}, errors.New("message body is empty")
 	}
@@ -256,9 +307,75 @@ func (s *Server) Send(from string, req api.SendRequest) (api.Message, error) {
 		return api.Message{}, fmt.Errorf("message body exceeds %d bytes", maxBodyBytes)
 	}
 	if req.To != "" {
-		return s.direct(from, req.To, req.Body)
+		return s.directMessage(api.Message{From: from, To: req.To, Body: req.Body, Decision: req.Decision, Answers: req.Answers})
 	}
 	return s.post(from, req.Body), nil
+}
+
+// DecideRequest answers a decision: the message's id, the option's number
+// from 1, and any words of the user.
+type DecideRequest struct {
+	Message int64  `json:"message"`
+	Choice  int    `json:"choice"`
+	Note    string `json:"note,omitempty"`
+}
+
+// Decide answers a decision as the user: a direct message to the
+// decision's ReplyTo, "<n>. <option>", with the note (rule DC3).
+func (s *Server) Decide(req DecideRequest) (api.Message, error) {
+	s.mu.Lock()
+	i := slices.IndexFunc(s.log, func(x api.Message) bool { return x.ID == req.Message })
+	var d *api.Decision
+	if i >= 0 {
+		d = s.log[i].Decision
+	}
+	s.mu.Unlock()
+	if d == nil {
+		return api.Message{}, fmt.Errorf("message %d is not a decision", req.Message)
+	}
+	if req.Choice < 1 || req.Choice > len(d.Options) {
+		return api.Message{}, fmt.Errorf("the choice is a number from 1 to %d", len(d.Options))
+	}
+	body := fmt.Sprintf("%d. %s", req.Choice, d.Options[req.Choice-1])
+	if note := strings.TrimSpace(req.Note); note != "" {
+		body += "\n" + note
+	}
+	if p := d.Proposal; p != nil && req.Choice == 1 {
+		// An accepted proposal is written into the public wiki as the
+		// user's rule, before the answer goes out, so that a refusal of the
+		// wiki reaches the user and the decision stays open. A proposal
+		// never writes over a document that exists.
+		if w, ok := s.sys.WikiView(api.PublicWikiRef); ok && slices.ContainsFunc(w.Documents, func(x api.WikiDoc) bool { return x.ID == p.ID }) {
+			return api.Message{}, fmt.Errorf("the public wiki already has %s; edit it there, or decline and ask for another id", p.ID)
+		}
+		doc := wiki.Document{ID: p.ID, Kind: wiki.Rule, Name: p.Name, Description: p.Rule, Body: "## Purpose\n\n" + strings.TrimSpace(p.Reason) + "\n"}
+		if err := s.sys.WriteDocument(api.PublicWikiRef, p.ID, doc.Render()); err != nil {
+			return api.Message{}, fmt.Errorf("the rule was not written: %w", err)
+		}
+		body += fmt.Sprintf("\nhikari wrote the rule [[%s]] into the public wiki; every agent reads it from its next turn.", p.ID)
+		s.userDid(fmt.Sprintf("accepted the rule %s proposed by %s", p.ID, d.ReplyTo))
+	}
+	return s.Send(topology.User, api.SendRequest{To: d.ReplyTo, Body: body, Answers: req.Message})
+}
+
+var ruleID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`)
+
+// checkProposal checks a proposed rule as the public wiki would: an id of
+// lowercase letters, digits, and dashes, a name of two to five words, a
+// rule of one sentence under 200 characters, and a reason.
+func checkProposal(p *api.Proposal) error {
+	p.ID, p.Name, p.Rule, p.Reason = strings.TrimSpace(p.ID), strings.TrimSpace(p.Name), strings.TrimSpace(p.Rule), strings.TrimSpace(p.Reason)
+	switch words := len(strings.Fields(p.Name)); {
+	case !ruleID.MatchString(p.ID):
+		return errors.New("a proposed rule needs an id of lowercase letters, digits, and dashes, up to 48 characters")
+	case words < 2 || words > 5:
+		return errors.New("a proposed rule's name is two to five words")
+	case p.Rule == "" || len(p.Rule) > 200 || strings.Contains(p.Rule, "\n"):
+		return errors.New("a proposed rule is one sentence of at most 200 characters")
+	case p.Reason == "":
+		return errors.New("a proposed rule needs its reason")
+	}
+	return nil
 }
 
 // post sends body to the room. It wakes the orchestration agent, every agent it
@@ -287,7 +404,18 @@ func (s *Server) post(from, body string) api.Message {
 }
 
 func (s *Server) direct(from, to, body string) (api.Message, error) {
+	return s.directMessage(api.Message{From: from, To: to, Body: body})
+}
+
+// directMessage delivers m, with its decision or its answer, so that the
+// event the UI receives carries them (rule DC1).
+func (s *Server) directMessage(m api.Message) (api.Message, error) {
+	from, to := m.From, m.To
 	others := slices.DeleteFunc(s.topo.Participants(), func(p string) bool { return p == from })
+	if from == topology.Hikari && to == topology.User {
+		// hikari asks the user its decisions (rule DC2).
+		others = append(others, topology.User)
+	}
 	if !slices.Contains(others, to) {
 		return api.Message{}, fmt.Errorf("%w: %q cannot send a direct message to %q; the room is %s",
 			errForbidden, from, to, list(others))
@@ -296,7 +424,7 @@ func (s *Server) direct(from, to, body string) (api.Message, error) {
 	if to != topology.User {
 		recipients = append(recipients, recipient{name: to, wake: true})
 	}
-	return s.deliver(api.Message{From: from, To: to, Body: body}, recipients), nil
+	return s.deliver(m, recipients), nil
 }
 
 // deliver records m and queues it for each recipient. The user has no inbox:
@@ -442,6 +570,10 @@ func (s *Server) AddActivity(agent string, a api.Activity) {
 				steps = append(steps, x)
 			}
 		}
+		s.turns = append(s.turns, api.Turn{Agent: agent, Turn: a.Turn, Time: a.Time, Cost: a.Cost, Duration: a.Duration, Error: a.Error})
+		if len(s.turns) > maxTurns {
+			s.turns = slices.Clone(s.turns[len(s.turns)-maxTurns:])
+		}
 		text := "turn done"
 		if a.Error {
 			text = "turn failed"
@@ -477,6 +609,8 @@ func (s *Server) Self(agent string) api.Self {
 	self.Releases = s.topo.ReadableReleases(agent)
 	self.Deliverables = s.sys.Deliverables(agent)
 	self.Skills = a.Grants.Skills
+	self.Styles = a.Grants.Styles
+	self.Profile, self.Effort, self.Review = a.Profile, a.Effort, a.Review
 	self.Modules = s.topo.Modules
 	for _, m := range self.VisiblePartitions {
 		if g := s.topo.Agents[m].Grants.Releases; len(g) > 0 {
@@ -572,7 +706,7 @@ func (s *Server) snapshot() Snapshot {
 	snap.Participants = s.participants()
 	snap.Partitions = s.sys.Partitions()
 	snap.Vocabulary = s.sys.Vocabulary()
-	snap.Repos = s.sys.Repos()
+	snap.Repos = s.repos.Views()
 	snap.Deliverables = s.deliverables(s.sys.Vault())
 	snap.Wikis = s.sys.Wikis()
 	snap.Modules = s.moduleViews()
@@ -581,6 +715,10 @@ func (s *Server) snapshot() Snapshot {
 		snap.Feed = []api.Entry{}
 	}
 	snap.Cost = s.cost
+	snap.Turns = slices.Clone(s.turns)
+	if snap.Turns == nil {
+		snap.Turns = []api.Turn{}
+	}
 	if s.assistant != nil {
 		snap.Assistant = s.assistant.View()
 	} else {

@@ -56,10 +56,44 @@ type Agent struct {
 	Model        string     `yaml:"model"`
 	Partition    *Partition `yaml:"partition"`
 	Grants       Grants     `yaml:"grants"`
+	// Profile names the profile of x-hikari.profiles that the agent takes;
+	// after Parse, its model, effort, review, skills, and styles are
+	// merged into the agent, and the agent's own values win.
+	Profile string `yaml:"profile"`
+	// Effort is the reasoning effort of the agent's turns: low, medium,
+	// high, xhigh, or max; "" leaves it to Claude Code.
+	Effort string `yaml:"effort"`
+	// Review says whether a part of a scope needs a review before the
+	// agent asks for done: ReviewRequired, or "" for none.
+	Review string `yaml:"review"`
 }
 
+// Profile is a named bundle of how an agent works, under
+// x-hikari.profiles: its model, its effort, whether its work is reviewed,
+// and the skills and styles it is granted. An agent takes one with
+// x-hikari.profile.
+type Profile struct {
+	Description string   `yaml:"description"`
+	Model       string   `yaml:"model"`
+	Effort      string   `yaml:"effort"`
+	Review      string   `yaml:"review"`
+	Skills      []string `yaml:"skills"`
+	Styles      []string `yaml:"styles"`
+}
+
+// Efforts are the reasoning efforts that an agent or a profile may set.
+var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
+
+// ReviewRequired is the review setting that makes a partition agent's part
+// of a scope need a review before done.
+const ReviewRequired = "required"
+
+// Reviews are the review settings that an agent or a profile may set.
+var Reviews = []string{ReviewRequired, "none"}
+
 // Grants bind an agent to parts of the vault: the releases it can read,
-// the deliverables it publishes, and the skills it uses.
+// the deliverables it publishes, the skills it uses, and the styles it
+// follows.
 type Grants struct {
 	// Releases lists the partitions whose releases the agent can read.
 	Releases []string `yaml:"releases"`
@@ -68,6 +102,9 @@ type Grants struct {
 	Deliverables []string `yaml:"deliverables"`
 	// Skills lists skills of the vault's skills/ (rule V7).
 	Skills []string `yaml:"skills"`
+	// Styles lists styles of the vault's styles/: documents of how the
+	// agent's work should look, which go into its system prompt.
+	Styles []string `yaml:"styles"`
 	// Tags restricts, for a held deliverable, the tags the agent may set
 	// to those that match its patterns (rule TG4 of the releases spec).
 	Tags map[string][]string `yaml:"tags"`
@@ -198,6 +235,8 @@ type Topology struct {
 	Orchestration string
 	// Modules are the modules that x-hikari.modules turns on.
 	Modules []string
+	// Profiles are the profiles of x-hikari.profiles, by name.
+	Profiles map[string]Profile
 
 	// File is the topology file, when the topology came from Load.
 	File string
@@ -241,6 +280,8 @@ type hikariKeys struct {
 	Orchestration string `yaml:"orchestration"`
 	// Modules turns on modules by name.
 	Modules []string `yaml:"modules"`
+	// Profiles are named bundles that agents take with profile.
+	Profiles map[string]Profile `yaml:"profiles"`
 }
 
 type projectKeys struct {
@@ -262,7 +303,7 @@ type serviceHikari struct {
 }
 
 func (a Agent) empty() bool {
-	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && len(a.Grants.Skills) == 0 && len(a.Grants.Tags) == 0 && len(a.Grants.Pins) == 0
+	return a.Name == "" && a.Description == "" && a.Instructions == "" && a.Model == "" && a.Profile == "" && a.Effort == "" && a.Review == "" && a.Partition == nil && len(a.Grants.Releases) == 0 && len(a.Grants.Deliverables) == 0 && len(a.Grants.Skills) == 0 && len(a.Grants.Styles) == 0 && len(a.Grants.Tags) == 0 && len(a.Grants.Pins) == 0
 }
 
 // Load reads a topology file through `docker compose config`, so that hikari
@@ -371,7 +412,10 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	} else if err := decodeStrict(&f.Hikari, &keys); err != nil {
 		fail("x-hikari", "x-hikari: %v", err)
 	}
-	t.Vault, t.Repos, t.Orchestration = keys.Vault, keys.Repos, keys.Orchestration
+	t.Vault, t.Repos, t.Orchestration, t.Profiles = keys.Vault, keys.Repos, keys.Orchestration, keys.Profiles
+	if t.Profiles == nil {
+		t.Profiles = map[string]Profile{}
+	}
 	for _, m := range keys.Modules {
 		switch {
 		case !slices.Contains(KnownModules, m):
@@ -444,6 +488,13 @@ func parse(data []byte, dir string, draft bool) (*Topology, error) {
 	t.normalize()
 	if err := t.validate(); err != nil {
 		return nil, err
+	}
+	// The profiles merge after the checks, so that an agent's own grants are
+	// checked as written, and a repeat between the agent and its profile
+	// is folded, not refused.
+	for name, a := range t.Agents {
+		a.takeProfile(t.Profiles[a.Profile])
+		t.Agents[name] = a
 	}
 	t.rekey()
 	return &t, nil
@@ -583,6 +634,37 @@ func (t *Topology) normalize() {
 		}
 		t.Agents[name] = a
 	}
+}
+
+// takeProfile merges a profile into the agent: the agent's own model,
+// effort, and review win, and the profile's skills and styles come before
+// the agent's own, without repeats.
+func (a *Agent) takeProfile(p Profile) {
+	if a.Model == "" {
+		a.Model = p.Model
+	}
+	if a.Effort == "" {
+		a.Effort = p.Effort
+	}
+	if a.Review == "" {
+		a.Review = p.Review
+	}
+	a.Grants.Skills = union(p.Skills, a.Grants.Skills)
+	a.Grants.Styles = union(p.Styles, a.Grants.Styles)
+}
+
+// union joins two lists in order, without repeats; nil when both are
+// empty.
+func union(lists ...[]string) []string {
+	var out []string
+	for _, l := range lists {
+		for _, x := range l {
+			if !slices.Contains(out, x) {
+				out = append(out, x)
+			}
+		}
+	}
+	return out
 }
 
 // rekey keys the checked topology by name, and resolves every reference
@@ -727,11 +809,77 @@ func (t *Topology) validate() error {
 		}
 	}
 
+	errs = append(errs, t.validateProfiles()...)
 	errs = append(errs, t.validateNames()...)
 	errs = append(errs, t.validateRepos()...)
 	errs = append(errs, t.validatePartitions()...)
 	errs = append(errs, t.validateServices()...)
 	return errors.Join(errs...)
+}
+
+// validateProfiles checks x-hikari.profiles and each agent's profile,
+// effort, and review, as the file writes them; the review that an agent
+// takes from its profile is checked against its role too.
+func (t *Topology) validateProfiles() []error {
+	var errs []error
+	fail := func(path, format string, args ...any) { errs = append(errs, at(path, format, args...)) }
+	checkNames := func(path, what string, names []string) {
+		seen := map[string]bool{}
+		for _, n := range names {
+			switch {
+			case !validName.MatchString(n):
+				fail(path, "%s %q is not a valid name (a-z, 0-9, -, up to 32 characters)", what, n)
+			case seen[n]:
+				fail(path, "%s %q is listed twice", what, n)
+			case what == "skill" && strings.HasPrefix(n, api.AgentPrefix):
+				fail(path, "skill %q: the prefix %s is reserved for hikari's own skills; rename it", n, api.AgentPrefix)
+			}
+			seen[n] = true
+		}
+	}
+	for _, name := range sortedKeys(t.Profiles) {
+		p, path := t.Profiles[name], "x-hikari.profiles."+name
+		if !validName.MatchString(name) {
+			fail(path, "x-hikari.profiles: %q is not a valid profile name: use lowercase letters, digits, and dashes", name)
+		}
+		if p.Effort != "" && !slices.Contains(Efforts, p.Effort) {
+			fail(path+".effort", "profile %q: effort %q is not one of %s", name, p.Effort, strings.Join(Efforts, ", "))
+		}
+		if p.Review != "" && !slices.Contains(Reviews, p.Review) {
+			fail(path+".review", "profile %q: review %q is not one of %s", name, p.Review, strings.Join(Reviews, ", "))
+		}
+		checkNames(path+".skills", "skill", p.Skills)
+		checkNames(path+".styles", "style", p.Styles)
+	}
+	for _, name := range t.AgentNames() {
+		a, path := t.Agents[name], "services."+name+".x-hikari"
+		if a.Profile != "" {
+			if _, ok := t.Profiles[a.Profile]; !ok {
+				fail(path+".profile", "agent %q: the profile %q is not in x-hikari.profiles; the profiles are %s", name, a.Profile, list(sortedKeys(t.Profiles)))
+			}
+		}
+		if a.Effort != "" && !slices.Contains(Efforts, a.Effort) {
+			fail(path+".effort", "agent %q: effort %q is not one of %s", name, a.Effort, strings.Join(Efforts, ", "))
+		}
+		if a.Review != "" && !slices.Contains(Reviews, a.Review) {
+			fail(path+".review", "agent %q: review %q is not one of %s", name, a.Review, strings.Join(Reviews, ", "))
+		}
+		review := a.Review
+		if review == "" {
+			review = t.Profiles[a.Profile].Review
+		}
+		if review == ReviewRequired && a.Partition == nil {
+			fail(path+".review", "agent %q: only a partition agent's work is reviewed", name)
+		}
+	}
+	return errs
+}
+
+func list(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
 }
 
 // validProjectName checks the project's name: one line of 1 to 64
@@ -957,6 +1105,16 @@ func (t *Topology) validatePartitions() []error {
 				fail(name, "grants.skills", "skill %q: the prefix %s is reserved for hikari's own skills; rename it", sk, api.AgentPrefix)
 			}
 			seen[sk] = true
+		}
+		seen = map[string]bool{}
+		for _, st := range a.Grants.Styles {
+			switch {
+			case !validName.MatchString(st):
+				fail(name, "grants.styles", "style %q is not a valid name (a-z, 0-9, -, up to 32 characters)", st)
+			case seen[st]:
+				fail(name, "grants.styles", "style %q is granted twice", st)
+			}
+			seen[st] = true
 		}
 		if a.Partition == nil {
 			continue

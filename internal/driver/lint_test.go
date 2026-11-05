@@ -25,6 +25,7 @@ var retired = []struct {
 	{regexp.MustCompile(`(?i)\bnodes?\b`), "the driver, or the agent"},
 	{regexp.MustCompile(`(?i)\bcompose files?\b`), "the topology file"},
 	{regexp.MustCompile(`(?i)\bstor(y|ies)\b`), "an orchestration feature"},
+	{regexp.MustCompile(`(?i)\bstubs?\b`), "an issue"},
 }
 
 // allowed lists each place where a retired word stays, with its reason.
